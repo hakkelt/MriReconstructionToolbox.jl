@@ -1,0 +1,9 @@
+name = "docs"
+version = "0.1.0"
+
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+MriReconstructionToolbox = "5999b5f3-3b8d-4e1e-9b67-8a5b5c5b7b0c"
+
+[sources]
+MriReconstructionToolbox = { path = ".." }
