@@ -1,5 +1,13 @@
 """
-        AcquisitionInfo
+    AcquisitionInfo(
+            kspace_data;
+            is3D::Union{Bool,Nothing}=nothing,
+            sensitivity_maps=nothing,
+            image_size=nothing,
+            subsampling=nothing,
+            shifted_kspace_dims::Tuple=(),
+            shifted_image_dims::Tuple=(),
+    )
 
 Configuration container for MRI acquisition and encoding settings.
 
@@ -30,52 +38,10 @@ Fields
 - `shifted_image_dims::ID`: Image dimensions requiring fft shift
     (equivalent to an kspace-domain sign-alternation).
 
-Constructor
-```julia
-AcquisitionInfo(
-        kspace_data;
-        is3D::Union{Bool,Nothing}=nothing,
-        sensitivity_maps=nothing,
-        image_size=nothing,
-        subsampling=nothing,
-        shifted_kspace_dims::Tuple=(),
-        shifted_image_dims::Tuple=(),
-)
-```
 When `kspace_data` is a `NamedDimsArray`, `is3D` is inferred from
 the presence of `:kz`. Otherwise, `is3D` must be provided. If a
 subsampling pattern is provided, `image_size` is validated or
 inferred when possible.
-
-Examples
-- 2D, single‑coil, fully sampled Array:
-```julia
-ksp = rand(ComplexF32, 64, 64)
-info = AcquisitionInfo(ksp; is3D=false)
-```
-
-- 2D, parallel imaging with NamedDims:
-```julia
-ksp   = NamedDimsArray{(:kx, :ky, :coil)}(rand(ComplexF32, 64, 64, 8))
-smaps = NamedDimsArray{(:x, :y, :coil)}(rand(ComplexF32, 64, 64, 8))
-info = AcquisitionInfo(ksp; sensitivity_maps=smaps)
-```
-
-- 2D subsampled with mask:
-```julia
-ksp_full = rand(ComplexF32, 64, 64, 8)
-mask = rand(Bool, 64, 64)
-ksp_sub = ksp_full[mask, :]
-info = AcquisitionInfo(ksp_sub; is3D=false, sensitivity_maps=nothing,
-                                             image_size=(64, 64), subsampling=mask)
-```
-
-- 3D, parallel imaging Array:
-```julia
-ksp   = rand(ComplexF32, 64, 64, 32, 8)
-smaps = rand(ComplexF32, 64, 64, 32, 8)
-info = AcquisitionInfo(ksp; is3D=true, sensitivity_maps=smaps)
-```
 """
 struct AcquisitionInfo{K,I,S,Sub,SD,ID}
     kspace_data::K
@@ -129,7 +95,7 @@ struct AcquisitionInfo{K,I,S,Sub,SD,ID}
         end
 
         if !isnothing(smaps)
-            _check_smaps(smaps, ksp, subs, is3D)
+            _check_smaps(smaps, ksp, subs, is3D, img_size)
         end
 
         if sK != ()
@@ -192,7 +158,7 @@ function AcquisitionInfo(config::AcquisitionInfo; kwargs...)
 	return AcquisitionInfo(args...)
 end
 
-function _check_smaps(smaps, ksp, subs, is3D)
+function _check_smaps(smaps, ksp, subs, is3D, img_size)
     ksp_dims_count = isnothing(subs) ? (is3D ? 3 : 2) : length(subs)
     if ksp isa NamedDimsArray
         @argcheck smaps isa NamedDimsArray "sensitivity maps must be NamedDimsArray when k-space is NamedDimsArray"
@@ -210,18 +176,20 @@ function _check_smaps(smaps, ksp, subs, is3D)
             @argcheck dimnames(smaps) == (:x, :y, :coil) "sensitivity maps dimnames must be (:x, :y, :coil) for 2D acquisition"
             @argcheck dimnames(ksp, ksp_dims_count + 1) == :coil "k-space coil dimension must be right after k-space dimensions"
             @argcheck :kz ∉ dimnames(ksp) "2D k-space must not have :kz dimension"
-            @argcheck :z ∉ dimnames(ksp) "2D k-space must not have :z dimension if sensitivity maps only 3-dimensional (2D+coil)"
         end
     end
     if !isnothing(ksp)
         @argcheck eltype(ksp) == eltype(smaps) "k-space and sensitivity maps eltype mismatch"
         if is3D
             @argcheck ndims(smaps) == 4 "sensitivity maps must be 4D for 3D acquisition"
+            @argcheck size(smaps)[1:3] == img_size "sensitivity maps and image spatial dimensions size mismatch for 3D acquisition"
         elseif ndims(smaps) == 4 # 2D multislice
             @argcheck ndims(ksp) >= ksp_dims_count + 2 "k-space must have slice dimension when sensitivity maps are 4D for 2D acquisition"
+            @argcheck size(smaps)[1:2] == img_size "sensitivity maps and image spatial dimensions size mismatch for 2D acquisition"
             @argcheck size(ksp, ksp_dims_count + 1) == size(smaps, 3) "k-space and sensitivity maps coil dimension size mismatch"
             @argcheck size(ksp, ksp_dims_count + 2) == size(smaps, 4) "k-space and sensitivity maps slice dimension size mismatch"
         else
+            @argcheck size(smaps)[1:2] == img_size "sensitivity maps and image spatial dimensions size mismatch for 2D acquisition"
             @argcheck ndims(smaps) == 3 "sensitivity maps must be 3D for 2D acquisition"
             @argcheck ndims(ksp) >= ksp_dims_count + 1 "k-space must have coil dimension when sensitivity maps are 3D for 2D acquisition"
             @argcheck size(ksp, ksp_dims_count + 1) == size(smaps, 3) "k-space and sensitivity maps coil dimension size mismatch"

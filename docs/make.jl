@@ -1,23 +1,33 @@
 using Documenter
 using MriReconstructionToolbox
+using ProximalAlgorithms
 
 makedocs(;
-    modules = [MriReconstructionToolbox],
-    authors = "Tamás Hakkelt <tamas.hakkelt@gmail.com>",
+    modules = [MriReconstructionToolbox, ProximalAlgorithms],
+    authors = "Tamás Hakkel <hakkelt@gmail.com>",
     sitename = "MriReconstructionToolbox.jl",
-    remotes = nothing,  # Disable remote source links for local builds
-    format = Documenter.HTML(;
-        prettyurls = get(ENV, "CI", "false") == "true",
-        edit_link = "main",
-        assets = String[],
-    ),
+    format = Documenter.HTML(),
     pages = [
         "Home" => "index.md",
-        "Encoding Operator" => "encoding.md",
+        "Theoretical Background" => "theory.md",
+        "High-level Interface" => [
+            "AcquisitionInfo" => "high-level/acquisition_info.md",
+            "Simulation Tools" => "high-level/simulation.md",
+            "Reconstruction" => "high-level/reconstruction.md",
+            "Regularization" => "high-level/regularization.md",
+            "Optimization Algorithms" => "high-level/algorithms.md",
+            "Named Dimensions" => "high-level/nameddims.md",
+            "Problem Decomposition" => "high-level/decomposition.md",
+        ],
+        "Low-Level Interface" => [
+            "MRI Operators" => "low-level/operators.md",
+            "Custom Reconstruction" => "low-level/custom_reconstruction.md",
+            "AbstractOperators.jl" => "low-level/abstract_operators.md",
+            "ProximalOperators.jl" => "low-level/proximal_operators.md",
+        ]
     ],
-    doctest = false,
-    clean = true,
     checkdocs = :none,
+    doctest = false
 )
 
 deploydocs(

@@ -12,16 +12,19 @@ Performs MRI reconstruction from k-space data using the specified regularization
 - `regularization::Union{Regularization, Tuple{Vararg{Regularization}}}`: The regularization term(s) to use (default is no regularization).
 - `algorithm`: The optimization algorithm(s) to use (default is a tuple of CG, FISTA, and ADMM with specified max iterations).
 - `x₀::Union{Nothing,AbstractArray}=nothing`: Optional initial guess for the image (default is 𝒜' * y).
-- `normalization::Normalization=BartScaling()`: The normalization strategy to use.
-- `tol::Float64=1e-4`: Tolerance for the early stopping criterion.
-- `maxit::Int=100`: Maximum number of iterations for the optimization algorithm.
-- `freq::Int=1`: Frequency of iteration display.
-- `verbose::Bool=true`: Whether to display iteration information.
-- `threaded::Bool=true`: Whether to use multi-threading for operator construction and FFTs.
-- `disable_normalop_optimization::Bool=false`: Whether to disallow using `normalop_ls` instead of `ls`.
-- `disable_problem_decomposition::Bool=false`: Whether to disallow problem decomposition for batched reconstructions.
-- `disable_operator_normalization::Bool=false`: Whether to disallow operator normalization.
-- `printfunc::Function=println`: Function to use for printing messages (default is `println`).
+- `normalization::Normalization = BartScaling()`: scaling applied to operators/data
+- `tol::Float64 = 1e-4`: stopping tolerance for iterative algorithms
+- `maxit::Int = 100`: maximum iterations for the chosen solver
+- `freq::Union{Nothing,Int} = nothing`: progress print frequency (iterations)
+- `verbose::Bool = true`: enable/disable logging output
+- `threaded::Bool = (Threads.nthreads() > 1)`: enable threaded execution when available
+- `exact_opnorm::Bool = false`: use exact operator norm for stepsize estimation
+- `decomposition_executor::Union{Nothing,ReconstructionExecutor} = nothing`: override executor for decomposition
+- `disable_inverse_scale_output::Bool = false`: skip rescaling the final output
+- `disable_normalop_optimization::Bool = false`: disable normal-operator optimizations
+- `disable_problem_decomposition::Bool = false`: disable automatic problem decomposition
+- `disable_operator_normalization::Bool = false`: disable operator normalization
+- `printfunc::Function = println`: custom logging function
 
 # Returns
 - The reconstructed image (NamedDimsArray if input is NamedDimsArray, otherwise standard Array).
@@ -177,7 +180,7 @@ function _iterative_reconstruct(𝒜, acq_data, x₀, scale, regularization, alg
 		end
 	end
 	if acq_data.kspace_data isa NamedDimsArray
-		img_dimnames = dimnames(𝒜, 1)
+		img_dimnames = dimnames(𝒜, 2)
 		x = NamedDimsArray{img_dimnames}(x)
 	end
 	return x

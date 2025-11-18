@@ -28,8 +28,9 @@ const CG = ProximalAlgorithms.CG
 const CGNR = ProximalAlgorithms.CGNR
 
 export get_operator, get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator
-export Tikhonov, L1Image, L1Wavelet2D, L1Wavelet3D, TotalVariation2D, TotalVariation3D, TemporalFourier, LowRank
+export Tikhonov, L1Image, L1Wavelet2D, L1Wavelet3D, TotalVariation2D, TotalVariation3D, TemporalFourier, LowRank, RankLimit
 export calculate, build_model, reconstruct, Config, SequentialExecutor, MultiThreadingExecutor
+export BartScaling, MeasurementBasedScaling, NoScaling
 export ISTA, FISTA, ADMM, CG, CGNR
 export AcquisitionInfo
 export simulate_acquisition, shepp_logan, coil_sensitivities

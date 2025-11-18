@@ -18,6 +18,13 @@ struct UniformRandomSampling <: Subsampling
 end
 
 abstract type VariableDensityDistribution end
+"""
+    GaussianDistribution(std::Float64=1/3)
+
+Create a Gaussian variable density distribution with the specified standard deviation `std`.
+The sampling probability follows a Gaussian profile centered at k-space center:
+    W(r) = exp(-0.5 * (r / std)^2), where r is the normalized distance from the k-space center.
+"""
 struct GaussianDistribution <: VariableDensityDistribution
     std::Float64
     function GaussianDistribution(std=1/3)
@@ -25,6 +32,14 @@ struct GaussianDistribution <: VariableDensityDistribution
         new(std)
     end
 end
+
+"""
+    PolynomialDistribution(p::Float64=4)
+
+Create a Polynomial variable density distribution with the specified exponent `p`.
+The sampling probability is proportional to power of the distance from the k-space center:
+    W(r) = (1 - r)^p, where r is the normalized distance from the k-space center.
+"""
 struct PolynomialDistribution <: VariableDensityDistribution
     p::Float64
     function PolynomialDistribution(p=4)
@@ -163,6 +178,10 @@ function construct_weights(subsampling::VariableDensitySampling{GaussianDistribu
     for I in CartesianIndices(dims)
         dist2 = sum(((Tuple(I) .- centers) ./ (0.5 .* dims)).^2)
         W[I] = exp(-0.5 * dist2 / subsampling.distribution.std^2)
+    end
+    center_region = get_fully_sampled_region(dims, subsampling.center_fraction)
+    if !isnothing(center_region)
+        W[center_region...] .= 1
     end
     return W
 end

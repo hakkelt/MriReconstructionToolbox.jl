@@ -1,3 +1,50 @@
+"""
+    shepp_logan(nx::Int, ny::Int; oversample=3) -> Array{ComplexF32, 2}
+    shepp_logan(nx::Int, ny::Int, nz::Int; oversample=3) -> Array{ComplexF32, 3}
+
+Generate a Shepp-Logan phantom for MRI simulation and reconstruction testing.
+
+The Shepp-Logan phantom is a standard test image widely used in medical imaging research,
+particularly for MRI and CT reconstruction algorithm validation. This implementation uses
+the Toft modification of the original Shepp-Logan phantom, which provides better contrast
+for modern reconstruction algorithms.
+
+# Arguments
+- `nx::Int`: Number of pixels/voxels in the x-dimension
+- `ny::Int`: Number of pixels/voxels in the y-dimension
+- `nz::Int`: (3D only) Number of voxels in the z-dimension
+
+# Keywords
+- `oversample::Int=3`: Oversampling factor for anti-aliasing. Higher values produce smoother
+  edges but take longer to compute. Default of 3 provides good quality for most applications.
+
+# Returns
+- **2D**: A `ComplexF32` matrix of size `(nx, ny)` representing the phantom image
+- **3D**: A `ComplexF32` array of size `(nx, ny, nz)` representing the phantom volume
+
+# Details
+
+## 2D Phantom
+Uses the Toft modification of the classical Shepp-Logan phantom, consisting of 10 ellipses
+with varying intensities representing different tissue types in a head cross-section.
+
+## 3D Phantom
+Generates a 3D extension using ellipsoids with:
+- Field-of-view (FOV): 24 cm × 24 cm × 20 cm
+- Modified intensities (×10) for inner structures to improve visibility
+- Toft's intensity modifications for the head (1.0) and skull/brain (-0.8) regions
+
+# References
+- Shepp, L. A., & Logan, B. F. (1974). "The Fourier reconstruction of a head section."
+  IEEE Transactions on Nuclear Science, 21(3), 21-43.
+- Toft, P. (1996). "The Radon Transform - Theory and Implementation."
+  PhD thesis, Technical University of Denmark.
+
+# See Also
+- [`simulate_acquisition`](@ref): Generate k-space data from a phantom
+- [`coil_sensitivities`](@ref): Generate sensitivity maps for multi-coil simulation
+- [`AcquisitionInfo`](@ref): Container for acquisition parameters
+"""
 function shepp_logan(dims...)
     if length(dims) == 2
         return shepp_logan_2d(dims...)

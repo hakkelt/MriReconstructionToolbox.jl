@@ -1,175 +1,164 @@
-# MRI Encoding Operators Documentation
+# MriReconstructionToolbox.jl
 
-This directory contains the modular implementation of MRI encoding operators for the MriReconstructionToolbox.jl package. The operators model the complete MRI data acquisition process from image space to measured k-space data.
+A comprehensive Julia package for magnetic resonance imaging (MRI) reconstruction.
 
-## File Structure
+## What is this package?
 
-The encoding operators have been organized into the following modules:
+MriReconstructionToolbox.jl provides everything you need to reconstruct images from MRI data. Whether you're working with simple single-coil acquisitions or complex parallel imaging with advanced regularization, this toolbox has you covered.
 
-### Core Files
+**Perfect for:**
+- Researchers developing new MRI reconstruction methods
+- Students learning about MRI physics and reconstruction
+- Engineers prototyping imaging pipelines
+- Anyone working with MRI k-space data
 
-- **`types.jl`** - Type definitions and constants for subsampling patterns
-- **`fourier_operators.jl`** - Fourier transform operators (image ↔ k-space)
-- **`sensitivity_map_operators.jl`** - Parallel imaging sensitivity map operators
-- **`subsampling_operators.jl`** - Subsampling operators for accelerated imaging
-- **`encoding_operators.jl`** - Main encoding operator interface
+## Key Features
 
-### Supporting Files
+✨ **Complete MRI Forward Model** - Models the entire acquisition process from image to k-space  
+🔧 **High-Level Interface** - Simple `reconstruct()` function gets you started in seconds  
+🎯 **Low-Level Control** - Fine-grained operator access for custom algorithms  
+🚀 **Parallel Imaging** - Full support for multi-coil data with sensitivity maps  
+⚡ **High Performance** - Multi-threaded operations and optimized FFTs  
+🎨 **Multiple Regularization** - Sparsity, wavelets, total variation, low-rank, and more  
+📐 **Named Dimensions** - Type-safe interface prevents dimension mix-ups  
+🔬 **Simulation Tools** - Built-in phantoms and sampling pattern generators
 
-- **`named_dims_op.jl`** - Named dimensions wrapper for operators
-- **`utils.jl`** - Utility functions
-- **`regularization.jl`** - Regularization operators for reconstruction
+## Quick Start
 
-## Overview
+### Installation
 
-### The MRI Forward Model
+**Note:** This package is not yet registered in the Julia General registry because it needs enhancements to upstream packages. These changes are currently under pull requests, and hopefully will be merged soon. Installation requires adding dependencies from GitHub repositories:
 
-The MRI encoding operator models the complete data acquisition chain:
+```julia
+using Pkg
 
+# Add the package from GitHub
+Pkg.add(url="https://github.com/hakkelt/OperatorCore.jl")
+Pkg.add(url="https://github.com/hakkelt/AbstractOperators.jl")
+Pkg.add(url="https://github.com/hakkelt/AbstractOperators.jl", subdir="FFTWOperators")
+Pkg.add(url="https://github.com/hakkelt/AbstractOperators.jl", subdir="DSPOperators")
+Pkg.add(url="https://github.com/hakkelt/AbstractOperators.jl", subdir="NFFTOperators")
+Pkg.add(url="https://github.com/hakkelt/AbstractOperators.jl", subdir="WaveletOperators")
+Pkg.add(url="https://github.com/hakkelt/ProximalCore.jl")
+Pkg.add(url="https://github.com/hakkelt/ProximalOperators.jl")
+Pkg.add(url="https://github.com/hakkelt/ProximalAlgorithms.jl")
+Pkg.add(url="https://github.com/hakkelt/StructuredOperators.jl")
+Pkg.add(url="https://github.com/hakkelt/MriReconstructionToolbox.jl")
 ```
-Image → [Sensitivity Maps] → [Fourier Transform] → [Subsampling] → Observed k-space
-```
 
-Mathematically: `y = Γ F S x`
+### Your First Reconstruction
 
-Where:
-- `x`: Image to be reconstructed
-- `S`: Sensitivity map operator (parallel imaging)
-- `F`: Fourier transform operator
-- `Γ`: Subsampling operator (undersampling)
-- `y`: Observed k-space data
-
-### Key Functions
-
-#### `get_encoding_operator`
-The main interface function that creates the complete encoding operator. Two versions:
-
-1. **Regular arrays**: `get_encoding_operator(ksp, is3D; kwargs...)`
-2. **Named dimensions**: `get_encoding_operator(ksp::NamedDimsArray; kwargs...)`
-
-#### Supporting Operators
-
-- `get_fourier_operator` - Creates Fourier transform operators
-- `get_sensitivity_map_operator` - Creates sensitivity map operators  
-- `get_subsampled_fourier_op` - Creates combined Fourier + subsampling operators
-
-## Usage Examples
-
-### Simple 2D Reconstruction
 ```julia
 using MriReconstructionToolbox
 
-# Fully sampled single-coil data
-ksp = rand(ComplexF32, 64, 64)
-E = get_encoding_operator(ksp, false)
-img_recon = E' * ksp  # Adjoint gives IFFT
+# Load your k-space data (or create synthetic data)
+ksp = rand(ComplexF32, 128, 128)  # Single-coil k-space data
+acq = AcquisitionInfo(ksp, false)  # false = 2D data
+
+# Reconstruct with one function call
+img = reconstruct(acq)
+
+# That's it! You have your image.
 ```
 
-### Parallel Imaging
-```julia
-# Multi-coil data with sensitivity maps
-ksp = rand(ComplexF32, 64, 64, 8)  # 8 coils
-smaps = rand(ComplexF32, 64, 64, 8)
-E = get_encoding_operator(ksp, false; smaps=smaps)
-img_recon = E' * ksp  # Coil combination + IFFT
-```
-
-### Accelerated Reconstruction
-```julia
-# Undersampled parallel imaging
-mask = rand(Bool, 64, 64)  # Random sampling mask
-ksp_sub = ksp[mask, :]      # Subsampled data
-E = get_encoding_operator(ksp_sub, false; 
-                         smaps=smaps, 
-                         img_size=(64, 64), 
-                         subsampling=mask)
-img_recon = E' * ksp_sub   # Zero-filled reconstruction
-```
-
-### Named Dimensions Interface
-```julia
-# Type-safe interface with named dimensions
-ksp = NamedDimsArray{(:kx, :ky, :coil)}(rand(ComplexF32, 64, 64, 8))
-smaps = NamedDimsArray{(:x, :y, :coil)}(rand(ComplexF32, 64, 64, 8))
-
-E = get_encoding_operator(ksp; smaps=smaps)
-img = E' * ksp  # Returns NamedDimsArray{(:x, :y)}
-```
-
-## Subsampling Patterns
-
-The toolbox supports various subsampling patterns for accelerated imaging:
-
-### 2D Patterns
-- **Boolean masks**: `AbstractArray{Bool,2}` - Arbitrary sampling patterns
-- **Linear indices**: `AbstractVector{Int}` - Specific k-space locations  
-- **Cartesian indices**: `AbstractVector{CartesianIndex{2}}` - 2D coordinates
-- **Separable patterns**: `Tuple{pattern_x, pattern_y}` - Independent sampling per dimension
-
-### 3D Patterns
-- **Boolean masks**: `AbstractArray{Bool,3}` - 3D sampling patterns
-- **Mixed patterns**: `Tuple{pattern_x, pattern_yz}` - Hybrid sampling
-- **Separable patterns**: `Tuple{pattern_x, pattern_y, pattern_z}` - Per-dimension sampling
-
-### 1D Building Blocks
-- **Full sampling**: `:` (Colon) - Select all indices
-- **Regular undersampling**: `1:R:N` - Every R-th sample
-- **Boolean masks**: `AbstractArray{Bool,1}` - Arbitrary 1D patterns
-- **Index vectors**: `AbstractVector{Int}` - Specific indices
-
-## Dimension Naming Conventions
-
-### K-space Dimensions
-- `:kx`, `:ky`, `:kz` - Spatial frequency dimensions
-- `:coil` - Receiver coil dimension
-- `:batch`, `:time`, `:contrast` - Additional batch dimensions
-
-### Image Dimensions  
-- `:x`, `:y`, `:z` - Spatial dimensions
-- Batch dimensions preserved from k-space
-
-## Performance Considerations
-
-### Threading
-- Set `threaded=true` (default) for multi-threaded operations
-- Automatically scales thread usage based on problem size
-- Disable threading with `threaded=false` for small problems
-
-### FFTW Planning
-- `fast_planning=false` (default): Uses FFTW.MEASURE for optimal performance
-- `fast_planning=true`: Uses FFTW.ESTIMATE for faster setup, potentially slower execution
-
-### Memory Layout
-- Operators work in-place when possible
-- Batch operations are optimized for memory efficiency
-- Named dimensions add minimal overhead
-
-## Error Handling
-
-The operators perform extensive validation:
-
-- **Dimension compatibility** between k-space data and sensitivity maps
-- **Element type consistency** across all inputs
-- **Required dimension presence** for named dimension arrays
-- **Subsampling pattern validity** with respect to image sizes
-
-All validation uses `@argcheck` macros that provide clear error messages.
-
-## Integration with Reconstruction Algorithms
-
-These operators are designed to work seamlessly with optimization packages:
+### Example with Parallel Imaging
 
 ```julia
-using ProximalAlgorithms, ProximalOperators
+# Multi-coil k-space data
+ksp = rand(ComplexF32, 128, 128, 8)  # 8 receiver coils
 
-# Set up reconstruction problem
-E = get_encoding_operator(ksp_sub; smaps=smaps, img_size=(64, 64), subsampling=mask)
-f = LeastSquares(E, ksp_sub)  # Data fidelity term
-g = NormL1(1e-3)              # Sparsity regularization
+# Coil sensitivity maps
+smaps = rand(ComplexF32, 128, 128, 8)
 
-# Solve with ISTA
-x0 = E' * ksp_sub             # Initial estimate  
-result = ista(f, g, x0)       # Iterative reconstruction
+# Reconstruct with automatic coil combination
+acq = AcquisitionInfo(ksp, false; sensitivity_maps=smaps)
+img = reconstruct(acq)
 ```
 
-This modular design enables flexible composition of MRI reconstruction algorithms while maintaining computational efficiency and type safety.
+### Advanced: Compressed Sensing Reconstruction
+
+```julia
+# Undersampled k-space data
+mask = create_sampling_pattern((128, 128), VariableDensitySampling(0.25))
+ksp_sub = ksp[mask, :]
+
+# Set up acquisition info with subsampling
+acq = AcquisitionInfo(ksp_sub, false; 
+                      sensitivity_maps=smaps,
+                      img_size=(128, 128),
+                      subsampling=mask)
+
+# Reconstruct with wavelet sparsity regularization
+img = reconstruct(acq, L1Wavelet2D(5e-3))
+```
+
+## Documentation
+
+📚 **[Full Documentation](https://hakkelt.github.io/MriReconstructionToolbox.jl/)** - Comprehensive guides and API reference
+
+**Quick Links:**
+- [Getting Started Guide](https://hakkelt.github.io/MriReconstructionToolbox.jl/manual/getting_started/) - First steps with the package
+- [MRI Forward Model](https://hakkelt.github.io/MriReconstructionToolbox.jl/manual/forward_model/) - Understanding the physics
+- [Regularization Options](https://hakkelt.github.io/MriReconstructionToolbox.jl/manual/regularization/) - Available reconstruction methods
+- [Simulation Tools](https://hakkelt.github.io/MriReconstructionToolbox.jl/manual/simulation/) - Creating synthetic data
+
+## Design Philosophy
+
+**Beginner-Friendly, Expert-Powerful**
+
+The package provides two levels of interface:
+
+1. **High-Level API** - The `reconstruct()` function handles all the complexity for you. Just provide your data and optional regularization.
+
+2. **Low-Level API** - Direct access to encoding operators, optimization primitives, and algorithmic building blocks for maximum flexibility.
+
+You can start simple and progressively unlock more control as your needs grow.
+
+## Core Concepts
+
+### The MRI Forward Model
+
+MRI reconstruction solves an inverse problem. The forward model describes how images become k-space data:
+
+```
+Image → [Coil Sensitivities] → [Fourier Transform] → [Subsampling] → K-space Data
+```
+
+This package provides operators for each step, which can be combined or used individually.
+
+### Named Dimensions
+
+Avoid dimension confusion with named dimensions:
+
+```julia
+# Dimensions are labeled for clarity
+ksp = NamedDimsArray{(:kx, :ky, :coil)}(ksp_data)
+
+# The package knows which dimensions to FFT
+E = get_encoding_operator(ksp)  # Automatically detects structure
+```
+
+## Project Status
+
+This package is under active development. The core functionality is stable, but the API may evolve. Several dependencies are currently available only via GitHub (not yet in the Julia General registry).
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit issues or pull requests.
+
+## Citation
+
+If you use this package in your research, please cite:
+
+```bibtex
+@software{MriReconstructionToolbox,
+  author = {Hakkel, Tamás},
+  title = {MriReconstructionToolbox.jl: A Julia Package for MRI Reconstruction},
+  year = {2024},
+  url = {https://github.com/hakkelt/MriReconstructionToolbox.jl}
+}
+```
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

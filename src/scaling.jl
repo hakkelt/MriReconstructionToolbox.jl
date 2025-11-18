@@ -1,4 +1,10 @@
 abstract type Normalization end
+
+"""
+    NoScaling() <: Normalization
+
+A normalization strategy that applies no scaling to the data.
+"""
 struct NoScaling <: Normalization end
 
 """

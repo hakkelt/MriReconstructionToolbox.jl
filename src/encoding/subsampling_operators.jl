@@ -35,24 +35,6 @@ This function creates an operator that:
 3. Applies subsampling to get the observed k-space data
 
 The adjoint operation reconstructs an image from subsampled k-space data.
-
-# Examples
-```jldoctest
-julia> ksp = rand(ComplexF32, 64, 64, 8);
-
-julia> mask = rand(Bool, 64, 64);
-
-julia> ksp_sub = ksp[mask, :];
-
-julia> img_size = (64, 64);
-
-julia> F_sub = get_subsampled_fourier_operator(ksp_sub, img_size, mask);
-
-julia> img_recon = F_sub' * ksp_sub;
-
-julia> size(img_recon)
-(64, 64, 8)
-```
 """
 function get_subsampled_fourier_operator(
 	subsampled_ksp, img_size, subsampling;
