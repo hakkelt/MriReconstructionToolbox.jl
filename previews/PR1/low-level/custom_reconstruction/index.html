@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Custom Reconstruction · MriReconstructionToolbox.jl</title><meta name="title" content="Custom Reconstruction · MriReconstructionToolbox.jl"/><meta property="og:title" content="Custom Reconstruction · MriReconstructionToolbox.jl"/><meta property="twitter:title" content="Custom Reconstruction · MriReconstructionToolbox.jl"/><meta name="description" content="Documentation for MriReconstructionToolbox.jl."/><meta property="og:description" content="Documentation for MriReconstructionToolbox.jl."/><meta property="twitter:description" content="Documentation for MriReconstructionToolbox.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">MriReconstructionToolbox.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../theory/">Theoretical Background</a></li><li><span class="tocitem">High-level Interface</span><ul><li><a class="tocitem" href="../../high-level/acquisition_info/">AcquisitionInfo</a></li><li><a class="tocitem" href="../../high-level/simulation/">Simulation Tools</a></li><li><a class="tocitem" href="../../high-level/reconstruction/">Reconstruction</a></li><li><a class="tocitem" href="../../high-level/regularization/">Regularization</a></li><li><a class="tocitem" href="../../high-level/algorithms/">Optimization Algorithms</a></li><li><a class="tocitem" href="../../high-level/nameddims/">Named Dimensions</a></li><li><a class="tocitem" href="../../high-level/decomposition/">Problem Decomposition</a></li></ul></li><li><span class="tocitem">Low-Level Interface</span><ul><li><a class="tocitem" href="../operators/">MRI Operators</a></li><li class="is-active"><a class="tocitem" href>Custom Reconstruction</a><ul class="internal"><li><a class="tocitem" href="#Essentials"><span>Essentials</span></a></li><li><a class="tocitem" href="#Two-Variable-Example:-Sparse-Low-Rank-Wavelet-Prior"><span>Two-Variable Example: Sparse + Low-Rank Wavelet Prior</span></a></li><li><a class="tocitem" href="#Anatomy:-Basics-in-One-Place"><span>Anatomy: Basics in One Place</span></a></li><li><a class="tocitem" href="#Where-to-Go-Next"><span>Where to Go Next</span></a></li><li><a class="tocitem" href="#See-Also"><span>See Also</span></a></li></ul></li><li><a class="tocitem" href="../abstract_operators/">AbstractOperators.jl</a></li><li><a class="tocitem" href="../proximal_operators/">ProximalOperators.jl</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Low-Level Interface</a></li><li class="is-active"><a href>Custom Reconstruction</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Custom Reconstruction</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/hakkelt/MriReconstructionToolbox.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/hakkelt/MriReconstructionToolbox.jl/blob/master/docs/src/low-level/custom_reconstruction.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Custom-Reconstruction-with-StructuredOptimization"><a class="docs-heading-anchor" href="#Custom-Reconstruction-with-StructuredOptimization">Custom Reconstruction with StructuredOptimization</a><a id="Custom-Reconstruction-with-StructuredOptimization-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Reconstruction-with-StructuredOptimization" title="Permalink"></a></h1><p>This page shows how to experiment with custom reconstruction problems using <code>StructuredOptimization.jl</code>, leveraging its convenient bindings to <code>AbstractOperators.jl</code> (operators like FFT, Wavelets, reshape, slicing) and <code>ProximalOperators.jl</code> (norms and penalties with fast proximal maps).</p><h2 id="Essentials"><a class="docs-heading-anchor" href="#Essentials">Essentials</a><a id="Essentials-1"></a><a class="docs-heading-anchor-permalink" href="#Essentials" title="Permalink"></a></h2><ul><li><code>Variable</code>: declares decision variables (scalars, vectors, matrices, tensors).</li><li><code>@minimize</code>: builds and solves an optimization problem from expressions.</li><li><code>problem(...)</code> and <code>StructuredOptimization.parse_problem(...)</code>: build and inspect the parsed problem for a given algorithm.</li><li>Convenient bindings:<ul><li>Smooth terms: <code>ls(ex)</code> for 1/2||ex||^2</li><li>Nonsmooth norms: <code>norm(ex, 1)</code>, <code>norm(ex, 2)</code>, <code>norm(ex, Inf)</code>, mixed <code>norm(ex, 2, 1)</code>, nuclear norm <code>norm(ex, *)</code></li><li>Operator composition: <code>op * expr</code>, <code>reshape(expr, ...)</code>, <code>fft</code>, <code>dct</code>, <code>finitediff</code>, etc.</li></ul></li></ul><h2 id="Two-Variable-Example:-Sparse-Low-Rank-Wavelet-Prior"><a class="docs-heading-anchor" href="#Two-Variable-Example:-Sparse-Low-Rank-Wavelet-Prior">Two-Variable Example: Sparse + Low-Rank Wavelet Prior</a><a id="Two-Variable-Example:-Sparse-Low-Rank-Wavelet-Prior-1"></a><a class="docs-heading-anchor-permalink" href="#Two-Variable-Example:-Sparse-Low-Rank-Wavelet-Prior" title="Permalink"></a></h2><p>We build a toy reconstruction with two variables and two regularizers:</p><ul><li>Variable <code>x</code>: L1 sparsity prior.</li><li>Variable <code>z</code>: nuclear norm prior after a wavelet transform and reshaping to a matrix.</li><li>Data fidelity: simple least-squares to synthetic observation <code>b</code>.</li></ul><pre><code class="language-julia hljs">using StructuredOptimization
+using AbstractOperators
+using ProximalOperators
+using WaveletOperators: WaveletOp, WT, wavelet
+using SparseArrays: sprandn
+using ProximalAlgorithms: FastForwardBackward, PANOCplus
+
+# Problem size (kept small for docs)
+nx, ny = 32, 32
+
+# Variables
+x = Variable(nx, ny)           # sparse image component
+z = Variable(nx, ny)           # low-rank (after transform) component
+
+# Synthetic observation b = x* + z* + small noise (unknown in practice)
+x_true = sprandn(nx, ny, 0.1)
+z_true = randn(nx, ny) .* 0.1
+b = x_true + z_true + 0.01 .* randn(nx, ny)
+
+# Wavelet transform operator (orthonormal, tight frame)
+W = WaveletOp(Float64, wavelet(WT.db4), (nx, ny))
+
+# Regularization strengths
+λ1 = 0.05
+λ2 = 0.2
+
+# Build problem:
+#   min_{x,z} 1/2 || (x + z) - b ||^2 + λ2 * nuclearnorm( W*z ) s.t. norm(x, 0) &lt; 50
+# It is hard to solve, so first we solve a relaxed version without the L0 constraint:
+#   min_{x,z} 1/2 || (x + z) - b ||^2 + λ1 * norm(x, 1) + λ2 * nuclearnorm( W*z )
+# Bindings used:
+#   - ls(...)       -&gt; least-squares
+#   - norm(.,0)     -&gt; L0 &quot;norm&quot; (count of nonzeros)
+#   - norm(., 1)    -&gt; L1 norm
+#   - norm(., *)    -&gt; nuclear norm (sum of singular values)
+#   - W * z         -&gt; operator application
+
+# Parse first (inspect what a solver expects) -- optional, only for demonstration
+p = problem( ls(x + z - b), λ2 * norm(W * z, *), norm(x, 0) &lt;= 50 )
+alg, kwargs, vars = StructuredOptimization.parse_problem(p, PANOCplus())
+println(&quot;Prepared keys for PANOCplus: &quot;, keys(kwargs))
+
+# Solve relaxed problem with FISTA
+(x̂, ẑ), it = @minimize ls(x + z - b) + λ1 * norm(x, 1) + λ2 * norm(W * z, *) with FastForwardBackward(maxit=50, verbose=false)
+println(&quot;FISTA Iterations (relaxed problem): &quot;, it)
+# Solve original problem with PANOCplus
+(x̂, ẑ), it = @minimize ls(x + z - b) + λ2 * norm(W * z, *) st norm(x, 0) &lt;= 50 with PANOCplus(maxit=20, tol=1e-6, verbose=false)
+println(&quot;Iterations: &quot;, it)
+println(&quot;Solution sizes: &quot;, size(~x̂), &quot;, &quot;, size(~ẑ))
+
+# Quick sanity: objective components (not rigorous tests)
+val_l1 = NormL0(λ1)(~x̂)
+# For nuclear norm value evaluate explicitly on the reshaped transform
+using LinearAlgebra
+S = svdvals(W * ~ẑ)
+val_nuc = λ2 * sum(S)
+println(&quot;L1 term: &quot;, round(val_l1, digits=4), &quot;; Nuclear term: &quot;, round(val_nuc, digits=4))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Prepared keys for PANOCplus: [:f, :A, :g]
+FISTA Iterations (relaxed problem): 50
+Iterations: 20
+Solution sizes: (32, 32), (32, 32)
+L1 term: 2.5; Nuclear term: 3.7805</code></pre><h3 id="What-Just-Happened"><a class="docs-heading-anchor" href="#What-Just-Happened">What Just Happened</a><a id="What-Just-Happened-1"></a><a class="docs-heading-anchor-permalink" href="#What-Just-Happened" title="Permalink"></a></h3><ul><li><code>ls(x + z - b)</code> is the data fidelity term.</li><li><code>norm(x, 1)</code> applies the L1 norm to <code>x</code> via <code>ProximalOperators.NormL1</code>.</li><li><code>norm(., 0)</code> applies the L0 &quot;norm&quot; (count of nonzeros) via <code>ProximalOperators.NormL0</code>.</li><li><code>norm(W*z, *)</code> applies the nuclear norm through a <code>Term(NuclearNorm(), ...)</code> binding; the reshape ensures a matrix domain.</li><li><code>W</code> is an orthonormal/Parseval wavelet transform (tight frame), enabling efficient proximal splitting.</li><li>The problem separates across variables (<code>x</code> and <code>z</code>), so FISTA (= FastForwardBackward) can handle both nonsmooth terms.</li></ul><h2 id="Anatomy:-Basics-in-One-Place"><a class="docs-heading-anchor" href="#Anatomy:-Basics-in-One-Place">Anatomy: Basics in One Place</a><a id="Anatomy:-Basics-in-One-Place-1"></a><a class="docs-heading-anchor-permalink" href="#Anatomy:-Basics-in-One-Place" title="Permalink"></a></h2><pre><code class="language-julia hljs">using StructuredOptimization
+using AbstractOperators
+using ProximalOperators
+using ProximalAlgorithms: FastForwardBackward
+
+# Variables and access
+u = Variable(10); v = Variable(10)
+
+# Smooth term (LS)
+term_smooth = ls(u + v - randn(10))
+
+# Common nonsmooths
+term_l1  = norm(u, 1)        # L1
+term_l2  = norm(v, 2)        # L2
+term_l21 = norm(reshape(v, 2, 5), 2, 1)  # group sparsity
+term_nuc = norm(reshape(v, 5, 2), *)     # nuclear
+
+# AbstractOperators bindings
+ex_fft  = fft(u)   # Fourier transform binding
+ex_resh = reshape(ex_fft, 5, 2)                   # reshape expression
+
+# Build and solve explicitly via `problem` + `solve`
+q = problem(term_smooth, 0.1*term_l1, 0.05*term_nuc)
+sol, it2 = solve(q, FastForwardBackward(maxit=50, verbose=false))
+println(&quot;Solved in &quot;, it2, &quot; iterations. Size(~u): &quot;, size(~u))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Solved in 50 iterations. Size(~u): (10,)</code></pre><h2 id="Where-to-Go-Next"><a class="docs-heading-anchor" href="#Where-to-Go-Next">Where to Go Next</a><a id="Where-to-Go-Next-1"></a><a class="docs-heading-anchor-permalink" href="#Where-to-Go-Next" title="Permalink"></a></h2><ul><li>More norms and penalties: see <code>low-level/proximal_operators.md</code>.</li><li>Operator catalog and composition patterns: see <code>low-level/abstract_operators.md</code> and <code>low-level/operators.md</code>.</li><li>For full MRI forward models and reconstruction entry points, see <code>high-level/reconstruction.md</code>.</li></ul><h2 id="See-Also"><a class="docs-heading-anchor" href="#See-Also">See Also</a><a id="See-Also-1"></a><a class="docs-heading-anchor-permalink" href="#See-Also" title="Permalink"></a></h2><ul><li><a href="../proximal_operators/#ProximalOperators.jl-Summary">ProximalOperators.jl Summary</a>: list of common proximal functions and custom implementation pattern.</li><li><a href="../abstract_operators/#abstract_operators">AbstractOperators.jl Summary</a>: base operator abstractions and composition rules.</li><li><a href="../operators/#MRI-Operators">MRI Operators</a>: concrete Fourier, sensitivity map, and subsampling operators.</li><li><a href="../../high-level/reconstruction/#reconstruction">High level Reconstruction</a>: unified reconstruction interface tying everything together.</li></ul></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../operators/">« MRI Operators</a><a class="docs-footer-nextpage" href="../abstract_operators/">AbstractOperators.jl »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.0 on <span class="colophon-date" title="Tuesday 18 November 2025 19:46">Tuesday 18 November 2025</span>. Using Julia version 1.12.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
