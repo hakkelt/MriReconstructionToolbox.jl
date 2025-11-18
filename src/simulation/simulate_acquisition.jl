@@ -1,3 +1,15 @@
+"""
+    simulate_acquisition(image, acq_info::AcquisitionInfo)
+
+Simulate MRI k-space acquisition from a given image using the specified acquisition parameters.
+
+# Arguments
+- `image`: The input image to be transformed into k-space data. Can be a standard array or a `NamedDimsArray`.
+- `acq_info::AcquisitionInfo`: An `AcquisitionInfo` object containing acquisition parameters such as sensitivity maps, subsampling pattern, and whether the acquisition is 3D.
+
+# Returns
+- An updated `AcquisitionInfo` object with the simulated k-space data stored in the `kspace_data` field.
+"""
 function simulate_acquisition(image, acq_info)
     ksp_size = get_kspace_size(image, acq_info)
     ksp = similar(image, ksp_size)
@@ -37,17 +49,15 @@ function simulate_acquisition(image, acq_info)
 end
 
 function get_kspace_size(image, acq_info)
-    if isnothing(acq_info.subsampling)
+    if isnothing(acq_info.subsampling) && isnothing(acq_info.sensitivity_maps)
         return size(image)
     elseif acq_info.is3D
         @argcheck ndims(image) >= 3 "image must have at least 3 dimensions for 3D acquisition"
-        single_img = @view image[:,:,:,ones(Int,ndims(image)-3)...]
-        Base.checkbounds(single_img, acq_info.subsampling...)
-        subsampled_size = size(@view(single_img[acq_info.subsampling...]))
+        transformed_size = get_transformed_size(image, acq_info)
         if !isnothing(acq_info.sensitivity_maps)
-            return (subsampled_size..., size(acq_info.sensitivity_maps, 4), size(image)[4:end]...)
+            return (transformed_size..., size(acq_info.sensitivity_maps, 4), size(image)[4:end]...)
         else
-            return (subsampled_size..., size(image)[4:end]...)
+            return (transformed_size..., size(image)[4:end]...)
         end
     elseif !isnothing(acq_info.sensitivity_maps)
         if ndims(acq_info.sensitivity_maps) == 4
@@ -55,15 +65,25 @@ function get_kspace_size(image, acq_info)
         else
             @argcheck ndims(image) >= 2 "image must have at least 2 dimensions for 2D acquisition"
         end
-        single_img = @view image[:,:,ones(Int,ndims(image)-2)...]
-        Base.checkbounds(single_img, acq_info.subsampling...)
-        subsampled_size = size(@view(single_img[acq_info.subsampling...]))
-        return (subsampled_size..., size(acq_info.sensitivity_maps, 3), size(image)[3:end]...)
+        transformed_size = get_transformed_size(image, acq_info)
+        return (transformed_size..., size(acq_info.sensitivity_maps, 3), size(image)[3:end]...)
     else
         @argcheck ndims(image) >= 2 "image must have at least 2 dimensions for 2D acquisition"
-        single_img = @view image[:,:,ones(Int,ndims(image)-2)...]
+        transformed_size = get_transformed_size(image, acq_info)
+        return (transformed_size..., size(image)[3:end]...)
+    end
+end
+
+function get_transformed_size(image, acq_info)
+    if isnothing(acq_info.subsampling)
+        return acq_info.image_size
+    else
+        if acq_info.is3D
+            single_img = @view image[:,:,:,ones(Int,ndims(image)-3)...]
+        else
+            single_img = @view image[:,:,ones(Int,ndims(image)-2)...]
+        end
         Base.checkbounds(single_img, acq_info.subsampling...)
-        subsampled_size = size(@view(single_img[acq_info.subsampling...]))
-        return (subsampled_size..., size(image)[3:end]...)
+        return size(@view(single_img[acq_info.subsampling...]))
     end
 end

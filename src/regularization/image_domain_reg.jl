@@ -1,8 +1,9 @@
 """
 	Tikhonov(λ)
 
-Create a Tikhonov regularization term with parameter `λ`. The regularization term is given by `λ²‖x‖₂²`,
-or `‖Γ .* x‖₂²` if `λ` is an array `Γ` of the same size as `x`.
+Create a Tikhonov regularization term with parameter `λ`.
+
+The regularization term is given by `λ²‖x‖₂²`, or `‖Γ .* x‖₂²` if `λ` is an array `Γ` of the same size as `x`.
 
 # Arguments
 - `λ`: Regularization parameter, can be a scalar or an array of the same size as `x`.

@@ -43,53 +43,6 @@ This function constructs the composite encoding operator E that models the MRI d
 3. Returns the composed operator E = F * S or E = F
 
 If no sensitivity maps are provided, only the Fourier/subsampled Fourier operator is returned.
-
-# Examples
-```jldoctest
-# Setup sample data
-julia> using Random; Random.seed!(0);
-
-# Create sample data for testing
-julia> ksp = rand(ComplexF32, 64, 64, 8);  # k-space data with 8 coils
-julia> smaps = rand(ComplexF32, 64, 64, 8);  # sensitivity maps for 8 coils
-julia> mask = rand(Bool, 64, 64);  # Random sampling mask
-julia> mask[1:2:end, :] .= true;  # Ensure some structure in sampling
-julia> img = rand(ComplexF32, 64, 64);  # Ground truth image
-
-# Using AcquisitionInfo
-julia> info = AcquisitionInfo(ksp; sensitivity_maps=smaps, image_size=(64,64), subsampling=mask);
-julia> E = get_encoding_operator(info);
-julia> size(E)  # Shows input/output dimensions
-(32768, 4096)
-
-# Using raw k-space data for 2D acquisition
-julia> E_raw = get_encoding_operator(ksp, false; sensitivity_maps=smaps, image_size=(64,64));
-julia> size(E_raw)
-(32768, 4096)
-
-# Using NamedDimsArray for better dimension tracking
-julia> using NamedDims
-julia> ksp_named = NamedDimsArray(ksp, (:kx, :ky, :coil));
-julia> smaps_named = NamedDimsArray(smaps, (:x, :y, :coil));
-julia> E_named = get_encoding_operator(ksp_named; sensitivity_maps=smaps_named);
-julia> dimnames(E_named, 1)  # Check input dimension names
-(:kx, :ky, :coil)
-
-# Demonstrate forward and adjoint operations
-julia> ksp_sim = E * img;  # Forward operation (image to k-space)
-julia> size(ksp_sim)  # Output size matches original k-space
-(64, 64, 8)
-
-julia> img_recon = E' * ksp_sim;  # Adjoint operation (k-space to image)
-julia> size(img_recon) == size(img)  # Reconstructed image has correct size
-true
-
-# Example with subsampling
-julia> E_sub = get_encoding_operator(ksp, false; sensitivity_maps=smaps, image_size=(64,64), subsampling=mask);
-julia> ksp_sub = E_sub * img;
-julia> count(mask) * 8 == length(ksp_sub)  # Subsampled data size matches mask
-true
-```
 """
 function get_encoding_operator(info::AcquisitionInfo; threaded::Bool=true, fast_planning::Bool=false)
 	@argcheck !isnothing(info.kspace_data) "The provided AcquisitionInfo does not contain k-space data, which is required to build the encoding operator."

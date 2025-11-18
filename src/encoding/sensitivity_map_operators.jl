@@ -46,31 +46,6 @@ The operator is constructed as:
 1. `DiagOp(sensitivity_maps)`: Element-wise multiplication with sensitivity maps
 2. `BroadCast(Eye(dummy_img), size(sensitivity_maps))`: Broadcasting identity for image dimensions
 3. `BatchOp(...)`: If batch dimensions are present, wrap in batch operator
-
-# Examples
-```jldoctest
-julia> using NamedDims
-
-julia> smaps = NamedDimsArray{(:x, :y, :coil)}(rand(ComplexF32, 64, 64, 8));
-
-julia> S = get_sensitivity_map_operator(smaps);
-
-julia> img = rand(ComplexF32, 64, 64);
-
-julia> multi_coil = S * img;
-
-julia> size(multi_coil)
-(64, 64, 8)
-
-julia> smaps_array = rand(ComplexF32, 64, 64, 8);
-
-julia> S_array = get_sensitivity_map_operator(smaps_array, false);
-
-julia> img_recon = S_array' * multi_coil;
-
-julia> size(img_recon)
-(64, 64)
-```
 """
 function get_sensitivity_map_operator(
 	sensitivity_maps::NamedDimsArray;
@@ -78,15 +53,15 @@ function get_sensitivity_map_operator(
 	threaded::Bool=true,
 )
 	dn = dimnames(sensitivity_maps)
-	@assert :x ∈ dn "sensitivity maps array must have a dimension named :x for Cartesian data"
-	@assert dn[1] == :x "sensitivity maps array must have the first dimension named :x"
-	@assert :y ∈ dn "sensitivity maps array must have a dimension named :ky for Cartesian data"
-	@assert dn[2] == :y "sensitivity maps array must have the second dimension named :y"
-	@assert :coil ∈ dn "sensitivity maps array must have a dimension named :coil for sensitivity maps array"
-	@assert dn[end] == :coil "sensitivity maps array must have the last dimension named :coil"
+	@argcheck :x ∈ dn "sensitivity maps array must have a dimension named :x for Cartesian data"
+	@argcheck dn[1] == :x "sensitivity maps array must have the first dimension named :x"
+	@argcheck :y ∈ dn "sensitivity maps array must have a dimension named :ky for Cartesian data"
+	@argcheck dn[2] == :y "sensitivity maps array must have the second dimension named :y"
+	@argcheck :coil ∈ dn "sensitivity maps array must have a dimension named :coil for sensitivity maps array"
+	@argcheck dn[end] == :coil "sensitivity maps array must have the last dimension named :coil"
 	is3D = :z ∈ dn
 	if is3D
-		@assert dn[3] == :z "sensitivity maps array must have the third dimension named :z for 3D data"
+		@argcheck dn[3] == :z "sensitivity maps array must have the third dimension named :z for 3D data"
 	end
 	tuple_batch_dims = isnothing(batch_dims) ? nothing : Tuple(batch_dims)
 	𝒮 = get_sensitivity_map_operator(

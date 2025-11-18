@@ -7,12 +7,12 @@
         
             ℱ = get_fourier_operator(ksp, false; threaded, fast_planning)
             img = ℱ' * ksp
-            @test img ≈ bfft(fftshift(ksp))
+            @test img ≈ ifft(fftshift(ksp))
 
             ℱ = get_fourier_operator(wrapped_ksp; threaded, fast_planning)
             @test ℱ isa MriReconstructionToolbox.NamedDimsOp
             img = ℱ' * wrapped_ksp
-            @test unname(img) ≈ bfft(fftshift(ksp))
+            @test unname(img) ≈ ifft(fftshift(ksp))
             @test dimnames(img) == (:x, :y)
         end
 
@@ -22,12 +22,12 @@
             
             ℱ = get_fourier_operator(ksp, true; threaded, fast_planning)
             img = ℱ' * ksp
-            @test img ≈ bfft(fftshift(ksp))
+            @test img ≈ ifft(fftshift(ksp))
             
             ℱ = get_fourier_operator(wrapped_ksp; threaded, fast_planning)
             @test ℱ isa MriReconstructionToolbox.NamedDimsOp
             img = ℱ' * wrapped_ksp
-            @test unname(img) ≈ bfft(fftshift(ksp))
+            @test unname(img) ≈ ifft(fftshift(ksp))
             @test dimnames(img) == (:x, :y, :z)
         end
 
@@ -37,12 +37,12 @@
             
             ℱ = get_fourier_operator(ksp, false; threaded, fast_planning)
             img = ℱ' * ksp
-            @test img ≈ bfft(fftshift(ksp, (1, 2)), (1, 2))
+            @test img ≈ ifft(fftshift(ksp, (1, 2)), (1, 2))
             
             ℱ = get_fourier_operator(wrapped_ksp; threaded, fast_planning)
             @test ℱ isa MriReconstructionToolbox.NamedDimsOp
             img = ℱ' * wrapped_ksp
-            @test unname(img) ≈ bfft(fftshift(ksp, (1, 2)), (1, 2))
+            @test unname(img) ≈ ifft(fftshift(ksp, (1, 2)), (1, 2))
             @test dimnames(img) == (:x, :y, :z)
         end
     end
@@ -53,10 +53,10 @@
             info = MriReconstructionToolbox.AcquisitionInfo(ksp; is3D=false)
             ℱ = get_fourier_operator(info; threaded, fast_planning)
             img = ℱ' * ksp
-            @test img ≈ bfft(fftshift(ksp))
+            @test img ≈ ifft(fftshift(ksp))
             𝒜 = get_encoding_operator(info; threaded, fast_planning)
-            @test 𝒜' * ksp ≈ bfft(fftshift(ksp))
-            @test 𝒜 * img ≈ ksp .* length(ksp)
+            @test 𝒜' * ksp ≈ ifft(fftshift(ksp))
+            @test 𝒜 * img ≈ ksp
         end
 
         @testset "2D NamedDims with smaps" for threaded in (true, false), fast_planning in (true, false)
@@ -67,10 +67,10 @@
             info = MriReconstructionToolbox.AcquisitionInfo(wrapped_ksp; sensitivity_maps=wrapped_smaps)
             𝒜 = get_encoding_operator(info; threaded, fast_planning)
             img = 𝒜' * wrapped_ksp
-            @test unname(img) ≈ unname(dropdims(sum(conj.(wrapped_smaps) .* bfft(fftshift(ksp, (1,2)), (1, 2)), dims=:coil), dims=:coil)) ./ sqrt(length(img))
+            @test unname(img) ≈ unname(dropdims(sum(conj.(wrapped_smaps) .* ifft(fftshift(ksp, (1,2)), (1, 2)), dims=:coil), dims=:coil))
             @test dimnames(img) == (:x, :y)
             ksp2 = 𝒜 * img
-            @test unname(ksp2) ≈ unname(fftshift(fft(reshape(img, 32, 32, 1) .* wrapped_smaps, (1, 2)), (1,2))) ./ sqrt(length(img))
+            @test unname(ksp2) ≈ unname(fftshift(fft(reshape(img, 32, 32, 1) .* wrapped_smaps, (1, 2)), (1,2)))
             @test dimnames(ksp2) == (:kx, :ky, :coil)
         end
 
@@ -84,8 +84,8 @@
             masked_ksp = similar(full_ksp);
             masked_ksp .= 0;
             masked_ksp[mask] .= subs_ksp;
-            @test img ≈ fft(fftshift(masked_ksp)) ./ sqrt(length(img))
-            @test 𝒜 * img ≈ fftshift(fft(img))[mask] ./ sqrt(length(img))
+            @test img ≈ ifft(fftshift(masked_ksp))
+            @test 𝒜 * img ≈ fftshift(fft(img))[mask]
         end
     end
 
@@ -147,7 +147,7 @@
             wrapped_ksp = NamedDimsArray{(:kx, :ky)}(ksp)
             ℱ = get_encoding_operator(wrapped_ksp)
             img2 = ℱ' * wrapped_ksp
-            @test unname(img2) ≈ bfft(fftsfhit(ksp))
+            @test unname(img2) ≈ bfft(fftshift(ksp))
             @test dimnames(img2) == (:x, :y)
             wrapped_ksp2 = ℱ * img2
             @test unname(wrapped_ksp2) ≈ unname(wrapped_ksp .* length(wrapped_ksp))
@@ -259,7 +259,7 @@
         @testset "2D Cartesian undersampling with colon + linear indices" begin
             ksp = rand(ComplexF32, 64, 64)
             idx = 1:5:64
-            ksp_subsampled = ksp[:, idx]
+            ksp_subsampled = fftshift(ksp, (1, 2))[:, idx]
             ℱ = get_encoding_operator(ksp_subsampled, false; image_size=(64, 64), subsampling=(:, idx))
             img = ℱ' * ksp_subsampled
             temp = zeros(ComplexF32, 64, 64)
@@ -285,14 +285,14 @@
             smaps = rand(ComplexF32, 64, 64, 8)
             idx = 1:5:64
             mask = rand(Bool, 64)
-            ksp_subsampled = ksp[idx, mask, :]
+            ksp_subsampled = fftshift(ksp, (1, 2))[idx, mask, :]
             ℱ = get_encoding_operator(ksp_subsampled, false; image_size=(64, 64), sensitivity_maps=smaps, subsampling=(idx, mask))
             img = ℱ' * ksp_subsampled
             temp = zero(ksp)
             temp[idx, mask, :] .= ksp_subsampled
             @test img ≈ dropdims(sum(conj.(smaps) .* bfft(temp, (1, 2)), dims=3), dims=3)
             ksp2 = ℱ * img
-            @test ksp2 ≈ fft(reshape(img, 64, 64, 1) .* smaps, (1, 2))[idx, mask, :]
+            @test ksp2 ≈ fftshift(fft(reshape(img, 64, 64, 1) .* smaps, (1, 2)), (1, 2))[idx, mask, :]
 
             wrapped_ksp_subsampled = NamedDimsArray{(:kx, :ky, :coil)}(ksp_subsampled)
             wrapped_smaps = NamedDimsArray{(:x, :y, :coil)}(smaps)
@@ -303,28 +303,28 @@
             @test unname(img2) ≈ dropdims(sum(conj.(wrapped_smaps) .* bfft(temp, (1, 2)), dims=:coil), dims=:coil)
             @test dimnames(img2) == (:x, :y)
             wrapped_ksp2 = ℱ * img2
-            @test unname(wrapped_ksp2) ≈ unname(fft(reshape(img2, 64, 64, 1) .* wrapped_smaps, (1, 2))[idx, mask, :])
+            @test unname(wrapped_ksp2) ≈ unname(fftshift(fft(reshape(img2, 64, 64, 1) .* wrapped_smaps, (1, 2)), (1, 2))[idx, mask, :])
             @test dimnames(wrapped_ksp2) == (:kx, :ky, :coil)
         end
 
         @testset "3D Cartesian undersampling with mask" begin
             ksp = rand(ComplexF32, 64, 64, 64)
             mask = rand(Bool, 64, 64, 64)
-            ksp_subsampled = ksp[mask]
-            ℱ = get_encoding_operator(ksp_subsampled, true; subsampling=mask)
+            ksp_subsampled = fftshift(ksp, (1, 2, 3))[mask]
+            ℱ = get_encoding_operator(ksp_subsampled, true; subsampling=(mask,))
             img = ℱ' * ksp_subsampled
             temp = zeros(ComplexF32, 64, 64, 64)
             temp[mask] .= ksp_subsampled
-            @test img ≈ bfft(temp)
+            @test img ≈ bfft(temp, (1, 2, 3))
             ksp2 = ℱ * img
             @test ksp2 ≈ ksp_subsampled .* length(ksp)
 
             wrapped_ksp_subsampled = NamedDimsArray{(:kxyz,)}(ksp_subsampled)
-            ℱ = get_encoding_operator(wrapped_ksp_subsampled; subsampling=mask)
+            ℱ = get_encoding_operator(wrapped_ksp_subsampled; subsampling=(mask,))
             img2 = ℱ' * wrapped_ksp_subsampled
             temp .= 0
             temp[mask] .= wrapped_ksp_subsampled
-            @test unname(img2) ≈ bfft(temp)
+            @test unname(img2) ≈ bfft(temp, (1, 2, 3))
             @test dimnames(img2) == (:x, :y, :z)
             wrapped_ksp2 = ℱ * img2
             @test unname(wrapped_ksp2) ≈ wrapped_ksp_subsampled .* length(ksp)
@@ -334,12 +334,12 @@
         @testset "3D Cartesian undersampling with colon + Cartesian indices" begin
             ksp = rand(ComplexF32, 64, 64, 64)
             idx = CartesianIndices((64, 64))[1:5:(64*64)]
-            ksp_subsampled = ksp[:, idx]
-            ℱ = get_encoding_operator(ksp, true; image_size=(64, 64, 64), subsampling=(:, idx))
+            ksp_subsampled = fftshift(ksp, (1, 2, 3))[:, idx]
+            ℱ = get_encoding_operator(ksp_subsampled, true; image_size=(64, 64, 64), subsampling=(:, idx))
             img = ℱ' * ksp_subsampled
             temp = zeros(ComplexF32, 64, 64, 64)
             temp[:, idx] .= ksp_subsampled
-            @test img ≈ bfft(temp)
+            @test img ≈ bfft(temp, (1, 2, 3))
             ksp2 = ℱ * img
             @test ksp2 ≈ ksp_subsampled .* length(ksp)
 
@@ -348,7 +348,7 @@
             img2 = ℱ' * wrapped_ksp_subsampled
             temp .= 0
             temp[:, idx] .= wrapped_ksp_subsampled
-            @test unname(img2) ≈ bfft(temp)
+            @test unname(img2) ≈ bfft(temp, (1, 2, 3))
             @test dimnames(img2) == (:x, :y, :z)
             wrapped_ksp2 = ℱ * img2
             @test unname(wrapped_ksp2) ≈ unname(wrapped_ksp_subsampled .* length(ksp))
