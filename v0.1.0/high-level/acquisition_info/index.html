@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>AcquisitionInfo · MriReconstructionToolbox.jl</title><meta name="title" content="AcquisitionInfo · MriReconstructionToolbox.jl"/><meta property="og:title" content="AcquisitionInfo · MriReconstructionToolbox.jl"/><meta property="twitter:title" content="AcquisitionInfo · MriReconstructionToolbox.jl"/><meta name="description" content="Documentation for MriReconstructionToolbox.jl."/><meta property="og:description" content="Documentation for MriReconstructionToolbox.jl."/><meta property="twitter:description" content="Documentation for MriReconstructionToolbox.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/favicon.svg" rel="icon" type="image/x-icon"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img class="docs-light-only" src="../../assets/logo.svg" alt="MriReconstructionToolbox.jl logo"/><img class="docs-dark-only" src="../../assets/logo-dark.svg" alt="MriReconstructionToolbox.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">MriReconstructionToolbox.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Home</a></li><li><a class="tocitem" href="../../theory/">Theoretical Background</a></li><li><span class="tocitem">High-level Interface</span><ul><li class="is-active"><a class="tocitem" href>AcquisitionInfo</a><ul class="internal"><li><a class="tocitem" href="#Constructor"><span>Constructor</span></a></li><li><a class="tocitem" href="#Accepted-Input-Types"><span>Accepted Input Types</span></a></li><li><a class="tocitem" href="#Validation-Rules"><span>Validation Rules</span></a></li><li><a class="tocitem" href="#Updating-Existing-Configurations"><span>Updating Existing Configurations</span></a></li><li><a class="tocitem" href="#Integration-with-Other-Functions"><span>Integration with Other Functions</span></a></li></ul></li><li><a class="tocitem" href="../simulation/">Simulation Tools</a></li><li><a class="tocitem" href="../reconstruction/">Reconstruction</a></li><li><a class="tocitem" href="../regularization/">Regularization</a></li><li><a class="tocitem" href="../algorithms/">Optimization Algorithms</a></li><li><a class="tocitem" href="../nameddims/">Named Dimensions</a></li><li><a class="tocitem" href="../decomposition/">Problem Decomposition</a></li></ul></li><li><span class="tocitem">Low-Level Interface</span><ul><li><a class="tocitem" href="../../low-level/operators/">MRI Operators</a></li><li><a class="tocitem" href="../../low-level/custom_reconstruction/">Custom Reconstruction</a></li><li><a class="tocitem" href="../../low-level/abstract_operators/">AbstractOperators.jl</a></li><li><a class="tocitem" href="../../low-level/proximal_operators/">ProximalOperators.jl</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">High-level Interface</a></li><li class="is-active"><a href>AcquisitionInfo</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>AcquisitionInfo</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/hakkelt/MriReconstructionToolbox.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/hakkelt/MriReconstructionToolbox.jl/blob/master/docs/src/high-level/acquisition_info.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="AcquisitionInfo"><a class="docs-heading-anchor" href="#AcquisitionInfo">AcquisitionInfo</a><a id="AcquisitionInfo-1"></a><a class="docs-heading-anchor-permalink" href="#AcquisitionInfo" title="Permalink"></a></h1><p><code>AcquisitionInfo</code> is a validated configuration container for MRI acquisition parameters. It centralizes k-space data, sensitivity maps, image dimensions, subsampling patterns, and FFT shift conventions, performing comprehensive validation at construction time to catch configuration errors early.</p><p>Benefits:</p><ul><li><strong>Centralized validation</strong>: Checks dimension compatibility at construction time</li><li><strong>Clear parameter organization</strong>: Named fields instead of positional arguments</li><li><strong>Type safety</strong>: Supports both plain arrays and <code>NamedDimsArray</code></li><li><strong>Reusability</strong>: Pass the same config to multiple functions</li></ul><h2 id="Constructor"><a class="docs-heading-anchor" href="#Constructor">Constructor</a><a id="Constructor-1"></a><a class="docs-heading-anchor-permalink" href="#Constructor" title="Permalink"></a></h2><article><details class="docstring" open="true"><summary id="MriReconstructionToolbox.AcquisitionInfo"><a class="docstring-binding" href="#MriReconstructionToolbox.AcquisitionInfo"><code>MriReconstructionToolbox.AcquisitionInfo</code></a> — <span class="docstring-category">Type</span></summary><div><pre><code class="language-julia hljs">AcquisitionInfo(
+        kspace_data;
+        is3D::Union{Bool,Nothing}=nothing,
+        sensitivity_maps=nothing,
+        image_size=nothing,
+        subsampling=nothing,
+        shifted_kspace_dims::Tuple=(),
+        shifted_image_dims::Tuple=(),
+)</code></pre><p>Configuration container for MRI acquisition and encoding settings.</p><p>Use this to centralize validation and pass a single object to <code>get_encoding_operator(::AcquisitionInfo)</code> and related helpers. The constructor performs consistency checks across k-space layout, coil maps, subsampling, and image size, and stores threading and FFTW planning preferences.</p><p>Fields</p><ul><li><code>kspace_data::K</code>: K‑space data array or template. Can be a plain   <code>AbstractArray</code> or a <code>NamedDimsArray</code> whose first dimensions must   be <code>:kx</code>, <code>:ky</code> (and <code>:kz</code> for 3D). When sensitivity maps are   provided and <code>kspace_data</code> is named, a <code>:coil</code> dimension is required.</li><li><code>is3D::Bool</code>: Whether data is 3D. If <code>kspace_data</code> is a   <code>NamedDimsArray</code>, this is inferred from the presence of <code>:kz</code>, or   the length of <code>image_size</code> if provided. Otherwise it must be provided.</li><li><code>sensitivity_maps::S</code>: Coil sensitivity maps or <code>nothing</code>.   Must be 3D (2D + coil) or 4D (3D + coil); element type must match   <code>kspace_data</code>.</li><li><code>image_size::I</code>: <code>(nx, ny)</code> for 2D or <code>(nx, ny, nz)</code> for 3D, or   <code>nothing</code>. Required when <code>subsampling</code> is provided and cannot be   inferred from the pattern.</li><li><code>subsampling::Sub</code>: Subsampling pattern (2D/3D). Supports boolean   masks and tuples combining <code>Colon</code>, boolean masks, and ranges.</li><li><code>shifted_kspace_dims::SD</code>: Dimensions in k‑space where the DC is at the   first index (useful for pre‑shifted data).</li><li><code>shifted_image_dims::ID</code>: Image dimensions requiring fft shift   (equivalent to an kspace-domain sign-alternation).</li></ul><p>When <code>kspace_data</code> is a <code>NamedDimsArray</code>, <code>is3D</code> is inferred from the presence of <code>:kz</code>. Otherwise, <code>is3D</code> must be provided. If a subsampling pattern is provided, <code>image_size</code> is validated or inferred when possible.</p><a class="docs-sourcelink" target="_blank" href="https://github.com/hakkelt/MriReconstructionToolbox.jl/blob/9f05f0badc341253f4d58725d7af3069095010ce/src/acquisition_data/acquisition_info.jl#L1-L45">source</a></div></details></article><h2 id="Accepted-Input-Types"><a class="docs-heading-anchor" href="#Accepted-Input-Types">Accepted Input Types</a><a id="Accepted-Input-Types-1"></a><a class="docs-heading-anchor-permalink" href="#Accepted-Input-Types" title="Permalink"></a></h2><h3 id="K-space-Data"><a class="docs-heading-anchor" href="#K-space-Data">K-space Data</a><a id="K-space-Data-1"></a><a class="docs-heading-anchor-permalink" href="#K-space-Data" title="Permalink"></a></h3><p>The first argument can be:</p><ol><li><strong>Plain <code>AbstractArray</code></strong>: Standard Julia arrays containing k-space data</li><li><strong><code>NamedDimsArray</code></strong>: Arrays with named dimensions for automatic inference</li><li><strong><code>nothing</code></strong>: When setting up acquisition parameters without actual data (e.g., for simulation)</li></ol><h4 id="Constraints-on-Dimensions"><a class="docs-heading-anchor" href="#Constraints-on-Dimensions">Constraints on Dimensions</a><a id="Constraints-on-Dimensions-1"></a><a class="docs-heading-anchor-permalink" href="#Constraints-on-Dimensions" title="Permalink"></a></h4><ul><li>The first two dimensions correspond to transformed spatial axes (kx, ky)</li><li>It must be followed by transformed z-axis if 3D encoding is used (kz)</li><li>The next dimension must correspond to coils, if sensitivity maps are provided</li><li>If 2D encoding is used and sensitivity maps are provided, then slice dimensions must be after the coil dimension</li><li>Sensitivity maps must match spatial dimensions of the image:<ul><li>2D encoding: <span>$(N_x, N_y, N_c, [N_z])$</span></li><li>3D encoding: <span>$(N_x, N_y, N_z, N_c)$</span></li></ul></li></ul><pre><code class="language-julia hljs">using MriReconstructionToolbox
+
+# Plain array - requires explicit is3D
+ksp_plain = rand(ComplexF32, 64, 64, 8)
+AcquisitionInfo(ksp_plain; is3D=false)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - kspace data = Array{ComplexF32}&lt;64×64×8&gt;
+  - encoding = 2D
+  - image size = 64×64</code></pre><pre><code class="language-julia hljs">using NamedDims
+
+# NamedDimsArray - is3D inferred from :kz presence
+ksp_named = NamedDimsArray{(:kx, :ky, :coil)}(
+    rand(ComplexF32, 64, 64, 8)
+)
+AcquisitionInfo(ksp_named)  # is3D = false (no :kz)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - kspace data = Array{ComplexF32}&lt;kx: 64, ky: 64, coil: 8&gt;
+  - encoding = 2D
+  - image size = 64×64</code></pre><pre><code class="language-julia hljs"># 3D with named dimensions
+ksp_3d = NamedDimsArray{(:kx, :ky, :kz, :coil)}(
+    rand(ComplexF32, 32, 32, 16, 4)
+)
+AcquisitionInfo(ksp_3d)  # is3D = true (has :kz)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - kspace data = Array{ComplexF32}&lt;kx: 32, ky: 32, kz: 16, coil: 4&gt;
+  - encoding = 3D
+  - image size = 32×32×16</code></pre><pre><code class="language-julia hljs"># Without k-space data (for simulation setup)
+info4 = AcquisitionInfo(
+    nothing;
+    is3D=false,
+    image_size=(128, 128)
+)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - encoding = 2D
+  - image size = 128×128</code></pre><h3 id="Sensitivity-Maps"><a class="docs-heading-anchor" href="#Sensitivity-Maps">Sensitivity Maps</a><a id="Sensitivity-Maps-1"></a><a class="docs-heading-anchor-permalink" href="#Sensitivity-Maps" title="Permalink"></a></h3><p>Sensitivity maps must match k-space dimensions and element type:</p><pre><code class="language-julia hljs"># 2D single-coil sensitivity maps
+ksp = rand(ComplexF32, 64, 64, 8)
+smaps = rand(ComplexF32, 64, 64, 8)  # (nx, ny, ncoils)
+
+AcquisitionInfo(ksp; is3D=false, sensitivity_maps=smaps)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - kspace data = Array{ComplexF32}&lt;64×64×8&gt;
+  - encoding = 2D
+  - image size = 64×64
+  - sensitivity maps = ComplexF32&lt;64×64×8&gt;</code></pre><pre><code class="language-julia hljs"># 3D sensitivity maps
+ksp_3d = rand(ComplexF32, 32, 32, 16, 4)
+smaps_3d = rand(ComplexF32, 32, 32, 16, 4)  # (nx, ny, nz, ncoils)
+
+AcquisitionInfo(ksp_3d; is3D=true, sensitivity_maps=smaps_3d)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - kspace data = Array{ComplexF32}&lt;32×32×16×4&gt;
+  - encoding = 3D
+  - image size = 32×32×16
+  - sensitivity maps = ComplexF32&lt;32×32×16×4&gt;</code></pre><pre><code class="language-julia hljs"># 2D multi-slice with per-slice sensitivity maps
+ksp_ms = rand(ComplexF32, 64, 64, 4, 10)  # 4 coils, 10 slices
+smaps_ms = rand(ComplexF32, 64, 64, 4, 10)  # (nx, ny, ncoils, nslices)
+
+AcquisitionInfo(ksp_ms; is3D=false, sensitivity_maps=smaps_ms)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - kspace data = Array{ComplexF32}&lt;64×64×4×10&gt;
+  - encoding = 2D
+  - image size = 64×64
+  - sensitivity maps = ComplexF32&lt;64×64×4×10&gt;</code></pre><h3 id="Subsampling-Patterns"><a class="docs-heading-anchor" href="#Subsampling-Patterns">Subsampling Patterns</a><a id="Subsampling-Patterns-1"></a><a class="docs-heading-anchor-permalink" href="#Subsampling-Patterns" title="Permalink"></a></h3><p>Multiple subsampling formats are supported:</p><pre><code class="language-julia hljs"># Boolean mask
+mask = rand(Bool, 64, 64)
+mask[25:40, 25:40] .= true  # Fully sample center
+
+info_mask = AcquisitionInfo(
+    nothing;
+    is3D=false,
+    image_size=(64, 64),
+    subsampling=mask
+)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - encoding = 2D
+  - image size = 64×64
+  - subsampling = Array{Bool}&lt;64×64&gt;</code></pre><pre><code class="language-julia hljs"># Tuple of Colon and mask for Cartesian undersampling
+mask_ky = rand(Bool, 64)
+mask_ky[28:36] .= true  # Fully sample center lines
+
+AcquisitionInfo(
+    nothing;
+    is3D=false,
+    image_size=(64, 64),
+    subsampling=(:, mask_ky)  # Fully sample kx, undersample ky
+)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - encoding = 2D
+  - image size = 64×64
+  - subsampling = (:, Vector{Bool}&lt;64&gt;)</code></pre><pre><code class="language-julia hljs"># 3D subsampling with multiple dimensions
+mask_3d = rand(Bool, 32, 32, 16)
+mask_3d[13:20, 13:20, 5:12] .= true
+
+AcquisitionInfo(
+    nothing;
+    is3D=true,
+    image_size=(32, 32, 16),
+    subsampling=mask_3d
+)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - encoding = 3D
+  - image size = 32×32×16
+  - subsampling = Array{Bool}&lt;32×32×16&gt;</code></pre><h3 id="FFT-Shift-Conventions"><a class="docs-heading-anchor" href="#FFT-Shift-Conventions">FFT Shift Conventions</a><a id="FFT-Shift-Conventions-1"></a><a class="docs-heading-anchor-permalink" href="#FFT-Shift-Conventions" title="Permalink"></a></h3><p>The provided k-space data is assumed to follow standard FFT conventions (DC at center). Sometimes, data may be pre-shifted (DC at first index) or require image-space shifts. Use <code>shifted_kspace_dims</code> and <code>shifted_image_dims</code> to specify these dimensions:</p><pre><code class="language-julia hljs"># Pre-shifted k-space (DC at first index)
+ksp = rand(ComplexF32, 64, 64)
+
+info_shifted = AcquisitionInfo(
+    ksp;
+    is3D=false,
+    shifted_kspace_dims=(1, 2)  # Both dimensions pre-shifted
+)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - kspace data = Array{ComplexF32}&lt;64×64&gt;
+  - encoding = 2D
+  - image size = 64×64
+  - shifted kspace dims = (1,2)</code></pre><pre><code class="language-julia hljs"># Image-space shifts (equivalent to sign alternation in k-space)
+info_img_shift = AcquisitionInfo(
+    ksp;
+    is3D=false,
+    shifted_image_dims=(1,)  # First dimension needs shift
+)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - kspace data = Array{ComplexF32}&lt;64×64&gt;
+  - encoding = 2D
+  - image size = 64×64
+  - shifted image dims = 1</code></pre><pre><code class="language-julia hljs"># Named dimensions for shifts
+ksp_named = NamedDimsArray{(:kx, :ky)}(rand(ComplexF32, 64, 64))
+
+info_named_shift = AcquisitionInfo(
+    ksp_named;
+    shifted_kspace_dims=(:kx, :ky)
+)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - kspace data = Array{ComplexF32}&lt;kx: 64, ky: 64&gt;
+  - encoding = 2D
+  - image size = 64×64
+  - shifted kspace dims = (kx,ky)</code></pre><h2 id="Validation-Rules"><a class="docs-heading-anchor" href="#Validation-Rules">Validation Rules</a><a id="Validation-Rules-1"></a><a class="docs-heading-anchor-permalink" href="#Validation-Rules" title="Permalink"></a></h2><p><code>AcquisitionInfo</code> performs comprehensive validation to ensure configuration consistency.</p><h3 id="Dimension-Name-Validation"><a class="docs-heading-anchor" href="#Dimension-Name-Validation">Dimension Name Validation</a><a id="Dimension-Name-Validation-1"></a><a class="docs-heading-anchor-permalink" href="#Dimension-Name-Validation" title="Permalink"></a></h3><p>K-space <code>NamedDimsArray</code> must have specific dimension names:</p><pre><code class="language-julia hljs">try
+    # ❌ Wrong: using image dimension names
+    bad_ksp = NamedDimsArray{(:x, :y, :coil)}(
+        rand(ComplexF32, 64, 64, 8)
+    )
+    AcquisitionInfo(bad_ksp)
+catch e
+    println(&quot;Error: &quot;, e.msg)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Error: k-space must have :kx and :ky dimensions
+:kx ∈ ksp_dimnames &amp;&amp; :ky ∈ ksp_dimnames must hold.</code></pre><pre><code class="language-julia hljs"># ✓ Correct: proper k-space dimension names
+good_ksp = NamedDimsArray{(:kx, :ky, :coil)}(
+    rand(ComplexF32, 64, 64, 8)
+)
+info = AcquisitionInfo(good_ksp)
+println(&quot;Success! Dimensions: &quot;, dimnames(info.kspace_data))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Success! Dimensions: (:kx, :ky, :coil)</code></pre><h3 id="Dimension-Order-Validation"><a class="docs-heading-anchor" href="#Dimension-Order-Validation">Dimension Order Validation</a><a id="Dimension-Order-Validation-1"></a><a class="docs-heading-anchor-permalink" href="#Dimension-Order-Validation" title="Permalink"></a></h3><p>Dimensions must be in the correct order:</p><pre><code class="language-julia hljs">try
+    # ❌ Wrong: kx and ky swapped
+    bad_order = NamedDimsArray{(:ky, :kx, :coil)}(
+        rand(ComplexF32, 64, 64, 8)
+    )
+    AcquisitionInfo(bad_order)
+catch e
+    println(&quot;Error: &quot;, e.msg)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Error: first dims must be :kx, :ky
+ksp_dimnames[1] == :kx &amp;&amp; ksp_dimnames[2] == :ky must hold.</code></pre><pre><code class="language-julia hljs"># ✓ Correct: kx first, then ky
+good_order = NamedDimsArray{(:kx, :ky, :coil)}(
+    rand(ComplexF32, 64, 64, 8)
+)
+info = AcquisitionInfo(good_order)
+println(&quot;Success!&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Success!</code></pre><h3 id="Size-Compatibility-Validation"><a class="docs-heading-anchor" href="#Size-Compatibility-Validation">Size Compatibility Validation</a><a id="Size-Compatibility-Validation-1"></a><a class="docs-heading-anchor-permalink" href="#Size-Compatibility-Validation" title="Permalink"></a></h3><p>Sensitivity maps must match k-space spatial dimensions:</p><pre><code class="language-julia hljs">try
+    # ❌ Wrong: size mismatch
+    ksp_wrong = rand(ComplexF32, 64, 64, 8)
+    smaps_wrong = rand(ComplexF32, 128, 128, 8)  # Different size!
+    AcquisitionInfo(ksp_wrong; is3D=false, sensitivity_maps=smaps_wrong)
+catch e
+    println(&quot;Error: &quot;, e.msg)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Error: sensitivity maps and image spatial dimensions size mismatch for 2D acquisition
+(size(smaps))[1:2] == img_size must hold. Got
+(size(smaps))[1:2] =&gt; (128, 128)
+img_size =&gt; (64, 64)</code></pre><pre><code class="language-julia hljs"># ✓ Correct: matching sizes
+ksp = rand(ComplexF32, 64, 64, 8)
+smaps = rand(ComplexF32, 64, 64, 8)
+info = AcquisitionInfo(ksp; is3D=false, sensitivity_maps=smaps)
+println(&quot;Success! K-space: &quot;, size(ksp)[1:2], &quot;, Smaps: &quot;, size(smaps)[1:2])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Success! K-space: (64, 64), Smaps: (64, 64)</code></pre><h3 id="Element-Type-Consistency"><a class="docs-heading-anchor" href="#Element-Type-Consistency">Element Type Consistency</a><a id="Element-Type-Consistency-1"></a><a class="docs-heading-anchor-permalink" href="#Element-Type-Consistency" title="Permalink"></a></h3><p>K-space and sensitivity maps must have matching element types:</p><pre><code class="language-julia hljs">try
+    # ❌ Wrong: different precision
+    ksp_f32 = rand(ComplexF32, 64, 64, 8)
+    smaps_f64 = rand(ComplexF64, 64, 64, 8)  # Different type!
+    AcquisitionInfo(ksp_f32; is3D=false, sensitivity_maps=smaps_f64)
+catch e
+    println(&quot;Error: &quot;, e.msg)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Error: k-space and sensitivity maps eltype mismatch
+eltype(ksp) == eltype(smaps) must hold. Got
+eltype(ksp) =&gt; ComplexF32
+eltype(smaps) =&gt; ComplexF64</code></pre><pre><code class="language-julia hljs"># ✓ Correct: same element type
+ksp = rand(ComplexF32, 64, 64, 8)
+smaps = rand(ComplexF32, 64, 64, 8)
+info = AcquisitionInfo(ksp; is3D=false, sensitivity_maps=smaps)
+println(&quot;Success! Both are &quot;, eltype(ksp))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Success! Both are ComplexF32</code></pre><h3 id="Coil-Dimension-Requirements"><a class="docs-heading-anchor" href="#Coil-Dimension-Requirements">Coil Dimension Requirements</a><a id="Coil-Dimension-Requirements-1"></a><a class="docs-heading-anchor-permalink" href="#Coil-Dimension-Requirements" title="Permalink"></a></h3><p>When using <code>NamedDimsArray</code> with sensitivity maps, <code>:coil</code> dimension is required:</p><pre><code class="language-julia hljs">try
+    # ❌ Wrong: missing :coil dimension
+    ksp_no_coil = NamedDimsArray{(:kx, :ky)}(
+        rand(ComplexF32, 64, 64)
+    )
+    smaps_wrong = NamedDimsArray{(:x, :y, :coil)}(
+        rand(ComplexF32, 64, 64, 4)
+    )
+    AcquisitionInfo(ksp_no_coil; sensitivity_maps=smaps_wrong)
+catch e
+    println(&quot;Error: &quot;, e.msg)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Error: :coil dimension required in k-space when sensitivity maps are provided
+:coil ∈ dimnames(ksp) must hold. Got
+∈ =&gt; in
+:(:coil) =&gt; :coil
+dimnames(ksp) =&gt; (:kx, :ky)</code></pre><pre><code class="language-julia hljs"># ✓ Correct: :coil dimension present
+ksp_with_coil = NamedDimsArray{(:kx, :ky, :coil)}(
+    rand(ComplexF32, 64, 64, 4)
+)
+smaps = NamedDimsArray{(:x, :y, :coil)}(
+    rand(ComplexF32, 64, 64, 4)
+)
+info = AcquisitionInfo(ksp_with_coil; sensitivity_maps=smaps)
+println(&quot;Success! Coil dimension: &quot;, size(info.kspace_data, 3), &quot; coils&quot;)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Success! Coil dimension: 4 coils</code></pre><h3 id="Image-Size-Inference-and-Validation"><a class="docs-heading-anchor" href="#Image-Size-Inference-and-Validation">Image Size Inference and Validation</a><a id="Image-Size-Inference-and-Validation-1"></a><a class="docs-heading-anchor-permalink" href="#Image-Size-Inference-and-Validation" title="Permalink"></a></h3><p><code>image_size</code> is inferred when possible, but can be explicitly provided:</p><pre><code class="language-julia hljs"># Inferred from fully sampled k-space
+ksp = rand(ComplexF32, 64, 64)
+info = AcquisitionInfo(ksp; is3D=false)
+println(&quot;Inferred image size: &quot;, info.image_size)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Inferred image size: (64, 64)</code></pre><pre><code class="language-julia hljs"># Required when subsampling without k-space data
+mask = rand(Bool, 128, 128)
+info = AcquisitionInfo(
+    nothing;
+    is3D=false,
+    image_size=(128, 128),
+    subsampling=mask
+)
+println(&quot;Explicit image size: &quot;, info.image_size)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Explicit image size: (128, 128)</code></pre><pre><code class="language-julia hljs">try
+    # ❌ Wrong: missing image_size with subsampling
+    mask_wrong = rand(Bool, 64, 64)
+    AcquisitionInfo(
+        nothing;
+        is3D=false,
+        subsampling=mask_wrong
+        # Missing image_size!
+    )
+catch e
+    println(&quot;Error: &quot;, e.msg)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Error: image_size must be provided or inferable from subsampling or sensitivity maps
+!(isnothing(img_size)) must hold. Got
+isnothing(img_size) =&gt; true</code></pre><h3 id="3D-vs-2D-Validation"><a class="docs-heading-anchor" href="#3D-vs-2D-Validation">3D vs 2D Validation</a><a id="3D-vs-2D-Validation-1"></a><a class="docs-heading-anchor-permalink" href="#3D-vs-2D-Validation" title="Permalink"></a></h3><p>Correct dimensionality must be specified or inferred:</p><pre><code class="language-julia hljs"># 3D requires :kz dimension or explicit is3D=true
+ksp_3d = NamedDimsArray{(:kx, :ky, :kz, :coil)}(
+    rand(ComplexF32, 32, 32, 16, 4)
+)
+AcquisitionInfo(ksp_3d)  # Automatically infers is3D=true</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - kspace data = Array{ComplexF32}&lt;kx: 32, ky: 32, kz: 16, coil: 4&gt;
+  - encoding = 3D
+  - image size = 32×32×16</code></pre><pre><code class="language-julia hljs"># 2D must NOT have :kz dimension
+ksp_2d = NamedDimsArray{(:kx, :ky, :coil)}(
+    rand(ComplexF32, 64, 64, 8)
+)
+AcquisitionInfo(ksp_2d)  # Automatically infers is3D=false</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - kspace data = Array{ComplexF32}&lt;kx: 64, ky: 64, coil: 8&gt;
+  - encoding = 2D
+  - image size = 64×64</code></pre><h2 id="Updating-Existing-Configurations"><a class="docs-heading-anchor" href="#Updating-Existing-Configurations">Updating Existing Configurations</a><a id="Updating-Existing-Configurations-1"></a><a class="docs-heading-anchor-permalink" href="#Updating-Existing-Configurations" title="Permalink"></a></h2><p>You can create new configurations based on existing ones:</p><pre><code class="language-julia hljs"># Start with basic config
+ksp = rand(ComplexF32, 64, 64, 8)
+info1 = AcquisitionInfo(ksp; is3D=false)
+println(&quot;Initial config: &quot;, info1)
+
+# Add sensitivity maps
+smaps = rand(ComplexF32, 64, 64, 8)
+info2 = AcquisitionInfo(info1; sensitivity_maps=smaps)
+println(&quot;With sensitivity maps:&quot;, info2)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Initial config: AcquisitionInfo(kspace_data=Array{ComplexF32}&lt;64×64×8&gt;, encoding=2D, image_size=64×64)
+With sensitivity maps:AcquisitionInfo(kspace_data=Array{ComplexF32}&lt;64×64×8&gt;, encoding=2D, image_size=64×64, sensitivity_maps=ComplexF32&lt;64×64×8&gt;)</code></pre><h2 id="Integration-with-Other-Functions"><a class="docs-heading-anchor" href="#Integration-with-Other-Functions">Integration with Other Functions</a><a id="Integration-with-Other-Functions-1"></a><a class="docs-heading-anchor-permalink" href="#Integration-with-Other-Functions" title="Permalink"></a></h2><p><code>AcquisitionInfo</code> is accepted by:</p><ul><li><strong>Reconstruction</strong>: <code>reconstruct(acq_info, ...)</code></li><li><strong>Operators</strong>: <code>get_encoding_operator(acq_info)</code>, <code>get_fourier_operator(acq_info)</code>, etc.</li><li><strong>Simulation</strong>: <code>simulate_acquisition(image, acq_info)</code></li></ul><p>This unified interface simplifies complex workflows and reduces parameter passing errors.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../theory/">« Theoretical Background</a><a class="docs-footer-nextpage" href="../simulation/">Simulation Tools »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.0 on <span class="colophon-date" title="Tuesday 18 November 2025 23:46">Tuesday 18 November 2025</span>. Using Julia version 1.12.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
