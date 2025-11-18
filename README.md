@@ -1,6 +1,8 @@
 # MriReconstructionToolbox.jl
 
-A comprehensive Julia package for magnetic resonance imaging (MRI) reconstruction.
+[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://hakkelt.github.io/MriReconstructionToolbox.jl/)
+
+_A comprehensive Julia package for MRI reconstruction_
 
 ## What is this package?
 

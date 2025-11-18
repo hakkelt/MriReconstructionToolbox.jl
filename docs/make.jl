@@ -6,7 +6,9 @@ makedocs(;
     modules = [MriReconstructionToolbox, ProximalAlgorithms],
     authors = "Tamás Hakkel <hakkelt@gmail.com>",
     sitename = "MriReconstructionToolbox.jl",
-    format = Documenter.HTML(),
+    format = Documenter.HTML(
+        assets = [asset("assets/favicon.svg", class = :ico, islocal = true)]
+    ),
     pages = [
         "Home" => "index.md",
         "Theoretical Background" => "theory.md",
@@ -31,6 +33,5 @@ makedocs(;
 )
 
 deploydocs(
-    repo = "github.com/hakkelt/MriReconstructionToolbox.jl.git",
-    push_preview = true
+    repo = "github.com/hakkelt/MriReconstructionToolbox.jl.git"
 )
