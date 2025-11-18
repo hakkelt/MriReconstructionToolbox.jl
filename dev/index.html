@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Home · MriReconstructionToolbox.jl</title><meta name="title" content="Home · MriReconstructionToolbox.jl"/><meta property="og:title" content="Home · MriReconstructionToolbox.jl"/><meta property="twitter:title" content="Home · MriReconstructionToolbox.jl"/><meta name="description" content="Documentation for MriReconstructionToolbox.jl."/><meta property="og:description" content="Documentation for MriReconstructionToolbox.jl."/><meta property="twitter:description" content="Documentation for MriReconstructionToolbox.jl."/><script data-outdated-warner src="assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="assets/documenter.js"></script><script src="search_index.js"></script><script src="siteinfo.js"></script><script src="../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href>MriReconstructionToolbox.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li class="is-active"><a class="tocitem" href>Home</a><ul class="internal"><li><a class="tocitem" href="#Installation"><span>Installation</span></a></li><li><a class="tocitem" href="#What-This-Package-Does"><span>What This Package Does</span></a></li><li><a class="tocitem" href="#Features"><span>Features</span></a></li><li><a class="tocitem" href="#Quick-Start"><span>Quick Start</span></a></li></ul></li><li><a class="tocitem" href="theory/">Theoretical Background</a></li><li><span class="tocitem">High-level Interface</span><ul><li><a class="tocitem" href="high-level/acquisition_info/">AcquisitionInfo</a></li><li><a class="tocitem" href="high-level/simulation/">Simulation Tools</a></li><li><a class="tocitem" href="high-level/reconstruction/">Reconstruction</a></li><li><a class="tocitem" href="high-level/regularization/">Regularization</a></li><li><a class="tocitem" href="high-level/algorithms/">Optimization Algorithms</a></li><li><a class="tocitem" href="high-level/nameddims/">Named Dimensions</a></li><li><a class="tocitem" href="high-level/decomposition/">Problem Decomposition</a></li></ul></li><li><span class="tocitem">Low-Level Interface</span><ul><li><a class="tocitem" href="low-level/operators/">MRI Operators</a></li><li><a class="tocitem" href="low-level/custom_reconstruction/">Custom Reconstruction</a></li><li><a class="tocitem" href="low-level/abstract_operators/">AbstractOperators.jl</a></li><li><a class="tocitem" href="low-level/proximal_operators/">ProximalOperators.jl</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Home</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Home</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/hakkelt/MriReconstructionToolbox.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/hakkelt/MriReconstructionToolbox.jl/blob/master/docs/src/index.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="MriReconstructionToolbox.jl"><a class="docs-heading-anchor" href="#MriReconstructionToolbox.jl">MriReconstructionToolbox.jl</a><a id="MriReconstructionToolbox.jl-1"></a><a class="docs-heading-anchor-permalink" href="#MriReconstructionToolbox.jl" title="Permalink"></a></h1><p><em>A comprehensive Julia package for MRI reconstruction</em></p><p>MriReconstructionToolbox.jl provides everything you need to reconstruct images from MRI k-space data, from simple FFT-based reconstruction to advanced compressed sensing with sophisticated regularization.</p><h2 id="Installation"><a class="docs-heading-anchor" href="#Installation">Installation</a><a id="Installation-1"></a><a class="docs-heading-anchor-permalink" href="#Installation" title="Permalink"></a></h2><p><strong>Note:</strong> This package is not yet registered in the Julia General registry because it needs enhancements to upstream packages. These changes are currently under pull requests, and hopefully will be merged soon. Installation requires adding dependencies from GitHub repositories:</p><pre><code class="language-julia hljs">using Pkg
+
+# Add the package from GitHub
+Pkg.add(url=&quot;https://github.com/hakkelt/AbstractOperators.jl&quot;)
+Pkg.add(url=&quot;https://github.com/hakkelt/AbstractOperators.jl&quot;, subdir=&quot;FFTWOperators&quot;)
+Pkg.add(url=&quot;https://github.com/hakkelt/AbstractOperators.jl&quot;, subdir=&quot;DSPOperators&quot;)
+Pkg.add(url=&quot;https://github.com/hakkelt/AbstractOperators.jl&quot;, subdir=&quot;NFFTOperators&quot;)
+Pkg.add(url=&quot;https://github.com/hakkelt/AbstractOperators.jl&quot;, subdir=&quot;WaveletOperators&quot;)
+Pkg.add(url=&quot;https://github.com/hakkelt/ProximalCore.jl&quot;)
+Pkg.add(url=&quot;https://github.com/hakkelt/ProximalOperators.jl&quot;)
+Pkg.add(url=&quot;https://github.com/hakkelt/ProximalAlgorithms.jl&quot;)
+Pkg.add(url=&quot;https://github.com/hakkelt/StructuredOptimization.jl&quot;)
+Pkg.add(url=&quot;https://github.com/hakkelt/MriReconstructionToolbox.jl&quot;)</code></pre><h2 id="What-This-Package-Does"><a class="docs-heading-anchor" href="#What-This-Package-Does">What This Package Does</a><a id="What-This-Package-Does-1"></a><a class="docs-heading-anchor-permalink" href="#What-This-Package-Does" title="Permalink"></a></h2><p>MriReconstructionToolbox.jl solves the MRI reconstruction inverse problem:</p><pre><code class="nohighlight hljs">Given: k-space measurements (undersampled, multi-coil)
+Find: Image that best explains the measurements</code></pre><p>The package provides:</p><ul><li><strong>Complete MRI Forward Model</strong>: Models the entire acquisition chain</li><li><strong>Flexible Regularization</strong>: Multiple methods for different image properties</li><li><strong>Efficient Algorithms</strong>: Many iterative solvers from <a href="https://github.com/hakkelt/ProximalAlgorithms.jl">ProximalAlgorithms.jl</a></li><li><strong>High-Level Interface</strong>: Simple <code>reconstruct()</code> function for common tasks</li><li><strong>Low-Level Control</strong>: Direct operator access for custom algorithms</li></ul><h2 id="Features"><a class="docs-heading-anchor" href="#Features">Features</a><a id="Features-1"></a><a class="docs-heading-anchor-permalink" href="#Features" title="Permalink"></a></h2><ul><li>✅ <strong>Complete MRI Forward Model</strong> - Fourier transform + sensitivity maps + subsampling</li><li>✅ <strong>Parallel Imaging</strong> - Multi-coil reconstruction with sensitivity maps</li><li>✅ <strong>Compressed Sensing</strong> - Advanced undersampling and regularization</li><li>✅ <strong>Multiple Regularizers</strong> - Sparsity, wavelets, total variation, low-rank</li><li>✅ <strong>Fast Algorithms</strong> - FISTA, ADMM, Conjugate Gradient</li><li>✅ <strong>Auto-Parallelization</strong> - Automatic decomposition over batch dimensions</li><li>✅ <strong>Named Dimensions</strong> - Type-safe interface prevents dimension errors</li><li>✅ <strong>Simulation Tools</strong> - Built-in phantoms and sampling patterns</li><li>✅ <strong>High Performance</strong> - Multi-threaded FFTs and optimized operators</li></ul><h2 id="Quick-Start"><a class="docs-heading-anchor" href="#Quick-Start">Quick Start</a><a id="Quick-Start-1"></a><a class="docs-heading-anchor-permalink" href="#Quick-Start" title="Permalink"></a></h2><h3 id="Simulation-Example"><a class="docs-heading-anchor" href="#Simulation-Example">Simulation Example</a><a id="Simulation-Example-1"></a><a class="docs-heading-anchor-permalink" href="#Simulation-Example" title="Permalink"></a></h3><h4 id="Shepp-Logan-Phantom-and-Noisy-Observation"><a class="docs-heading-anchor" href="#Shepp-Logan-Phantom-and-Noisy-Observation">Shepp-Logan Phantom and Noisy Observation</a><a id="Shepp-Logan-Phantom-and-Noisy-Observation-1"></a><a class="docs-heading-anchor-permalink" href="#Shepp-Logan-Phantom-and-Noisy-Observation" title="Permalink"></a></h4><pre><code class="language-julia hljs">using MriReconstructionToolbox
+using MIRTjim: jim
+
+nx, ny, nc = 256, 256, 8
+xᵍᵗ = shepp_logan(nx, ny)
+noise_level = 0.03f0
+x = xᵍᵗ + noise_level * randn(ComplexF32, nx, ny)
+p1 = jim(xᵍᵗ; title = &quot;Ground truth&quot;)
+p2 = jim(x; title = &quot;Noisy image&quot;)
+jim(p1, p2; layout = (1, 2), size = (700, 300))</code></pre><p><img src="shepp_logan_noisy.png" alt="shepp_logan_noisy.png"/></p><h4 id="Coil-Sensitivity-Maps"><a class="docs-heading-anchor" href="#Coil-Sensitivity-Maps">Coil Sensitivity Maps</a><a id="Coil-Sensitivity-Maps-1"></a><a class="docs-heading-anchor-permalink" href="#Coil-Sensitivity-Maps" title="Permalink"></a></h4><pre><code class="language-julia hljs">smaps = coil_sensitivities(nx, ny, nc)
+jim(smaps; title = &quot;Coil sensitivity maps&quot;, nrow=1, size = (1400, 200))</code></pre><p><img src="coil_sensitivity_maps.png" alt="coil_sensitivity_maps.png"/></p><h4 id="k-space-Undersampling-Pattern"><a class="docs-heading-anchor" href="#k-space-Undersampling-Pattern">k-space Undersampling Pattern</a><a id="k-space-Undersampling-Pattern-1"></a><a class="docs-heading-anchor-permalink" href="#k-space-Undersampling-Pattern" title="Permalink"></a></h4><pre><code class="language-julia hljs">using Plots
+
+pdf = VariableDensitySampling(PolynomialDistribution(3), 3.0, 0.1)
+W = MriReconstructionToolbox.construct_weights(pdf, (nx,))
+p1 = plot(W; title = &quot;1D Sampling weights&quot;, legend = false)
+
+pattern = create_sampling_pattern(pdf, (nx, ny))
+p2 = jim(to_displayable_mask(pattern, (nx, ny)); title = &quot;Sampling pattern&quot;)
+
+jim(p1, p2; layout = (1, 2), size = (700, 300))</code></pre><p><img src="sampling_pattern.png" alt="sampling_pattern.png"/></p><h4 id="Simulation-of-Acquisition"><a class="docs-heading-anchor" href="#Simulation-of-Acquisition">Simulation of Acquisition</a><a id="Simulation-of-Acquisition-1"></a><a class="docs-heading-anchor-permalink" href="#Simulation-of-Acquisition" title="Permalink"></a></h4><pre><code class="language-julia hljs"># Create acquisition info that contains every knowledge about the acquisition, but no actual data yet
+acq_info = AcquisitionInfo(
+   is3D=false,
+   image_size=(nx, ny),
+   subsampling=pattern,
+   sensitivity_maps=smaps)
+
+# Simulate k-space acquisition
+data = simulate_acquisition(x, acq_info)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">AcquisitionInfo:
+  - kspace data = Array{ComplexF32}&lt;256×85×8&gt;
+  - encoding = 2D
+  - image size = 256×256
+  - sensitivity maps = ComplexF32&lt;256×256×8&gt;
+  - subsampling = (:, Vector{Bool}&lt;256&gt;)</code></pre><h3 id="Reconstruction-Examples"><a class="docs-heading-anchor" href="#Reconstruction-Examples">Reconstruction Examples</a><a id="Reconstruction-Examples-1"></a><a class="docs-heading-anchor-permalink" href="#Reconstruction-Examples" title="Permalink"></a></h3><h4 id="Direct-Reconstruction-via-Adjoint"><a class="docs-heading-anchor" href="#Direct-Reconstruction-via-Adjoint">Direct Reconstruction via Adjoint</a><a id="Direct-Reconstruction-via-Adjoint-1"></a><a class="docs-heading-anchor-permalink" href="#Direct-Reconstruction-via-Adjoint" title="Permalink"></a></h4><pre><code class="language-julia hljs">x̂_direct = reconstruct(data)
+p1 = jim(x̂_direct; title = &quot;Direct reconstruction&quot;)
+p2 = jim(abs.(x̂_direct - xᵍᵗ); title = &quot;Error map&quot;)
+jim(p1, p2; layout = (1, 2), size = (700, 300))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Constructing encoding operator: 2.68 ms (25.18 M allocations: 24.010 MiB)
+Reconstructing image: 6.32 ms (524.42 k allocations: 512.133 KiB)
+Computing scaling factor: 3.27 ms (524.7 k allocations: 512.406 KiB)
+Total time: 32.69 ms</code></pre><p><img src="direct_reconstruction.png" alt="direct_reconstruction.png"/></p><h4 id="Compressed-Sensing-Reconstruction-with-Wavelet-Regularization"><a class="docs-heading-anchor" href="#Compressed-Sensing-Reconstruction-with-Wavelet-Regularization">Compressed Sensing Reconstruction with Wavelet Regularization</a><a id="Compressed-Sensing-Reconstruction-with-Wavelet-Regularization-1"></a><a class="docs-heading-anchor-permalink" href="#Compressed-Sensing-Reconstruction-with-Wavelet-Regularization" title="Permalink"></a></h4><pre><code class="language-julia hljs">reg = L1Wavelet2D(0.01f0)
+x̂_cs = reconstruct(data, reg; maxit=50)
+p1 = jim(x̂_cs; title = &quot;CS Reconstruction&quot;)
+p2 = jim(abs.(x̂_cs - xᵍᵗ); title = &quot;Error map&quot;)
+jim(p1, p2; layout = (1, 2), size = (700, 300))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Constructing encoding operator: 2.69 ms (33.57 M allocations: 32.011 MiB)
+Getting initial estimate: 4.47 ms (524.42 k allocations: 512.133 KiB)
+Computing scaling factor: 3.27 ms (524.7 k allocations: 512.406 KiB)
+Scaling k-space data: 276.58 µs (1.39 M allocations: 1.329 MiB)
+Normalizing encoding operator: 119.47 ms (5.38 M allocations: 5.126 MiB)
+Building optimization model: 5.29 ms (5.26 M allocations: 5.012 MiB)
+Starting reconstructing image...
+      |   f(x)    |   g(z)    | ‖x - z‖/γ
+------|-----------|-----------|-----------
+    5 | 2.058e+00 | 2.780e+01 | 1.927e-02
+   10 | 1.942e+00 | 2.706e+01 | 6.616e-03
+   15 | 1.923e+00 | 2.698e+01 | 5.269e-03
+   20 | 1.924e+00 | 2.697e+01 | 2.206e-03
+   25 | 1.926e+00 | 2.696e+01 | 1.174e-03
+   30 | 1.925e+00 | 2.696e+01 | 5.457e-04
+   35 | 1.925e+00 | 2.696e+01 | 5.560e-04
+   40 | 1.926e+00 | 2.696e+01 | 3.730e-04
+   45 | 1.926e+00 | 2.696e+01 | 1.416e-04
+   50 | 1.926e+00 | 2.696e+01 | 1.048e-04
+Finished reconstructing image in 766.17 ms (79.34 M allocations: 75.667 MiB, 2.03% gc time, 9.15% compilation time)
+Inverse scaling image: 63.84 µs (48 allocations: 48 bytes)
+Total time: 946.02 ms</code></pre><p><img src="cs_reconstruction.png" alt="cs_reconstruction.png"/></p><h4 id="Custom-Reconstruction-With-Low-Level-Interface"><a class="docs-heading-anchor" href="#Custom-Reconstruction-With-Low-Level-Interface">Custom Reconstruction With Low-Level Interface</a><a id="Custom-Reconstruction-With-Low-Level-Interface-1"></a><a class="docs-heading-anchor-permalink" href="#Custom-Reconstruction-With-Low-Level-Interface" title="Permalink"></a></h4><pre><code class="language-julia hljs"># Prepare encoding operator
+ℳ = get_subsampling_operator(data)
+ℱ = get_fourier_operator(data)
+𝒮 = get_sensitivity_map_operator(data)
+𝒜 = ℳ * ℱ * 𝒮</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Π  ℂ^(256, 256) -&gt; ℂ^(256, 85, 8) </code></pre><pre><code class="language-julia hljs"># Get k-space data and direct reconstruction
+b = data.kspace_data
+x̂ = 𝒜&#39; * b # direct reconstruction as adjoint operation
+p1 = jim(x̂; title = &quot;Direct reconstruction&quot;)
+p2 = jim(abs.(x̂ - xᵍᵗ); title = &quot;Error map&quot;)
+jim(p1, p2; layout = (1, 2), size = (700, 300))</code></pre><p><img src="direct_reconstruction_lowlevel.png" alt="direct_reconstruction_lowlevel.png"/></p><pre><code class="language-julia hljs"># Set up and solve custom optimization problem with StructuredOptimization.jl
+v = Variable(x̂); # use direct reconstruction as initial guess
+𝒲 = WaveletOp(ComplexF32, wavelet(WT.db4), (nx, ny))
+alg = FISTA(maxit=50, verbose=true, freq=5)
+x̂_custom, it = @minimize ls(𝒜 * v - b) + 0.01 * norm(𝒲 * v, 1) with alg
+
+# Visualize results
+println(&quot;Reconstruction completed in $it iterations.&quot;)
+p1 = jim(~x̂_custom; title = &quot;CS Reconstruction&quot;)
+p2 = jim(abs.(~x̂_custom - xᵍᵗ); title = &quot;Error map&quot;)
+jim(p1, p2; layout = (1, 2), size = (700, 300))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">      |   f(x)    |   g(z)    |     γ     | ‖x - z‖/γ
+------|-----------|-----------|-----------|-----------
+    5 | 2.777e+05 | 2.165e+01 | 1.004e+00 | 1.451e-02
+   10 | 2.213e+05 | 2.085e+01 | 1.004e+00 | 6.192e-03
+   15 | 2.168e+05 | 2.074e+01 | 1.004e+00 | 3.299e-03
+   20 | 2.169e+05 | 2.072e+01 | 1.004e+00 | 1.674e-03
+   25 | 2.174e+05 | 2.071e+01 | 1.004e+00 | 5.681e-04
+   30 | 2.173e+05 | 2.071e+01 | 1.004e+00 | 3.929e-04
+   35 | 2.173e+05 | 2.071e+01 | 1.004e+00 | 1.925e-04
+   40 | 2.172e+05 | 2.071e+01 | 1.255e-01 | 2.009e-04
+   45 | 2.172e+05 | 2.071e+01 | 6.273e-02 | 2.215e-04
+   50 | 2.173e+05 | 2.071e+01 | 6.273e-02 | 1.712e-04
+Reconstruction completed in 50 iterations.</code></pre><p><img src="custom_cs_reconstruction.png" alt="custom_cs_reconstruction.png"/></p></article><nav class="docs-footer"><a class="docs-footer-nextpage" href="theory/">Theoretical Background »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.0 on <span class="colophon-date" title="Tuesday 18 November 2025 20:18">Tuesday 18 November 2025</span>. Using Julia version 1.12.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
