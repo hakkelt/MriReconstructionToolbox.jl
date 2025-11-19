@@ -44,7 +44,7 @@ Pkg.add(url="https://github.com/hakkelt/AbstractOperators.jl", subdir="WaveletOp
 Pkg.add(url="https://github.com/hakkelt/ProximalCore.jl")
 Pkg.add(url="https://github.com/hakkelt/ProximalOperators.jl")
 Pkg.add(url="https://github.com/hakkelt/ProximalAlgorithms.jl")
-Pkg.add(url="https://github.com/hakkelt/StructuredOperators.jl")
+Pkg.add(url="https://github.com/hakkelt/StructuredOptimization.jl")
 Pkg.add(url="https://github.com/hakkelt/MriReconstructionToolbox.jl")
 ```
 
@@ -55,7 +55,7 @@ using MriReconstructionToolbox
 
 # Load your k-space data (or create synthetic data)
 ksp = rand(ComplexF32, 128, 128)  # Single-coil k-space data
-acq = AcquisitionInfo(ksp, false)  # false = 2D data
+acq = AcquisitionInfo(ksp, is3D=false)
 
 # Reconstruct with one function call
 img = reconstruct(acq)
@@ -73,22 +73,26 @@ ksp = rand(ComplexF32, 128, 128, 8)  # 8 receiver coils
 smaps = rand(ComplexF32, 128, 128, 8)
 
 # Reconstruct with automatic coil combination
-acq = AcquisitionInfo(ksp, false; sensitivity_maps=smaps)
+acq = AcquisitionInfo(ksp; is3D=false, sensitivity_maps=smaps)
 img = reconstruct(acq)
 ```
 
 ### Advanced: Compressed Sensing Reconstruction
 
 ```julia
+# Multi-coil k-space data
+ksp = rand(ComplexF32, 128, 128, 8)
+
 # Undersampled k-space data
-mask = create_sampling_pattern((128, 128), VariableDensitySampling(0.25))
-ksp_sub = ksp[mask, :]
+pdf = VariableDensitySampling(PolynomialDistribution(3), 3.0, 0.1)
+pattern = create_sampling_pattern(pdf, (128, 128))
+ksp_sub = ksp[pattern..., :]
 
 # Set up acquisition info with subsampling
-acq = AcquisitionInfo(ksp_sub, false; 
+acq = AcquisitionInfo(ksp_sub;
+                      image_size=(128, 128),
                       sensitivity_maps=smaps,
-                      img_size=(128, 128),
-                      subsampling=mask)
+                      subsampling=pattern)
 
 # Reconstruct with wavelet sparsity regularization
 img = reconstruct(acq, L1Wavelet2D(5e-3))
