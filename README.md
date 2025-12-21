@@ -160,7 +160,7 @@ If you use this package in your research, please cite:
 @software{MriReconstructionToolbox,
   author = {Hakkel, Tamás},
   title = {MriReconstructionToolbox.jl: A Julia Package for MRI Reconstruction},
-  year = {2024},
+  year = {2025},
   url = {https://github.com/hakkelt/MriReconstructionToolbox.jl}
 }
 ```
