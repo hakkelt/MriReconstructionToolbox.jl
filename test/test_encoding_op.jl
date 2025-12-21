@@ -140,17 +140,17 @@
             ksp = rand(ComplexF32, 64, 64);
             ℱ = get_encoding_operator(ksp, false)
             img = ℱ' * ksp
-            @test img ≈ bfft(fftshift(ksp))
+            @test img ≈ ifft(fftshift(ksp))
             ksp2 = ℱ * img
-            @test ksp2 ≈ ksp .* length(ksp)
+            @test ksp2 ≈ ksp
 
             wrapped_ksp = NamedDimsArray{(:kx, :ky)}(ksp)
             ℱ = get_encoding_operator(wrapped_ksp)
             img2 = ℱ' * wrapped_ksp
-            @test unname(img2) ≈ bfft(fftshift(ksp))
+            @test unname(img2) ≈ ifft(fftshift(ksp))
             @test dimnames(img2) == (:x, :y)
             wrapped_ksp2 = ℱ * img2
-            @test unname(wrapped_ksp2) ≈ unname(wrapped_ksp .* length(wrapped_ksp))
+            @test unname(wrapped_ksp2) ≈ unname(wrapped_ksp)
             @test dimnames(wrapped_ksp2) == (:kx, :ky)
         end
 
@@ -158,17 +158,17 @@
             ksp = rand(ComplexF32, 64, 64, 10)
             ℱ = get_encoding_operator(ksp, false)
             img = ℱ' * ksp
-            @test img ≈ bfft(fftshift(ksp, (1, 2)), (1, 2))
+            @test img ≈ ifft(fftshift(ksp, (1, 2)), (1, 2))
             ksp2 = ℱ * img
-            @test ksp2 ≈ ksp .* (64 * 64)
+            @test ksp2 ≈ ksp
 
             wrapped_ksp = NamedDimsArray{(:kx, :ky, :batch)}(ksp);
             ℱ = get_encoding_operator(wrapped_ksp)
             img2 = ℱ' * wrapped_ksp
-            @test unname(img2) ≈ bfft(fftshift(ksp, (1,2)), (1, 2))
+            @test unname(img2) ≈ ifft(fftshift(ksp, (1,2)), (1, 2))
             @test dimnames(img2) == (:x, :y, :batch)
             wrapped_ksp2 = ℱ * img2
-            @test unname(wrapped_ksp2) ≈ unname(wrapped_ksp .* (64 * 64))
+            @test unname(wrapped_ksp2) ≈ unname(wrapped_ksp)
             @test dimnames(wrapped_ksp2) == (:kx, :ky, :batch)
         end
 
@@ -177,7 +177,7 @@
             smaps = rand(ComplexF32, 64, 64, 8)
             ℱ = get_encoding_operator(ksp, false; sensitivity_maps=smaps)
             img = ℱ' * ksp
-            @test img ≈ dropdims(sum(conj.(smaps) .* bfft(fftshift(ksp, (1, 2)), (1, 2)), dims=3), dims=3)
+            @test img ≈ dropdims(sum(conj.(smaps) .* ifft(fftshift(ksp, (1, 2)), (1, 2)), dims=3), dims=3)
             ksp2 = ℱ * img
             @test ksp2 ≈ fftshift(fft(reshape(img, 64, 64, 1) .* smaps, (1, 2)), (1, 2))
 
@@ -185,10 +185,10 @@
             wrapped_smaps = NamedDimsArray{(:x, :y, :coil)}(smaps)
             ℱ = get_encoding_operator(wrapped_ksp; sensitivity_maps=wrapped_smaps)
             img2 = ℱ' * wrapped_ksp
-            @test unname(img2) ≈ unname(dropdims(sum(conj.(wrapped_smaps) .* bfft(fftshift(ksp, (1, 2)), (1, 2)), dims=:coil), dims=:coil))
+            @test unname(img2) ≈ unname(dropdims(sum(conj.(wrapped_smaps) .* ifft(fftshift(ksp, (1, 2)), (1, 2)), dims=:coil), dims=:coil))
             @test dimnames(img2) == (:x, :y)
             wrapped_ksp2 = ℱ * img2
-            @test unname(wrapped_ksp2) ≈ unname(fft(reshape(img2, 64, 64, 1) .* wrapped_smaps, (1, 2)))
+            @test unname(wrapped_ksp2) ≈ unname(fftshift(fft(reshape(img2, 64, 64, 1) .* wrapped_smaps, (1, 2)), (1, 2)))
             @test dimnames(wrapped_ksp2) == (:kx, :ky, :coil)
         end
 
@@ -197,18 +197,18 @@
             smaps = rand(ComplexF32, 64, 64, 8)
             ℱ = get_encoding_operator(ksp, false; sensitivity_maps=smaps)
             img = ℱ' * ksp
-            @test img ≈ dropdims(sum(conj.(smaps) .* bfft(ksp, (1, 2)), dims=3), dims=3)
+            @test img ≈ dropdims(sum(conj.(smaps) .* ifft(fftshift(ksp, (1, 2)), (1, 2)), dims=3), dims=3)
             ksp2 = ℱ * img
-            @test ksp2 ≈ fft(reshape(img, 64, 64, 1, 10) .* smaps, (1, 2))
+            @test ksp2 ≈ fftshift(fft(reshape(img, 64, 64, 1, 10) .* smaps, (1, 2)), (1, 2))
 
             wrapped_ksp = NamedDimsArray{(:kx, :ky, :coil, :z)}(ksp)
             wrapped_smaps = NamedDimsArray{(:x, :y, :coil)}(smaps)
             ℱ = get_encoding_operator(wrapped_ksp; sensitivity_maps=wrapped_smaps)
             img2 = ℱ' * wrapped_ksp
-            @test unname(img2) ≈ unname(dropdims(sum(conj.(wrapped_smaps) .* bfft(ksp, (1, 2)), dims=:coil), dims=:coil))
+            @test unname(img2) ≈ unname(dropdims(sum(conj.(wrapped_smaps) .* ifft(fftshift(ksp, (1, 2)), (1, 2)), dims=:coil), dims=:coil))
             @test dimnames(img2) == (:x, :y, :z)
             wrapped_ksp2 = ℱ * img2
-            @test unname(wrapped_ksp2) ≈ unname(fft(reshape(img2, 64, 64, 1, 10) .* wrapped_smaps, (1, 2)))
+            @test unname(wrapped_ksp2) ≈ unname(fftshift(fft(reshape(img2, 64, 64, 1, 10) .* wrapped_smaps, (1, 2)), (1, 2)))
             @test dimnames(wrapped_ksp2) == (:kx, :ky, :coil, :z)
         end
 
@@ -217,18 +217,18 @@
             smaps = rand(ComplexF32, 64, 64, 64, 8)
             ℱ = get_encoding_operator(ksp, true; sensitivity_maps=smaps)
             img = ℱ' * ksp
-            @test img ≈ dropdims(sum(conj.(smaps) .* bfft(ksp, (1, 2, 3)), dims=4), dims=4)
+            @test img ≈ dropdims(sum(conj.(smaps) .* ifft(fftshift(ksp, (1, 2, 3)), (1, 2, 3)), dims=4), dims=4)
             ksp2 = ℱ * img
-            @test ksp2 ≈ fft(reshape(img, 64, 64, 64, 1) .* smaps, (1, 2, 3))
+            @test ksp2 ≈ fftshift(fft(reshape(img, 64, 64, 64, 1) .* smaps, (1, 2, 3)), (1, 2, 3))
 
             wrapped_ksp = NamedDimsArray{(:kx, :ky, :kz, :coil)}(ksp)
             wrapped_smaps = NamedDimsArray{(:x, :y, :z, :coil)}(smaps)
             ℱ = get_encoding_operator(wrapped_ksp; sensitivity_maps=wrapped_smaps)
             img2 = ℱ' * wrapped_ksp
-            @test unname(img2) ≈ dropdims(sum(conj.(smaps) .* bfft(ksp, (1, 2, 3)), dims=4), dims=4)
+            @test unname(img2) ≈ dropdims(sum(conj.(smaps) .* ifft(fftshift(ksp, (1, 2, 3)), (1, 2, 3)), dims=4), dims=4)
             @test dimnames(img2) == (:x, :y, :z)
             wrapped_ksp2 = ℱ * img2
-            @test unname(wrapped_ksp2) ≈ unname(fft(reshape(img2, 64, 64, 64, 1) .* smaps, (1, 2, 3)))
+            @test unname(wrapped_ksp2) ≈ unname(fftshift(fft(reshape(img2, 64, 64, 64, 1) .* smaps, (1, 2, 3)), (1, 2, 3)))
             @test dimnames(wrapped_ksp2) == (:kx, :ky, :kz, :coil)
         end
 
@@ -240,19 +240,19 @@
             img = ℱ' * ksp_subsampled
             temp = zeros(ComplexF32, 64, 64)
             temp[mask] .= ksp_subsampled
-            @test img ≈ bfft(temp)
+            @test img ≈ ifft(fftshift(temp, (1, 2)), (1, 2))
             ksp2 = ℱ * img
-            @test ksp2 ≈ ksp_subsampled .* length(ksp)
+            @test ksp2 ≈ ksp_subsampled
 
             wrapped_ksp_subsampled = NamedDimsArray{(:kxy,)}(ksp_subsampled)
             ℱ = get_encoding_operator(wrapped_ksp_subsampled; subsampling=mask)
             img2 = ℱ' * wrapped_ksp_subsampled
             temp .= 0
             temp[mask] .= wrapped_ksp_subsampled
-            @test unname(img2) ≈ bfft(temp)
+            @test unname(img2) ≈ ifft(fftshift(temp, (1, 2)), (1, 2))
             @test dimnames(img2) == (:x, :y)
             wrapped_ksp2 = ℱ * img2
-            @test unname(wrapped_ksp2) ≈ unname(wrapped_ksp_subsampled .* length(ksp))
+            @test unname(wrapped_ksp2) ≈ unname(wrapped_ksp_subsampled)
             @test dimnames(wrapped_ksp2) == (:kxy,)
         end
 
@@ -264,19 +264,19 @@
             img = ℱ' * ksp_subsampled
             temp = zeros(ComplexF32, 64, 64)
             temp[:, idx] .= ksp_subsampled
-            @test img ≈ bfft(temp)
+            @test img ≈ ifft(fftshift(temp, (1, 2)), (1, 2))
             ksp2 = ℱ * img
-            @test ksp2 ≈ ksp_subsampled .* length(ksp)
+            @test ksp2 ≈ ksp_subsampled
 
             wrapped_ksp_subsampled = NamedDimsArray{(:kx, :ky)}(ksp_subsampled)
             ℱ = get_encoding_operator(wrapped_ksp_subsampled; image_size=(64, 64), subsampling=(:, idx))
             img2 = ℱ' * wrapped_ksp_subsampled
             temp .= 0
             temp[:, idx] .= wrapped_ksp_subsampled
-            @test unname(img2) ≈ bfft(temp)
+            @test unname(img2) ≈ ifft(fftshift(temp, (1, 2)), (1, 2))
             @test dimnames(img2) == (:x, :y)
             wrapped_ksp2 = ℱ * img2
-            @test unname(wrapped_ksp2) ≈ unname(wrapped_ksp_subsampled .* length(ksp))
+            @test unname(wrapped_ksp2) ≈ unname(wrapped_ksp_subsampled)
             @test dimnames(wrapped_ksp2) == (:kx, :ky,)
         end
 
@@ -290,7 +290,7 @@
             img = ℱ' * ksp_subsampled
             temp = zero(ksp)
             temp[idx, mask, :] .= ksp_subsampled
-            @test img ≈ dropdims(sum(conj.(smaps) .* bfft(temp, (1, 2)), dims=3), dims=3)
+            @test img ≈ dropdims(sum(conj.(smaps) .* ifft(fftshift(temp, (1, 2)), (1, 2)), dims=3), dims=3)
             ksp2 = ℱ * img
             @test ksp2 ≈ fftshift(fft(reshape(img, 64, 64, 1) .* smaps, (1, 2)), (1, 2))[idx, mask, :]
 
@@ -300,7 +300,7 @@
             img2 = ℱ' * wrapped_ksp_subsampled
             temp .= 0
             temp[idx, mask, :] .= wrapped_ksp_subsampled
-            @test unname(img2) ≈ dropdims(sum(conj.(wrapped_smaps) .* bfft(temp, (1, 2)), dims=:coil), dims=:coil)
+            @test unname(img2) ≈ dropdims(sum(conj.(wrapped_smaps) .* ifft(fftshift(temp, (1, 2)), (1, 2)), dims=:coil), dims=:coil)
             @test dimnames(img2) == (:x, :y)
             wrapped_ksp2 = ℱ * img2
             @test unname(wrapped_ksp2) ≈ unname(fftshift(fft(reshape(img2, 64, 64, 1) .* wrapped_smaps, (1, 2)), (1, 2))[idx, mask, :])
@@ -315,19 +315,19 @@
             img = ℱ' * ksp_subsampled
             temp = zeros(ComplexF32, 64, 64, 64)
             temp[mask] .= ksp_subsampled
-            @test img ≈ bfft(temp, (1, 2, 3))
+            @test img ≈ ifft(fftshift(temp, (1, 2, 3)), (1, 2, 3))
             ksp2 = ℱ * img
-            @test ksp2 ≈ ksp_subsampled .* length(ksp)
+            @test ksp2 ≈ ksp_subsampled
 
             wrapped_ksp_subsampled = NamedDimsArray{(:kxyz,)}(ksp_subsampled)
             ℱ = get_encoding_operator(wrapped_ksp_subsampled; subsampling=(mask,))
             img2 = ℱ' * wrapped_ksp_subsampled
             temp .= 0
             temp[mask] .= wrapped_ksp_subsampled
-            @test unname(img2) ≈ bfft(temp, (1, 2, 3))
+            @test unname(img2) ≈ ifft(fftshift(temp, (1, 2, 3)), (1, 2, 3))
             @test dimnames(img2) == (:x, :y, :z)
             wrapped_ksp2 = ℱ * img2
-            @test unname(wrapped_ksp2) ≈ wrapped_ksp_subsampled .* length(ksp)
+            @test unname(wrapped_ksp2) ≈ wrapped_ksp_subsampled
             @test dimnames(wrapped_ksp2) == (:kxyz,)
         end
 
@@ -339,19 +339,19 @@
             img = ℱ' * ksp_subsampled
             temp = zeros(ComplexF32, 64, 64, 64)
             temp[:, idx] .= ksp_subsampled
-            @test img ≈ bfft(temp, (1, 2, 3))
+            @test img ≈ ifft(fftshift(temp, (1, 2, 3)), (1, 2, 3))
             ksp2 = ℱ * img
-            @test ksp2 ≈ ksp_subsampled .* length(ksp)
+            @test ksp2 ≈ ksp_subsampled
 
             wrapped_ksp_subsampled = NamedDimsArray{(:kx, :kyz)}(ksp_subsampled)
             ℱ = get_encoding_operator(wrapped_ksp_subsampled; image_size=(64, 64, 64), subsampling=(:, idx))
             img2 = ℱ' * wrapped_ksp_subsampled
             temp .= 0
             temp[:, idx] .= wrapped_ksp_subsampled
-            @test unname(img2) ≈ bfft(temp, (1, 2, 3))
+            @test unname(img2) ≈ ifft(fftshift(temp, (1, 2, 3)), (1, 2, 3))
             @test dimnames(img2) == (:x, :y, :z)
             wrapped_ksp2 = ℱ * img2
-            @test unname(wrapped_ksp2) ≈ unname(wrapped_ksp_subsampled .* length(ksp))
+            @test unname(wrapped_ksp2) ≈ unname(wrapped_ksp_subsampled)
             @test dimnames(wrapped_ksp2) == (:kx, :kyz,)
         end
 

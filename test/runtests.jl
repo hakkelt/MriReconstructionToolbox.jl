@@ -4,7 +4,7 @@ using AbstractOperators
 using FFTW
 using NamedDims
 using LinearAlgebra
-using Wavelets
+#using Wavelets
 using FFTWOperators: DFT
 
 include("test_encoding_op.jl")

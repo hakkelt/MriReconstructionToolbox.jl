@@ -151,7 +151,7 @@ function _check_ksp_dimnames(ksp_dimnames, subs::Nothing, is3D, img_size)
 	end
 end
 
-function _check_ksp_dimnames(ksp_dimnames, subs::_2D_subsampling_type, is3D, img_size)
+function _check_ksp_dimnames(ksp_dimnames, subs::_2D_subsampling_type, is3D, img_size::Tuple{Int,Int})
 	if subs isa Tuple{<:_1D_subsampling_type, <:_1D_subsampling_type}
 		@argcheck :kx ∈ ksp_dimnames "k-space must have :kx dimension"
 		@argcheck :ky ∈ ksp_dimnames "k-space must have :ky dimension"
@@ -170,19 +170,19 @@ function _check_ksp_dimnames(ksp_dimnames, subs::_2D_subsampling_type, is3D, img
 	end
 end
 
-function _check_ksp_dimnames(ksp_dimnames, subs, is3D, img_size)
+function _check_ksp_dimnames(ksp_dimnames, subs::_3D_subsampling_type, is3D, img_size::Tuple{Int,Int,Int})
 	if subs isa Tuple{<:_1D_subsampling_type, <:_1D_subsampling_type, <:_1D_subsampling_type}
 		@argcheck :kx ∈ ksp_dimnames "k-space must have :kx dimension"
 		@argcheck :ky ∈ ksp_dimnames "k-space must have :ky dimension"
 		@argcheck :kz ∈ ksp_dimnames "k-space must have :kz dimension"
 		@argcheck length(img_size) == 3 "image_size must be length 3 for 3D subsampling"
 		@argcheck is3D "is3D must be true for 3D subsampling"
-	elseif subs isa Tuple{<:_2D_subsampling_type, <:_1D_subsampling_type}
+	elseif length(subs) == 2 && subs[2] isa _1D_subsampling_type
 		@argcheck :kxy ∈ ksp_dimnames "k-space must have :kxy dimension"
 		@argcheck :kz ∈ ksp_dimnames "k-space must have :kz dimension"
 		@argcheck length(img_size) == 3 "image_size must be length 3 for 3D subsampling"
 		@argcheck is3D "is3D must be true for 3D subsampling"
-	elseif subs isa Tuple{<:_1D_subsampling_type, <:_2D_subsampling_type}
+	elseif length(subs) == 2 && subs[1] isa _1D_subsampling_type
 		@argcheck :kx ∈ ksp_dimnames "k-space must have :kx dimension"
 		@argcheck :kyz ∈ ksp_dimnames "k-space must have :kyz dimension"
 		@argcheck length(img_size) == 3 "image_size must be length 3 for 3D subsampling"
@@ -198,7 +198,7 @@ function _check_ksp_dimnames(ksp_dimnames, subs, is3D, img_size)
 	@argcheck !(:z ∈ ksp_dimnames) "3D subsampling cannot have :z dimension"
 end
 
-function _get_dimnames_from_subsampling(ksp_dimnames, subsampling::_2D_subsampling_type)
+function _get_dimnames_from_subsampling(ksp_dimnames, ::Tuple{Int, Int}, subsampling::_2D_subsampling_type)
 	if length(subsampling) == 2
 		return (:kx, :ky, ksp_dimnames[3:end]...)
 	else
@@ -206,7 +206,7 @@ function _get_dimnames_from_subsampling(ksp_dimnames, subsampling::_2D_subsampli
 	end
 end
 
-function _get_dimnames_from_subsampling(ksp_dimnames, subsampling::_3D_subsampling_type)
+function _get_dimnames_from_subsampling(ksp_dimnames, ::Tuple{Int, Int, Int}, subsampling::_3D_subsampling_type)
 	if length(subsampling) == 3
 		return (:kx, :ky, :kz, ksp_dimnames[4:end]...)
 	elseif length(subsampling) == 2 && subsampling[1] isa _1D_subsampling_type
@@ -218,7 +218,7 @@ function _get_dimnames_from_subsampling(ksp_dimnames, subsampling::_3D_subsampli
 	end
 end
 
-function _get_subsampling_operator(ksp, img_size, subsampling::_2D_subsampling_type)
+function _get_subsampling_operator(ksp, img_size::Tuple{Int, Int}, subsampling::_2D_subsampling_type)
 	@argcheck length(img_size) == 2 "img_size must be a 2-element tuple for 2D subsampling"
 	@argcheck img_size == size(ksp)[1:2] DimensionMismatch
 	if ndims(ksp) > length(img_size)
@@ -231,7 +231,7 @@ function _get_subsampling_operator(ksp, img_size, subsampling::_2D_subsampling_t
 	end
 end
 
-function _get_subsampling_operator(ksp, img_size, subsampling::_3D_subsampling_type)
+function _get_subsampling_operator(ksp, img_size::Tuple{Int, Int, Int}, subsampling::_3D_subsampling_type)
 	@argcheck length(img_size) == 3 "img_size must be a 3-element tuple for 3D subsampling"
 	@argcheck img_size == size(ksp)[1:3] DimensionMismatch
 	if ndims(ksp) > length(img_size)
@@ -329,12 +329,12 @@ function _build_subsampling_context(subsampled_ksp, img_size, subsampling)
 		full_dimnames = is3D ?
 			(:kx, :ky, :kz, batch_dim_names...) :
 			(:kx, :ky, batch_dim_names...)
-		expected_subs_dimnames = _get_dimnames_from_subsampling(full_dimnames, subsampling)
+		expected_subs_dimnames = _get_dimnames_from_subsampling(full_dimnames, img_size, subsampling)
 		@argcheck dimnames(subsampled_ksp) == expected_subs_dimnames
 		ksp = NamedDimsArray{full_dimnames}(unname(ksp))
 		Γ_unwrapped = _get_subsampling_operator(unname(ksp), img_size, subsampling)
 		D = dimnames(ksp)
-		new_dimnames = _get_dimnames_from_subsampling(D, subsampling)
+		new_dimnames = _get_dimnames_from_subsampling(D, img_size, subsampling)
 		Γ = NamedDimsOp{D,new_dimnames}(Γ_unwrapped)
 	else
 		Γ = _get_subsampling_operator(ksp, img_size, subsampling)

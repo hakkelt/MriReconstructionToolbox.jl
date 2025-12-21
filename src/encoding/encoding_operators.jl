@@ -83,10 +83,13 @@ function get_encoding_operator(
 	ksp::NamedDimsArray;
 	sensitivity_maps::Union{<:NamedDimsArray,Nothing}=nothing,
 	image_size::Union{Tuple{Int,Int},Tuple{Int,Int,Int},Nothing}=nothing,
-	subsampling::Union{<:_2D_subsampling_type,<:_3D_subsampling_type,Nothing}=nothing,
+	subsampling=nothing,
 	threaded::Bool=true,
 	fast_planning::Bool=false,
 )
+	if !isnothing(subsampling) && !(subsampling isa Tuple)
+		subsampling = (subsampling,)
+	end
 	info = AcquisitionInfo(ksp; sensitivity_maps, image_size, subsampling)
 	return get_encoding_operator(info; threaded, fast_planning)
 end
