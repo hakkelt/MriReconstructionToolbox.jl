@@ -1,9 +1,3 @@
-using Test
-using MriReconstructionToolbox
-using AbstractOperators
-using NamedDims
-using StructuredOptimization
-
 # Helper to evaluate a StructuredOptimization Term with a single variable
 function eval_term(terms)
  	vars = StructuredOptimization.extract_variables(terms)

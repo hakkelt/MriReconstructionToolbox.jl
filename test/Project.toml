@@ -1,0 +1,13 @@
+[deps]
+AbstractOperators = "d9c5613a-d543-52d8-9afd-8f241a8c3f1c"
+FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MriReconstructionToolbox = "5999b5f3-4ffc-4695-817d-461c6e99e3c0"
+NamedDims = "356022a1-0364-5f58-8944-0da4b18d706f"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+Wavelets = "29a6e085-ba6d-5f35-a997-948ac2efa89a"
+
+[compat]
+Test = "1"
+Wavelets = "0.10"
+julia = "1"
