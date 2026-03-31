@@ -71,7 +71,7 @@ function get_operator(reg::Union{LowRank,RankLimit}, x::AbstractArray; threaded:
         x_view = @view x[fill(:, length(affected_dims))..., (ones(Int, length(batch_dims))...)]
         ℰ = Eye(unname(x_view))
     end
-    ℛ = reshape(ℰ, :, size(x, affected_dims[end])) # Collapse all but time_dim
+    ℛ = Reshape(ℰ, prod(size(x)[affected_dims[1:end-1]]), size(x)[affected_dims[end]]) # Collapse all but time_dim
     if !isempty(batch_dims)
         ℛ = BatchOp(ℛ, size(x)[length(affected_dims)+1:end]; threaded)
     end

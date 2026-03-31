@@ -24,7 +24,8 @@ end
 
 function get_operator(reg::TemporalFourier, x::AbstractArray; threaded::Bool=true)
     time_dim = get_time_dim(reg.time_dim, x)
-    F = DFT(unname(x), time_dim; threaded)
+    num_threads = threaded ? Threads.nthreads() : 1
+    F = DFT(unname(x), time_dim; num_threads)
     if x isa NamedDimsArray
         transformed_dimnames = ntuple(
             i -> i == time_dim ? :frequency : dimnames(x, i),
