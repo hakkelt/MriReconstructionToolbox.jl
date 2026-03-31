@@ -42,12 +42,12 @@ The sensitivity maps are constructed using:
 
 """
 function coil_sensitivities(nx::Int, ny::Int, nc::Int)
-    x = range(-1, 1; length=nx)
-    y = range(-1, 1; length=ny)
+    x = range(-1, 1; length = nx)
+    y = range(-1, 1; length = ny)
     X = repeat(collect(x), 1, ny)
     Y = repeat(collect(y)', nx, 1)
     smaps = Array{ComplexF32}(undef, nx, ny, nc)
-    centers = [(cos(2π*(i-1)/nc), sin(2π*(i-1)/nc)) for i in 1:nc]
+    centers = [(cos(2π * (i - 1) / nc), sin(2π * (i - 1) / nc)) for i in 1:nc]
     for i in 1:nc
         cx, cy = centers[i]
         σ = 0.6f0
@@ -55,7 +55,7 @@ function coil_sensitivities(nx::Int, ny::Int, nc::Int)
         phase = @. exp(im * (0.5f0 * X + 0.3f0 * Y))
         smaps[:, :, i] = ComplexF32.(mag .* phase)
     end
-    denom = sqrt.(sum(abs2, smaps; dims=3) .+ eps(Float32))
+    denom = sqrt.(sum(abs2, smaps; dims = 3) .+ eps(Float32))
     smaps ./= denom
     return smaps
 end

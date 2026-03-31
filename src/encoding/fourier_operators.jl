@@ -50,83 +50,83 @@ arguments.
 - **NonCartesianAcquisitionInfo**: constructs an NFFT-backed operator from trajectory metadata
 - **(ksp, image_size, trajectory)**: explicit non-Cartesian constructor
 """
-function get_fourier_operator(info::CartesianAcquisitionInfo; threaded::Bool=true, fast_planning::Bool=false)
-	@argcheck !isnothing(info.kspace_data) "The provided CartesianAcquisitionInfo does not contain k-space data, which is required to build the Fourier operator."
-	if isnothing(info.subsampling)
-		ksp = info.kspace_data
-	else
-		ksp = get_full_kspace(info)
-	end
-	shifted_image_dims = info.shifted_image_dims
-	shifted_kspace_dims = info.shifted_kspace_dims
-	return get_fourier_operator(
-		ksp,
-		info.is3D;
-		shifted_kspace_dims,
-		shifted_image_dims,
-		threaded,
-		fast_planning,
-	)
+function get_fourier_operator(info::CartesianAcquisitionInfo; threaded::Bool = true, fast_planning::Bool = false)
+    @argcheck !isnothing(info.kspace_data) "The provided CartesianAcquisitionInfo does not contain k-space data, which is required to build the Fourier operator."
+    if isnothing(info.subsampling)
+        ksp = info.kspace_data
+    else
+        ksp = get_full_kspace(info)
+    end
+    shifted_image_dims = info.shifted_image_dims
+    shifted_kspace_dims = info.shifted_kspace_dims
+    return get_fourier_operator(
+        ksp,
+        info.is3D;
+        shifted_kspace_dims,
+        shifted_image_dims,
+        threaded,
+        fast_planning,
+    )
 end
 
 function get_fourier_operator(
-	ksp::NamedDimsArray,
-	is3D::Bool=(:kz ∈ dimnames(ksp));
-	shifted_kspace_dims::Union{Tuple,Integer,Symbol}=(),
-	shifted_image_dims::Union{Tuple,Integer,Symbol}=(),
-	threaded::Bool=true,
-	fast_planning::Bool=false,
-)
-	ksp_dimnames = dimnames(ksp)
-	@argcheck :kx ∈ ksp_dimnames "k-space array must have a dimension named :kx for Cartesian data"
-	@argcheck ksp_dimnames[1] == :kx "k-space array must have the first dimension named :kx"
-	@argcheck :ky ∈ ksp_dimnames "k-space array must have a dimension named :ky for Cartesian data"
-	@argcheck ksp_dimnames[2] == :ky "k-space array must have the second dimension named :ky"
-	@argcheck is3D == (:kz ∈ ksp_dimnames) "is3D does not match presence of :kz dimension in k-space array"
-	if is3D
-		@argcheck ksp_dimnames[3] == :kz "k-space array must have the third dimension named :kz for 3D data"
-		img_dimnames = (:x, :y, :z, ksp_dimnames[4:end]...)
-	else
-		img_dimnames = (:x, :y, ksp_dimnames[3:end]...)
-	end
-	shifted_kspace_dims = _normalize_shifted_dims(
-		shifted_kspace_dims, is3D, ksp, "shifted_kspace_dims"
-	)
-	shifted_image_dims = _normalize_shifted_dims(
-		shifted_image_dims, is3D, ksp, "shifted_image_dims"
-	)
-	ℱ = get_fourier_operator(
-		parent(ksp), is3D; shifted_kspace_dims, shifted_image_dims, threaded, fast_planning
-	)
-	return NamedDimsOp{img_dimnames,ksp_dimnames}(ℱ)
+        ksp::NamedDimsArray,
+        is3D::Bool = (:kz ∈ dimnames(ksp));
+        shifted_kspace_dims::Union{Tuple, Integer, Symbol} = (),
+        shifted_image_dims::Union{Tuple, Integer, Symbol} = (),
+        threaded::Bool = true,
+        fast_planning::Bool = false,
+    )
+    ksp_dimnames = dimnames(ksp)
+    @argcheck :kx ∈ ksp_dimnames "k-space array must have a dimension named :kx for Cartesian data"
+    @argcheck ksp_dimnames[1] == :kx "k-space array must have the first dimension named :kx"
+    @argcheck :ky ∈ ksp_dimnames "k-space array must have a dimension named :ky for Cartesian data"
+    @argcheck ksp_dimnames[2] == :ky "k-space array must have the second dimension named :ky"
+    @argcheck is3D == (:kz ∈ ksp_dimnames) "is3D does not match presence of :kz dimension in k-space array"
+    if is3D
+        @argcheck ksp_dimnames[3] == :kz "k-space array must have the third dimension named :kz for 3D data"
+        img_dimnames = (:x, :y, :z, ksp_dimnames[4:end]...)
+    else
+        img_dimnames = (:x, :y, ksp_dimnames[3:end]...)
+    end
+    shifted_kspace_dims = _normalize_shifted_dims(
+        shifted_kspace_dims, is3D, ksp, "shifted_kspace_dims"
+    )
+    shifted_image_dims = _normalize_shifted_dims(
+        shifted_image_dims, is3D, ksp, "shifted_image_dims"
+    )
+    ℱ = get_fourier_operator(
+        parent(ksp), is3D; shifted_kspace_dims, shifted_image_dims, threaded, fast_planning
+    )
+    return NamedDimsOp{img_dimnames, ksp_dimnames}(ℱ)
 end
 
 function get_fourier_operator(
-	ksp::AbstractArray,
-	is3D::Bool;
-	shifted_kspace_dims::Union{Tuple,Integer,Symbol}=(),
-	shifted_image_dims::Union{Tuple,Integer,Symbol}=(),
-	threaded::Bool=true,
-	fast_planning::Bool=false,
-)
-	flags = fast_planning ? FFTW.ESTIMATE : FFTW.MEASURE
-	num_threads = threaded ? nthreads() : 1
-	ksp_dims = is3D ? (1, 2, 3) : (1, 2)
-	ℱ = DFT(ksp, ksp_dims; normalization=FFTWOperators.BACKWARD, flags, num_threads)
-	kspace_dims_to_shift = tuple([d for d in ksp_dims if d ∉ shifted_kspace_dims]...)
-	shifted_kspace_dims = _normalize_shifted_dims(
-		shifted_kspace_dims, is3D, ksp, "shifted_kspace_dims"
-	)
-	shifted_image_dims = _normalize_shifted_dims(
-		shifted_image_dims, is3D, ksp, "shifted_image_dims"
-	)
-	if !isempty(kspace_dims_to_shift) || !isempty(shifted_image_dims)
-		# Wrap with shifts if needed
-		ℱ = ifftshift_op(
-			ℱ; domain_shifts=shifted_image_dims, codomain_shifts=kspace_dims_to_shift
-		)
-	end
-	return ℱ
+        ksp::AbstractArray,
+        is3D::Bool;
+        shifted_kspace_dims::Union{Tuple, Integer, Symbol} = (),
+        shifted_image_dims::Union{Tuple, Integer, Symbol} = (),
+        threaded::Bool = true,
+        fast_planning::Bool = false,
+    )
+    flags = fast_planning ? FFTW.ESTIMATE : FFTW.MEASURE
+    num_threads = threaded ? nthreads() : 1
+    ksp_dims = is3D ? (1, 2, 3) : (1, 2)
+    ℱ = DFT(ksp, ksp_dims; normalization = FFTWOperators.BACKWARD, flags, num_threads)
+    kspace_dims_to_shift = tuple([d for d in ksp_dims if d ∉ shifted_kspace_dims]...)
+    shifted_kspace_dims = _normalize_shifted_dims(
+        shifted_kspace_dims, is3D, ksp, "shifted_kspace_dims"
+    )
+    shifted_image_dims = _normalize_shifted_dims(
+        shifted_image_dims, is3D, ksp, "shifted_image_dims"
+    )
+    if !isempty(kspace_dims_to_shift) || !isempty(shifted_image_dims)
+        # Wrap with shifts if needed
+        ℱ = ifftshift_op(
+            ℱ; domain_shifts = shifted_image_dims, codomain_shifts = kspace_dims_to_shift
+        )
+    end
+    return ℱ
 end
 
 function get_fourier_operator(info::NonCartesianAcquisitionInfo; threaded::Bool = true)
@@ -184,22 +184,22 @@ function get_fourier_operator(
 end
 
 function _normalize_shifted_dims(
-	shifted_dims::Union{Tuple,Integer,Symbol},
-	is3D::Bool,
-	ksp::AbstractArray,
-	context::String
-)
-	if shifted_dims isa Integer || shifted_dims isa Symbol
-		shifted_dims = (shifted_dims,)
-	end
-	for d in shifted_dims
-		if d isa Integer
-			@argcheck d in (is3D ? (1, 2, 3) : (1, 2)) "$context contains invalid dimension $d for is3D=$is3D"
-		else
-			@argcheck d isa Symbol "$context contains invalid dimension $d (must be Integer or Symbol)"
-			@argcheck (ksp isa NamedDimsArray) "$context with Symbol dimensions requires the kspace data to be a NamedDimsArray"
-			@argcheck (d ∈ (is3D ? (:x, :y, :z) : (:x, :y))) "$context contains invalid dimension $d"
-		end
-	end
-	return shifted_dims
+        shifted_dims::Union{Tuple, Integer, Symbol},
+        is3D::Bool,
+        ksp::AbstractArray,
+        context::String
+    )
+    if shifted_dims isa Integer || shifted_dims isa Symbol
+        shifted_dims = (shifted_dims,)
+    end
+    for d in shifted_dims
+        if d isa Integer
+            @argcheck d in (is3D ? (1, 2, 3) : (1, 2)) "$context contains invalid dimension $d for is3D=$is3D"
+        else
+            @argcheck d isa Symbol "$context contains invalid dimension $d (must be Integer or Symbol)"
+            @argcheck (ksp isa NamedDimsArray) "$context with Symbol dimensions requires the kspace data to be a NamedDimsArray"
+            @argcheck (d ∈ (is3D ? (:x, :y, :z) : (:x, :y))) "$context contains invalid dimension $d"
+        end
+    end
+    return shifted_dims
 end

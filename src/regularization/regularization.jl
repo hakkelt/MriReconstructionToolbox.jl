@@ -6,13 +6,13 @@ abstract type Regularization end
 Evaluate the value of a regularization term `reg` at a given point `x`. This function is useful for testing and debugging.
 """
 function calculate(reg, x; threaded)
-	x_var = Variable(x)
-	t = materialize(reg, x_var; threaded)
-	f = StructuredOptimization.extract_functions(t)
-	op = StructuredOptimization.extract_affines((x_var,), t)
-	x_val = ~x_var
-	y = op isa Eye ? x_val : op * x_val
-	return f(y)
+    x_var = Variable(x)
+    t = materialize(reg, x_var; threaded)
+    f = StructuredOptimization.extract_functions(t)
+    op = StructuredOptimization.extract_affines((x_var,), t)
+    x_val = ~x_var
+    y = op isa Eye ? x_val : op * x_val
+    return f(y)
 end
 
 """
@@ -34,7 +34,7 @@ Term{Float64}(1, NormL1{Float64}(0.1), (Variable(Float64, (8, 8), :x)), "0.1 ⋅
 ```
 """
 function materialize(reg::Regularization, ::Variable; threaded::Bool)
-	throw(ArgumentError("materialize not implemented for $(typeof(reg))"))
+    throw(ArgumentError("materialize not implemented for $(typeof(reg))"))
 end
 
 """
@@ -55,8 +55,8 @@ julia> op = get_operator(reg, ~x; threaded=false)
 WaveletOp{Float64,WT.Daubechies{2}}(Float64, (8, 8), WT.Daubechies{2}(), 2)
 ```
 """
-function get_operator(reg::Regularization, x::AbstractArray; threaded::Bool=true)
-	throw(ArgumentError("get_operator not implemented for $(typeof(reg))"))
+function get_operator(reg::Regularization, x::AbstractArray; threaded::Bool = true)
+    throw(ArgumentError("get_operator not implemented for $(typeof(reg))"))
 end
 
 """
@@ -65,6 +65,6 @@ end
 Get the dimensions in the image domain that are affected by the regularization `reg`.
 This is used to determine which dimensions can be used for problem decomposition during reconstruction.
 """
-function get_affected_dims(::R, acq_info::AcquisitionInfo, image_dims) where {R<:Regularization}
-	throw(ArgumentError("get_affected_dims not implemented for $(R.name.wrapper)"))
+function get_affected_dims(::R, acq_info::AcquisitionInfo, image_dims) where {R <: Regularization}
+    throw(ArgumentError("get_affected_dims not implemented for $(R.name.wrapper)"))
 end

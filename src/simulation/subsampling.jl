@@ -10,10 +10,10 @@ specifies the fraction of low-frequency k-space positions to be fully sampled.
 struct UniformRandomSampling <: Subsampling
     acceleration::Float64
     center_fraction::Float64
-    function UniformRandomSampling(acceleration, center_fraction=0.1)
+    function UniformRandomSampling(acceleration, center_fraction = 0.1)
         @assert 1 <= acceleration "Acceleration factor must be >= 1"
         @assert 0 <= center_fraction < 1 "Center fraction must be in [0, 1)"
-        new(acceleration, center_fraction)
+        return new(acceleration, center_fraction)
     end
 end
 
@@ -27,9 +27,9 @@ The sampling probability follows a Gaussian profile centered at k-space center:
 """
 struct GaussianDistribution <: VariableDensityDistribution
     std::Float64
-    function GaussianDistribution(std=1/3)
+    function GaussianDistribution(std = 1 / 3)
         @assert 0 < std "Standard deviation must be positive"
-        new(std)
+        return new(std)
     end
 end
 
@@ -42,9 +42,9 @@ The sampling probability is proportional to power of the distance from the k-spa
 """
 struct PolynomialDistribution <: VariableDensityDistribution
     p::Float64
-    function PolynomialDistribution(p=4)
+    function PolynomialDistribution(p = 4)
         @assert 0 < p "Polynomial exponent must be positive"
-        new(p)
+        return new(p)
     end
 end
 
@@ -56,14 +56,14 @@ and center fraction. The `distribution` parameter can be either `GaussianDistrib
 The `acceleration` parameter controls the overall undersampling factor, while the `center_fraction` parameter
 specifies the fraction of low-frequency k-space positions to be fully sampled.
 """
-struct VariableDensitySampling{D<:VariableDensityDistribution} <: Subsampling
+struct VariableDensitySampling{D <: VariableDensityDistribution} <: Subsampling
     distribution::D
     acceleration::Float64
     center_fraction::Float64
-    function VariableDensitySampling(distribution::D, acceleration::Real, center_fraction::Real=0.1) where {D<:VariableDensityDistribution}
+    function VariableDensitySampling(distribution::D, acceleration::Real, center_fraction::Real = 0.1) where {D <: VariableDensityDistribution}
         @assert 1 <= acceleration "Acceleration factor must be >= 1"
         @assert 0 <= center_fraction < 1 "Center fraction must be in [0, 1)"
-        new{D}(distribution, acceleration, center_fraction)
+        return new{D}(distribution, acceleration, center_fraction)
     end
 end
 
@@ -77,14 +77,14 @@ specifies the fraction of low-frequency k-space positions to be fully sampled.
 struct PoissonDiskSampling <: Subsampling
     acceleration::Float64
     center_fraction::Float64
-    function PoissonDiskSampling(acceleration::Float64, center_fraction::Float64=0.1)
+    function PoissonDiskSampling(acceleration::Float64, center_fraction::Float64 = 0.1)
         @assert 1 <= acceleration "Acceleration factor must be >= 1"
         @assert 0 <= center_fraction < 1 "Center fraction must be in [0, 1)"
-        new(acceleration, center_fraction)
+        return new(acceleration, center_fraction)
     end
 end
 
-function create_sampling_pattern(subsampling::Subsampling, dims::NTuple{N,Int}; subsample_freq_encoding::Bool=false, number_of_trials::Int=5) where {N}
+function create_sampling_pattern(subsampling::Subsampling, dims::NTuple{N, Int}; subsample_freq_encoding::Bool = false, number_of_trials::Int = 5) where {N}
     @argcheck N == 2 || N == 3 "Only 2D and 3D sampling patterns are supported"
     if subsampling isa PoissonDiskSampling
         @argcheck (N == 2 && subsample_freq_encoding) || (N == 3 && !subsample_freq_encoding) "Only 2D Poisson disk sampling patterns are supported"
@@ -128,7 +128,7 @@ function _create_sampling_pattern(subsampling::Subsampling, dims, center_region)
         W[center_region...] .= 0
         num_samples -= prod(map(length, center_region))
     end
-    for idx in sample(vec(CartesianIndices(dims)), ProbabilityWeights(vec(W)), num_samples; replace=false)
+    for idx in sample(vec(CartesianIndices(dims)), ProbabilityWeights(vec(W)), num_samples; replace = false)
         mask[idx] = true
     end
     return mask
@@ -157,7 +157,7 @@ function _create_sampling_pattern(subsampling::PoissonDiskSampling, dims, center
     return mask
 end
 
-function to_displayable_mask(pattern, dims::NTuple{N,Int}) where {N}
+function to_displayable_mask(pattern, dims::NTuple{N, Int}) where {N}
     if pattern isa Tuple && length(pattern) == 2 && pattern[2] isa AbstractVector{Bool}
         mask = falses(dims)
         mask[:, pattern[2]] .= true
@@ -176,7 +176,7 @@ function construct_weights(subsampling::VariableDensitySampling{GaussianDistribu
     centers = [d / 2 for d in dims]
     W = ones(Float64, dims)
     for I in CartesianIndices(dims)
-        dist2 = sum(((Tuple(I) .- centers) ./ (0.5 .* dims)).^2)
+        dist2 = sum(((Tuple(I) .- centers) ./ (0.5 .* dims)) .^ 2)
         W[I] = exp(-0.5 * dist2 / subsampling.distribution.std^2)
     end
     center_region = get_fully_sampled_region(dims, subsampling.center_fraction)
@@ -192,14 +192,14 @@ function construct_weights(subsampling::VariableDensitySampling{PolynomialDistri
     center_region = get_fully_sampled_region(dims, subsampling.center_fraction)
     if isnothing(center_region)
         for I in CartesianIndices(dims)
-            dist = sqrt(sum(((Tuple(I) .- centers) ./ (0.5 .* dims)).^2))
+            dist = sqrt(sum(((Tuple(I) .- centers) ./ (0.5 .* dims)) .^ 2))
             W[I] = (1 - dist)^subsampling.distribution.p
         end
     else
         center_width = length(center_region[1])
         normalizers = [(d - center_width) for d in dims]
         for I in CartesianIndices(dims)
-            dist = sqrt(sum(((Tuple(I) .- centers) ./ normalizers).^2))
+            dist = sqrt(sum(((Tuple(I) .- centers) ./ normalizers) .^ 2))
             W[I] = (1 - dist)^subsampling.distribution.p
         end
         W[center_region...] .= 1
@@ -211,7 +211,7 @@ function get_fully_sampled_region(dims, center_fraction)
     if center_fraction == 0
         return nothing
     end
-    width = (prod(dims) * center_fraction)^(1/length(dims))
+    width = (prod(dims) * center_fraction)^(1 / length(dims))
     centers = [d / 2 for d in dims]
     starts = [round(Int, s) for s in centers .- width ./ 2]
     ends = [round(Int, e) for e in centers .+ width ./ 2]

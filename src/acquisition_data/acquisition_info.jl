@@ -30,16 +30,16 @@ For non-Cartesian acquisitions, `dcf` may be provided as an optional density
 compensation array and `subsampling` is not allowed.
 """
 function AcquisitionInfo(
-    kspace_data=nothing;
-    trajectory=nothing,
-    is3D::Union{Bool,Nothing}=nothing,
-    sensitivity_maps=nothing,
-    image_size=nothing,
-    subsampling=nothing,
-    dcf=nothing,
-    shifted_kspace_dims::Union{Tuple,Integer,Symbol}=(),
-    shifted_image_dims::Union{Tuple,Integer,Symbol}=(),
-)
+        kspace_data = nothing;
+        trajectory = nothing,
+        is3D::Union{Bool, Nothing} = nothing,
+        sensitivity_maps = nothing,
+        image_size = nothing,
+        subsampling = nothing,
+        dcf = nothing,
+        shifted_kspace_dims::Union{Tuple, Integer, Symbol} = (),
+        shifted_image_dims::Union{Tuple, Integer, Symbol} = (),
+    )
     if isnothing(trajectory)
         @argcheck isnothing(dcf) "dcf can only be used with trajectory-based acquisitions"
         return CartesianAcquisitionInfo(

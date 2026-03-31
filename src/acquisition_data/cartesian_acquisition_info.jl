@@ -11,7 +11,7 @@
 
 Configuration container for Cartesian MRI acquisition and encoding settings.
 """
-struct CartesianAcquisitionInfo{K,I,S,Sub,SD,ID} <: AcquisitionInfo
+struct CartesianAcquisitionInfo{K, I, S, Sub, SD, ID} <: AcquisitionInfo
     kspace_data::K
     is3D::Bool
     image_size::I
@@ -91,7 +91,7 @@ struct CartesianAcquisitionInfo{K,I,S,Sub,SD,ID} <: AcquisitionInfo
             end
         end
 
-        return new{typeof(ksp),typeof(img_size),typeof(smaps),typeof(subs),typeof(sK),typeof(sI)}(
+        return new{typeof(ksp), typeof(img_size), typeof(smaps), typeof(subs), typeof(sK), typeof(sI)}(
             ksp, is3D, img_size, smaps, subs, sK, sI
         )
     end
@@ -106,17 +106,17 @@ _normalize_subsampling(subs::AbstractVector{<:CartesianIndex}) = (subs,)
 _normalize_subsampling(subs) = subs
 
 CartesianAcquisitionInfo(
-    kspace_data=nothing;
-    is3D::Union{Bool,Nothing}=nothing,
-    image_size=nothing,
-    sensitivity_maps=nothing,
-    subsampling=nothing,
-    shifted_kspace_dims::Union{Tuple,Integer,Symbol}=(),
-    shifted_image_dims::Union{Tuple,Integer,Symbol}=(),
+    kspace_data = nothing;
+    is3D::Union{Bool, Nothing} = nothing,
+    image_size = nothing,
+    sensitivity_maps = nothing,
+    subsampling = nothing,
+    shifted_kspace_dims::Union{Tuple, Integer, Symbol} = (),
+    shifted_image_dims::Union{Tuple, Integer, Symbol} = (),
 ) = CartesianAcquisitionInfo(kspace_data, is3D, image_size, sensitivity_maps, subsampling, shifted_kspace_dims, shifted_image_dims)
 
 function CartesianAcquisitionInfo(config::CartesianAcquisitionInfo; kwargs...)
-    new_kwargs = Dict{Symbol,Any}()
+    new_kwargs = Dict{Symbol, Any}()
     for fn in fieldnames(CartesianAcquisitionInfo)
         if haskey(kwargs, fn)
             new_kwargs[fn] = kwargs[fn]
@@ -151,7 +151,7 @@ function _check_smaps(smaps, ksp, subs, is3D, img_size)
             @argcheck :kz ∉ dimnames(ksp) "2D k-space must not have :kz dimension"
         end
     end
-    if !isnothing(ksp)
+    return if !isnothing(ksp)
         @argcheck eltype(ksp) == eltype(smaps) "k-space and sensitivity maps eltype mismatch"
         if is3D
             @argcheck ndims(smaps) == 4 "sensitivity maps must be 4D for 3D acquisition"
@@ -230,7 +230,7 @@ end
 
 function Base.show(io::IO, info::CartesianAcquisitionInfo)
     meta = _get_acq_info_meta(info)
-    print(io, "CartesianAcquisitionInfo(", join(meta, ", "), ")")
+    return print(io, "CartesianAcquisitionInfo(", join(meta, ", "), ")")
 end
 
 function Base.show(io::IO, ::MIME"text/plain", info::CartesianAcquisitionInfo)

@@ -10,19 +10,19 @@ is not provided, it will be inferred as the dimension named `:time` if `x` is a 
 - `time_dim`: (optional) Dimension along which to apply the Fourier transform. Can be an `Integer` (1-based index)
 or a `Symbol` (dimension name). If not provided, it will be inferred as the dimension named `:time` if `x` is a `NamedDimsArray`.
 """
-struct TemporalFourier{T,D} <: Regularization
+struct TemporalFourier{T, D} <: Regularization
     λ::T
     time_dim::D
-    function TemporalFourier(λ::T; time_dim::D=nothing) where {T,D}
+    function TemporalFourier(λ::T; time_dim::D = nothing) where {T, D}
         @argcheck isnothing(time_dim) || time_dim isa Integer || time_dim isa Symbol "time_dim must be an Integer or Symbol"
         if time_dim isa Integer
             @argcheck time_dim > 0 "time_dim must be positive"
         end
-        return new{T,D}(λ, time_dim)
+        return new{T, D}(λ, time_dim)
     end
 end
 
-function get_operator(reg::TemporalFourier, x::AbstractArray; threaded::Bool=true)
+function get_operator(reg::TemporalFourier, x::AbstractArray; threaded::Bool = true)
     time_dim = get_time_dim(reg.time_dim, x)
     num_threads = threaded ? Threads.nthreads() : 1
     F = DFT(unname(x), time_dim; num_threads)

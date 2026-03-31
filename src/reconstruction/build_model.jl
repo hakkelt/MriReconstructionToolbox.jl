@@ -24,11 +24,11 @@ julia> reg = L1Image(0.2)
 julia> terms = build_model(𝒜, y, reg; threaded=false)
 ```
 """
-function build_model(𝒜::AbstractOperator, y::AbstractArray, reg::Regularization; threaded::Bool=true, x₀::Union{Nothing,AbstractArray}=nothing, disable_normalop_optimization::Bool=false)
+function build_model(𝒜::AbstractOperator, y::AbstractArray, reg::Regularization; threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing, disable_normalop_optimization::Bool = false)
     return build_model(𝒜, y, (reg,); threaded, x₀, disable_normalop_optimization)
 end
 
-function build_model(𝒜::AbstractOperator, y::AbstractArray, regs::Tuple; threaded::Bool=true, x₀::Union{Nothing,AbstractArray}=nothing, disable_normalop_optimization::Bool=false)
+function build_model(𝒜::AbstractOperator, y::AbstractArray, regs::Tuple; threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing, disable_normalop_optimization::Bool = false)
     x₀ = isnothing(x₀) ? 𝒜' * y : copy(x₀)
     x = Variable(unname(x₀))
     𝒜 = unname(𝒜)

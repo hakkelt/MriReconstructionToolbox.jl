@@ -48,74 +48,74 @@ The operator is constructed as:
 3. `BatchOp(...)`: If batch dimensions are present, wrap in batch operator
 """
 function get_sensitivity_map_operator(
-	sensitivity_maps::NamedDimsArray;
-	batch_dims::Union{NamedTuple,Nothing}=nothing,
-	threaded::Bool=true,
-)
-	dn = dimnames(sensitivity_maps)
-	@argcheck :x ∈ dn "sensitivity maps array must have a dimension named :x for Cartesian data"
-	@argcheck dn[1] == :x "sensitivity maps array must have the first dimension named :x"
-	@argcheck :y ∈ dn "sensitivity maps array must have a dimension named :ky for Cartesian data"
-	@argcheck dn[2] == :y "sensitivity maps array must have the second dimension named :y"
-	@argcheck :coil ∈ dn "sensitivity maps array must have a dimension named :coil for sensitivity maps array"
-	@argcheck dn[end] == :coil "sensitivity maps array must have the last dimension named :coil"
-	is3D = :z ∈ dn
-	if is3D
-		@argcheck dn[3] == :z "sensitivity maps array must have the third dimension named :z for 3D data"
-	end
-	tuple_batch_dims = isnothing(batch_dims) ? nothing : Tuple(batch_dims)
-	𝒮 = get_sensitivity_map_operator(
-		parent(sensitivity_maps), is3D; batch_dims=tuple_batch_dims, threaded
-	)
-	if isnothing(batch_dims) || isempty(batch_dims)
-		return NamedDimsOp{dn[1:(end - 1)],dn}(𝒮)
-	else
-		codomain_dims = (dn..., keys(batch_dims)...)
-		domain_dims = filter(dn -> dn != :coil, codomain_dims)
-		return NamedDimsOp{domain_dims,codomain_dims}(𝒮)
-	end
+        sensitivity_maps::NamedDimsArray;
+        batch_dims::Union{NamedTuple, Nothing} = nothing,
+        threaded::Bool = true,
+    )
+    dn = dimnames(sensitivity_maps)
+    @argcheck :x ∈ dn "sensitivity maps array must have a dimension named :x for Cartesian data"
+    @argcheck dn[1] == :x "sensitivity maps array must have the first dimension named :x"
+    @argcheck :y ∈ dn "sensitivity maps array must have a dimension named :ky for Cartesian data"
+    @argcheck dn[2] == :y "sensitivity maps array must have the second dimension named :y"
+    @argcheck :coil ∈ dn "sensitivity maps array must have a dimension named :coil for sensitivity maps array"
+    @argcheck dn[end] == :coil "sensitivity maps array must have the last dimension named :coil"
+    is3D = :z ∈ dn
+    if is3D
+        @argcheck dn[3] == :z "sensitivity maps array must have the third dimension named :z for 3D data"
+    end
+    tuple_batch_dims = isnothing(batch_dims) ? nothing : Tuple(batch_dims)
+    𝒮 = get_sensitivity_map_operator(
+        parent(sensitivity_maps), is3D; batch_dims = tuple_batch_dims, threaded
+    )
+    if isnothing(batch_dims) || isempty(batch_dims)
+        return NamedDimsOp{dn[1:(end - 1)], dn}(𝒮)
+    else
+        codomain_dims = (dn..., keys(batch_dims)...)
+        domain_dims = filter(dn -> dn != :coil, codomain_dims)
+        return NamedDimsOp{domain_dims, codomain_dims}(𝒮)
+    end
 end
 
-function get_sensitivity_map_operator(info::CartesianAcquisitionInfo; threaded::Bool=true)
-	smaps = info.sensitivity_maps
-	@argcheck !isnothing(smaps) "sensitivity_maps must be provided in AcquisitionInfo"
-	if smaps isa NamedDimsArray
-		# Derive batch dims from k-space/fourier layout if possible
-		return get_sensitivity_map_operator(smaps; threaded)
-	else
-		return get_sensitivity_map_operator(smaps, info.is3D; threaded)
-	end
+function get_sensitivity_map_operator(info::CartesianAcquisitionInfo; threaded::Bool = true)
+    smaps = info.sensitivity_maps
+    @argcheck !isnothing(smaps) "sensitivity_maps must be provided in AcquisitionInfo"
+    if smaps isa NamedDimsArray
+        # Derive batch dims from k-space/fourier layout if possible
+        return get_sensitivity_map_operator(smaps; threaded)
+    else
+        return get_sensitivity_map_operator(smaps, info.is3D; threaded)
+    end
 end
 
 function get_sensitivity_map_operator(
-	sensitivity_maps::AbstractArray,
-	is3D::Bool;
-	batch_dims::Union{Tuple,Nothing}=nothing,
-	threaded::Bool=true,
-)
-	if is3D
-		@argcheck ndims(sensitivity_maps) == 4 "sensitivity maps array must be a 4D array for 3D data"
-		I = Eye(@view(sensitivity_maps[:, :, :, 1]))
-	elseif ndims(sensitivity_maps) == 4 # 2D multislice
-		dummy_img = @view sensitivity_maps[:, :, 1, :]
-		nx = size(sensitivity_maps, 1)
-		ny = size(sensitivity_maps, 2)
-		nz = size(sensitivity_maps, 4)
-		I = reshape(Eye(dummy_img), nx, ny, 1, nz)
-	else
-		@argcheck ndims(sensitivity_maps) == 3 "sensitivity maps array must be a 3D array for 2D data"
-		I = Eye(@view(sensitivity_maps[:, :, 1]))
-	end
-	if isnothing(batch_dims) || isempty(batch_dims)
-		D = DiagOp(sensitivity_maps; threaded)
-		B = BroadCast(I, size(sensitivity_maps); threaded)
-		return D * B
-	else
-		inner_threaded = threaded && prod(batch_dims) < nthreads() ÷ 2
-		D = DiagOp(sensitivity_maps; threaded=inner_threaded)
-		B = BroadCast(I, size(sensitivity_maps); threaded=inner_threaded)
-		return BatchOp(D * B, batch_dims; threaded)
-	end
+        sensitivity_maps::AbstractArray,
+        is3D::Bool;
+        batch_dims::Union{Tuple, Nothing} = nothing,
+        threaded::Bool = true,
+    )
+    if is3D
+        @argcheck ndims(sensitivity_maps) == 4 "sensitivity maps array must be a 4D array for 3D data"
+        I = Eye(@view(sensitivity_maps[:, :, :, 1]))
+    elseif ndims(sensitivity_maps) == 4 # 2D multislice
+        dummy_img = @view sensitivity_maps[:, :, 1, :]
+        nx = size(sensitivity_maps, 1)
+        ny = size(sensitivity_maps, 2)
+        nz = size(sensitivity_maps, 4)
+        I = reshape(Eye(dummy_img), nx, ny, 1, nz)
+    else
+        @argcheck ndims(sensitivity_maps) == 3 "sensitivity maps array must be a 3D array for 2D data"
+        I = Eye(@view(sensitivity_maps[:, :, 1]))
+    end
+    if isnothing(batch_dims) || isempty(batch_dims)
+        D = DiagOp(sensitivity_maps; threaded)
+        B = BroadCast(I, size(sensitivity_maps); threaded)
+        return D * B
+    else
+        inner_threaded = threaded && prod(batch_dims) < nthreads() ÷ 2
+        D = DiagOp(sensitivity_maps; threaded = inner_threaded)
+        B = BroadCast(I, size(sensitivity_maps); threaded = inner_threaded)
+        return BatchOp(D * B, batch_dims; threaded)
+    end
 end
 
 """
@@ -136,9 +136,9 @@ Internal function to validate compatibility between k-space data and sensitivity
 - `ArgumentError`: If any validation check fails
 """
 function _check_smaps(ksp, smaps)
-	@argcheck eltype(ksp) == eltype(smaps) "k-space array and sensitivity maps array must have the same element type"
-	@argcheck 3 ≤ ndims(smaps) ≤ 4 "sensitivity maps array must be a 3D or 4D array"
-	if ksp isa NamedDimsArray && :coil ∉ dimnames(ksp)
-		@argcheck false "k-space array must have a dimension named :coil when sensitivity maps are provided"
-	end
+    @argcheck eltype(ksp) == eltype(smaps) "k-space array and sensitivity maps array must have the same element type"
+    @argcheck 3 ≤ ndims(smaps) ≤ 4 "sensitivity maps array must be a 3D or 4D array"
+    return if ksp isa NamedDimsArray && :coil ∉ dimnames(ksp)
+        @argcheck false "k-space array must have a dimension named :coil when sensitivity maps are provided"
+    end
 end

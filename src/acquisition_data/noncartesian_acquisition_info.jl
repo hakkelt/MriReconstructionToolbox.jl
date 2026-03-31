@@ -14,7 +14,7 @@ Container for non-Cartesian MRI acquisition settings.
 The trajectory stores coordinate axes in its first dimension. Its remaining
 dimensions must match the non-coil k-space sample layout.
 """
-struct NonCartesianAcquisitionInfo{K,T,D,S,I,SD,ID} <: AcquisitionInfo
+struct NonCartesianAcquisitionInfo{K, T, D, S, I, SD, ID} <: AcquisitionInfo
     kspace_data::K
     trajectory::T
     dcf::D
@@ -78,7 +78,7 @@ struct NonCartesianAcquisitionInfo{K,T,D,S,I,SD,ID} <: AcquisitionInfo
             end
         end
 
-        return new{typeof(ksp),typeof(traj),typeof(dcf),typeof(smaps),typeof(img_size),typeof(sK),typeof(sI)}(
+        return new{typeof(ksp), typeof(traj), typeof(dcf), typeof(smaps), typeof(img_size), typeof(sK), typeof(sI)}(
             ksp, traj, dcf, smaps, img_size, sK, sI, is3D
         )
     end
@@ -87,15 +87,15 @@ end
 NonCartesianAcquisitionInfo(
     kspace_data;
     trajectory,
-    dcf=nothing,
-    sensitivity_maps=nothing,
+    dcf = nothing,
+    sensitivity_maps = nothing,
     image_size,
-    shifted_kspace_dims::Union{Tuple,Integer,Symbol}=(),
-    shifted_image_dims::Union{Tuple,Integer,Symbol}=(),
+    shifted_kspace_dims::Union{Tuple, Integer, Symbol} = (),
+    shifted_image_dims::Union{Tuple, Integer, Symbol} = (),
 ) = NonCartesianAcquisitionInfo(kspace_data, trajectory, dcf, sensitivity_maps, image_size, shifted_kspace_dims, shifted_image_dims)
 
 function NonCartesianAcquisitionInfo(config::NonCartesianAcquisitionInfo; kwargs...)
-    new_kwargs = Dict{Symbol,Any}()
+    new_kwargs = Dict{Symbol, Any}()
     for fn in fieldnames(NonCartesianAcquisitionInfo)
         if fn == :is3D
             continue
@@ -133,7 +133,7 @@ function Base.show(io::IO, info::NonCartesianAcquisitionInfo)
     if !isnothing(info.sensitivity_maps)
         push!(meta, "sensitivity_maps=$(eltype(info.sensitivity_maps))<$(join(size(info.sensitivity_maps), "×"))>")
     end
-    print(io, "NonCartesianAcquisitionInfo(", join(meta, ", "), ")")
+    return print(io, "NonCartesianAcquisitionInfo(", join(meta, ", "), ")")
 end
 
 function Base.show(io::IO, ::MIME"text/plain", info::NonCartesianAcquisitionInfo)
@@ -163,4 +163,4 @@ end
 
 function get_subsampling_operator(::NonCartesianAcquisitionInfo)
     error("Subsampling operator is not applicable to non-Cartesian trajectories")
-endend
+end

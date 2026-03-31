@@ -32,14 +32,14 @@ function simulate_acquisition(image, acq_info::CartesianAcquisitionInfo)
         else
             if ndims(acq_info.sensitivity_maps) == 4
                 @argcheck ndims(image) >= 3 "image must have at least 3 dimensions for 2D multislice acquisition"
-                @argcheck size(image)[1:3] == size(acq_info.sensitivity_maps)[[1,2,4]] "image spatial dimensions must match sensitivity maps spatial dimensions for 2D acquisition"
+                @argcheck size(image)[1:3] == size(acq_info.sensitivity_maps)[[1, 2, 4]] "image spatial dimensions must match sensitivity maps spatial dimensions for 2D acquisition"
             else
                 @argcheck ndims(image) >= 2 "image must have at least 2 dimensions for 2D acquisition"
                 @argcheck size(image)[1:2] == size(acq_info.sensitivity_maps)[1:2] "image spatial dimensions must match sensitivity maps spatial dimensions for 2D acquisition"
             end
         end
     end
-    acq_info = CartesianAcquisitionInfo(acq_info; kspace_data=ksp)
+    acq_info = CartesianAcquisitionInfo(acq_info; kspace_data = ksp)
     E = get_encoding_operator(acq_info)
     if eltype(image) <: Real
         image = complex.(image)
@@ -83,9 +83,9 @@ function get_transformed_size(image, acq_info::CartesianAcquisitionInfo)
         return acq_info.image_size
     else
         if acq_info.is3D
-            single_img = @view image[:,:,:,ones(Int,ndims(image)-3)...]
+            single_img = @view image[:, :, :, ones(Int, ndims(image) - 3)...]
         else
-            single_img = @view image[:,:,ones(Int,ndims(image)-2)...]
+            single_img = @view image[:, :, ones(Int, ndims(image) - 2)...]
         end
         Base.checkbounds(single_img, acq_info.subsampling...)
         return size(@view(single_img[acq_info.subsampling...]))
