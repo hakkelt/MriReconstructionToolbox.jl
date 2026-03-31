@@ -7,7 +7,7 @@ between image space and k-space (frequency domain) representations in MRI data.
 
 """
 	get_fourier_operator(ksp, [is3D], [shifted_kspace_dims], [shifted_image_dims]; threaded=true, fast_planning=false)
-	get_fourier_operator(info::AcquisitionInfo; threaded=true, fast_planning=false)
+	get_fourier_operator(info::CartesianAcquisitionInfo; threaded=true, fast_planning=false)
 
 Create a Fourier transform operator for MRI data.
 
@@ -29,10 +29,10 @@ For regular arrays, specify `is3D` explicitly.
 # Method Variants
 - **NamedDimsArray**: Automatically determines 2D vs 3D from the presence of `:kz` dimension
 - **AbstractArray**: Requires explicit `is3D` parameter to determine dimensionality
-- **AcquisitionInfo**: Extracts `ksp`, `is3D`, `shifted_kspace_dims`, and `shifted_image_dims` from the `AcquisitionInfo` struct
+- **CartesianAcquisitionInfo**: Extracts `ksp`, `is3D`, `shifted_kspace_dims`, and `shifted_image_dims` from the acquisition struct
 """
-function get_fourier_operator(info::AcquisitionInfo; threaded::Bool=true, fast_planning::Bool=false)
-	@argcheck !isnothing(info.kspace_data) "The provided AcquisitionInfo does not contain k-space data, which is required to build the Fourier operator."
+function get_fourier_operator(info::CartesianAcquisitionInfo; threaded::Bool=true, fast_planning::Bool=false)
+	@argcheck !isnothing(info.kspace_data) "The provided CartesianAcquisitionInfo does not contain k-space data, which is required to build the Fourier operator."
 	if isnothing(info.subsampling)
 		ksp = info.kspace_data
 	else

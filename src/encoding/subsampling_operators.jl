@@ -7,7 +7,7 @@ according to various sampling strategies used in compressed sensing MRI.
 """
 
 """
-	get_subsampled_fourier_operator(info::AcquisitionInfo)
+	get_subsampled_fourier_operator(info::CartesianAcquisitionInfo)
     get_subsampled_fourier_operator(subsampled_ksp, img_size, subsampling; shifted_kspace_dims=(), shifted_image_dims=(), threaded=true, fast_planning=false)
 
 Create a combined Fourier transform and subsampling operator.
@@ -26,7 +26,7 @@ Create a combined Fourier transform and subsampling operator.
 
 # Method Variants
 - **Explicit parameters**: Requires `subsampled_ksp`, `img_size`, and `subsampling`
-- **AcquisitionInfo**: Extracts necessary parameters from the `AcquisitionInfo` struct
+- **CartesianAcquisitionInfo**: Extracts necessary parameters from the acquisition struct
 
 # Details
 This function creates an operator that:
@@ -51,16 +51,16 @@ function get_subsampled_fourier_operator(
 	return Γ * ℱ
 end
 
-function get_subsampled_fourier_operator(info::AcquisitionInfo; threaded::Bool=true, fast_planning::Bool=false)
-	@argcheck !isnothing(info.kspace_data) "The provided AcquisitionInfo does not contain k-space data, which is required to build the subsampled Fourier operator."
-	@argcheck !isnothing(info.subsampling) "AcquisitionInfo must include a subsampling pattern to build a subsampled Fourier operator."
+function get_subsampled_fourier_operator(info::CartesianAcquisitionInfo; threaded::Bool=true, fast_planning::Bool=false)
+	@argcheck !isnothing(info.kspace_data) "The provided CartesianAcquisitionInfo does not contain k-space data, which is required to build the subsampled Fourier operator."
+	@argcheck !isnothing(info.subsampling) "CartesianAcquisitionInfo must include a subsampling pattern to build a subsampled Fourier operator."
 	return get_subsampled_fourier_operator(info.kspace_data, info.image_size, info.subsampling; shifted_kspace_dims=info.shifted_kspace_dims, shifted_image_dims=info.shifted_image_dims, threaded, fast_planning)
 end
 
 
 """
 	get_subsampling_operator(subsampled_ksp, img_size, subsampling)
-	get_subsampling_operator(info::AcquisitionInfo)
+	get_subsampling_operator(info::CartesianAcquisitionInfo)
 
 Create the subsampling operator Γ that maps full k-space to a given
 subsampled layout. This is useful when you need Γ separately or want to
@@ -74,8 +74,8 @@ use `get_subsampled_fourier_operator`.
 - `img_size`: Full image size as `(nx, ny)` or `(nx, ny, nz)`.
 - `subsampling`: Subsampling pattern that produced `subsampled_ksp`.
   Supports boolean masks and tuples mixing `Colon`, boolean masks, and ranges.
-- `info::AcquisitionInfo`: Alternative API that takes configuration from a
-  validated `AcquisitionInfo` (must contain `image_size` and `subsampling`).
+- `info::CartesianAcquisitionInfo`: Alternative API that takes configuration from a
+	validated acquisition struct (must contain `image_size` and `subsampling`).
 
 # Returns
 - `Γ`: A `GetIndex` or `BatchOp{GetIndex}`. For NamedDims inputs, a
@@ -103,8 +103,8 @@ using NamedDims
 ksp_nd = NamedDimsArray{(:kxy, :coil)}(ksp_sub)
 Γ_nd = get_subsampling_operator(ksp_nd, (64, 64), mask)
 
-# Via AcquisitionInfo
-info = AcquisitionInfo(ksp_sub; is3D=false, image_size=(64, 64), subsampling=mask)
+# Via CartesianAcquisitionInfo
+info = CartesianAcquisitionInfo(ksp_sub; is3D=false, image_size=(64, 64), subsampling=mask)
 Γ_info = get_subsampling_operator(info)
 ```
 """
@@ -113,8 +113,8 @@ function get_subsampling_operator(subsampled_ksp, img_size, subsampling)
 	return Γ
 end
 
-function get_subsampling_operator(acq_info::AcquisitionInfo)
-	@argcheck !isnothing(acq_info.subsampling) "AcquisitionInfo must include a subsampling pattern"
+function get_subsampling_operator(acq_info::CartesianAcquisitionInfo)
+	@argcheck !isnothing(acq_info.subsampling) "CartesianAcquisitionInfo must include a subsampling pattern"
 	return get_subsampling_operator(acq_info.kspace_data, acq_info.image_size, acq_info.subsampling)
 end
 

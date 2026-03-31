@@ -1,7 +1,12 @@
+_get_sample_dims_count(acq_info::CartesianAcquisitionInfo) =
+    isnothing(acq_info.subsampling) ? (acq_info.is3D ? 3 : 2) :
+    _get_subsampled_dims_count(acq_info.subsampling)
+_get_sample_dims_count(acq_info::NonCartesianAcquisitionInfo) = ndims(acq_info.trajectory) - 1
+
 function get_image_size(info::AcquisitionInfo)
     @argcheck !isnothing(info.kspace_data) "kspace_data must be provided to infer output dimensions"
-    transform_dims_count = isnothing(info.subsampling) ? (info.is3D ? 3 : 2) : length(info.subsampling)
-	batch_dims_start = isnothing(info.sensitivity_maps) ? transform_dims_count + 1 : transform_dims_count + 2
+    transform_dims_count = _get_sample_dims_count(info)
+    batch_dims_start = isnothing(info.sensitivity_maps) ? transform_dims_count + 1 : transform_dims_count + 2
     batch_dims = size(info.kspace_data)[batch_dims_start:end]
     return (info.image_size..., batch_dims...)
 end

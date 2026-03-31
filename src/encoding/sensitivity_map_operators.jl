@@ -76,7 +76,7 @@ function get_sensitivity_map_operator(
 	end
 end
 
-function get_sensitivity_map_operator(info::AcquisitionInfo; threaded::Bool=true)
+function get_sensitivity_map_operator(info::CartesianAcquisitionInfo; threaded::Bool=true)
 	smaps = info.sensitivity_maps
 	@argcheck !isnothing(smaps) "sensitivity_maps must be provided in AcquisitionInfo"
 	if smaps isa NamedDimsArray

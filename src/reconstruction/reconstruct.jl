@@ -138,7 +138,7 @@ end
 function _iterative_reconstruct(𝒜, acq_data, x₀, scale, regularization, algorithm, config)
 	if scale != 1
 		@step "Scaling k-space data" config begin
-			acq_data = AcquisitionInfo(acq_data, kspace_data=acq_data.kspace_data ./ scale)
+			acq_data = AcquisitionInfo(acq_data; kspace_data=acq_data.kspace_data ./ scale)
 		end
 	end
 	if !config.disable_operator_normalization

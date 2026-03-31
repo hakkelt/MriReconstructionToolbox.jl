@@ -32,12 +32,14 @@ export Tikhonov, L1Image, L1Wavelet2D, L1Wavelet3D, TotalVariation2D, TotalVaria
 export calculate, build_model, reconstruct, Config, SequentialExecutor, MultiThreadingExecutor
 export BartScaling, MeasurementBasedScaling, NoScaling
 export ISTA, FISTA, ADMM, CG, CGNR
-export AcquisitionInfo
+export AcquisitionInfo, CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
 export simulate_acquisition, shepp_logan, coil_sensitivities
 export UniformRandomSampling, VariableDensitySampling, PoissonDiskSampling, GaussianDistribution, PolynomialDistribution
 export create_sampling_pattern, to_displayable_mask
 
 include("acquisition_data/acquisition_info.jl")
+include("acquisition_data/cartesian_acquisition_info.jl")
+include("acquisition_data/noncartesian_acquisition_info.jl")
 include("acquisition_data/dimension_utils.jl")
 
 include("scaling.jl")

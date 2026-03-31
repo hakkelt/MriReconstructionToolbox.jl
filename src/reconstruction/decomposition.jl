@@ -155,12 +155,12 @@ function get_slices(plan, acq_data)
 	return zip(indices, slice_ids, local_acq)
 end
 
-function get_acquisition_info_slice(acq_info, idx, kspace_data, slice_sensitivity_maps)
+function get_acquisition_info_slice(acq_info::CartesianAcquisitionInfo, idx, kspace_data, slice_sensitivity_maps)
 	if slice_sensitivity_maps
 		sensitivity_maps = @view acq_info.sensitivity_maps[:,:,:,idx[1]]
-		return AcquisitionInfo(acq_info; kspace_data, sensitivity_maps)
+		return CartesianAcquisitionInfo(acq_info; kspace_data, sensitivity_maps)
 	else
-		return AcquisitionInfo(acq_info; kspace_data)
+		return CartesianAcquisitionInfo(acq_info; kspace_data)
 	end
 end
 

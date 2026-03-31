@@ -7,7 +7,7 @@ sensitivity map encoding, and subsampling patterns.
 """
 
 """
-    get_encoding_operator(info::AcquisitionInfo; threaded::Bool=true, fast_planning::Bool=false)
+	get_encoding_operator(info::AcquisitionInfo; threaded::Bool=true, fast_planning::Bool=false)
     get_encoding_operator(ksp, is3D::Bool; sensitivity_maps=nothing, image_size=nothing, subsampling=nothing, threaded=true, fast_planning=false)
     get_encoding_operator(ksp::NamedDimsArray; sensitivity_maps=nothing, image_size=nothing, subsampling=nothing, threaded=true, fast_planning=false)
 
@@ -44,8 +44,8 @@ This function constructs the composite encoding operator E that models the MRI d
 
 If no sensitivity maps are provided, only the Fourier/subsampled Fourier operator is returned.
 """
-function get_encoding_operator(info::AcquisitionInfo; threaded::Bool=true, fast_planning::Bool=false)
-	@argcheck !isnothing(info.kspace_data) "The provided AcquisitionInfo does not contain k-space data, which is required to build the encoding operator."
+function get_encoding_operator(info::CartesianAcquisitionInfo; threaded::Bool=true, fast_planning::Bool=false)
+	@argcheck !isnothing(info.kspace_data) "The provided CartesianAcquisitionInfo does not contain k-space data, which is required to build the encoding operator."
 	has_subs = !isnothing(info.subsampling)
 	ℱ = has_subs ? get_subsampled_fourier_operator(info; threaded, fast_planning) : get_fourier_operator(info; threaded, fast_planning)
 	smaps = info.sensitivity_maps
@@ -75,7 +75,7 @@ function get_encoding_operator(
 	threaded::Bool=true,
 	fast_planning::Bool=false,
 )
-	info = AcquisitionInfo(ksp; is3D, sensitivity_maps, image_size, subsampling)
+	info = CartesianAcquisitionInfo(ksp; is3D, sensitivity_maps, image_size, subsampling)
 	return get_encoding_operator(info; threaded, fast_planning)
 end
 
@@ -90,6 +90,6 @@ function get_encoding_operator(
 	if !isnothing(subsampling) && !(subsampling isa Tuple)
 		subsampling = (subsampling,)
 	end
-	info = AcquisitionInfo(ksp; sensitivity_maps, image_size, subsampling)
+	info = CartesianAcquisitionInfo(ksp; sensitivity_maps, image_size, subsampling)
 	return get_encoding_operator(info; threaded, fast_planning)
 end

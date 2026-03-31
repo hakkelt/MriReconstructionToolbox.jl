@@ -1,16 +1,16 @@
 """
-    simulate_acquisition(image, acq_info::AcquisitionInfo)
+    simulate_acquisition(image, acq_info::CartesianAcquisitionInfo)
 
 Simulate MRI k-space acquisition from a given image using the specified acquisition parameters.
 
 # Arguments
 - `image`: The input image to be transformed into k-space data. Can be a standard array or a `NamedDimsArray`.
-- `acq_info::AcquisitionInfo`: An `AcquisitionInfo` object containing acquisition parameters such as sensitivity maps, subsampling pattern, and whether the acquisition is 3D.
+- `acq_info::CartesianAcquisitionInfo`: Acquisition settings for Cartesian encoding.
 
 # Returns
-- An updated `AcquisitionInfo` object with the simulated k-space data stored in the `kspace_data` field.
+- An updated acquisition object with the simulated k-space data stored in `kspace_data`.
 """
-function simulate_acquisition(image, acq_info)
+function simulate_acquisition(image, acq_info::CartesianAcquisitionInfo)
     ksp_size = get_kspace_size(image, acq_info)
     ksp = similar(image, ksp_size)
     if image isa NamedDimsArray
@@ -39,7 +39,7 @@ function simulate_acquisition(image, acq_info)
             end
         end
     end
-    acq_info = AcquisitionInfo(acq_info, kspace_data=ksp)
+    acq_info = CartesianAcquisitionInfo(acq_info; kspace_data=ksp)
     E = get_encoding_operator(acq_info)
     if eltype(image) <: Real
         image = complex.(image)
@@ -48,7 +48,11 @@ function simulate_acquisition(image, acq_info)
     return acq_info
 end
 
-function get_kspace_size(image, acq_info)
+function simulate_acquisition(image, acq_info::NonCartesianAcquisitionInfo)
+    error("Non-Cartesian acquisition simulation is not implemented yet")
+end
+
+function get_kspace_size(image, acq_info::CartesianAcquisitionInfo)
     if isnothing(acq_info.subsampling) && isnothing(acq_info.sensitivity_maps)
         return size(image)
     elseif acq_info.is3D
@@ -74,7 +78,7 @@ function get_kspace_size(image, acq_info)
     end
 end
 
-function get_transformed_size(image, acq_info)
+function get_transformed_size(image, acq_info::CartesianAcquisitionInfo)
     if isnothing(acq_info.subsampling)
         return acq_info.image_size
     else
