@@ -8,6 +8,7 @@ using ProximalAlgorithms
 @reexport using AbstractOperators
 @reexport using NamedDims
 @reexport using StructuredOptimization
+using NFFTOperators: NFFTOp
 
 using AbstractOperators: @enable_full_threading, @restrict_threading
 @reexport using WaveletOperators: WaveletOp, WT, wavelet
@@ -47,6 +48,7 @@ include("utils.jl")
 
 include("encoding/named_dims_op.jl")
 include("encoding/fourier_operators.jl")
+include("encoding/nfft_operators.jl")
 include("encoding/sensitivity_map_operators.jl")
 include("encoding/subsampling_operators.jl")
 include("encoding/encoding_operators.jl")

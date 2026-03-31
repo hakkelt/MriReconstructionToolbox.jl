@@ -1,4 +1,4 @@
-function get_full_kspace(acq_info::AcquisitionInfo)
+function get_full_kspace(acq_info::CartesianAcquisitionInfo)
     @argcheck !isnothing(acq_info.kspace_data) "AcquisitionInfo must include k-space data"
     Γ = get_subsampling_operator(acq_info)
     return Γ' * acq_info.kspace_data

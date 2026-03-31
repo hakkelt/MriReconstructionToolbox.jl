@@ -30,18 +30,11 @@ end
 
 function get_fourier_kspace_dims(acq_info::AcquisitionInfo)
     @argcheck !isnothing(acq_info.kspace_data) "kspace_data must be provided in AcquisitionInfo to determine Fourier transformed dimensions"
+	transform_dims_count = _get_sample_dims_count(acq_info)
     if acq_info.kspace_data isa NamedDimsArray
-        if isnothing(acq_info.subsampling)
-            return dimnames(acq_info.kspace_data)[1:(acq_info.is3D ? 3 : 2)]
-        else
-            return dimnames(acq_info.kspace_data)[1:length(acq_info.subsampling)]
-        end
+		return dimnames(acq_info.kspace_data)[1:transform_dims_count]
     else
-        if isnothing(acq_info.subsampling)
-            return 1:(acq_info.is3D ? 3 : 2)
-        else
-            return 1:length(acq_info.subsampling)
-        end
+		return 1:transform_dims_count
     end
 end
 
@@ -65,11 +58,7 @@ end
 function get_nonfourier_kspace_dims(acq_info::AcquisitionInfo)
 	@argcheck !isnothing(acq_info.kspace_data) "kspace_data must be provided in AcquisitionInfo to determine non Fourier transformed dimensions"
 	ksp = acq_info.kspace_data
-	if isnothing(acq_info.subsampling)
-		skipped_dims_count = acq_info.is3D ? 3 : 2
-	else
-		skipped_dims_count = length(acq_info.subsampling)
-	end
+	skipped_dims_count = _get_sample_dims_count(acq_info)
 	if !isnothing(acq_info.sensitivity_maps)
 		skipped_dims_count += 1
 	end

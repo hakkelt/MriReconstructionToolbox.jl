@@ -55,6 +55,14 @@ struct NonCartesianAcquisitionInfo{K,T,D,S,I,SD,ID} <: AcquisitionInfo
         if !isnothing(dcf)
             @argcheck size(dcf) == size(traj)[2:end] "dcf shape must match trajectory sample dimensions"
             @argcheck eltype(dcf) <: Real "dcf must be real-valued"
+            @argcheck eltype(dcf) == eltype(traj) "dcf element type must match trajectory element type"
+            if traj isa NamedDimsArray && dcf isa NamedDimsArray
+                @argcheck dimnames(dcf) == dimnames(traj)[2:end] "dcf dimension names must match trajectory sample dimension names"
+            end
+        end
+
+        if !isnothing(ksp)
+            @argcheck eltype(ksp) == Complex{eltype(traj)} "k-space element type must match complex(eltype(trajectory))"
         end
 
         if !isnothing(smaps) && !isnothing(ksp)
@@ -153,9 +161,6 @@ function Base.show(io::IO, ::MIME"text/plain", info::NonCartesianAcquisitionInfo
     return nothing
 end
 
-function get_encoding_operator(info::NonCartesianAcquisitionInfo; threaded::Bool=true, fast_planning::Bool=false)
-    error("Non-Cartesian encoding operator not implemented yet")
-
 function get_subsampling_operator(::NonCartesianAcquisitionInfo)
     error("Subsampling operator is not applicable to non-Cartesian trajectories")
-end
+endend

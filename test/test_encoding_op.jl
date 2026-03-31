@@ -390,5 +390,70 @@
             @test wrapped_ksp2 ≈ wrapped_ksp_subsampled .* (64 * 64)
             @test dimnames(wrapped_ksp2) == (:kx, :ky, :coil, :z)
         end=#
+
+        @testset "2D non-Cartesian" begin
+            img = rand(ComplexF32, 8, 8)
+            trajectory = rand(Float32, 2, 16, 3) .- 0.5f0
+            ksp = rand(ComplexF32, 16, 3)
+            info = AcquisitionInfo(ksp; trajectory, image_size=(8, 8))
+            @test info isa NonCartesianAcquisitionInfo
+
+            𝒩 = get_encoding_operator(info; threaded=false)
+            raw = MriReconstructionToolbox.NFFTOp((8, 8), trajectory; threaded=false)
+
+            @test size(𝒩, 1) == size(ksp)
+            @test size(𝒩, 2) == size(img)
+            @test 𝒩 * img ≈ raw * img
+            @test 𝒩' * ksp ≈ raw' * ksp
+        end
+
+        @testset "2D non-Cartesian with explicit DCF" begin
+            img = rand(ComplexF32, 8, 8)
+            trajectory = rand(Float32, 2, 10, 4) .- 0.5f0
+            dcf = rand(Float32, 10, 4)
+            ksp = rand(ComplexF32, 10, 4)
+            info = AcquisitionInfo(ksp; trajectory, dcf, image_size=(8, 8))
+
+            𝒩 = get_encoding_operator(info; threaded=false)
+            raw = MriReconstructionToolbox.NFFTOp((8, 8), trajectory, dcf; threaded=false)
+
+            @test 𝒩 * img ≈ raw * img
+            @test 𝒩' * ksp ≈ raw' * ksp
+        end
+
+        @testset "2D non-Cartesian PI" begin
+            img = rand(ComplexF32, 8, 8)
+            trajectory = rand(Float32, 2, 12, 2) .- 0.5f0
+            smaps = rand(ComplexF32, 8, 8, 3)
+            ksp = zeros(ComplexF32, 12, 2, 3)
+            info = AcquisitionInfo(ksp; trajectory, image_size=(8, 8), sensitivity_maps=smaps)
+
+            𝒜 = get_encoding_operator(info; threaded=false)
+            raw = MriReconstructionToolbox.NFFTOp((8, 8), trajectory; threaded=false)
+            coil_imgs = reshape(img, 8, 8, 1) .* smaps
+            expected = similar(ksp)
+            for coil in axes(expected, 3)
+                expected[:, :, coil] .= raw * view(coil_imgs, :, :, coil)
+            end
+
+            @test 𝒜 * img ≈ expected
+            @test size(𝒜' * expected) == size(img)
+        end
+
+        @testset "2D non-Cartesian NamedDims" begin
+            img = NamedDimsArray{(:x, :y)}(rand(ComplexF32, 8, 8))
+            trajectory = NamedDimsArray{(:coord, :sample, :shot)}(rand(Float32, 2, 9, 5) .- 0.5f0)
+            ksp = NamedDimsArray{(:sample, :shot)}(rand(ComplexF32, 9, 5))
+            info = AcquisitionInfo(ksp; trajectory, image_size=(8, 8))
+
+            𝒩 = get_encoding_operator(info; threaded=false)
+            @test 𝒩 isa MriReconstructionToolbox.NamedDimsOp
+
+            ksp2 = 𝒩 * img
+            img2 = 𝒩' * ksp2
+
+            @test dimnames(ksp2) == (:sample, :shot)
+            @test dimnames(img2) == (:x, :y)
+        end
     end
 end

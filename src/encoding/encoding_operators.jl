@@ -44,52 +44,74 @@ This function constructs the composite encoding operator E that models the MRI d
 
 If no sensitivity maps are provided, only the Fourier/subsampled Fourier operator is returned.
 """
-function get_encoding_operator(info::CartesianAcquisitionInfo; threaded::Bool=true, fast_planning::Bool=false)
-	@argcheck !isnothing(info.kspace_data) "The provided CartesianAcquisitionInfo does not contain k-space data, which is required to build the encoding operator."
-	has_subs = !isnothing(info.subsampling)
-	ℱ = has_subs ? get_subsampled_fourier_operator(info; threaded, fast_planning) : get_fourier_operator(info; threaded, fast_planning)
-	smaps = info.sensitivity_maps
-	𝒜 = if isnothing(smaps)
-		ℱ
-	elseif smaps isa NamedDimsArray
-		batch_dims_size = size(ℱ, 2)[ndims(smaps)+1:end]
-		batch_dim_names = dimnames(ℱ, 2)[ndims(smaps)+1:end]
-		batch_dims = NamedTuple{batch_dim_names}(batch_dims_size)
-		𝒮 = get_sensitivity_map_operator(smaps; batch_dims, threaded)
-		ℱ * 𝒮
-	else
-		batch_dims_start = ndims(smaps) + 1
-		batch_dims = size(ℱ, 2)[batch_dims_start:end]
-		𝒮 = get_sensitivity_map_operator(smaps, info.is3D; batch_dims, threaded)
-		ℱ * 𝒮
-	end
-	return 𝒜 # Normalize operator to have norm 1
+function get_encoding_operator(info::CartesianAcquisitionInfo; threaded::Bool = true, fast_planning::Bool = false)
+    @argcheck !isnothing(info.kspace_data) "The provided CartesianAcquisitionInfo does not contain k-space data, which is required to build the encoding operator."
+    has_subs = !isnothing(info.subsampling)
+    ℱ = has_subs ? get_subsampled_fourier_operator(info; threaded, fast_planning) : get_fourier_operator(info; threaded, fast_planning)
+    smaps = info.sensitivity_maps
+    𝒜 = if isnothing(smaps)
+        ℱ
+    elseif smaps isa NamedDimsArray
+        image_size = get_image_size(info)
+        image_dims = get_image_dims(info)
+        batch_dims_size = image_size[(ndims(smaps) + 1):end]
+        batch_dim_names = image_dims[(ndims(smaps) + 1):end]
+        batch_dims = NamedTuple{batch_dim_names}(batch_dims_size)
+        𝒮 = get_sensitivity_map_operator(smaps; batch_dims, threaded)
+        ℱ * 𝒮
+    else
+        batch_dims_start = ndims(smaps) + 1
+        batch_dims = size(ℱ, 2)[batch_dims_start:end]
+        𝒮 = get_sensitivity_map_operator(smaps, info.is3D; batch_dims, threaded)
+        ℱ * 𝒮
+    end
+    return 𝒜 # Normalize operator to have norm 1
+end
+
+function get_encoding_operator(info::NonCartesianAcquisitionInfo; threaded::Bool = true, fast_planning::Bool = false)
+    @argcheck !isnothing(info.kspace_data) "The provided NonCartesianAcquisitionInfo does not contain k-space data, which is required to build the encoding operator."
+    ℱ = get_fourier_operator(info; threaded)
+    smaps = info.sensitivity_maps
+    𝒜 = if isnothing(smaps)
+        ℱ
+    elseif smaps isa NamedDimsArray
+        image_size = get_image_size(info)
+        image_dims = get_image_dims(info)
+        batch_dims_size = image_size[(ndims(smaps) + 1):end]
+        batch_dim_names = image_dims[(ndims(smaps) + 1):end]
+        batch_dims = NamedTuple{batch_dim_names}(batch_dims_size)
+        𝒮 = get_sensitivity_map_operator(smaps; batch_dims, threaded)
+        ℱ * 𝒮
+    else
+        batch_dims_start = ndims(smaps) + 1
+        batch_dims = size(ℱ, 2)[batch_dims_start:end]
+        𝒮 = get_sensitivity_map_operator(smaps, info.is3D; batch_dims, threaded)
+        ℱ * 𝒮
+    end
+    return 𝒜
 end
 
 function get_encoding_operator(
-	ksp,
-	is3D::Bool;
-	sensitivity_maps=nothing,
-	image_size=nothing,
-	subsampling=nothing,
-	threaded::Bool=true,
-	fast_planning::Bool=false,
-)
-	info = CartesianAcquisitionInfo(ksp; is3D, sensitivity_maps, image_size, subsampling)
-	return get_encoding_operator(info; threaded, fast_planning)
+        ksp,
+        is3D::Bool;
+        sensitivity_maps = nothing,
+        image_size = nothing,
+        subsampling = nothing,
+        threaded::Bool = true,
+        fast_planning::Bool = false,
+    )
+    info = CartesianAcquisitionInfo(ksp; is3D, sensitivity_maps, image_size, subsampling)
+    return get_encoding_operator(info; threaded, fast_planning)
 end
 
 function get_encoding_operator(
-	ksp::NamedDimsArray;
-	sensitivity_maps::Union{<:NamedDimsArray,Nothing}=nothing,
-	image_size::Union{Tuple{Int,Int},Tuple{Int,Int,Int},Nothing}=nothing,
-	subsampling=nothing,
-	threaded::Bool=true,
-	fast_planning::Bool=false,
-)
-	if !isnothing(subsampling) && !(subsampling isa Tuple)
-		subsampling = (subsampling,)
-	end
-	info = CartesianAcquisitionInfo(ksp; sensitivity_maps, image_size, subsampling)
-	return get_encoding_operator(info; threaded, fast_planning)
+        ksp::NamedDimsArray;
+        sensitivity_maps::Union{<:NamedDimsArray, Nothing} = nothing,
+        image_size::Union{Tuple{Int, Int}, Tuple{Int, Int, Int}, Nothing} = nothing,
+        subsampling = nothing,
+        threaded::Bool = true,
+        fast_planning::Bool = false,
+    )
+    info = CartesianAcquisitionInfo(ksp; sensitivity_maps, image_size, subsampling)
+    return get_encoding_operator(info; threaded, fast_planning)
 end

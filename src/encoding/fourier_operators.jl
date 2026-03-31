@@ -6,30 +6,49 @@ between image space and k-space (frequency domain) representations in MRI data.
 """
 
 """
-	get_fourier_operator(ksp, [is3D], [shifted_kspace_dims], [shifted_image_dims]; threaded=true, fast_planning=false)
-	get_fourier_operator(info::CartesianAcquisitionInfo; threaded=true, fast_planning=false)
+    get_fourier_operator(ksp, [is3D], [shifted_kspace_dims], [shifted_image_dims]; threaded=true, fast_planning=false)
+    get_fourier_operator(info::CartesianAcquisitionInfo; threaded=true, fast_planning=false)
+    get_fourier_operator(info::NonCartesianAcquisitionInfo; threaded=true)
+    get_fourier_operator(ksp, image_size, trajectory; dcf=nothing, threaded=true)
 
-Create a Fourier transform operator for MRI data.
+Create the Fourier encoding operator for MRI data.
 
-The operator transforms between image space and k-space using the discrete Fourier transform.
-For named dimension arrays, automatically detects 2D vs 3D from dimension names.
-For regular arrays, specify `is3D` explicitly.
+This function dispatches on its arguments and returns either a Cartesian
+DFT-backed operator or a non-Cartesian NFFT-backed operator. For Cartesian
+acquisitions it transforms between image space and regularly sampled k-space.
+For non-Cartesian acquisitions it maps images on a Cartesian grid to
+trajectory-sampled k-space.
 
-# Arguments with explicit types
-- `ksp`: K-space data array (NamedDimsArray or AbstractArray)
-- `is3D::Bool`: Whether the data is 3D (required for AbstractArray; optionally auto-detected for NamedDimsArray)
-- `shifted_kspace_dims::Tuple`: Dimensions in k-space where the DC is at the first index instead of the center (useful for pre-shifted data, default: empty)
-- `shifted_image_dims::Tuple`: Dimensions in image space requiring fftshift (equivalent to an kspace-domain sign-alternation, default: empty)
-- `threaded::Bool`: Whether to use multi-threading for FFT operations (default: true)
-- `fast_planning::Bool`: If true, use FFTW.ESTIMATE for faster planning (default: false)
+For named-dimension Cartesian arrays, 2D versus 3D is inferred from the
+presence of `:kz`. For plain arrays, `is3D` must be provided explicitly.
+For non-Cartesian inputs, dispatch is selected by passing
+`NonCartesianAcquisitionInfo` or the explicit `(ksp, image_size, trajectory)`
+arguments.
+
+# Arguments with explicit Cartesian types
+- `ksp`: Cartesian k-space data array (`NamedDimsArray` or `AbstractArray`)
+- `is3D::Bool`: Whether the Cartesian data is 3D
+- `shifted_kspace_dims`: K-space dimensions where the DC is already at the first index
+- `shifted_image_dims`: Image dimensions requiring fftshift / sign alternation
+- `threaded::Bool`: Whether to use multi-threading for FFT/NFFT construction
+- `fast_planning::Bool`: If true, use FFTW.ESTIMATE for faster DFT planning
+
+# Arguments with explicit non-Cartesian types
+- `ksp`: Non-Cartesian k-space data array
+- `image_size::Tuple`: Cartesian image grid size used for the NFFT domain
+- `trajectory`: Sampling trajectory; its leading dimension stores coordinates
+- `dcf`: Optional density compensation factors matching the trajectory sample layout
 
 # Returns
-- Fourier transform operator
+- A Fourier encoding operator backed by `DFT` for Cartesian data or `NFFTOp`
+  for non-Cartesian data.
 
 # Method Variants
-- **NamedDimsArray**: Automatically determines 2D vs 3D from the presence of `:kz` dimension
-- **AbstractArray**: Requires explicit `is3D` parameter to determine dimensionality
-- **CartesianAcquisitionInfo**: Extracts `ksp`, `is3D`, `shifted_kspace_dims`, and `shifted_image_dims` from the acquisition struct
+- **NamedDimsArray (Cartesian)**: infers 2D vs 3D from `:kz`
+- **AbstractArray (Cartesian)**: requires explicit `is3D`
+- **CartesianAcquisitionInfo**: extracts Cartesian settings from the acquisition struct
+- **NonCartesianAcquisitionInfo**: constructs an NFFT-backed operator from trajectory metadata
+- **(ksp, image_size, trajectory)**: explicit non-Cartesian constructor
 """
 function get_fourier_operator(info::CartesianAcquisitionInfo; threaded::Bool=true, fast_planning::Bool=false)
 	@argcheck !isnothing(info.kspace_data) "The provided CartesianAcquisitionInfo does not contain k-space data, which is required to build the Fourier operator."
@@ -108,6 +127,60 @@ function get_fourier_operator(
 		)
 	end
 	return ℱ
+end
+
+function get_fourier_operator(info::NonCartesianAcquisitionInfo; threaded::Bool = true)
+    @argcheck !isnothing(info.kspace_data) "The provided NonCartesianAcquisitionInfo does not contain k-space data, which is required to build the NFFT operator."
+    return get_fourier_operator(
+        info.kspace_data,
+        info.image_size,
+        info.trajectory;
+        dcf = info.dcf,
+        threaded,
+    )
+end
+
+function get_fourier_operator(
+        ksp::NamedDimsArray,
+        image_size::Tuple,
+        trajectory::NamedDimsArray;
+        dcf = nothing,
+        threaded::Bool = true,
+    )
+    fourier_dims = ndims(trajectory) - 1
+    ksp_dimnames = dimnames(ksp)
+    traj_dimnames = dimnames(trajectory)
+    @argcheck ksp_dimnames[1:fourier_dims] == traj_dimnames[2:end] "k-space dimension names must match trajectory sample dimension names"
+
+    image_dimnames = if length(image_size) == 3
+        (:x, :y, :z, ksp_dimnames[(fourier_dims + 1):end]...)
+    else
+        (:x, :y, ksp_dimnames[(fourier_dims + 1):end]...)
+    end
+    raw_dcf = dcf isa NamedDimsArray ? parent(dcf) : dcf
+    𝒩 = get_fourier_operator(parent(ksp), image_size, parent(trajectory); dcf = raw_dcf, threaded)
+    return NamedDimsOp{image_dimnames, ksp_dimnames}(𝒩)
+end
+
+function get_fourier_operator(
+        ksp::AbstractArray,
+        image_size::Tuple,
+        trajectory::AbstractArray;
+        dcf = nothing,
+        threaded::Bool = true,
+    )
+    fourier_dims = ndims(trajectory) - 1
+    batch_dims = size(ksp)[(fourier_dims + 1):end]
+    inner_threaded = threaded && isempty(batch_dims)
+    𝒩 = if isnothing(dcf)
+        NFFTOp(image_size, trajectory; threaded = inner_threaded)
+    else
+        NFFTOp(image_size, trajectory, dcf; threaded = inner_threaded)
+    end
+    if isempty(batch_dims)
+        return 𝒩
+    end
+    return BatchOp(𝒩, batch_dims; threaded)
 end
 
 function _normalize_shifted_dims(

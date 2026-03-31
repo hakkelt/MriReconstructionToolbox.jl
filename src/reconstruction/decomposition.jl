@@ -13,6 +13,8 @@ struct MultiThreadingExecutor <: ReconstructionExecutor end
 function get_problem_decomposition_plan(acq_data, regularization, config)
 	if config.disable_problem_decomposition || regularization == ()
 		return nothing
+	elseif acq_data isa NonCartesianAcquisitionInfo
+		return nothing
 	end
 
 	# Determine which image dimensions can be used for problem decomposition
