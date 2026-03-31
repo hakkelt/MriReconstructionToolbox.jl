@@ -63,7 +63,3 @@ function AcquisitionInfo(
         shifted_image_dims,
     )
 end
-
-function AcquisitionInfo(config::AcquisitionInfo; kwargs...)
-    return typeof(config)(config; kwargs...)
-end

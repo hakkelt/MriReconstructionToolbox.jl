@@ -1,11 +1,19 @@
-# Helper to test type stability: ensures return type matches expected concrete type
-macro test_type_stable(expected_type, expr)
-    quote
-        local result = $(esc(expr))
-        @test typeof(result) == $(esc(expected_type))
-        result
+using TestItems
+
+@testitem "Reconstruction integration" tags = [:reconstruction, :integration] begin
+    using Test
+    using MriReconstructionToolbox
+    using NamedDims
+    using LinearAlgebra
+
+    # Helper to test type stability: ensures return type matches expected concrete type
+    macro test_type_stable(expected_type, expr)
+        quote
+            local result = $(esc(expr))
+            @test typeof(result) == $(esc(expected_type))
+            result
+        end
     end
-end
 
 @testset "High-Level Reconstruction Integration Tests" begin
     
@@ -396,4 +404,5 @@ end
             @test norm(img_decomp - img_no_decomp) / norm(img_decomp) < 1e-10
         end
     end
+end
 end

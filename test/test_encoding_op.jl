@@ -1,3 +1,12 @@
+using TestItems
+
+@testitem "Encoding operators" tags = [:encoding, :operators, :nfft] begin
+    using Test
+    using MriReconstructionToolbox
+    using AbstractOperators
+    using FFTW
+    using NamedDims
+
 @testset "Operators" begin
     @testset "Fourier Operator" begin
 
@@ -456,4 +465,5 @@
             @test dimnames(img2) == (:x, :y)
         end
     end
+end
 end

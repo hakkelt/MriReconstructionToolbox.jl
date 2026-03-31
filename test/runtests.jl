@@ -1,12 +1,13 @@
-using Test
-using MriReconstructionToolbox
-using AbstractOperators
-using FFTW
-using NamedDims
-using LinearAlgebra
-using Wavelets
+using TestItemRunner
 
-include("test_encoding_op.jl")
-include("test_regularizations.jl")
-include("test_minimizer.jl")
-include("test_reconstruction_integration.jl")
+# Run all tests. Example filtered runs from the package root:
+#
+#   julia --project=test -e '
+#       using TestItemRunner
+#       TestItemRunner.run_tests(pwd(); filter = ti -> :encoding in ti.tags)
+#   '
+#
+# Available tags: :encoding, :regularization, :minimizer,
+#                 :reconstruction, :integration, :nfft
+
+@run_package_tests
