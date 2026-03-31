@@ -8,6 +8,7 @@ using TestItemRunner
 #   '
 #
 # Available tags: :encoding, :regularization, :minimizer,
-#                 :reconstruction, :integration, :nfft
+#                 :reconstruction, :integration, :nfft,
+#                 :quality, :jet
 
 @run_package_tests

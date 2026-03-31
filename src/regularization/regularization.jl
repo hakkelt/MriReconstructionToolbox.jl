@@ -33,7 +33,7 @@ julia> term = materialize(reg, x; threaded=false)
 Term{Float64}(1, NormL1{Float64}(0.1), (Variable(Float64, (8, 8), :x)), "0.1 ⋅ ‖x‖₁")
 ```
 """
-function materialize(::Regularization, ::Variable; threaded::Bool)
+function materialize(reg::Regularization, ::Variable; threaded::Bool)
 	throw(ArgumentError("materialize not implemented for $(typeof(reg))"))
 end
 
@@ -55,8 +55,8 @@ julia> op = get_operator(reg, ~x; threaded=false)
 WaveletOp{Float64,WT.Daubechies{2}}(Float64, (8, 8), WT.Daubechies{2}(), 2)
 ```
 """
-function get_operator(::Regularization, ::AbstractArray; threaded::Bool=true)
-	throw(ArgumentError("get_operator not implemented for $(typeof(x))"))
+function get_operator(reg::Regularization, x::AbstractArray; threaded::Bool=true)
+	throw(ArgumentError("get_operator not implemented for $(typeof(reg))"))
 end
 
 """

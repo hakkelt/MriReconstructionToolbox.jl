@@ -78,10 +78,11 @@ function get_operator(reg::Union{LowRank,RankLimit}, x::AbstractArray; threaded:
     if x isa NamedDimsArray
         transformed_dimnames = (:space, dimnames(x, affected_dims[end]))
         if !isempty(batch_dims)
-            transformed_dimnames = (transformed_dimnames..., batch_dims...)
+            transformed_dimnames = (transformed_dimnames..., dimnames(x)[(length(affected_dims) + 1):end]...)
         end
         ℛ = NamedDimsOp{dimnames(x),transformed_dimnames}(ℛ)
     end
+    return ℛ
 end
 
 function materialize(reg::LowRank, x::Variable{T}; threaded::Bool) where {T}
@@ -110,4 +111,12 @@ function get_affected_dims(reg::Union{LowRank,RankLimit}, ::Union{Nothing,Acquis
     else
         return 1:time_dim
     end
+end
+
+function get_affected_dims(
+        reg::Union{LowRank, RankLimit},
+        acq_info::AcquisitionInfo,
+        image_dims,
+    )
+    return get_affected_dims(reg, nothing, image_dims)
 end

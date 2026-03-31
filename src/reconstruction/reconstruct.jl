@@ -54,179 +54,179 @@ to better resource utilization and faster overall reconstruction times, but is u
 
 """
 function reconstruct(
-	acq_data::AcquisitionInfo,
-	regularization::Union{Regularization,Tuple{Vararg{Regularization}}}=(),
-	algorithm=(CG(), CGNR(), FISTA(), ADMM());
-	x₀::Union{Nothing,AbstractArray}=nothing,
-	kwargs...,
-)
-	config = construct_config(kwargs)
-	t_start = time()
-	regularization = ensure_tuple(regularization)
-	decomposition_plan = get_problem_decomposition_plan(acq_data, regularization, config)
-	if isnothing(decomposition_plan)
-		@conditionally_enable_threading config.threaded begin
-			x, _ = _reconstruct(acq_data, regularization, algorithm, x₀, config)
-		end
-	else
-		x = execute(decomposition_plan, acq_data, config) do local_acq, local_conf
-			_reconstruct(local_acq, regularization, algorithm, x₀, local_conf)
-		end
-	end
-	t_end = time()
-	config.verbose && config.printfunc("Total time: ", format_time(t_end - t_start))
-	return x
+        acq_data::AcquisitionInfo,
+        regularization::Union{Regularization, Tuple{Vararg{Regularization}}} = (),
+        algorithm = (CG(), CGNR(), FISTA(), ADMM());
+        x₀::Union{Nothing, AbstractArray} = nothing,
+        kwargs...,
+    )
+    config = construct_config(kwargs)
+    t_start = time()
+    regularization = ensure_tuple(regularization)
+    decomposition_plan = get_problem_decomposition_plan(acq_data, regularization, config)
+    x = if isnothing(decomposition_plan)
+        reconstruction_result = nothing
+        @conditionally_enable_threading config.threaded begin
+            reconstruction_result = _reconstruct(acq_data, regularization, algorithm, x₀, config)
+        end
+        first(reconstruction_result)
+    else
+        execute(decomposition_plan, acq_data, config) do local_acq, local_conf
+            _reconstruct(local_acq, regularization, algorithm, x₀, local_conf)
+        end
+    end
+    t_end = time()
+    config.verbose && config.printfunc("Total time: ", format_time(t_end - t_start))
+    return x
 end
 
 function _reconstruct(acq_data, regularization, algorithm, x₀, config)
-	# Construct encoding operator
-	@step "Constructing encoding operator" config begin
-		𝒜 = get_encoding_operator(
-			acq_data; threaded=config.threaded, fast_planning=regularization == ()
-		)
-	end
+    # Construct encoding operator
+    @step "Constructing encoding operator" config begin
+        𝒜 = get_encoding_operator(
+            acq_data; threaded = config.threaded, fast_planning = regularization == ()
+        )
+    end
 
-	# Direct reconstruction
-	x̂, scale = _direct_reconstruct(𝒜, acq_data, x₀, regularization, config)
+    # Direct reconstruction
+    x̂, scale = _direct_reconstruct(𝒜, acq_data, x₀, regularization, config)
 
-	if regularization == ()
-		# No regularization, return direct reconstruction
-		if scale != 1 && config.disable_inverse_scale_output
-			@step "Scaling image" config begin
-				x̂ ./= scale
-			end
-		end
-	else
-		# Iterative reconstruction with regularization
-		x̂ = _iterative_reconstruct(
-			𝒜, acq_data, x̂, scale, regularization, algorithm, config
-		)
-	end
+    if regularization == ()
+        # No regularization, return direct reconstruction
+        if scale != 1 && config.disable_inverse_scale_output
+            @step "Scaling image" config begin
+                x̂ ./= scale
+            end
+        end
+    else
+        # Iterative reconstruction with regularization
+        x̂ = _iterative_reconstruct(
+            𝒜, acq_data, x̂, scale, regularization, algorithm, config
+        )
+    end
 
-	return x̂, scale
+    return x̂, scale
 end
 
 function _direct_reconstruct(𝒜, acq_data, x₀, regularization, config)
-	direct_recon_only = regularization == ()
-	if !isnothing(x₀) && direct_recon_only
-		config.verbose && config.printfunc(
-			"Warning: Initial guess x₀ is ignored when no regularization is specified."
-		)
-		x₀ = nothing
-	end
-	if isnothing(x₀)
-		@step (direct_recon_only ? "Reconstructing image" : "Getting initial estimate") config begin
-			x₀ = 𝒜' * acq_data.kspace_data
-		end
-	end
-	if config.normalization != NoScaling()
-		@step "Computing scaling factor" config begin
-			scale = get_scale(config.normalization, acq_data, x₀)
-		end
-		if scale == 0
-			config.verbose &&
-				config.printfunc("Warning: Computed scale is zero, defaulting to scale=1.0")
-			scale = 1
-		end
-		config.verbose && @sprintf("Using scaling factor: %g\n", scale)
-	else
-		scale = 1
-	end
-	return x₀, real(eltype(x₀))(scale)
+    direct_recon_only = regularization == ()
+    if !isnothing(x₀) && direct_recon_only
+        config.verbose && config.printfunc(
+            "Warning: Initial guess x₀ is ignored when no regularization is specified."
+        )
+        x₀ = nothing
+    end
+    if isnothing(x₀)
+        @step (direct_recon_only ? "Reconstructing image" : "Getting initial estimate") config begin
+            x₀ = 𝒜' * acq_data.kspace_data
+        end
+    end
+    if config.normalization != NoScaling()
+        @step "Computing scaling factor" config begin
+            scale = get_scale(config.normalization, acq_data, x₀)
+        end
+        if scale == 0
+            config.verbose &&
+                config.printfunc("Warning: Computed scale is zero, defaulting to scale=1.0")
+            scale = 1
+        end
+        config.verbose && @sprintf("Using scaling factor: %g\n", scale)
+    else
+        scale = 1
+    end
+    return x₀, real(eltype(x₀))(scale)
 end
 
 function _iterative_reconstruct(𝒜, acq_data, x₀, scale, regularization, algorithm, config)
-	if scale != 1
-		@step "Scaling k-space data" config begin
-			acq_data = AcquisitionInfo(acq_data; kspace_data=acq_data.kspace_data ./ scale)
-		end
-	end
-	if !config.disable_operator_normalization
-		@step "Normalizing encoding operator" config begin
-			𝒜 = normalize_op(𝒜, config.exact_opnorm)
-		end
-	end
-	@step "Building optimization model" config begin
-		model = build_model(
-			unname(𝒜),
-			unname(acq_data.kspace_data),
-			regularization;
-			threaded=config.threaded,
-			x₀,
-			disable_normalop_optimization=config.disable_normalop_optimization,
-		)
-	end
-	@printing_step "Reconstructing image" config begin
-		if isnothing(config.freq)
-			freq = config.verbose ? get_reasonable_freq(config.maxit) : -1
-		else
-			freq = config.freq
-		end
-		ϵ = eps(real(eltype(x₀)))
-		tol = config.tol == 0 ? 0 : max(ϵ*10, config.tol * maximum(abs, x₀))
-		stop =
-			(iter, state) -> ProximalAlgorithms.default_stopping_criterion(tol, iter, state)
-		display =
-			(it, alg, iter, state) ->
-				ProximalAlgorithms.default_display(it, alg, iter, state, config.printfunc)
-		algorithm = patch_algorithm_with_default_values(algorithm)
-		verbose = freq != -1
-		x_var, _ = solve(model, algorithm; stop, maxit=config.maxit, freq, verbose, display)
-		x = ~x_var
-	end
-	if !config.disable_inverse_scale_output && scale != 1
-		@step "Inverse scaling image" config begin
-			x .*= scale
-		end
-	end
-	if acq_data.kspace_data isa NamedDimsArray
-		img_dimnames = dimnames(𝒜, 2)
-		x = NamedDimsArray{img_dimnames}(x)
-	end
-	return x
+    if scale != 1
+        @step "Scaling k-space data" config begin
+            acq_data = AcquisitionInfo(acq_data; kspace_data = acq_data.kspace_data ./ scale)
+        end
+    end
+    if !config.disable_operator_normalization
+        @step "Normalizing encoding operator" config begin
+            𝒜 = normalize_op(𝒜, config.exact_opnorm)
+        end
+    end
+    @step "Building optimization model" config begin
+        model = build_model(
+            unname(𝒜),
+            unname(acq_data.kspace_data),
+            regularization;
+            threaded = config.threaded,
+            x₀,
+            disable_normalop_optimization = config.disable_normalop_optimization,
+        )
+    end
+    @printing_step "Reconstructing image" config begin
+        if isnothing(config.freq)
+            freq = config.verbose ? get_reasonable_freq(config.maxit) : -1
+        else
+            freq = config.freq
+        end
+        ϵ = eps(real(eltype(x₀)))
+        tol = config.tol == 0 ? 0 : max(ϵ * 10, config.tol * maximum(abs, x₀))
+        stop =
+            (iter, state) -> ProximalAlgorithms.default_stopping_criterion(tol, iter, state)
+        display =
+            (it, alg, iter, state) ->
+        ProximalAlgorithms.default_display(it, alg, iter, state, config.printfunc)
+        algorithm = patch_algorithm_with_default_values(algorithm)
+        verbose = freq != -1
+        x_var, _ = solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
+        x = ~x_var
+    end
+    if !config.disable_inverse_scale_output && scale != 1
+        @step "Inverse scaling image" config begin
+            x .*= scale
+        end
+    end
+    if acq_data.kspace_data isa NamedDimsArray
+        img_dimnames = dimnames(𝒜, 2)
+        x = NamedDimsArray{img_dimnames}(x)
+    end
+    return x
 end
 
 function get_reasonable_freq(maxit)
-	reasonable_freqs = [1, 5, 10, 20, 50, 100]
-	freq_i = findfirst(x -> x >= maxit ÷ 20, reasonable_freqs)
-	return isnothing(freq_i) ? 100 : reasonable_freqs[freq_i]
+    reasonable_freqs = [1, 5, 10, 20, 50, 100]
+    freq_i = findfirst(x -> x >= maxit ÷ 20, reasonable_freqs)
+    return isnothing(freq_i) ? 100 : reasonable_freqs[freq_i]
 end
 
 function patch_algorithm_with_default_values(
-	algorithm::ProximalAlgorithms.IterativeAlgorithm{T}
-) where {
-	T<:Union{
-		ProximalAlgorithms.ForwardBackwardIteration,
-		ProximalAlgorithms.FastForwardBackwardIteration,
-	},
-}
-	if :Lf ∉ keys(algorithm.kwargs)
-		return ProximalAlgorithms.override_parameters(algorithm; Lf=1)
-	else
-		return algorithm
-	end
+        algorithm::ProximalAlgorithms.IterativeAlgorithm{T}
+    ) where {
+        T <: Union{
+            ProximalAlgorithms.ForwardBackwardIteration,
+            ProximalAlgorithms.FastForwardBackwardIteration,
+        },
+    }
+    if :Lf ∉ keys(algorithm.kwargs)
+        return ProximalAlgorithms.override_parameters(algorithm; Lf = 1)
+    else
+        return algorithm
+    end
 end
 
 function patch_algorithm_with_default_values(
-	algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.ADMMIteration}
-)
-	if :cg_tol ∉ keys(algorithm.kwargs) && :cg_maxit ∉ keys(algorithm.kwargs)
-		return ProximalAlgorithms.override_parameters(algorithm; cg_tol=1e-3, cg_maxit=10)
-	elseif :cg_tol ∉ keys(algorithm.kwargs)
-		return ProximalAlgorithms.override_parameters(algorithm; cg_tol=1e-3)
-	elseif :cg_maxit ∉ keys(algorithm.kwargs)
-		return ProximalAlgorithms.override_parameters(algorithm; cg_maxit=10)
-	else
-		return algorithm
-	end
+        algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.ADMMIteration}
+    )
+    if :cg_tol ∉ keys(algorithm.kwargs) && :cg_maxit ∉ keys(algorithm.kwargs)
+        return ProximalAlgorithms.override_parameters(algorithm; cg_tol = 1.0e-3, cg_maxit = 10)
+    elseif :cg_tol ∉ keys(algorithm.kwargs)
+        return ProximalAlgorithms.override_parameters(algorithm; cg_tol = 1.0e-3)
+    elseif :cg_maxit ∉ keys(algorithm.kwargs)
+        return ProximalAlgorithms.override_parameters(algorithm; cg_maxit = 10)
+    else
+        return algorithm
+    end
 end
 
-function patch_algorithm_with_default_values(
-	algorithm::ProximalAlgorithms.IterativeAlgorithm
-)
-	return algorithm
+function patch_algorithm_with_default_values(algorithm::ProximalAlgorithms.IterativeAlgorithm)
+    return algorithm
 end
 
 function patch_algorithm_with_default_values(algorithm::Tuple)
-	return map(patch_algorithm_with_default_values, algorithm)
+    return map(patch_algorithm_with_default_values, algorithm)
 end

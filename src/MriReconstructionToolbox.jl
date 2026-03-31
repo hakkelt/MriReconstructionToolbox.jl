@@ -6,6 +6,7 @@ using Base.Cartesian
 using ProximalOperators
 using ProximalAlgorithms
 @reexport using AbstractOperators
+using AbstractOperators: Sum  # resolve ambiguity with ProximalOperators.Sum
 @reexport using NamedDims
 @reexport using StructuredOptimization
 using NFFTOperators: NFFTOp
