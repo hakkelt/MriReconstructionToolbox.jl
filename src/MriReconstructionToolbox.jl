@@ -20,8 +20,6 @@ using Printf: @sprintf
 using Statistics: quantile, median, mean
 using Base.Threads: @threads, @spawn, nthreads
 using StatsBase: sample, ProbabilityWeights
-using ImagePhantoms: ImagePhantoms
-using ImageGeoms: ImageGeom
 
 const ISTA = ProximalAlgorithms.ForwardBackward
 const FISTA = ProximalAlgorithms.FastForwardBackward
@@ -35,7 +33,7 @@ export calculate, build_model, reconstruct, Config, SequentialExecutor, MultiThr
 export BartScaling, MeasurementBasedScaling, NoScaling
 export ISTA, FISTA, ADMM, CG, CGNR
 export AcquisitionInfo, CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
-export simulate_acquisition, shepp_logan, coil_sensitivities
+export simulate_acquisition, coil_sensitivities
 export UniformRandomSampling, VariableDensitySampling, PoissonDiskSampling, GaussianDistribution, PolynomialDistribution
 export create_sampling_pattern, to_displayable_mask
 
@@ -50,7 +48,6 @@ include("utils.jl")
 
 include("encoding/named_dims_op.jl")
 include("encoding/fourier_operators.jl")
-include("encoding/nfft_operators.jl")
 include("encoding/sensitivity_map_operators.jl")
 include("encoding/subsampling_operators.jl")
 include("encoding/encoding_operators.jl")
@@ -69,7 +66,6 @@ include("reconstruction/progress_utils.jl")
 include("reconstruction/reconstruct.jl")
 
 include("simulation/subsampling.jl")
-include("simulation/phantoms.jl")
 include("simulation/sensitivities.jl")
 include("simulation/simulate_acquisition.jl")
 
