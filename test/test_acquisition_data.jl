@@ -1,5 +1,3 @@
-using TestItems
-
 @testitem "NonCartesianAcquisitionInfo" tags = [:acquisition, :nfft] begin
     using MriReconstructionToolbox
     using NamedDims
@@ -233,5 +231,49 @@ end
         displayable = to_displayable_mask(pattern, (8, 8))
         @test size(displayable) == (8, 8)
         @test eltype(displayable) == Bool
+    end
+end
+
+@testitem "CartesianAcquisitionInfo shifted dims" tags = [:acquisition] begin
+    using MriReconstructionToolbox
+    using NamedDims
+
+    @testset "shifted_kspace_dims as single Integer" begin
+        ksp = rand(ComplexF32, 16, 16, 2)
+        acq = AcquisitionInfo(ksp; is3D = false, shifted_kspace_dims = 1)
+        @test acq.shifted_kspace_dims == (1,)
+    end
+
+    @testset "shifted_kspace_dims as Symbol" begin
+        ksp = NamedDimsArray{(:kx, :ky, :coil)}(rand(ComplexF32, 16, 16, 2))
+        acq = AcquisitionInfo(ksp; shifted_kspace_dims = :kx)
+        @test acq.shifted_kspace_dims == (:kx,)
+    end
+
+    @testset "shifted_image_dims as single Integer" begin
+        ksp = rand(ComplexF32, 16, 16, 2)
+        acq = AcquisitionInfo(ksp; is3D = false, shifted_image_dims = 1)
+        @test acq.shifted_image_dims == (1,)
+    end
+
+    @testset "shifted_image_dims as Symbol" begin
+        ksp = NamedDimsArray{(:kx, :ky, :coil)}(rand(ComplexF32, 16, 16, 2))
+        acq = AcquisitionInfo(ksp; shifted_image_dims = :x)
+        @test acq.shifted_image_dims == (:x,)
+    end
+
+    @testset "shifted_kspace_dims as Tuple of Integers" begin
+        ksp = rand(ComplexF32, 16, 16, 2)
+        acq = AcquisitionInfo(ksp; is3D = false, shifted_kspace_dims = (1, 2))
+        @test acq.shifted_kspace_dims == (1, 2)
+    end
+
+    @testset "NamedDims 2D multislice smaps validation" begin
+        nx, ny, nc, nz = 8, 8, 2, 3
+        ksp = NamedDimsArray{(:kx, :ky, :coil, :z)}(rand(ComplexF32, nx, ny, nc, nz))
+        smaps = NamedDimsArray{(:x, :y, :coil, :z)}(rand(ComplexF32, nx, ny, nc, nz))
+        acq = AcquisitionInfo(ksp; sensitivity_maps = smaps)
+        @test !acq.is3D
+        @test ndims(acq.sensitivity_maps) == 4
     end
 end
