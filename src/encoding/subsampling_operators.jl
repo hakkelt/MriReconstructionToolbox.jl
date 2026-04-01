@@ -152,6 +152,18 @@ function _check_ksp_dimnames(ksp_dimnames, subs::Nothing, is3D, img_size)
 end
 
 function _check_ksp_dimnames(ksp_dimnames, subs::_2D_subsampling_type, is3D, img_size::Tuple{Int, Int})
+    expected_prefix = if subs isa Tuple{<:_1D_subsampling_type, <:_1D_subsampling_type}
+        (:kx, :ky)
+    else
+        (:kxy,)
+    end
+    if :coil ∈ ksp_dimnames
+        expected_prefix = (expected_prefix..., :coil)
+    end
+    if :z ∈ ksp_dimnames
+        expected_prefix = (expected_prefix..., :z)
+    end
+    @argcheck ksp_dimnames[1:length(expected_prefix)] == expected_prefix "k-space dimension names must start with $(expected_prefix) for 2D subsampling"
     if subs isa Tuple{<:_1D_subsampling_type, <:_1D_subsampling_type}
         @argcheck :kx ∈ ksp_dimnames "k-space must have :kx dimension"
         @argcheck :ky ∈ ksp_dimnames "k-space must have :ky dimension"
@@ -160,17 +172,23 @@ function _check_ksp_dimnames(ksp_dimnames, subs::_2D_subsampling_type, is3D, img
     end
     @argcheck length(img_size) == 2 "image_size must be length 2 for 2D subsampling"
     @argcheck !is3D "is3D must be false for 2D subsampling"
-    if :coil ∈ ksp_dimnames
-        @argcheck ksp_dimnames[3] == :coil "third dim must be :coil for 2D subsampling"
-    end
-    return if :z ∈ ksp_dimnames && :coil ∈ ksp_dimnames
-        @argcheck ksp_dimnames[4] == :z "fourth dim must be :z for 2D subsampling if :coil is present"
-    elseif :z ∈ ksp_dimnames
-        @argcheck ksp_dimnames[3] == :z "third dim must be :z for 2D subsampling if :coil is not present"
-    end
+    return nothing
 end
 
 function _check_ksp_dimnames(ksp_dimnames, subs::_3D_subsampling_type, is3D, img_size::Tuple{Int, Int, Int})
+    expected_prefix = if length(subs) == 3
+        (:kx, :ky, :kz)
+    elseif length(subs) == 2 && subs[1] isa _1D_subsampling_type
+        (:kx, :kyz)
+    elseif length(subs) == 2 && subs[2] isa _1D_subsampling_type
+        (:kxy, :kz)
+    else
+        (:kxyz,)
+    end
+    if :coil ∈ ksp_dimnames
+        expected_prefix = (expected_prefix..., :coil)
+    end
+    @argcheck ksp_dimnames[1:length(expected_prefix)] == expected_prefix "k-space dimension names must start with $(expected_prefix) for 3D subsampling"
     if subs isa Tuple{<:_1D_subsampling_type, <:_1D_subsampling_type, <:_1D_subsampling_type}
         @argcheck :kx ∈ ksp_dimnames "k-space must have :kx dimension"
         @argcheck :ky ∈ ksp_dimnames "k-space must have :ky dimension"
@@ -192,10 +210,13 @@ function _check_ksp_dimnames(ksp_dimnames, subs::_3D_subsampling_type, is3D, img
     end
     @argcheck length(img_size) == 3 "image_size must be length 3 for 3D subsampling"
     @argcheck is3D "is3D must be true for 3D subsampling"
-    if :coil ∈ ksp_dimnames
-        @argcheck ksp_dimnames[4] == :coil "fourth dim must be :coil for 3D subsampling"
-    end
     return @argcheck !(:z ∈ ksp_dimnames) "3D subsampling cannot have :z dimension"
+end
+
+function _check_ksp_dimnames(ksp_dimnames, subs::AbstractArray, is3D, img_size)
+    @argcheck !isempty(subs) "subsampling array must not be empty"
+    ref_subs = _normalize_subsampling(first(subs))
+    return _check_ksp_dimnames(ksp_dimnames, ref_subs, is3D, img_size)
 end
 
 function _get_dimnames_from_subsampling(ksp_dimnames, ::Tuple{Int, Int}, subsampling::_2D_subsampling_type)
@@ -216,6 +237,15 @@ function _get_dimnames_from_subsampling(ksp_dimnames, ::Tuple{Int, Int, Int}, su
     else
         return (:kxyz, ksp_dimnames[4:end]...)
     end
+end
+
+function _get_dimnames_from_subsampling(ksp_dimnames, img_size, subsampling::AbstractArray)
+    @argcheck !isempty(subsampling) "subsampling array must not be empty"
+    return _get_dimnames_from_subsampling(
+        ksp_dimnames,
+        img_size,
+        _normalize_subsampling(first(subsampling)),
+    )
 end
 
 function _get_subsampling_operator(ksp, img_size::Tuple{Int, Int}, subsampling::_2D_subsampling_type)
@@ -245,35 +275,72 @@ function _get_subsampling_operator(ksp, img_size::Tuple{Int, Int, Int}, subsampl
 end
 
 function _get_subsampling_operator(ksp, img_size, subsampling::AbstractArray)
-    error("currently not implemented")
-    # Future implementation would handle arrays of subsampling patterns
-    #if all(subs isa _2D_subsampling_type for subs in subsampling)
-    #	# subsampling is an array of 2D subsampling masks
-    #	@argcheck length(img_size) == 2 "img_size must be a 2-element tuple for 2D subsampling"
-    #	@argcheck img_size == size(ksp)[1:2] DimensionMismatch
-    #	@argcheck size(subsampling) == size(ksp)[3:2+ndims(subsampling)] DimensionMismatch
-    #	batch_dims = size(ksp)[(2 + ndims(subsampling)):end]
-    #	@show batch_dims
-    #	ksp_view = @view ksp[:, :, fill(1, length(batch_dims))...]
-    #	Γᵢ = [_get_subsampling_operator(ksp_view, img_size, subs) for subs in subsampling]
-    #	return BatchOp(Γᵢ, batch_dims; threaded=true)
-    #elseif all(subs isa _3D_subsampling_type for subs in subsampling)
-    #	# subsampling is an array of 3D subsampling masks
-    #	@argcheck length(img_size) == 3 "img_size must be a 3-element tuple for 3D subsampling"
-    #	@argcheck img_size == size(ksp)[1:3] DimensionMismatch
-    #	@argcheck size(subsampling) == size(ksp)[4:3+ndims(subsampling)] DimensionMismatch
-    #	batch_dims = size(ksp)[(3 + ndims(subsampling)):end]
-    #	ksp_view = @view ksp[:, :, :, fill(1, length(batch_dims))...]
-    #	Γᵢ = [_get_subsampling_operator(ksp_view, img_size, subs) for subs in subsampling]
-    #	return BatchOp(Γᵢ, batch_dims; threaded=true)
-    #else
-    #	throw(ArgumentError("Could not handle subsampling type: $(typeof(subsampling))"))
-    #end
+    @argcheck !isempty(subsampling) "subsampling array must not be empty"
+    fourier_dims = length(img_size)
+    spreading_dims = ndims(subsampling)
+    @argcheck size(ksp)[1:fourier_dims] == img_size DimensionMismatch
+    nonspatial_dims = size(ksp)[(fourier_dims + 1):end]
+    @argcheck length(nonspatial_dims) >= spreading_dims "k-space must have enough dimensions to match the subsampling array"
+
+    spreading_start = nothing
+    for start in 1:(length(nonspatial_dims) - spreading_dims + 1)
+        stop = start + spreading_dims - 1
+        if nonspatial_dims[start:stop] == size(subsampling)
+            spreading_start = start
+            break
+        end
+    end
+    @argcheck !isnothing(spreading_start) "could not align subsampling array dimensions with the nonspatial k-space dimensions"
+
+    prefix_batch_dims = spreading_start - 1
+    suffix_batch_dims = length(nonspatial_dims) - (spreading_start + spreading_dims - 1)
+
+    op_indices = CartesianIndices(subsampling)
+    first_index = first(op_indices)
+
+    first_view = @view ksp[
+        fill(:, fourier_dims)...,
+        fill(:, prefix_batch_dims)...,
+        Tuple(first_index)...,
+        fill(:, suffix_batch_dims)...,
+    ]
+    first_op = _get_subsampling_operator(
+        first_view,
+        img_size,
+        _normalize_subsampling(subsampling[first_index]),
+    )
+    operators = Array{typeof(first_op)}(undef, size(subsampling))
+    operators[first_index] = first_op
+
+    for index in Iterators.drop(op_indices, 1)
+        local_view = @view ksp[
+            fill(:, fourier_dims)...,
+            fill(:, prefix_batch_dims)...,
+            Tuple(index)...,
+            fill(:, suffix_batch_dims)...,
+        ]
+        operators[index] = _get_subsampling_operator(
+            local_view,
+            img_size,
+            _normalize_subsampling(subsampling[index]),
+        )
+    end
+
+    spreading_dim_count = ndims(subsampling)
+    domain_mask = ntuple(
+        i -> i <= ndims(first_op, 2) ? :_ : :s,
+        ndims(first_op, 2) + spreading_dim_count,
+    )
+    codomain_mask = ntuple(
+        i -> i <= ndims(first_op, 1) ? :_ : :s,
+        ndims(first_op, 1) + spreading_dim_count,
+    )
+    return BatchOp(operators, domain_mask => codomain_mask; threaded = true)
 end
 
-_get_subsampled_dims_count(::AbstractArray{Bool, N}) where {N} = N
+_get_subsampled_dims_count(::AbstractArray{Bool}) = 1
 _get_subsampled_dims_count(::AbstractVector{Int}) = 1
-_get_subsampled_dims_count(::AbstractVector{CartesianIndex{N}}) where {N} = N
+_get_subsampled_dims_count(::AbstractVector{<:CartesianIndex}) = 1
 _get_subsampled_dims_count(::Colon) = 1
 _get_subsampled_dims_count(::OrdinalRange) = 1
 _get_subsampled_dims_count(subsampling::Tuple) = sum(_get_subsampled_dims_count.(subsampling))
@@ -320,7 +387,7 @@ end
 
 function _build_subsampling_context(subsampled_ksp, img_size, subsampling)
     @argcheck 2 ≤ length(img_size) ≤ 3 "img_size must be either length 2 or 3"
-    batch_dims_start = length(subsampling) + 1
+    batch_dims_start = _get_subsampled_dims_count(subsampling) + 1
     ksp_size = (img_size..., size(subsampled_ksp)[batch_dims_start:end]...)
     ksp = similar(subsampled_ksp, ksp_size)
     is3D = length(img_size) == 3
