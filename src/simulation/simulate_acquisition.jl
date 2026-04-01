@@ -12,18 +12,27 @@ Simulate MRI k-space acquisition from a given image using the specified acquisit
 """
 function simulate_acquisition(image, acq_info::CartesianAcquisitionInfo)
     ksp_size = get_kspace_size(image, acq_info)
-    ksp = similar(image, ksp_size)
+    ksp = similar(image, complex(eltype(image)), ksp_size)
     if image isa NamedDimsArray
         if acq_info.is3D && isnothing(acq_info.sensitivity_maps)
-            ksp_dims = (:kx, :ky, :kz, dimnames(image)[4:end]...)
+            full_ksp_dims = (:kx, :ky, :kz, dimnames(image)[4:end]...)
         elseif acq_info.is3D
-            ksp_dims = (:kx, :ky, :kz, :coil, dimnames(image)[4:end]...)
+            full_ksp_dims = (:kx, :ky, :kz, :coil, dimnames(image)[4:end]...)
         elseif isnothing(acq_info.sensitivity_maps)
-            ksp_dims = (:kx, :ky, dimnames(image)[3:end]...)
+            full_ksp_dims = (:kx, :ky, dimnames(image)[3:end]...)
         else
-            ksp_dims = (:kx, :ky, :coil, dimnames(image)[3:end]...)
+            full_ksp_dims = (:kx, :ky, :coil, dimnames(image)[3:end]...)
         end
-        ksp = NamedDimsArray{ksp_dims}(ksp)
+        if isnothing(acq_info.subsampling)
+            ksp_dims = full_ksp_dims
+        else
+            ksp_dims = _get_dimnames_from_subsampling(
+                full_ksp_dims,
+                acq_info.image_size,
+                acq_info.subsampling,
+            )
+        end
+        ksp = NamedDimsArray{ksp_dims}(NamedDims.unname(ksp))
     end
     if !isnothing(acq_info.sensitivity_maps)
         if acq_info.is3D
@@ -81,6 +90,16 @@ end
 function get_transformed_size(image, acq_info::CartesianAcquisitionInfo)
     if isnothing(acq_info.subsampling)
         return acq_info.image_size
+    elseif acq_info.subsampling isa AbstractArray
+        spatial_dims = acq_info.is3D ? 3 : 2
+        spreading_dims = ndims(acq_info.subsampling)
+        @argcheck ndims(image) >= spatial_dims + spreading_dims "image must provide one trailing dimension per subsampling pattern dimension"
+
+        first_index = first(CartesianIndices(acq_info.subsampling))
+        sample_img = @view image[fill(:, spatial_dims)..., Tuple(first_index)..., fill(1, ndims(image) - spatial_dims - spreading_dims)...]
+        sample_subsampling = acq_info.subsampling[first_index]
+        Base.checkbounds(sample_img, sample_subsampling...)
+        return size(@view(sample_img[sample_subsampling...]))
     else
         if acq_info.is3D
             single_img = @view image[:, :, :, ones(Int, ndims(image) - 3)...]
