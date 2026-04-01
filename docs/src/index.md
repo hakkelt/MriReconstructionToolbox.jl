@@ -60,6 +60,7 @@ The package provides:
 
 ```@setup imports
 using MriReconstructionToolbox
+using GeometricMedicalPhantoms
 using MIRTjim: jim
 using Plots
 ```
@@ -69,7 +70,7 @@ using MriReconstructionToolbox
 using MIRTjim: jim
 
 nx, ny, nc = 256, 256, 8
-xᵍᵗ = shepp_logan(nx, ny)
+xᵍᵗ = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
 noise_level = 0.03f0
 x = xᵍᵗ + noise_level * randn(ComplexF32, nx, ny)
 p1 = jim(xᵍᵗ; title = "Ground truth")

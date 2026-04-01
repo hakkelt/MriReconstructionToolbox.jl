@@ -16,6 +16,7 @@ Simulation is useful for:
 
 ```@setup imports
 using MriReconstructionToolbox
+using GeometricMedicalPhantoms
 using MIRTjim: jim
 using Plots
 using Random
@@ -29,7 +30,7 @@ A typical simulation workflow:
 using MriReconstructionToolbox
 
 # 1. Create a phantom (ground truth image)
-img = shepp_logan(256, 256)
+img = create_shepp_logan_phantom(256, 256, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
 
 # 2. Generate coil sensitivity maps
 smaps = coil_sensitivities(256, 256, 8)
@@ -55,20 +56,16 @@ Phantoms are synthetic images that serve as ground truth for testing.
 
 ### Shepp-Logan Phantom
 
-The classic test phantom for MRI reconstruction.
-
-```@docs
-shepp_logan
-```
+The classic test phantom for MRI reconstruction. MriReconstructionToolbox uses phantoms from the [GeometricMedicalPhantoms.jl](https://github.com/hakkelt/GeometricMedicalPhantoms.jl) package.
 
 ```@example imports
 using MIRTjim: jim
 
 # 2D Shepp-Logan
-img = shepp_logan(256, 256)  # Returns ComplexF32 array
+img = create_shepp_logan_phantom(256, 256, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
 
 # 3D Shepp-Logan
-img_3d = shepp_logan(128, 128, 64)
+img_3d = create_shepp_logan_phantom(128, 128, 64; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
 jim(img_3d; title="Shepp-Logan Phantom", nrow=4, size=(1200,300))
 savefig("3D_shepp_logan_phantom.png"); nothing # hide
 ```

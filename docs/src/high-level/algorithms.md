@@ -43,13 +43,14 @@ All algorithms from this library share a common interface with the following par
 
 ```@setup imports
 using MriReconstructionToolbox
+using GeometricMedicalPhantoms
 using MIRTjim: jim
 using Plots
 using Random
 
 Random.seed!(0)
 
-x = shepp_logan(128, 128);
+x = create_shepp_logan_phantom(128, 128, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32);
 x_noisy = x + 0.02f0 * randn(ComplexF32, 128, 128);
 smaps = coil_sensitivities(128, 128, 8);
 acq_full = AcquisitionInfo(

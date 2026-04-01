@@ -39,10 +39,11 @@ The code snippets in the following sections assume that `MriReconstructionToolbo
 
 ```@example imports
 using MriReconstructionToolbox
+using GeometricMedicalPhantoms
 using MIRTjim: jim
 
 # Simulate 2D acquisition
-x = shepp_logan(128, 128)
+x = create_shepp_logan_phantom(128, 128, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
 x_noisy = x + 0.02f0 * randn(ComplexF32, 128, 128)
 smaps = coil_sensitivities(128, 128, 8)
 pdf = VariableDensitySampling(PolynomialDistribution(3), 4.0, 0.05)
@@ -56,7 +57,7 @@ acq_full = AcquisitionInfo(
 data = simulate_acquisition(x_noisy, acq_full)
 
 # Simulate 3D acquisition
-x3d = shepp_logan(64, 64, 32)
+x3d = create_shepp_logan_phantom(64, 64, 32; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
 smaps3d = coil_sensitivities(64, 64, 32, 8)
 subsampling3d = create_sampling_pattern(
     VariableDensitySampling(PolynomialDistribution(3), 4.0, 0.05), 

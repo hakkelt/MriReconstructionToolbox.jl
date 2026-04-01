@@ -242,9 +242,10 @@ E_3d = get_encoding_operator(ksp_3d)  # Creates 3D operator
 
 ```@example
 using MriReconstructionToolbox
+using GeometricMedicalPhantoms
 
 # 1. Create phantom with names
-img_true = NamedDimsArray{(:x, :y)}(shepp_logan(256, 256))
+img_true = NamedDimsArray{(:x, :y)}(create_shepp_logan_phantom(256, 256, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32))
 
 # 2. Create sensitivity maps with names
 smaps = NamedDimsArray{(:x, :y, :coil)}(

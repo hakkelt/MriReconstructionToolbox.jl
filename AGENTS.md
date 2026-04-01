@@ -32,7 +32,7 @@ AcquisitionInfo → Encoding Operators → Regularization → Reconstruction
 - `materialize` is NOT exported — use `MriReconstructionToolbox.materialize(reg, x; threaded)`
 - `DFT` accepts `num_threads` keyword, not `threaded` — map via `num_threads = threaded ? Threads.nthreads() : 1`
 - `Variable(T, dims...)` — splat dimensions, do NOT pass a tuple: `Variable(Float64, 8, 8, 10)` not `Variable(Float64, (8, 8, 10))`
-- `Base.reshape` is NOT defined for AbstractOperators — use `Reshape(op, new_dims...)` instead
+- `Base.reshape` is defined for `AbstractOperator` and returns `Reshape(...)`
 - `create_sampling_pattern` returns `(:, mask)` when `subsample_freq_encoding=false` (default)
 - `@reexport using AbstractOperators` and `@reexport using ProximalOperators` both export `Sum` — resolved via explicit `using AbstractOperators: Sum`
 
@@ -140,7 +140,6 @@ src/
 │   └── reconstruct.jl             # Main reconstruct() function
 ├── simulation/
 │   ├── subsampling.jl             # Sampling pattern generation
-│   ├── phantoms.jl                # Shepp-Logan phantom
 │   ├── sensitivities.jl           # Coil sensitivity maps
 │   └── simulate_acquisition.jl    # Full simulation pipeline
 ├── scaling.jl                     # Data scaling strategies
