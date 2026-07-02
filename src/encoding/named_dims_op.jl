@@ -34,9 +34,12 @@ import AbstractOperators:
 
 import NamedDims: dimnames, parent, unname
 
-struct NamedDimsOp{D, C} <: AbstractOperators.AbstractOperator
-    L::AbstractOperators.AbstractOperator
+struct NamedDimsOp{D, C, O <: AbstractOperators.AbstractOperator} <: AbstractOperators.AbstractOperator
+    L::O
 end
+
+NamedDimsOp{D, C}(L::O) where {D, C, O <: AbstractOperators.AbstractOperator} =
+    NamedDimsOp{D, C, O}(L)
 
 mul!(y::AbstractArray, L::NamedDimsOp, b::AbstractArray) = mul!(unname(y), L.L, b)
 function mul!(y::AbstractArray, L::NamedDimsOp{D, C}, b::NamedDimsArray) where {C, D}
