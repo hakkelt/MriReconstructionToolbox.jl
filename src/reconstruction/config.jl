@@ -6,7 +6,7 @@ It centralizes iteration control, tolerances, normalization, threading, and
 automatic problem decomposition behavior.
 
 Fields (with defaults):
-- normalization::Normalization = BartScaling() — scaling applied to operators/data
+- normalization::Normalization = BartScaling() — scaling applied to operators/data (see also NoScaling, MeasurementBasedScaling, FixedScaling)
 - tol::Float64 = 1e-4 — stopping tolerance for iterative algorithms
 - maxit::Int = 100 — maximum iterations for the chosen solver
 - freq::Union{Nothing,Int} = nothing — progress print frequency (iterations)
