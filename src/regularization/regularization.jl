@@ -1,11 +1,11 @@
 abstract type Regularization end
 
 """
-	calculate(reg, x; threaded)
+	calculate(reg, x; threaded=true)
 
 Evaluate the value of a regularization term `reg` at a given point `x`. This function is useful for testing and debugging.
 """
-function calculate(reg, x; threaded)
+function calculate(reg, x; threaded = true)
     x_var = Variable(x)
     t = materialize(reg, x_var; threaded)
     f = StructuredOptimization.extract_functions(t)
