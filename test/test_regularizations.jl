@@ -139,7 +139,7 @@ end
         @testset "get_operator - dimension check" for threaded in [false, true]
             x = rand(10)  # 1D
             reg = L1Wavelet2D(0.1)
-            @test_throws AssertionError get_operator(reg, x; threaded)
+            @test_throws ArgumentError get_operator(reg, x; threaded)
         end
 
         @testset "materialize" for threaded in [false, true]
@@ -231,7 +231,7 @@ end
         @testset "get_operator - dimension check" for threaded in [false, true]
             x = rand(10, 10)  # 2D
             reg = L1Wavelet3D(0.1)
-            @test_throws AssertionError get_operator(reg, x; threaded)
+            @test_throws ArgumentError get_operator(reg, x; threaded)
         end
 
         @testset "materialize" for threaded in [false, true]
@@ -318,7 +318,7 @@ end
         @testset "get_operator - dimension check" for threaded in [false, true]
             x = rand(10)  # 1D
             reg = TotalVariation2D(0.1)
-            @test_throws AssertionError get_operator(reg, x; threaded)
+            @test_throws ArgumentError get_operator(reg, x; threaded)
         end
 
         @testset "materialize" for threaded in [false, true]
@@ -437,7 +437,7 @@ end
         @testset "get_operator - dimension check" for threaded in [false, true]
             x = rand(10, 10)  # 2D
             reg = TotalVariation3D(0.1)
-            @test_throws AssertionError get_operator(reg, x; threaded)
+            @test_throws ArgumentError get_operator(reg, x; threaded)
         end
 
         @testset "materialize" for threaded in [false, true]

@@ -128,16 +128,13 @@ function CartesianAcquisitionInfo(config::CartesianAcquisitionInfo; kwargs...)
     return CartesianAcquisitionInfo(args...)
 end
 
-AcquisitionInfo(config::CartesianAcquisitionInfo; kwargs...) =
-    CartesianAcquisitionInfo(config; kwargs...)
-
 function _check_smaps(smaps, ksp, subs, is3D, img_size)
     ksp_dims_count = isnothing(subs) ? (is3D ? 3 : 2) : length(subs)
     if ksp isa NamedDimsArray
         @argcheck smaps isa NamedDimsArray "sensitivity maps must be NamedDimsArray when k-space is NamedDimsArray"
         @argcheck :coil ∈ dimnames(ksp) ":coil dimension required in k-space when sensitivity maps are provided"
         if is3D
-            @argcheck :z ∉ dimnames(ksp) "2D k-space must not have :z dimension"
+            @argcheck :z ∉ dimnames(ksp) "3D k-space must not have :z dimension"
             @argcheck :kz ∈ dimnames(ksp) "3D k-space must have :kz dimension"
             @argcheck dimnames(smaps) == (:x, :y, :z, :coil) "sensitivity maps dimnames must be (:x, :y, :z, :coil) for 3D acquisition"
         elseif ndims(smaps) == 4

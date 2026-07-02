@@ -12,7 +12,7 @@ struct TotalVariation2D{T} <: Regularization
 end
 
 function get_operator(::TotalVariation2D, x::AbstractArray; threaded::Bool = true)
-    @assert ndims(x) >= 2 "TotalVariation2D requires at least 2 dimensions in the input variable"
+    @argcheck ndims(x) >= 2 "TotalVariation2D requires at least 2 dimensions in the input variable"
     Δ = Variation(view(x, :, :, (ones(Int, ndims(x) - 2)...)); threaded = threaded && ndims(x) == 2)
     if ndims(x) > 2
         input_dims = (:_, :_, fill(:b, ndims(x) - 2)...)
@@ -46,7 +46,7 @@ struct TotalVariation3D{T} <: Regularization
 end
 
 function get_operator(::TotalVariation3D, x::AbstractArray; threaded::Bool = true)
-    @assert ndims(x) >= 3 "TotalVariation3D requires at least 3 dimensions in the input variable"
+    @argcheck ndims(x) >= 3 "TotalVariation3D requires at least 3 dimensions in the input variable"
     Δ = Variation(view(x, :, :, :, (ones(Int, ndims(x) - 3)...)); threaded = threaded && ndims(x) == 3)
     if ndims(x) > 3
         input_dims = (:_, :_, :_, fill(:b, ndims(x) - 3)...)

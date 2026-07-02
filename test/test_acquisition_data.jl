@@ -232,6 +232,30 @@ end
         @test size(displayable) == (8, 8)
         @test eltype(displayable) == Bool
     end
+
+    @testset "Anisotropic dims and large center fractions" begin
+        # The fully sampled center region must be clamped to the array bounds
+        pattern = UniformRandomSampling(2.0, 0.5)
+        mask = create_sampling_pattern(pattern, (4, 100); subsample_freq_encoding = true)
+        @test size(mask) == (4, 100)
+        @test sum(mask) > 0
+
+        # The center region may exceed the sample budget; sample count must not go negative
+        pattern = VariableDensitySampling(GaussianDistribution(), 8.0, 0.9)
+        result = create_sampling_pattern(pattern, (32, 32))
+        @test result isa Tuple
+        @test sum(result[2]) > 0
+
+        pattern = PoissonDiskSampling(16.0, 0.9)
+        mask = create_sampling_pattern(pattern, (16, 16); subsample_freq_encoding = true)
+        @test sum(mask) > 0
+    end
+
+    @testset "PoissonDiskSampling with Real arguments" begin
+        pattern = PoissonDiskSampling(4, 1 // 10)
+        @test pattern.acceleration == 4.0
+        @test pattern.center_fraction == 0.1
+    end
 end
 
 @testitem "CartesianAcquisitionInfo shifted dims" tags = [:acquisition] begin
@@ -266,6 +290,25 @@ end
         ksp = rand(ComplexF32, 16, 16, 2)
         acq = AcquisitionInfo(ksp; is3D = false, shifted_kspace_dims = (1, 2))
         @test acq.shifted_kspace_dims == (1, 2)
+    end
+
+    @testset "Symbol shifted dims build the same operator as Int dims" begin
+        ksp = NamedDimsArray{(:kx, :ky)}(rand(ComplexF32, 16, 16))
+        img = NamedDimsArray{(:x, :y)}(rand(ComplexF32, 16, 16))
+
+        acq_sym = AcquisitionInfo(ksp; shifted_kspace_dims = :kx, shifted_image_dims = :y)
+        acq_int = AcquisitionInfo(ksp; shifted_kspace_dims = 1, shifted_image_dims = 2)
+
+        F_sym = get_fourier_operator(acq_sym)
+        F_int = get_fourier_operator(acq_int)
+        @test parent(F_sym * img) ≈ parent(F_int * img)
+
+        E_sym = get_encoding_operator(acq_sym)
+        @test parent(E_sym * img) ≈ parent(F_int * img)
+
+        @test_throws ArgumentError get_fourier_operator(
+            AcquisitionInfo(ksp; shifted_kspace_dims = :kz)
+        )
     end
 
     @testset "NamedDims 2D multislice smaps validation" begin

@@ -11,8 +11,8 @@ struct UniformRandomSampling <: Subsampling
     acceleration::Float64
     center_fraction::Float64
     function UniformRandomSampling(acceleration, center_fraction = 0.1)
-        @assert 1 <= acceleration "Acceleration factor must be >= 1"
-        @assert 0 <= center_fraction < 1 "Center fraction must be in [0, 1)"
+        @argcheck 1 <= acceleration "Acceleration factor must be >= 1"
+        @argcheck 0 <= center_fraction < 1 "Center fraction must be in [0, 1)"
         return new(acceleration, center_fraction)
     end
 end
@@ -28,7 +28,7 @@ The sampling probability follows a Gaussian profile centered at k-space center:
 struct GaussianDistribution <: VariableDensityDistribution
     std::Float64
     function GaussianDistribution(std = 1 / 3)
-        @assert 0 < std "Standard deviation must be positive"
+        @argcheck 0 < std "Standard deviation must be positive"
         return new(std)
     end
 end
@@ -43,7 +43,7 @@ The sampling probability is proportional to power of the distance from the k-spa
 struct PolynomialDistribution <: VariableDensityDistribution
     p::Float64
     function PolynomialDistribution(p = 4)
-        @assert 0 < p "Polynomial exponent must be positive"
+        @argcheck 0 < p "Polynomial exponent must be positive"
         return new(p)
     end
 end
@@ -61,8 +61,8 @@ struct VariableDensitySampling{D <: VariableDensityDistribution} <: Subsampling
     acceleration::Float64
     center_fraction::Float64
     function VariableDensitySampling(distribution::D, acceleration::Real, center_fraction::Real = 0.1) where {D <: VariableDensityDistribution}
-        @assert 1 <= acceleration "Acceleration factor must be >= 1"
-        @assert 0 <= center_fraction < 1 "Center fraction must be in [0, 1)"
+        @argcheck 1 <= acceleration "Acceleration factor must be >= 1"
+        @argcheck 0 <= center_fraction < 1 "Center fraction must be in [0, 1)"
         return new{D}(distribution, acceleration, center_fraction)
     end
 end
@@ -77,13 +77,27 @@ specifies the fraction of low-frequency k-space positions to be fully sampled.
 struct PoissonDiskSampling <: Subsampling
     acceleration::Float64
     center_fraction::Float64
-    function PoissonDiskSampling(acceleration::Float64, center_fraction::Float64 = 0.1)
-        @assert 1 <= acceleration "Acceleration factor must be >= 1"
-        @assert 0 <= center_fraction < 1 "Center fraction must be in [0, 1)"
+    function PoissonDiskSampling(acceleration::Real, center_fraction::Real = 0.1)
+        @argcheck 1 <= acceleration "Acceleration factor must be >= 1"
+        @argcheck 0 <= center_fraction < 1 "Center fraction must be in [0, 1)"
         return new(acceleration, center_fraction)
     end
 end
 
+"""
+    create_sampling_pattern(subsampling::Subsampling, dims; subsample_freq_encoding=false, number_of_trials=5)
+
+Create a k-space sampling pattern for the given subsampling strategy and k-space size `dims`
+(a 2- or 3-tuple). Unless `number_of_trials == 1`, several candidate patterns are generated and
+the one with the lowest sidelobe-to-peak ratio of the point spread function is kept.
+
+By default the frequency-encoding (first) dimension is fully sampled: the pattern is generated
+over `dims[2:end]` and returned as `(:, mask)`, ready to be used as the `subsampling` argument
+of `AcquisitionInfo`. With `subsample_freq_encoding = true` all dimensions are subsampled and a
+`Bool` mask of size `dims` is returned instead.
+
+See also [`to_displayable_mask`](@ref) to convert either return form into a full-size mask.
+"""
 function create_sampling_pattern(subsampling::Subsampling, dims::NTuple{N, Int}; subsample_freq_encoding::Bool = false, number_of_trials::Int = 5) where {N}
     @argcheck N == 2 || N == 3 "Only 2D and 3D sampling patterns are supported"
     if subsampling isa PoissonDiskSampling
@@ -118,9 +132,6 @@ end
 
 function _create_sampling_pattern(subsampling::Subsampling, dims, center_region)
     W = construct_weights(subsampling, dims)
-    if !isnothing(center_region)
-        W[center_region...] .= 0
-    end
     mask = falses(dims)
     num_samples = round(Int, prod(dims) / subsampling.acceleration)
     if !isnothing(center_region)
@@ -128,6 +139,7 @@ function _create_sampling_pattern(subsampling::Subsampling, dims, center_region)
         W[center_region...] .= 0
         num_samples -= prod(map(length, center_region))
     end
+    num_samples = max(num_samples, 0) # the center region may already exceed the sample budget
     for idx in sample(vec(CartesianIndices(dims)), ProbabilityWeights(vec(W)), num_samples; replace = false)
         mask[idx] = true
     end
@@ -140,6 +152,9 @@ function _create_sampling_pattern(subsampling::PoissonDiskSampling, dims, center
     if !isnothing(center_region)
         mask[center_region...] .= true
         num_samples -= prod(map(length, center_region))
+    end
+    if num_samples <= 0 # the center region may already exceed the sample budget
+        return mask
     end
     # Simple dart throwing algorithm for Poisson disk sampling
     min_dist = sqrt(prod(dims) / num_samples) / 2
@@ -157,6 +172,13 @@ function _create_sampling_pattern(subsampling::PoissonDiskSampling, dims, center
     return mask
 end
 
+"""
+    to_displayable_mask(pattern, dims)
+
+Convert a sampling pattern returned by [`create_sampling_pattern`](@ref) into a `Bool` mask of
+size `dims` suitable for display. Accepts either a plain `Bool` mask (returned as is) or the
+`(:, mask)` form used when the frequency-encoding dimension is fully sampled.
+"""
 function to_displayable_mask(pattern, dims::NTuple{N, Int}) where {N}
     if pattern isa Tuple && length(pattern) == 2 && pattern[2] isa AbstractVector{Bool}
         mask = falses(dims)
@@ -213,8 +235,8 @@ function get_fully_sampled_region(dims, center_fraction)
     end
     width = (prod(dims) * center_fraction)^(1 / length(dims))
     centers = [d / 2 for d in dims]
-    starts = [round(Int, s) for s in centers .- width ./ 2]
-    ends = [round(Int, e) for e in centers .+ width ./ 2]
+    starts = [max(round(Int, s), 1) for s in centers .- width ./ 2]
+    ends = [min(round(Int, e), d) for (e, d) in zip(centers .+ width ./ 2, dims)]
     return tuple([s:e for (s, e) in zip(starts, ends)]...)
 end
 

@@ -11,7 +11,7 @@ struct SequentialExecutor <: ReconstructionExecutor end
 struct MultiThreadingExecutor <: ReconstructionExecutor end
 
 function get_problem_decomposition_plan(acq_data, regularization, config)
-    if config.disable_problem_decomposition || regularization == ()
+    if config.disable_problem_decomposition
         return nothing
     elseif acq_data isa NonCartesianAcquisitionInfo
         return nothing
@@ -32,7 +32,7 @@ function get_problem_decomposition_plan(acq_data, regularization, config)
 
     image_size = get_image_size(acq_data)
     if image_batch_dims[1] isa Symbol # convert to indices
-        image_batch_dims = findall(d -> d in image_batch_dims, eachindex(image_dims))
+        image_batch_dims = tuple(findall(in(image_batch_dims), collect(image_dims))...)
     end
 
     kspace_size = size(acq_data.kspace_data)
@@ -66,35 +66,35 @@ function execute(f::Function, plan, acq_data, config)
     return execute(f, plan, acq_data, config, executor)
 end
 
-function execute(f::Function, plan, acq_data, config, ::SequentialExecutor)
+function execute(f::Function, plan, acq_data, config, executor::ReconstructionExecutor)
     maybe_print_decomposition_info(plan, config)
     batch_sizes = plan.image_size[collect(plan.image_batch_dims)]
     results = Array{AbstractArray}(undef, batch_sizes)
     scales = Array{real(eltype(acq_data.kspace_data))}(undef, batch_sizes)
-    threaded = config.threaded
-    slices = get_slices(plan, acq_data)
-    @conditionally_enable_threading threaded for (idx, id, local_acq) in slices
-        r, s = execute_single_slice(f, id, local_acq, config; threaded = threaded)
-        results[idx] = r
-        scales[idx] = s
-    end
+    run_slices!(results, scales, f, plan, acq_data, config, executor)
     maybe_rescale_results!(results, scales, config)
     return stack_image_slices(results, plan, Val(config.threaded))
 end
 
-function execute(f::Function, plan, acq_data, config, ::MultiThreadingExecutor)
-    maybe_print_decomposition_info(plan, config)
-    batch_sizes = plan.image_size[collect(plan.image_batch_dims)]
-    results = Array{AbstractArray}(undef, batch_sizes)
-    scales = Array{real(eltype(acq_data.kspace_data))}(undef, batch_sizes)
-    slices = collect(get_slices(plan, acq_data))
-    @restrict_threading @threads for (idx, id, local_acq) in slices
-        r, s = execute_single_slice(f, id, local_acq, config; threaded = false)
+function run_slices!(results, scales, f, plan, acq_data, config, ::SequentialExecutor)
+    threaded = config.threaded
+    slices = get_slices(plan, acq_data)
+    @conditionally_enable_threading threaded for (idx, id, local_acq) in slices
+        r, s = execute_single_slice(f, idx, id, local_acq, config; threaded = threaded)
         results[idx] = r
         scales[idx] = s
     end
-    maybe_rescale_results!(results, scales, config)
-    return stack_image_slices(results, plan, Val(config.threaded))
+    return nothing
+end
+
+function run_slices!(results, scales, f, plan, acq_data, config, ::MultiThreadingExecutor)
+    slices = collect(get_slices(plan, acq_data))
+    @restrict_threading @threads for (idx, id, local_acq) in slices
+        r, s = execute_single_slice(f, idx, id, local_acq, config; threaded = false)
+        results[idx] = r
+        scales[idx] = s
+    end
+    return nothing
 end
 
 # Helper functions
@@ -167,43 +167,54 @@ function get_acquisition_info_slice(acq_info::CartesianAcquisitionInfo, idx, ksp
 end
 
 function stack_image_slices(results, plan, ::Val{false})
-    full_image = similar(results[1], plan.image_size)
+    full_image = similar(unname(results[1]), plan.image_size)
     for (output_slice, result) in
         zip(eachslice(full_image; dims = plan.image_batch_dims), results)
-        output_slice .= result
+        output_slice .= unname(result)
     end
     return full_image
 end
 
 function stack_image_slices(results, plan, ::Val{true})
-    full_image = similar(results[1], plan.image_size)
+    full_image = similar(unname(results[1]), plan.image_size)
     extended_results = collect(
         zip(eachslice(full_image; dims = plan.image_batch_dims), results)
     )
     @threads for (output_slice, result) in extended_results
-        output_slice .= result
+        output_slice .= unname(result)
     end
     return full_image
 end
 
-function execute_single_slice(f::Function, id, local_acq, config; kwargs...)
+function execute_single_slice(f::Function, idx, id, local_acq, config; kwargs...)
     if config.verbose
         freq = isnothing(config.freq) ? 0 : config.freq
     else
         freq = -1
     end
     printfunc = (s...) -> config.printfunc("[$id] ", s...)
-    local_conf = Config(config; verbose = false, printfunc, freq, kwargs...)
-    return f(local_acq, local_conf)
+    local_conf = Config(
+        config;
+        verbose = false, printfunc, freq, disable_inverse_scale_output = true, kwargs...,
+    )
+    return f(idx, local_acq, local_conf)
+end
+
+function get_x₀_slice(x₀, plan, idx)
+    slicer = ntuple(length(plan.image_size)) do d
+        i = findfirst(==(d), plan.image_batch_dims)
+        isnothing(i) ? Colon() : idx[i]
+    end
+    return @view unname(x₀)[slicer...]
 end
 
 function maybe_rescale_results!(results, scales, config)
     return if !config.disable_inverse_scale_output
         median_scale = median(scales)
         @threads for i in eachindex(results)
-            results[i] .*= scales[i]
+            results[i] .*= median_scale
         end
-        config.verbose &&
+        config.verbose && median_scale != 1 &&
             config.printfunc("Rescaled output by median scale factor $median_scale")
     end
 end

@@ -30,6 +30,21 @@ This approach mimic the normalization of MeasurementBasedNormalization from Regu
 struct MeasurementBasedScaling <: Normalization end
 
 """
+    FixedScaling(scale) <: Normalization
+
+A normalization strategy that applies a user-provided, constant scaling factor.
+Useful for reproducing a previous reconstruction or comparing reconstructions of
+different datasets with a common scale. `scale` must be positive.
+"""
+struct FixedScaling <: Normalization
+    scale::Float64
+    function FixedScaling(scale::Real)
+        @argcheck scale > 0 "scale must be positive"
+        return new(Float64(scale))
+    end
+end
+
+"""
     get_scale(scaling::Normalization, acq_data::AcquisitionInfo, x₀)
 
 Computes the scaling factor based on the chosen normalization strategy.
@@ -53,4 +68,8 @@ end
 
 function get_scale(::MeasurementBasedScaling, acquisition_data::AcquisitionInfo, x₀)
     return norm(acquisition_data.kspace_data, 1) / length(acquisition_data.kspace_data)
+end
+
+function get_scale(scaling::FixedScaling, acq_data::AcquisitionInfo, x₀)
+    return scaling.scale
 end
