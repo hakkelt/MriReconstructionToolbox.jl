@@ -116,10 +116,7 @@ function NonCartesianAcquisitionInfo(config::NonCartesianAcquisitionInfo; kwargs
     )
 end
 
-AcquisitionInfo(config::NonCartesianAcquisitionInfo; kwargs...) =
-    NonCartesianAcquisitionInfo(config; kwargs...)
-
-function Base.show(io::IO, info::NonCartesianAcquisitionInfo)
+function _get_acq_info_meta(info::NonCartesianAcquisitionInfo)
     meta = String[]
     if !isnothing(info.kspace_data)
         push!(meta, "kspace_data=Array{$(eltype(info.kspace_data))}<$(join(size(info.kspace_data), "×"))>")
@@ -133,23 +130,16 @@ function Base.show(io::IO, info::NonCartesianAcquisitionInfo)
     if !isnothing(info.sensitivity_maps)
         push!(meta, "sensitivity_maps=$(eltype(info.sensitivity_maps))<$(join(size(info.sensitivity_maps), "×"))>")
     end
+    return meta
+end
+
+function Base.show(io::IO, info::NonCartesianAcquisitionInfo)
+    meta = _get_acq_info_meta(info)
     return print(io, "NonCartesianAcquisitionInfo(", join(meta, ", "), ")")
 end
 
 function Base.show(io::IO, ::MIME"text/plain", info::NonCartesianAcquisitionInfo)
-    meta = String[]
-    if !isnothing(info.kspace_data)
-        push!(meta, "kspace_data=Array{$(eltype(info.kspace_data))}<$(join(size(info.kspace_data), "×"))>")
-    end
-    push!(meta, "trajectory=Array{$(eltype(info.trajectory))}<$(join(size(info.trajectory), "×"))>")
-    if !isnothing(info.dcf)
-        push!(meta, "dcf=Array{$(eltype(info.dcf))}<$(join(size(info.dcf), "×"))>")
-    end
-    push!(meta, "encoding=" * (info.is3D ? "3D" : "2D"))
-    push!(meta, "image_size=$(join(info.image_size, "×"))")
-    if !isnothing(info.sensitivity_maps)
-        push!(meta, "sensitivity_maps=$(eltype(info.sensitivity_maps))<$(join(size(info.sensitivity_maps), "×"))>")
-    end
+    meta = _get_acq_info_meta(info)
     println(io, "NonCartesianAcquisitionInfo:")
     for (i, m) in enumerate(meta)
         m = replace(m, "=" => " = ", "_" => " ")

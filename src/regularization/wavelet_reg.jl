@@ -20,7 +20,7 @@ struct L1Wavelet2D{T, W} <: Regularization
 end
 
 function get_operator(reg::L1Wavelet2D, x::AbstractArray{T}; threaded::Bool = true) where {T}
-    @assert ndims(x) >= 2 "L1Wavelet2D requires at least 2 dimensions in the input variable"
+    @argcheck ndims(x) >= 2 "L1Wavelet2D requires at least 2 dimensions in the input variable"
     img_2D_size = size(x)[1:2]
     divisions = 2^reg.levels
     if img_2D_size[1] % divisions != 0 || img_2D_size[2] % divisions != 0
@@ -70,7 +70,7 @@ struct L1Wavelet3D{T, W} <: Regularization
 end
 
 function get_operator(reg::L1Wavelet3D, x::AbstractArray{T}; threaded::Bool = true) where {T}
-    @assert ndims(x) >= 3 "L1Wavelet3D requires at least 3 dimensions in the input variable"
+    @argcheck ndims(x) >= 3 "L1Wavelet3D requires at least 3 dimensions in the input variable"
     img_3D_size = size(x)[1:3]
     divisions = 2^reg.levels
     if img_3D_size[1] % divisions != 0 ||

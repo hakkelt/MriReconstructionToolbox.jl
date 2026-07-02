@@ -1,18 +1,20 @@
 """
 	reconstruct(
-		acq_data::AcquisitionInfo;
-		regularization::Union{Regularization, Tuple{Vararg{Regularization}}}=(),
-		algorithm=(CG(;maxit=20), FISTA(;maxit=50), ADMM(;maxit=100)),
-		threaded::Bool=true)
+		acq_data::AcquisitionInfo,
+		[regularization::Union{Regularization, Tuple{Vararg{Regularization}}}],
+		[algorithm];
+		kwargs...)
 
 Performs MRI reconstruction from k-space data using the specified regularization, and optimization algorithm.
 
-# Arguments
+# Positional arguments
 - `acq_data::AcquisitionInfo`: The acquisition information containing k-space data, sensitivity maps, and other parameters.
 - `regularization::Union{Regularization, Tuple{Vararg{Regularization}}}`: The regularization term(s) to use (default is no regularization).
-- `algorithm`: The optimization algorithm(s) to use (default is a tuple of CG, FISTA, and ADMM with specified max iterations).
+- `algorithm`: The optimization algorithm(s) to use (default is `(CG(), CGNR(), FISTA(), ADMM())`; the applicable one is selected based on the model).
+
+# Keyword arguments
 - `x₀::Union{Nothing,AbstractArray}=nothing`: Optional initial guess for the image (default is 𝒜' * y).
-- `normalization::Normalization = BartScaling()`: scaling applied to operators/data
+- `normalization::Normalization = BartScaling()`: scaling applied to operators/data (see also `NoScaling`, `MeasurementBasedScaling`, `FixedScaling`)
 - `tol::Float64 = 1e-4`: stopping tolerance for iterative algorithms
 - `maxit::Int = 100`: maximum iterations for the chosen solver
 - `freq::Union{Nothing,Int} = nothing`: progress print frequency (iterations)
@@ -71,9 +73,22 @@ function reconstruct(
         end
         first(reconstruction_result)
     else
-        execute(decomposition_plan, acq_data, config) do local_acq, local_conf
-            _reconstruct(local_acq, regularization, algorithm, x₀, local_conf)
+        if !isnothing(x₀)
+            @argcheck size(x₀) == decomposition_plan.image_size "Size of x₀ ($(size(x₀))) must match the image size ($(decomposition_plan.image_size))"
         end
+        if regularization == ()
+            # Direct reconstruction needs no scaling; keep slices identical to the
+            # non-decomposed result instead of normalizing each slice separately.
+            config = Config(config; normalization = NoScaling())
+        end
+        result = execute(decomposition_plan, acq_data, config) do idx, local_acq, local_conf
+            local_x₀ = isnothing(x₀) ? nothing : get_x₀_slice(x₀, decomposition_plan, idx)
+            _reconstruct(local_acq, regularization, algorithm, local_x₀, local_conf)
+        end
+        if acq_data.kspace_data isa NamedDimsArray
+            result = NamedDimsArray{get_image_dims(acq_data)}(unname(result))
+        end
+        result
     end
     t_end = time()
     config.verbose && config.printfunc("Total time: ", format_time(t_end - t_start))
@@ -130,7 +145,7 @@ function _direct_reconstruct(𝒜, acq_data, x₀, regularization, config)
                 config.printfunc("Warning: Computed scale is zero, defaulting to scale=1.0")
             scale = 1
         end
-        config.verbose && @sprintf("Using scaling factor: %g\n", scale)
+        config.verbose && config.printfunc(@sprintf("Using scaling factor: %g", scale))
     else
         scale = 1
     end
@@ -141,6 +156,8 @@ function _iterative_reconstruct(𝒜, acq_data, x₀, scale, regularization, alg
     if scale != 1
         @step "Scaling k-space data" config begin
             acq_data = AcquisitionInfo(acq_data; kspace_data = acq_data.kspace_data ./ scale)
+            # Solver iterates in scaled units, so warm start and tolerance must match.
+            x₀ = x₀ ./ scale
         end
     end
     if !config.disable_operator_normalization

@@ -23,7 +23,7 @@ struct TemporalFourier{T, D} <: Regularization
 end
 
 function get_operator(reg::TemporalFourier, x::AbstractArray; threaded::Bool = true)
-    time_dim = get_time_dim(reg.time_dim, x)
+    time_dim = get_time_dim(reg.time_dim, x isa NamedDimsArray ? dimnames(x) : (1:ndims(x)))
     num_threads = threaded ? Threads.nthreads() : 1
     F = DFT(unname(x), time_dim; num_threads)
     if x isa NamedDimsArray
@@ -37,7 +37,8 @@ function get_operator(reg::TemporalFourier, x::AbstractArray; threaded::Bool = t
 end
 
 function get_affected_dims(reg::TemporalFourier, ::AcquisitionInfo, image_dims)
-    return (get_time_dim(reg.time_dim, image_dims),)
+    # Return the image_dims entry (a Symbol for named dimensions) rather than the index.
+    return (image_dims[get_time_dim(reg.time_dim, image_dims)],)
 end
 
 function materialize(reg::TemporalFourier, x::Variable{T}; threaded::Bool) where {T}

@@ -62,7 +62,8 @@ function _check_lowrank_dims(time_dim)
 end
 
 function get_operator(reg::Union{LowRank, RankLimit}, x::AbstractArray; threaded::Bool = true)
-    affected_dims = get_affected_dims(reg, nothing, x)
+    dims = x isa NamedDimsArray ? dimnames(x) : (1:ndims(x))
+    affected_dims = 1:get_time_dim(reg.time_dim, dims)
     batch_dims = (length(affected_dims) + 1):ndims(x)
     @argcheck length(batch_dims) >= 0 "Input variable must have at least as many dimensions as affected_dims"
     if isempty(batch_dims)
@@ -103,20 +104,14 @@ function materialize(reg::RankLimit, x::Variable{T}; threaded::Bool) where {T}
     return StructuredOptimization.Term(1, IndBallRank(reg.max_rank), op * x, repr)
 end
 
-function get_affected_dims(reg::Union{LowRank, RankLimit}, ::Union{Nothing, AcquisitionInfo}, image_dims)
+function get_affected_dims(reg::Union{LowRank, RankLimit}, ::Nothing, image_dims)
+    # get_time_dim returns an index; return the corresponding entries of image_dims so
+    # that named dimensions stay Symbols (needed for problem-decomposition setdiff).
     time_dim = get_time_dim(reg.time_dim, image_dims)
-    if time_dim isa Symbol
-        time_dim_idx = findfirst(==(time_dim), image_dims)
-        return image_dims[1:time_dim_idx]
-    else
-        return 1:time_dim
-    end
+    return image_dims[1:time_dim]
 end
 
-function get_affected_dims(
-        reg::Union{LowRank, RankLimit},
-        acq_info::AcquisitionInfo,
-        image_dims,
-    )
+# Disambiguates against the generic Regularization fallback.
+function get_affected_dims(reg::Union{LowRank, RankLimit}, ::AcquisitionInfo, image_dims)
     return get_affected_dims(reg, nothing, image_dims)
 end

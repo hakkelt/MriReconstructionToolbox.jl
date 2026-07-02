@@ -69,10 +69,11 @@ function time_print(io::IO, stats)
     if VERSION < v"1.11"
         stats = (lock_conflicts = 0, compile_time = 0, recompile_time = 0, stats...)
     end
-    parens = stats.bytes != 0 || stats.bytes != 0 || stats.gctime > 0 || stats.lock_conflicts > 0 || stats.compile_time > 0
+    allocs_count = Base.gc_alloc_count(stats.gcstats)
+    parens = stats.bytes != 0 || allocs_count != 0 || stats.gctime > 0 || stats.lock_conflicts > 0 || stats.compile_time > 0
     parens && print(io, " (")
-    if stats.bytes != 0 || stats.bytes != 0
-        allocs, ma = prettyprint_getunits(stats.bytes, length(_cnt_units), Int64(1000))
+    if stats.bytes != 0 || allocs_count != 0
+        allocs, ma = prettyprint_getunits(allocs_count, length(_cnt_units), Int64(1000))
         if ma == 1
             print(io, Int(allocs), _cnt_units[ma], allocs == 1 ? " allocation: " : " allocations: ")
         else
@@ -81,20 +82,20 @@ function time_print(io::IO, stats)
         print(io, Base.format_bytes(stats.bytes))
     end
     if stats.gctime > 0
-        if stats.bytes != 0 || stats.allocs != 0
+        if stats.bytes != 0 || allocs_count != 0
             print(io, ", ")
         end
         print(io, round(100 * stats.gctime / stats.time, digits = 2), "% gc time")
     end
     if stats.lock_conflicts > 0
-        if stats.bytes != 0 || stats.allocs != 0 || stats.gctime > 0
+        if stats.bytes != 0 || allocs_count != 0 || stats.gctime > 0
             print(io, ", ")
         end
         plural = stats.lock_conflicts == 1 ? "" : "s"
         print(io, stats.lock_conflicts, " lock conflict$plural")
     end
     if stats.compile_time > 0
-        if stats.bytes != 0 || stats.allocs != 0 || stats.gctime > 0 || stats.lock_conflicts > 0
+        if stats.bytes != 0 || allocs_count != 0 || stats.gctime > 0 || stats.lock_conflicts > 0
             print(io, ", ")
         end
         print(io, round(100 * stats.compile_time / stats.time, digits = 2), "% compilation time")

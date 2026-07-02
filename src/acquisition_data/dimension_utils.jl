@@ -21,8 +21,9 @@ function get_time_dim(time_dim, image_dims)
         end
     elseif time_dim isa Symbol
         @argcheck image_dims[1] isa Symbol "when time_dim is a Symbol, kspace data must be a NamedDimsArray"
-        time_dim = findfirst(==(time_dim), image_dims)
-        @argcheck !isnothing(time_dim) "Dimension $(time_dim) not found in image_dims ($(image_dims))"
+        time_dim_name = time_dim
+        time_dim = findfirst(==(time_dim_name), image_dims)
+        @argcheck !isnothing(time_dim) "Dimension $(time_dim_name) not found in image_dims ($(image_dims))"
     end
     @assert 1 <= time_dim <= length(image_dims) "time_dim out of bounds"
     return time_dim

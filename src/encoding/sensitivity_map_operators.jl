@@ -55,7 +55,7 @@ function get_sensitivity_map_operator(
     dn = dimnames(sensitivity_maps)
     @argcheck :x ∈ dn "sensitivity maps array must have a dimension named :x for Cartesian data"
     @argcheck dn[1] == :x "sensitivity maps array must have the first dimension named :x"
-    @argcheck :y ∈ dn "sensitivity maps array must have a dimension named :ky for Cartesian data"
+    @argcheck :y ∈ dn "sensitivity maps array must have a dimension named :y for Cartesian data"
     @argcheck dn[2] == :y "sensitivity maps array must have the second dimension named :y"
     @argcheck :coil ∈ dn "sensitivity maps array must have a dimension named :coil for sensitivity maps array"
     @argcheck dn[end] == :coil "sensitivity maps array must have the last dimension named :coil"

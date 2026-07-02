@@ -193,18 +193,12 @@ function _check_ksp_dimnames(ksp_dimnames, subs::_3D_subsampling_type, is3D, img
         @argcheck :kx ∈ ksp_dimnames "k-space must have :kx dimension"
         @argcheck :ky ∈ ksp_dimnames "k-space must have :ky dimension"
         @argcheck :kz ∈ ksp_dimnames "k-space must have :kz dimension"
-        @argcheck length(img_size) == 3 "image_size must be length 3 for 3D subsampling"
-        @argcheck is3D "is3D must be true for 3D subsampling"
     elseif length(subs) == 2 && subs[2] isa _1D_subsampling_type
         @argcheck :kxy ∈ ksp_dimnames "k-space must have :kxy dimension"
         @argcheck :kz ∈ ksp_dimnames "k-space must have :kz dimension"
-        @argcheck length(img_size) == 3 "image_size must be length 3 for 3D subsampling"
-        @argcheck is3D "is3D must be true for 3D subsampling"
     elseif length(subs) == 2 && subs[1] isa _1D_subsampling_type
         @argcheck :kx ∈ ksp_dimnames "k-space must have :kx dimension"
         @argcheck :kyz ∈ ksp_dimnames "k-space must have :kyz dimension"
-        @argcheck length(img_size) == 3 "image_size must be length 3 for 3D subsampling"
-        @argcheck is3D "is3D must be true for 3D subsampling"
     else
         @argcheck :kxyz ∈ ksp_dimnames "k-space must have :kxyz dimension"
     end
@@ -385,20 +379,28 @@ function _get_img_size_from_subsampling(subsampling::AbstractArray, ksp)
     end
 end
 
-function _build_subsampling_context(subsampled_ksp, img_size, subsampling)
+# Allocate an (uninitialized) full-size k-space array matching the layout implied by the
+# subsampled data — used as a planning template so no adjoint apply is needed.
+function _full_kspace_template(subsampled_ksp, img_size, subsampling)
     @argcheck 2 ≤ length(img_size) ≤ 3 "img_size must be either length 2 or 3"
     batch_dims_start = _get_subsampled_dims_count(subsampling) + 1
     ksp_size = (img_size..., size(subsampled_ksp)[batch_dims_start:end]...)
     ksp = similar(subsampled_ksp, ksp_size)
-    is3D = length(img_size) == 3
     if subsampled_ksp isa NamedDimsArray
         batch_dim_names = dimnames(subsampled_ksp)[batch_dims_start:end]
-        full_dimnames = is3D ?
+        full_dimnames = length(img_size) == 3 ?
             (:kx, :ky, :kz, batch_dim_names...) :
             (:kx, :ky, batch_dim_names...)
         expected_subs_dimnames = _get_dimnames_from_subsampling(full_dimnames, img_size, subsampling)
         @argcheck dimnames(subsampled_ksp) == expected_subs_dimnames
         ksp = NamedDimsArray{full_dimnames}(unname(ksp))
+    end
+    return ksp
+end
+
+function _build_subsampling_context(subsampled_ksp, img_size, subsampling)
+    ksp = _full_kspace_template(subsampled_ksp, img_size, subsampling)
+    if ksp isa NamedDimsArray
         Γ_unwrapped = _get_subsampling_operator(unname(ksp), img_size, subsampling)
         D = dimnames(ksp)
         new_dimnames = _get_dimnames_from_subsampling(D, img_size, subsampling)
