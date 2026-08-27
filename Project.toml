@@ -29,17 +29,17 @@ StructuredOptimization = "46cd3e9d-64ff-517d-a929-236bc1a1fc9d"
 WaveletOperators = "f3582904-6f60-4bbd-985d-55eab799bc9d"
 
 [sources]
-AbstractOperators = {url = "https://github.com/hakkelt/AbstractOperators.jl", rev = "unified-threading"}
-DSPOperators = {url = "https://github.com/hakkelt/AbstractOperators.jl", rev = "unified-threading", subdir = "DSPOperators"}
-FFTWOperators = {url = "https://github.com/hakkelt/AbstractOperators.jl", rev = "unified-threading", subdir = "FFTWOperators"}
-NFFTOperators = {url = "https://github.com/hakkelt/AbstractOperators.jl", rev = "unified-threading", subdir = "NFFTOperators"}
-WaveletOperators = {url = "https://github.com/hakkelt/AbstractOperators.jl", rev = "unified-threading", subdir = "WaveletOperators"}
+AbstractOperators = {path = "deps/AbstractOperators"}
+DSPOperators = {path = "deps/AbstractOperators/DSPOperators"}
+FFTWOperators = {path = "deps/AbstractOperators/FFTWOperators"}
+NFFTOperators = {path = "deps/AbstractOperators/NFFTOperators"}
+WaveletOperators = {path = "deps/AbstractOperators/WaveletOperators"}
 NestedThreading = {url = "https://github.com/hakkelt/NestedThreading.jl"}
 OperatorCore = {url = "https://github.com/hakkelt/OperatorCore.jl"}
 ProximalAlgorithms = {url = "https://github.com/hakkelt/ProximalAlgorithms.jl"}
 ProximalCore = {url = "https://github.com/hakkelt/ProximalCore.jl"}
 ProximalOperators = {url = "https://github.com/hakkelt/ProximalOperators.jl"}
-StructuredOptimization = {url = "https://github.com/hakkelt/StructuredOptimization.jl"}
+StructuredOptimization = {path = "deps/StructuredOptimization"}
 
 [compat]
 AbstractOperators = "0.4"
