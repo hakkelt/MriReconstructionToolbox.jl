@@ -11,7 +11,7 @@ using AbstractOperators: Sum  # resolve ambiguity with ProximalOperators.Sum
 @reexport using StructuredOptimization
 using NFFTOperators: NFFTOp
 
-using AbstractOperators: @enable_full_threading, @restrict_threading
+using NestedThreading: @budgeted_threads, with_full_threads, with_restricted_threads
 @reexport using WaveletOperators: WaveletOp, WT, wavelet
 @reexport using FFTWOperators: FFTWOperators, DFT, fftshift_op, ifftshift_op, alternate_sign!
 using FFTW: FFTW

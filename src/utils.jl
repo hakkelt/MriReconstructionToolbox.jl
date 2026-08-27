@@ -21,9 +21,13 @@ ensure_tuple(x) = (x,)
 macro conditionally_enable_threading(threaded, expr)
     return quote
         if $(esc(threaded))
-            @enable_full_threading $(esc(expr))
+            with_full_threads() do
+                $(esc(expr))
+            end
         else
-            @restrict_threading $(esc(expr))
+            with_restricted_threads() do
+                $(esc(expr))
+            end
         end
     end
 end

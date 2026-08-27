@@ -13,7 +13,10 @@ end
 
 function get_operator(::TotalVariation2D, x::AbstractArray; threaded::Bool = true)
     @argcheck ndims(x) >= 2 "TotalVariation2D requires at least 2 dimensions in the input variable"
-    Δ = Variation(view(x, :, :, (ones(Int, ndims(x) - 2)...)); threaded = threaded && ndims(x) == 2)
+    Δ = Variation(
+        view(unname(x), :, :, (ones(Int, ndims(x) - 2)...));
+        threaded = threaded && ndims(x) == 2
+    )
     if ndims(x) > 2
         input_dims = (:_, :_, fill(:b, ndims(x) - 2)...)
         image_dims = (:_, fill(:b, ndims(x) - 2)..., :_)
@@ -32,6 +35,9 @@ function get_affected_dims(::TotalVariation2D, acq_info::AcquisitionInfo, image_
     return image_dims[1:2]
 end
 
+# λ‖Δx‖_{2,1} is homogeneous of degree 1, so λ scales linearly (see scale_regularization docstring).
+scale_regularization(reg::TotalVariation2D, factor::Real) = TotalVariation2D(reg.λ .* factor)
+
 """
 	TotalVariation3D(λ)
 
@@ -47,7 +53,10 @@ end
 
 function get_operator(::TotalVariation3D, x::AbstractArray; threaded::Bool = true)
     @argcheck ndims(x) >= 3 "TotalVariation3D requires at least 3 dimensions in the input variable"
-    Δ = Variation(view(x, :, :, :, (ones(Int, ndims(x) - 3)...)); threaded = threaded && ndims(x) == 3)
+    Δ = Variation(
+        view(unname(x), :, :, :, (ones(Int, ndims(x) - 3)...));
+        threaded = threaded && ndims(x) == 3
+    )
     if ndims(x) > 3
         input_dims = (:_, :_, :_, fill(:b, ndims(x) - 3)...)
         image_dims = (:_, fill(:b, ndims(x) - 3)..., :_)
@@ -66,16 +75,25 @@ function get_affected_dims(::TotalVariation3D, acq_info::AcquisitionInfo, image_
     return image_dims[1:3]
 end
 
+# λ‖Δx‖_{2,1} is homogeneous of degree 1, so λ scales linearly (see scale_regularization docstring).
+scale_regularization(reg::TotalVariation3D, factor::Real) = TotalVariation3D(reg.λ .* factor)
+
 function materialize(
         reg::Union{TotalVariation2D, TotalVariation3D}, x::Variable{T}; threaded::Bool
     ) where {T}
     Δ = get_operator(reg, ~x; threaded)
-    # If Δ carries named dimensions, unwrap before reshaping to a 2D operator
-    # to avoid creating a Reshape around a NamedDimsOp with mismatched codomain dims.
+    # If Δ carries named dimensions, reshape the underlying operator (a plain `Reshape`
+    # around it collides with the NamedDimsOp's codomain names) and rewrap: the collapsed
+    # codomain no longer maps 1:1 to the original names, so it gets an anonymous name.
+    n_directions = size(Δ, 1)[end]
     if Δ isa NamedDimsOp
-        Δ = parent(Δ)
+        input_dimnames = dimnames(~x)
+        Δ = NamedDimsOp{input_dimnames, (:_, :direction)}(
+            reshape(parent(Δ), length(~x), n_directions)
+        )
+    else
+        Δ = reshape(Δ, length(~x), n_directions) # new shape: (length(~x), 2) for 2D or (length(~x), 3) for 3D -> required shape for L_{2,1} mixed norm
     end
-    Δ = reshape(Δ, length(~x), size(Δ, 1)[end]) # new shape: (length(~x), 2) for 2D or (length(~x), 3) for 3D -> required shape for L_{2,1} mixed norm
     λ = real(T)(reg.λ)
     λ_repr = @sprintf "%g" λ
     x_repr = get_name(x)

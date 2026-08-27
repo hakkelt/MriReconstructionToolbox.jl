@@ -4,8 +4,8 @@ import AbstractOperators:
     fun_name,
     domain_type,
     codomain_type,
-    domain_storage_type,
-    codomain_storage_type,
+    domain_array_type,
+    codomain_array_type,
     allocate_in_domain,
     allocate_in_codomain,
     can_be_combined,
@@ -68,11 +68,11 @@ function mul!(
     return mul!(unname(y), L.A.L', unname(b))
 end
 
-function domain_storage_type(L::NamedDimsOp{D, C}) where {D, C}
-    return NamedDimsArray{D, domain_type(L.L), domain_storage_type(L.L)}
+function domain_array_type(L::NamedDimsOp{D, C}) where {D, C}
+    return NamedDimsArray{D, domain_type(L.L), domain_array_type(L.L)}
 end
-function codomain_storage_type(L::NamedDimsOp{D, C}) where {D, C}
-    return NamedDimsArray{C, codomain_type(L.L), codomain_storage_type(L.L)}
+function codomain_array_type(L::NamedDimsOp{D, C}) where {D, C}
+    return NamedDimsArray{C, codomain_type(L.L), codomain_array_type(L.L)}
 end
 function allocate_in_domain(L::NamedDimsOp{D, C}, dims...) where {D, C}
     return NamedDimsArray{D}(allocate_in_domain(L.L, dims...))
