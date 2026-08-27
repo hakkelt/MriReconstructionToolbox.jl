@@ -1,0 +1,28 @@
+*.mat
+*.tvs
+*.m~
+*.swp
+*.bmp
+*.wav
+*.aux
+*.cvs
+*.bbl
+*.blg
+*.log
+*.DS_Store
+
+
+docs/build/
+docs/site/
+docs/Manifest.toml
+Manifest.toml
+Manifest-v*.toml
+.temp/
+
+# Julia coverage files
+*.cov
+test/gpu_env/
+benchmark/gpu_env/
+
+# MCP server folders
+.serena
