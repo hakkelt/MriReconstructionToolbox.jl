@@ -115,3 +115,8 @@ end
 function get_affected_dims(reg::Union{LowRank, RankLimit}, ::AcquisitionInfo, image_dims)
     return get_affected_dims(reg, nothing, image_dims)
 end
+
+# Nuclear norm is homogeneous of degree 1, so λ scales linearly (see scale_regularization docstring).
+scale_regularization(reg::LowRank, factor::Real) = LowRank(reg.λ .* factor; time_dim = reg.time_dim)
+# Rank constraints are scale-invariant (rank(factor * X) == rank(X)); no correction needed.
+scale_regularization(reg::RankLimit, factor::Real) = reg

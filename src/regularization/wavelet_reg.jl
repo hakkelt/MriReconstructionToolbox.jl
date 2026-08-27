@@ -48,6 +48,10 @@ function get_affected_dims(::L1Wavelet2D, acq_info::AcquisitionInfo, image_dims)
     return image_dims[1:2]
 end
 
+# L1 norm is homogeneous of degree 1, so λ scales linearly (see scale_regularization docstring).
+scale_regularization(reg::L1Wavelet2D, factor::Real) =
+    L1Wavelet2D(reg.λ .* factor; wavelet = reg.wavelet, levels = reg.levels)
+
 """
 	L1Wavelet3D(λ; wavelet=WT.db2, levels=2)
 
@@ -100,6 +104,10 @@ end
 function get_affected_dims(::L1Wavelet3D, acq_info::AcquisitionInfo, image_dims)
     return image_dims[1:3]
 end
+
+# L1 norm is homogeneous of degree 1, so λ scales linearly (see scale_regularization docstring).
+scale_regularization(reg::L1Wavelet3D, factor::Real) =
+    L1Wavelet3D(reg.λ .* factor; wavelet = reg.wavelet, levels = reg.levels)
 
 function materialize(
         reg::Union{L1Wavelet2D, L1Wavelet3D}, x::Variable{T}; threaded::Bool

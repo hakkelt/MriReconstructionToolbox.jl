@@ -660,3 +660,44 @@ end
         end
     end
 end
+
+@testitem "scale_regularization" tags = [:regularization] begin
+    using Test
+    using MriReconstructionToolbox
+
+    # L1-homogeneous terms: λ scales linearly with the factor (used by regularized problem
+    # decomposition to compensate for solving all slices with one shared data scale).
+    @testset "L1-type terms scale λ linearly" begin
+        factor = 3.5
+        @test MriReconstructionToolbox.scale_regularization(L1Image(0.1), factor).λ ≈ 0.1 * factor
+        @test MriReconstructionToolbox.scale_regularization(TotalVariation2D(0.2), factor).λ ≈ 0.2 * factor
+        @test MriReconstructionToolbox.scale_regularization(TotalVariation3D(0.2), factor).λ ≈ 0.2 * factor
+        @test MriReconstructionToolbox.scale_regularization(TemporalFourier(0.3), factor).λ ≈ 0.3 * factor
+        @test MriReconstructionToolbox.scale_regularization(LowRank(0.4), factor).λ ≈ 0.4 * factor
+        @test MriReconstructionToolbox.scale_regularization(L1Wavelet2D(0.5), factor).λ ≈ 0.5 * factor
+        @test MriReconstructionToolbox.scale_regularization(L1Wavelet3D(0.5), factor).λ ≈ 0.5 * factor
+
+        # array-valued λ is scaled elementwise
+        λ_arr = rand(4, 4)
+        @test MriReconstructionToolbox.scale_regularization(L1Image(λ_arr), factor).λ ≈ λ_arr .* factor
+    end
+
+    # Quadratic penalty (λ²‖x‖²) and rank constraints are already scale-consistent: the data
+    # term and the regularization term scale identically with x, so no correction is needed.
+    @testset "Quadratic/rank-constraint terms need no correction" begin
+        factor = 3.5
+        @test MriReconstructionToolbox.scale_regularization(Tikhonov(0.1), factor).λ == 0.1
+        @test MriReconstructionToolbox.scale_regularization(RankLimit(4), factor).max_rank == 4
+    end
+
+    @testset "auxiliary fields are preserved" begin
+        reg = L1Wavelet2D(0.5; levels = 3)
+        scaled = MriReconstructionToolbox.scale_regularization(reg, 2.0)
+        @test scaled.wavelet == reg.wavelet
+        @test scaled.levels == reg.levels
+
+        reg_lr = LowRank(0.4; time_dim = 3)
+        scaled_lr = MriReconstructionToolbox.scale_regularization(reg_lr, 2.0)
+        @test scaled_lr.time_dim == 3
+    end
+end
