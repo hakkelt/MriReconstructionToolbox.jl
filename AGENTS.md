@@ -134,7 +134,8 @@ src/
 │   └── low_rank_reg.jl            # LowRank, RankLimit
 ├── reconstruction/
 │   ├── config.jl                  # Config struct
-│   ├── decomposition.jl           # SVD decomposition utilities
+│   ├── components.jl              # Component, DecomposedImage (image decomposition)
+│   ├── decomposition.jl           # Problem decomposition over batch dims
 │   ├── build_model.jl             # Assemble optimization problem
 │   ├── progress_utils.jl          # Progress logging
 │   └── reconstruct.jl             # Main reconstruct() function
@@ -153,5 +154,6 @@ test/
 ├── test_acquisition_data.jl       # Acquisition info, dimensions, sampling tests
 ├── test_reconstruction_integration.jl  # End-to-end reconstruction tests
 ├── test_minimizer.jl              # Solver/minimizer tests
+├── test_image_decomposition.jl    # Component / DecomposedImage tests (:components)
 └── test_quality.jl                # Aqua + JET quality tests
 ```

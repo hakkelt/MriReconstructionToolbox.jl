@@ -194,6 +194,10 @@ nothing # hide
 
 See [Regularization](regularization.md) for available regularization methods.
 
+For an additive multi-component model instead — e.g. a low-rank background plus
+a sparse foreground, each solved as its own variable — pass a tuple of
+`Component`s instead of `Regularization`s; see [Image Decomposition](image_decomposition.md).
+
 ## Initial Guess
 
 Provide a custom initial estimate:

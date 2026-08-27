@@ -89,6 +89,16 @@ R(x) = f(\mathcal{T} x)
 ```
 where ``\mathcal{T}`` is some transform operator and ``f`` is a norm function (e.g., L1, L2, nuclear norm, etc.).
 
+### Additive Image Decomposition
+
+Some regularization strategies do not fit a single image well but do fit a *sum* of images with different properties — the canonical case being low-rank + sparse (L+S) decomposition of dynamic MRI. Instead of one variable `x`, the image is modeled as a sum of components `x = x_1 + x_2 + \dots + x_n`, each with its own regularizer:
+
+```math
+\hat{x}_1, \dots, \hat{x}_n = \arg\min_{x_1, \dots, x_n} \frac{1}{2}\left\|E\left(\sum_{i=1}^n x_i\right) - y\right\|_2^2 + \sum_{i=1}^n R_i(x_i)
+```
+
+The reconstructed image is ``\hat{x} = \sum_i \hat{x}_i``; the individual ``\hat{x}_i`` remain available as well (e.g. the low-rank background and the sparse dynamic foreground). See [Image Decomposition](high-level/image_decomposition.md) for the `Component`/`DecomposedImage` API implementing this model — not to be confused with [Problem Decomposition](high-level/decomposition.md), which splits a *single-image* problem over independent batch dimensions rather than into additive components.
+
 ### Optimization Algorithms
 
 Various iterative algorithms can be employed to solve the regularized inverse problem, most commonly:

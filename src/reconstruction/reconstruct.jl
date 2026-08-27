@@ -57,14 +57,29 @@ to better resource utilization and faster overall reconstruction times, but is u
 """
 function reconstruct(
         acq_data::AcquisitionInfo,
-        regularization::Union{Regularization, Tuple{Vararg{Regularization}}} = (),
+        regularization::Union{Regularization, Component, Tuple{Vararg{Union{Regularization, Component}}}} = (),
         algorithm = (CG(), CGNR(), FISTA(), ADMM());
-        x₀::Union{Nothing, AbstractArray} = nothing,
+        x₀::Union{Nothing, AbstractArray, Tuple, NamedTuple} = nothing,
         kwargs...,
     )
     config = construct_config(kwargs)
     t_start = time()
     regularization = ensure_tuple(regularization)
+    x = if !isempty(regularization) && any(r -> r isa Component, regularization)
+        @argcheck all(r -> r isa Component, regularization) "Cannot mix bare regularization terms with `Component`s; wrap loose regularization terms in a `Component`."
+        components = regularization
+        check_components(components)
+        _reconstruct_dispatch_components(acq_data, components, algorithm, x₀, config)
+    else
+        @argcheck isnothing(x₀) || x₀ isa AbstractArray "x₀ must be a plain array unless reconstructing with `Component`s."
+        _reconstruct_dispatch(acq_data, regularization, algorithm, x₀, config)
+    end
+    t_end = time()
+    config.verbose && config.printfunc("Total time: ", format_time(t_end - t_start))
+    return x
+end
+
+function _reconstruct_dispatch(acq_data, regularization, algorithm, x₀, config)
     decomposition_plan = get_problem_decomposition_plan(acq_data, regularization, config)
     x = if isnothing(decomposition_plan)
         reconstruction_result = nothing
@@ -96,8 +111,6 @@ function reconstruct(
         end
         result
     end
-    t_end = time()
-    config.verbose && config.printfunc("Total time: ", format_time(t_end - t_start))
     return x
 end
 
@@ -127,6 +140,160 @@ function _reconstruct(acq_data, regularization, algorithm, x₀, config; scale_o
     end
 
     return x̂, scale
+end
+
+function _reconstruct_dispatch_components(acq_data, components, algorithm, x₀, config)
+    decomposition_plan = get_problem_decomposition_plan(acq_data, components, config)
+    img = if isnothing(decomposition_plan)
+        result = nothing
+        @conditionally_enable_threading config.threaded begin
+            result = _reconstruct_components(acq_data, components, algorithm, x₀, config)
+        end
+        first(result)
+    else
+        if !isnothing(x₀)
+            check_x₀_components_size(x₀, components, decomposition_plan.image_size)
+        end
+        execute_regularized_components(decomposition_plan, acq_data, config, components, algorithm, x₀)
+    end
+    if acq_data.kspace_data isa NamedDimsArray && !(total(img) isa NamedDimsArray)
+        img_dimnames = get_image_dims(acq_data)
+        img = DecomposedImage(
+            NamedDimsArray{img_dimnames}(unname(total(img))),
+            NamedTuple{keys(img.components)}(
+                map(c -> NamedDimsArray{img_dimnames}(unname(c)), values(img.components))
+            ),
+        )
+    end
+    return img
+end
+
+function check_x₀_components_size(x₀, components, image_size)
+    x₀ isa Union{Tuple, NamedTuple} ||
+        throw(ArgumentError("x₀ for image decomposition must be `nothing`, a Tuple, or a NamedTuple of per-component arrays."))
+    if x₀ isa Tuple
+        @argcheck length(x₀) == length(components) "x₀ tuple must have one entry per component ($(length(components))), got $(length(x₀))."
+    end
+    for x in values(x₀)
+        @argcheck size(x) == image_size "Size of x₀ ($(size(x))) must match the image size ($image_size)"
+    end
+    return nothing
+end
+
+function _reconstruct_components(acq_data, components, algorithm, x₀, config; scale_override = nothing)
+    @step "Constructing encoding operator" config begin
+        𝒜 = get_encoding_operator(acq_data; threaded = config.threaded, fast_planning = false)
+    end
+    x̂, scale = _direct_reconstruct_components(𝒜, acq_data, config; scale_override)
+    x₀s = get_component_x0s(components, x̂, x₀)
+    img = _iterative_reconstruct_components(𝒜, acq_data, x₀s, scale, components, algorithm, config)
+    return img, scale
+end
+
+function _direct_reconstruct_components(𝒜, acq_data, config; scale_override = nothing)
+    @step "Getting initial estimate" config begin
+        x̂ = 𝒜' * acq_data.kspace_data
+    end
+    if !isnothing(scale_override)
+        scale = scale_override
+        config.verbose && config.printfunc(@sprintf("Using scaling factor: %g", scale))
+    elseif config.normalization != NoScaling()
+        @step "Computing scaling factor" config begin
+            scale = get_scale(config.normalization, acq_data, x̂)
+        end
+        if scale == 0
+            config.verbose &&
+                config.printfunc("Warning: Computed scale is zero, defaulting to scale=1.0")
+            scale = 1
+        end
+        config.verbose && config.printfunc(@sprintf("Using scaling factor: %g", scale))
+    else
+        scale = 1
+    end
+    return x̂, real(eltype(x̂))(scale)
+end
+
+# Component initialisation: the first component gets the direct-recon estimate x̂
+# (standard L+S/RPCA warm start), the rest start at zero. `x₀` (nothing / Tuple /
+# NamedTuple of per-component arrays) overrides this default per component.
+function get_component_x0s(components, x̂, ::Nothing)
+    n = length(components)
+    return ntuple(i -> i == 1 ? copy(unname(x̂)) : zero(unname(x̂)), n)
+end
+
+function get_component_x0s(components, x̂, x₀::Tuple)
+    n = length(components)
+    @argcheck length(x₀) == n "x₀ tuple must have one entry per component ($n), got $(length(x₀))."
+    return ntuple(n) do i
+        @argcheck size(x₀[i]) == size(x̂) "x₀ component size $(size(x₀[i])) must match the image size $(size(x̂))."
+        unname(x₀[i])
+    end
+end
+
+function get_component_x0s(components, x̂, x₀::NamedTuple)
+    return ntuple(length(components)) do i
+        name = components[i].name
+        if haskey(x₀, name)
+            x = x₀[name]
+            @argcheck size(x) == size(x̂) "x₀ component size $(size(x)) must match the image size $(size(x̂))."
+            unname(x)
+        elseif i == 1
+            copy(unname(x̂))
+        else
+            zero(unname(x̂))
+        end
+    end
+end
+
+function _iterative_reconstruct_components(𝒜, acq_data, x₀s, scale, components, algorithm, config)
+    if scale != 1
+        @step "Scaling k-space data" config begin
+            acq_data = AcquisitionInfo(acq_data; kspace_data = acq_data.kspace_data ./ scale)
+            x₀s = map(x -> x ./ scale, x₀s)
+        end
+    end
+    if !config.disable_operator_normalization
+        @step "Normalizing encoding operator" config begin
+            𝒜 = normalize_op(𝒜, config.exact_opnorm)
+        end
+    end
+    @step "Building optimization model" config begin
+        model, vars = build_model(
+            unname(𝒜), unname(acq_data.kspace_data), components;
+            threaded = config.threaded, x₀s,
+        )
+    end
+    @printing_step "Reconstructing image" config begin
+        if isnothing(config.freq)
+            freq = config.verbose ? get_reasonable_freq(config.maxit) : -1
+        else
+            freq = config.freq
+        end
+        ϵ = eps(real(eltype(x₀s[1])))
+        tol = config.tol == 0 ? 0 : max(ϵ * 10, config.tol * maximum(x -> maximum(abs, x), x₀s))
+        stop =
+            (iter, state) -> ProximalAlgorithms.default_stopping_criterion(tol, iter, state)
+        display =
+            (it, alg, iter, state) ->
+        ProximalAlgorithms.default_display(it, alg, iter, state, config.printfunc)
+        algorithm = patch_algorithm_with_default_values(algorithm, length(components))
+        verbose = freq != -1
+        solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
+        xs = map(v -> copy(~v), vars)
+    end
+    if !config.disable_inverse_scale_output && scale != 1
+        @step "Inverse scaling image" config begin
+            xs = map(x -> x .* scale, xs)
+        end
+    end
+    total_x = reduce(+, xs)
+    if acq_data.kspace_data isa NamedDimsArray
+        img_dimnames = dimnames(𝒜, 2)
+        total_x = NamedDimsArray{img_dimnames}(total_x)
+        xs = map(x -> NamedDimsArray{img_dimnames}(x), xs)
+    end
+    names = map(c -> c.name, components)
+    return DecomposedImage(total_x, NamedTuple{names}(xs))
 end
 
 function _direct_reconstruct(𝒜, acq_data, x₀, regularization, config; scale_override = nothing)
@@ -221,7 +388,7 @@ function get_reasonable_freq(maxit)
 end
 
 function patch_algorithm_with_default_values(
-        algorithm::ProximalAlgorithms.IterativeAlgorithm{T}
+        algorithm::ProximalAlgorithms.IterativeAlgorithm{T}, n_components::Int = 1
     ) where {
         T <: Union{
             ProximalAlgorithms.ForwardBackwardIteration,
@@ -229,14 +396,17 @@ function patch_algorithm_with_default_values(
         },
     }
     if :Lf ∉ keys(algorithm.kwargs)
-        return ProximalAlgorithms.override_parameters(algorithm; Lf = 1)
+        # For n components sharing the same operator 𝒜, the data term is
+        # ‖𝒜*(x₁+…+xₙ) - y‖²; its Lipschitz constant is n (not 1) when 𝒜 is
+        # normalized to unit norm, since ‖[𝒜 … 𝒜]‖ = √n‖𝒜‖.
+        return ProximalAlgorithms.override_parameters(algorithm; Lf = n_components)
     else
         return algorithm
     end
 end
 
 function patch_algorithm_with_default_values(
-        algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.ADMMIteration}
+        algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.ADMMIteration}, n_components::Int = 1
     )
     if :cg_tol ∉ keys(algorithm.kwargs) && :cg_maxit ∉ keys(algorithm.kwargs)
         return ProximalAlgorithms.override_parameters(algorithm; cg_tol = 1.0e-3, cg_maxit = 10)
@@ -249,10 +419,10 @@ function patch_algorithm_with_default_values(
     end
 end
 
-function patch_algorithm_with_default_values(algorithm::ProximalAlgorithms.IterativeAlgorithm)
+function patch_algorithm_with_default_values(algorithm::ProximalAlgorithms.IterativeAlgorithm, n_components::Int = 1)
     return algorithm
 end
 
-function patch_algorithm_with_default_values(algorithm::Tuple)
-    return map(patch_algorithm_with_default_values, algorithm)
+function patch_algorithm_with_default_values(algorithm::Tuple, n_components::Int = 1)
+    return map(a -> patch_algorithm_with_default_values(a, n_components), algorithm)
 end
