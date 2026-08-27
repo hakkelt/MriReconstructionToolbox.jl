@@ -145,6 +145,59 @@ function execute_regularized(plan, acq_data, config, regularization, algorithm, 
     return stack_image_slices(results, plan, Val(config.threaded))
 end
 
+# Same two-phase scheme as `execute_regularized`, for a component (multi-variable)
+# reconstruction: phase 1 gets each slice's own scale from a plain direct estimate,
+# phase 2 solves every slice under one shared `global_scale`, with each component's
+# regularization compensated by `scale_i / global_scale` (`scale_regularization`).
+function execute_regularized_components(plan, acq_data, config, components, algorithm, x₀)
+    executor = suggest_executor(plan, config)
+    maybe_print_decomposition_info(plan, config)
+    batch_sizes = plan.image_size[collect(plan.image_batch_dims)]
+    slices = collect(get_slices(plan, acq_data))
+
+    slice_threaded = executor isa MultiThreadingExecutor ? false : config.threaded
+
+    prelim = Array{Any}(undef, batch_sizes)
+    for_each_item!(slices, config, executor) do (idx, id, local_acq)
+        local_x₀ = isnothing(x₀) ? nothing : slice_x₀_components(x₀, plan, idx)
+        printfunc = (s...) -> config.printfunc("[$id] ", s...)
+        local_conf = Config(config; verbose = false, printfunc, freq = -1, threaded = slice_threaded)
+        𝒜 = get_encoding_operator(local_acq; threaded = false, fast_planning = false)
+        x̂, scale = _direct_reconstruct_components(𝒜, local_acq, local_conf)
+        x₀s = get_component_x0s(components, x̂, local_x₀)
+        prelim[idx] = (id, local_acq, x₀s, scale)
+    end
+
+    global_scale = robust_global_scale(vec(map(p -> p[4], prelim)))
+    config.verbose && config.printfunc(
+        @sprintf("Using shared scaling factor across slices: %g", global_scale)
+    )
+
+    results = Array{AbstractArray}(undef, batch_sizes)
+    indices = vec(collect(CartesianIndices(batch_sizes)))
+    for_each_item!(indices, config, executor) do idx
+        id, local_acq, x₀s, scale = prelim[idx]
+        ratio = safe_scale_ratio(scale, global_scale)
+        local_components = map(c -> scale_regularization(c, ratio), components)
+        printfunc = (s...) -> config.printfunc("[$id] ", s...)
+        local_conf = Config(config; verbose = false, printfunc, freq = -1, threaded = slice_threaded)
+        result, _ = _reconstruct_components(
+            local_acq, local_components, algorithm, x₀s, local_conf; scale_override = global_scale
+        )
+        results[idx] = result
+    end
+
+    return stack_image_slices(results, plan, Val(config.threaded))
+end
+
+function slice_x₀_components(x₀::Tuple, plan, idx)
+    return map(x -> get_x₀_slice(x, plan, idx), x₀)
+end
+
+function slice_x₀_components(x₀::NamedTuple, plan, idx)
+    return NamedTuple{keys(x₀)}(map(x -> get_x₀_slice(x, plan, idx), values(x₀)))
+end
+
 function for_each_item!(f!::Function, items, config, ::SequentialExecutor)
     threaded = config.threaded
     @conditionally_enable_threading threaded for item in items
@@ -242,7 +295,15 @@ function get_acquisition_info_slice(acq_info::CartesianAcquisitionInfo, idx, ksp
     end
 end
 
-function stack_image_slices(results, plan, ::Val{false})
+function stack_image_slices(results, plan, threaded::Val)
+    if results[1] isa DecomposedImage
+        return stack_decomposed_image_slices(results, plan, threaded)
+    else
+        return stack_plain_image_slices(results, plan, threaded)
+    end
+end
+
+function stack_plain_image_slices(results, plan, ::Val{false})
     full_image = similar(unname(results[1]), plan.image_size)
     for (output_slice, result) in
         zip(eachslice(full_image; dims = plan.image_batch_dims), results)
@@ -251,7 +312,7 @@ function stack_image_slices(results, plan, ::Val{false})
     return full_image
 end
 
-function stack_image_slices(results, plan, ::Val{true})
+function stack_plain_image_slices(results, plan, ::Val{true})
     full_image = similar(unname(results[1]), plan.image_size)
     extended_results = collect(
         zip(eachslice(full_image; dims = plan.image_batch_dims), results)
@@ -260,6 +321,18 @@ function stack_image_slices(results, plan, ::Val{true})
         output_slice .= unname(result)
     end
     return full_image
+end
+
+function stack_decomposed_image_slices(results, plan, threaded::Val)
+    total_image = stack_plain_image_slices(map(total, results), plan, threaded)
+    names = keys(first(results).components)
+    comps = NamedTuple{names}(
+        Tuple(
+            stack_plain_image_slices(map(r -> r.components[name], results), plan, threaded)
+                for name in names
+        )
+    )
+    return DecomposedImage(total_image, comps)
 end
 
 function execute_single_slice(f::Function, idx, id, local_acq, config; kwargs...)
@@ -288,12 +361,15 @@ function maybe_rescale_results!(results, scales, config)
     return if !config.disable_inverse_scale_output
         median_scale = median(scales)
         @threads for i in eachindex(results)
-            results[i] .*= median_scale
+            _rescale_result!(results[i], median_scale)
         end
         config.verbose && median_scale != 1 &&
             config.printfunc("Rescaled output by median scale factor $median_scale")
     end
 end
+
+_rescale_result!(x::AbstractArray, factor) = (x .*= factor)
+_rescale_result!(x::DecomposedImage, factor) = rescale!(x, factor)
 
 function suggest_executor(plan, config)
     if !isnothing(config.decomposition_executor)

@@ -2,6 +2,9 @@
 
 Problem decomposition is an advanced feature that automatically parallelizes reconstruction across independent data dimensions, significantly speeding up processing when you have multiple CPU cores.
 
+!!! note "Not to be confused with image decomposition"
+    Problem decomposition splits a *single-image* reconstruction over independent batch dimensions (e.g. slices, time points). It is unrelated to [Image Decomposition](image_decomposition.md), which models the reconstructed image itself as a sum of additive components (e.g. low-rank + sparse). The two can be combined — see [Interaction with Problem Decomposition](image_decomposition.md#image-decomposition-problem-decomposition).
+
 ## What is Problem Decomposition?
 
 When you have batch dimensions in your data (like multiple slices, time points, or contrasts), and these dimensions don't interact through the Fourier transform or regularization, the reconstruction problem can be **decomposed** into independent sub-problems that can be solved in parallel.

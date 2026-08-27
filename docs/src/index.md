@@ -46,6 +46,7 @@ The package provides:
 - ✅ **Parallel Imaging** - Multi-coil reconstruction with sensitivity maps
 - ✅ **Compressed Sensing** - Advanced undersampling and regularization
 - ✅ **Multiple Regularizers** - Sparsity, wavelets, total variation, low-rank
+- ✅ **Image Decomposition** - Additive multi-component reconstruction (e.g. low-rank + sparse)
 - ✅ **Fast Algorithms** - FISTA, ADMM, Conjugate Gradient
 - ✅ **Auto-Parallelization** - Automatic decomposition over batch dimensions
 - ✅ **Named Dimensions** - Type-safe interface prevents dimension errors

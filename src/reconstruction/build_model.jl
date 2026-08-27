@@ -45,3 +45,38 @@ function build_model(𝒜::AbstractOperator, y::AbstractArray, regs::Tuple; thre
     end
     return terms
 end
+
+"""
+    build_model(𝒜::AbstractOperator, y::AbstractArray, components::Tuple{Vararg{Component}}; threaded, x₀s)
+
+Builds a multi-variable StructuredOptimization.jl model for image decomposition: one
+`Variable` per component, with data term `‖𝒜*(x₁ + x₂ + …) - y‖²`.
+
+The data term applies `𝒜` to the *sum* of the component variables
+(`𝒜 * (x₁ + x₂ + …)`, i.e. `Compose(𝒜, HCAT(Eye, …))`) rather than summing
+`𝒜*x₁ + 𝒜*x₂ + …`, so `𝒜` is applied once per iteration instead of once per
+component (requires `Compose`'s `getindex`/`permute` to distribute over a
+multi-domain inner factor, upstream AbstractOperators fix).
+
+`normalop_ls` fusion does not apply here (see `disable_normalop_optimization` docs);
+plain `ls` is always used, since the fast normal-operator path for a sum of shared
+operators requires the upstream `HCAT` normal-op fusion.
+
+# Returns
+- `(terms, vars)`: `terms::StructuredOptimization.TermSet`, `vars::NTuple{n,Variable}` in component order.
+"""
+function build_model(
+        𝒜::AbstractOperator, y::AbstractArray, components::Tuple{Vararg{Component}};
+        threaded::Bool = true, x₀s,
+    )
+    check_components(components)
+    𝒜 = unname(𝒜)
+    y = unname(y)
+    vars = Tuple(Variable(unname(x₀)) for x₀ in x₀s)
+    ex = 𝒜 * reduce(+, vars)
+    terms = StructuredOptimization.ls(ex - y)
+    for (component, x) in zip(components, vars)
+        terms += materialize(component, x; threaded)
+    end
+    return terms, vars
+end

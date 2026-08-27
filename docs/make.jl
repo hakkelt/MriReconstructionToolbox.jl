@@ -20,6 +20,7 @@ makedocs(;
             "Optimization Algorithms" => "high-level/algorithms.md",
             "Named Dimensions" => "high-level/nameddims.md",
             "Problem Decomposition" => "high-level/decomposition.md",
+            "Image Decomposition" => "high-level/image_decomposition.md",
         ],
         "Low-Level Interface" => [
             "MRI Operators" => "low-level/operators.md",
