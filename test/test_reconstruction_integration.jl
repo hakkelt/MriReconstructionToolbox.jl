@@ -208,6 +208,65 @@ end
             img_recon = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms, Tikhonov(0.01); maxit = 5, verbose = false))
             @test size(img_recon) == (nx, ny, nslices)
         end
+
+        @testset "Regularized decomposition with varying slice intensities" begin
+            # Slices with wildly different signal levels: regularized decomposition solves each
+            # slice normalized by its own scale (so λ is applied consistently) but uses one shared
+            # scale to convert every slice back to image units, matching a joint (non-decomposed)
+            # solve of the whole stack. See scale_regularization.
+            nx, ny, nc = 16, 16, 2
+            img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
+            intensities = ComplexF32[0.1, 1.0, 5.0, 20.0]
+            img_true_ms = cat((intensities[s] .* img_true for s in eachindex(intensities))...; dims = 3)
+
+            smaps = coil_sensitivities(nx, ny, nc)
+            smaps_ms = repeat(smaps, 1, 1, 1, length(intensities))
+
+            ksp_ms = zeros(ComplexF32, nx, ny, nc, length(intensities))
+            for s in eachindex(intensities)
+                acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
+                acq_temp = simulate_acquisition(img_true_ms[:, :, s], acq)
+                ksp_ms[:, :, :, s] .= acq_temp.kspace_data
+            end
+            acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
+
+            img_decomp = reconstruct(acq_ms, Tikhonov(0.05); disable_problem_decomposition = false, maxit = 20, verbose = false)
+            img_no_decomp = reconstruct(acq_ms, Tikhonov(0.05); disable_problem_decomposition = true, maxit = 20, verbose = false)
+
+            # Decomposed vs jointly-solved must agree closely regardless of the intensity spread.
+            @test norm(img_decomp - img_no_decomp) / norm(img_no_decomp) < 1.0e-3
+
+            # Regularization strength must stay consistent across slices: relative error against
+            # the true image should not blow up for the low- or high-intensity slices.
+            rel_errors = [
+                norm(img_decomp[:, :, s] - img_true_ms[:, :, s]) / norm(img_true_ms[:, :, s])
+                    for s in eachindex(intensities)
+            ]
+            @test maximum(rel_errors) / minimum(rel_errors) < 1.1
+        end
+
+        @testset "Regularized decomposition with an all-zero slice" begin
+            # A slice whose own scale estimate is (near) zero must not have its regularization
+            # collapse to zero (which would leave noise unregularized); safe_scale_ratio guards this.
+            nx, ny, nc = 16, 16, 2
+            img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
+            img_true_ms = cat(img_true, zeros(ComplexF32, nx, ny), img_true; dims = 3)
+
+            smaps = coil_sensitivities(nx, ny, nc)
+            smaps_ms = repeat(smaps, 1, 1, 1, 3)
+
+            ksp_ms = zeros(ComplexF32, nx, ny, nc, 3)
+            for s in 1:3
+                acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
+                acq_temp = simulate_acquisition(img_true_ms[:, :, s], acq)
+                ksp_ms[:, :, :, s] .= acq_temp.kspace_data
+            end
+            acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
+
+            img_recon = reconstruct(acq_ms, Tikhonov(0.05); disable_problem_decomposition = false, maxit = 15, verbose = false)
+            @test all(isfinite, img_recon)
+            @test norm(img_recon[:, :, 2]) / norm(img_recon[:, :, 1]) < 0.1
+        end
     end
 end
 

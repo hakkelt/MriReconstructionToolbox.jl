@@ -68,3 +68,19 @@ This is used to determine which dimensions can be used for problem decomposition
 function get_affected_dims(::R, acq_info::AcquisitionInfo, image_dims) where {R <: Regularization}
     throw(ArgumentError("get_affected_dims not implemented for $(R.name.wrapper)"))
 end
+
+"""
+	scale_regularization(reg, factor)
+
+Return a copy of `reg` with its `λ` adjusted so that, when the image variable itself is scaled by `factor`
+(e.g. because problem decomposition uses one common data-scaling factor for all slices instead of a per-slice
+one), the regularization term has the same relative strength as it would with an unscaled variable and the
+original `λ`.
+
+For a term `λ^k ⋅ h(x)` with `h` homogeneous of degree `p` in `x`, this requires `λ_eff = λ ⋅ factor^((2-p)/k)`.
+L1-type terms (`k=1, p=1`, e.g. `L1Image`, `L1Wavelet2D/3D`, `TotalVariation2D/3D`, `TemporalFourier`, `LowRank`)
+therefore scale `λ` linearly with `factor`. Quadratic penalties (`Tikhonov`, `k=2, p=2`) and rank constraints
+(`RankLimit`, which has no `λ`) are already scale-consistent and need no correction; the default falls back to
+returning `reg` unchanged.
+"""
+scale_regularization(reg::Regularization, factor::Real) = reg

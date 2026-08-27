@@ -24,6 +24,9 @@ function get_affected_dims(::Tikhonov, acq_info::AcquisitionInfo, image_dims)
     return () # Tikhonov regularization applies element-wise, so no specific dimensions are affected
 end
 
+# λ²‖x‖² is homogeneous of degree 2 in x, same as the data-consistency term, so no correction is
+# needed (see scale_regularization docstring): falls back to the generic no-op method.
+
 function materialize(reg::Tikhonov, x::Variable{T}; threaded::Bool) where {T}
     if reg.λ isa AbstractArray
         @argcheck size(reg.λ) == size(x) "Incompatible sizes"
@@ -58,6 +61,9 @@ get_operator(::L1Image, x::NamedDimsArray; threaded::Bool = true) = NamedDimsOp{
 function get_affected_dims(::L1Image, acq_info::AcquisitionInfo, image_dims)
     return () # L1-image regularization applies element-wise, so no specific dimensions are affected
 end
+
+# L1 norm is homogeneous of degree 1, so λ scales linearly (see scale_regularization docstring).
+scale_regularization(reg::L1Image, factor::Real) = L1Image(reg.λ .* factor)
 
 function materialize(reg::L1Image, x::Variable{T}; threaded::Bool) where {T}
     R = real(T)
