@@ -13,6 +13,7 @@ TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
 Wavelets = "29a6e085-ba6d-5f35-a997-948ac2efa89a"
 
 [sources]
+AbstractOperators = {path = "../deps/AbstractOperators"}
 GeometricMedicalPhantoms = {path = "../../GeometricMedicalPhantoms"}
 
 [compat]

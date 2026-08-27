@@ -18,11 +18,11 @@ StructuredOptimization = "46cd3e9d-64ff-517d-a929-236bc1a1fc9d"
 WaveletOperators = "f3582904-6f60-4bbd-985d-55eab799bc9d"
 
 [sources]
-AbstractOperators = {url = "https://github.com/hakkelt/AbstractOperators.jl"}
+AbstractOperators = {path = "../deps/AbstractOperators"}
 GeometricMedicalPhantoms = {path = "../../GeometricMedicalPhantoms"}
-FFTWOperators = {subdir = "FFTWOperators", url = "https://github.com/hakkelt/AbstractOperators.jl"}
+FFTWOperators = {path = "../deps/AbstractOperators/FFTWOperators"}
 ProximalAlgorithms = {url = "https://github.com/hakkelt/ProximalAlgorithms.jl"}
 ProximalCore = {url = "https://github.com/hakkelt/ProximalCore.jl"}
 ProximalOperators = {url = "https://github.com/hakkelt/ProximalOperators.jl"}
-StructuredOptimization = {url = "https://github.com/hakkelt/StructuredOptimization.jl"}
-WaveletOperators = {subdir = "WaveletOperators", url = "https://github.com/hakkelt/AbstractOperators.jl"}
+StructuredOptimization = {path = "../deps/StructuredOptimization"}
+WaveletOperators = {path = "../deps/AbstractOperators/WaveletOperators"}
