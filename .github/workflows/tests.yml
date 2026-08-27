@@ -1,0 +1,64 @@
+name: Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    name: Julia ${{ matrix.julia-version }} - ${{ matrix.os }} - ${{ matrix.julia-arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        julia-version: ['lts', '1']
+        julia-arch: [x64]
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+
+    env:
+      JULIA_NUM_THREADS: 2
+
+    # needed to allow julia-actions/cache to delete old caches that it has created
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.julia-version }}
+          arch: ${{ matrix.julia-arch }}
+      - uses: julia-actions/cache@v2
+      - name: Prepare LTS test environment
+        if: matrix.julia-version == 'lts'
+        shell: bash
+        run: |
+          julia --project=test -e '
+            using Pkg
+            Pkg.rm(["DSPOperators", "FFTWOperators", "NFFTOperators", "WaveletOperators"])
+            Pkg.develop(path = pwd())
+            for pkg in ("DSPOperators", "FFTWOperators", "NFFTOperators", "WaveletOperators")
+                Pkg.develop(path = joinpath(pwd(), pkg))
+            end
+            Pkg.instantiate()
+            Pkg.build()
+            Pkg.precompile()
+          '
+      - uses: julia-actions/julia-buildpkg@v1
+        if: matrix.julia-version != 'lts'
+      - name: Run tests on LTS
+        if: matrix.julia-version == 'lts'
+        run: julia --project=test --check-bounds=yes --compiled-modules=yes --depwarn=yes --code-coverage=user test/runtests.jl
+      - uses: julia-actions/julia-runtest@v1
+        if: matrix.julia-version != 'lts'
+        with:
+          coverage: true
+      - uses: julia-actions/julia-processcoverage@v1
+      - uses: codecov/codecov-action@v5
+        # Upload coverage only from one job (Linux, Julia latest version)
+        if: matrix.os == 'ubuntu-latest' && matrix.julia-version == '1'
+        with:
+          files: lcov.info
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
