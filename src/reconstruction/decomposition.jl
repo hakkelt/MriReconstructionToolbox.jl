@@ -89,12 +89,88 @@ end
 
 function run_slices!(results, scales, f, plan, acq_data, config, ::MultiThreadingExecutor)
     slices = collect(get_slices(plan, acq_data))
-    @restrict_threading @threads for (idx, id, local_acq) in slices
+    @budgeted_threads for (idx, id, local_acq) in slices
         r, s = execute_single_slice(f, idx, id, local_acq, config; threaded = false)
         results[idx] = r
         scales[idx] = s
     end
     return nothing
+end
+
+# Regularized decomposition: regularization strength (λ) is scale-dependent, so each slice
+# must be normalized before the regularization term is applied. But if each slice used its own
+# scale for the final output too, slice-to-slice intensity would vary with noisy per-slice scale
+# estimates instead of the true (similar) signal levels. So: estimate each slice's own scale first
+# (phase 1), then solve every slice using one shared `global_scale` for both k-space data and the
+# final image - giving uniform output - while compensating λ per slice by `scale_i / global_scale`
+# so the regularization behaves as if that slice had been normalized by its own scale (see
+# `scale_regularization`).
+function execute_regularized(plan, acq_data, config, regularization, algorithm, x₀)
+    executor = suggest_executor(plan, config)
+    maybe_print_decomposition_info(plan, config)
+    batch_sizes = plan.image_size[collect(plan.image_batch_dims)]
+    slices = collect(get_slices(plan, acq_data))
+
+    slice_threaded = executor isa MultiThreadingExecutor ? false : config.threaded
+
+    prelim = Array{Any}(undef, batch_sizes)
+    for_each_item!(slices, config, executor) do (idx, id, local_acq)
+        local_x₀ = isnothing(x₀) ? nothing : get_x₀_slice(x₀, plan, idx)
+        printfunc = (s...) -> config.printfunc("[$id] ", s...)
+        local_conf = Config(config; verbose = false, printfunc, freq = -1, threaded = slice_threaded)
+        𝒜 = get_encoding_operator(local_acq; threaded = false, fast_planning = true)
+        x̂, scale = _direct_reconstruct(𝒜, local_acq, local_x₀, regularization, local_conf)
+        prelim[idx] = (id, local_acq, x̂, scale)
+    end
+
+    global_scale = robust_global_scale(vec(map(p -> p[4], prelim)))
+    config.verbose && config.printfunc(
+        @sprintf("Using shared scaling factor across slices: %g", global_scale)
+    )
+
+    results = Array{AbstractArray}(undef, batch_sizes)
+    indices = vec(collect(CartesianIndices(batch_sizes)))
+    for_each_item!(indices, config, executor) do idx
+        id, local_acq, x̂, scale = prelim[idx]
+        ratio = safe_scale_ratio(scale, global_scale)
+        local_reg = map(r -> scale_regularization(r, ratio), regularization)
+        printfunc = (s...) -> config.printfunc("[$id] ", s...)
+        local_conf = Config(config; verbose = false, printfunc, freq = -1, threaded = slice_threaded)
+        result, _ = _reconstruct(
+            local_acq, local_reg, algorithm, x̂, local_conf; scale_override = global_scale
+        )
+        results[idx] = result
+    end
+
+    return stack_image_slices(results, plan, Val(config.threaded))
+end
+
+function for_each_item!(f!::Function, items, config, ::SequentialExecutor)
+    threaded = config.threaded
+    @conditionally_enable_threading threaded for item in items
+        f!(item)
+    end
+    return nothing
+end
+
+function for_each_item!(f!::Function, items, config, ::MultiThreadingExecutor)
+    @budgeted_threads for item in items
+        f!(item)
+    end
+    return nothing
+end
+
+function robust_global_scale(scales)
+    nonzero = filter(!iszero, scales)
+    return isempty(nonzero) ? one(eltype(scales)) : median(nonzero)
+end
+
+function safe_scale_ratio(scale, global_scale)
+    # Guard against a slice whose own scale estimate is zero (or negligible relative to the
+    # rest of the slices, e.g. an empty/noise-only slice): shrinking λ towards zero there would
+    # leave that slice's noise essentially unregularized, so fall back to no correction instead.
+    ratio = scale / global_scale
+    return abs(ratio) < 1.0e-6 ? one(ratio) : ratio
 end
 
 # Helper functions

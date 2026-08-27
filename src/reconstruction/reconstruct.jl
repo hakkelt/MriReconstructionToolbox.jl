@@ -76,14 +76,20 @@ function reconstruct(
         if !isnothing(x₀)
             @argcheck size(x₀) == decomposition_plan.image_size "Size of x₀ ($(size(x₀))) must match the image size ($(decomposition_plan.image_size))"
         end
-        if regularization == ()
+        result = if regularization == ()
             # Direct reconstruction needs no scaling; keep slices identical to the
             # non-decomposed result instead of normalizing each slice separately.
             config = Config(config; normalization = NoScaling())
-        end
-        result = execute(decomposition_plan, acq_data, config) do idx, local_acq, local_conf
-            local_x₀ = isnothing(x₀) ? nothing : get_x₀_slice(x₀, decomposition_plan, idx)
-            _reconstruct(local_acq, regularization, algorithm, local_x₀, local_conf)
+            execute(decomposition_plan, acq_data, config) do idx, local_acq, local_conf
+                local_x₀ = isnothing(x₀) ? nothing : get_x₀_slice(x₀, decomposition_plan, idx)
+                _reconstruct(local_acq, regularization, algorithm, local_x₀, local_conf)
+            end
+        else
+            # Each slice's regularization strength is scale-dependent, so each slice is
+            # first solved with its own scale to size λ correctly (via scale_regularization),
+            # then the actual solve and the final image use one shared scale across all
+            # slices so the output intensities are consistent slice-to-slice.
+            execute_regularized(decomposition_plan, acq_data, config, regularization, algorithm, x₀)
         end
         if acq_data.kspace_data isa NamedDimsArray
             result = NamedDimsArray{get_image_dims(acq_data)}(unname(result))
@@ -95,7 +101,7 @@ function reconstruct(
     return x
 end
 
-function _reconstruct(acq_data, regularization, algorithm, x₀, config)
+function _reconstruct(acq_data, regularization, algorithm, x₀, config; scale_override = nothing)
     # Construct encoding operator
     @step "Constructing encoding operator" config begin
         𝒜 = get_encoding_operator(
@@ -104,7 +110,7 @@ function _reconstruct(acq_data, regularization, algorithm, x₀, config)
     end
 
     # Direct reconstruction
-    x̂, scale = _direct_reconstruct(𝒜, acq_data, x₀, regularization, config)
+    x̂, scale = _direct_reconstruct(𝒜, acq_data, x₀, regularization, config; scale_override)
 
     if regularization == ()
         # No regularization, return direct reconstruction
@@ -123,7 +129,7 @@ function _reconstruct(acq_data, regularization, algorithm, x₀, config)
     return x̂, scale
 end
 
-function _direct_reconstruct(𝒜, acq_data, x₀, regularization, config)
+function _direct_reconstruct(𝒜, acq_data, x₀, regularization, config; scale_override = nothing)
     direct_recon_only = regularization == ()
     if !isnothing(x₀) && direct_recon_only
         config.verbose && config.printfunc(
@@ -136,7 +142,10 @@ function _direct_reconstruct(𝒜, acq_data, x₀, regularization, config)
             x₀ = 𝒜' * acq_data.kspace_data
         end
     end
-    if config.normalization != NoScaling()
+    if !isnothing(scale_override)
+        scale = scale_override
+        config.verbose && config.printfunc(@sprintf("Using scaling factor: %g", scale))
+    elseif config.normalization != NoScaling()
         @step "Computing scaling factor" config begin
             scale = get_scale(config.normalization, acq_data, x₀)
         end
