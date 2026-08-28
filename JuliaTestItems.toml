@@ -1,7 +1,8 @@
 config-version = 1
 
 # deps/ vendors upstream package sources as git subtrees (AbstractOperators,
-# StructuredOptimization) for the fixes MRT currently depends on. Their own
+# StructuredOptimization, ProximalOperators, ProximalAlgorithms) for the fixes
+# and additions MRT currently depends on. Their own
 # test suites are not part of MRT's test run — they use those packages' own
 # test environments (not MRT's test/Project.toml), and would otherwise be
 # picked up by `@run_package_tests`'s package-root scan.
