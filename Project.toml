@@ -36,9 +36,9 @@ NFFTOperators = {path = "deps/AbstractOperators/NFFTOperators"}
 WaveletOperators = {path = "deps/AbstractOperators/WaveletOperators"}
 NestedThreading = {url = "https://github.com/hakkelt/NestedThreading.jl"}
 OperatorCore = {url = "https://github.com/hakkelt/OperatorCore.jl"}
-ProximalAlgorithms = {url = "https://github.com/hakkelt/ProximalAlgorithms.jl"}
+ProximalAlgorithms = {path = "deps/ProximalAlgorithms"}
 ProximalCore = {url = "https://github.com/hakkelt/ProximalCore.jl"}
-ProximalOperators = {url = "https://github.com/hakkelt/ProximalOperators.jl"}
+ProximalOperators = {path = "deps/ProximalOperators"}
 StructuredOptimization = {path = "deps/StructuredOptimization"}
 
 [compat]

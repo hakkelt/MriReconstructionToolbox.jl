@@ -21,8 +21,8 @@ WaveletOperators = "f3582904-6f60-4bbd-985d-55eab799bc9d"
 AbstractOperators = {path = "../deps/AbstractOperators"}
 GeometricMedicalPhantoms = {path = "../../GeometricMedicalPhantoms"}
 FFTWOperators = {path = "../deps/AbstractOperators/FFTWOperators"}
-ProximalAlgorithms = {url = "https://github.com/hakkelt/ProximalAlgorithms.jl"}
+ProximalAlgorithms = {path = "../deps/ProximalAlgorithms"}
 ProximalCore = {url = "https://github.com/hakkelt/ProximalCore.jl"}
-ProximalOperators = {url = "https://github.com/hakkelt/ProximalOperators.jl"}
+ProximalOperators = {path = "../deps/ProximalOperators"}
 StructuredOptimization = {path = "../deps/StructuredOptimization"}
 WaveletOperators = {path = "../deps/AbstractOperators/WaveletOperators"}
