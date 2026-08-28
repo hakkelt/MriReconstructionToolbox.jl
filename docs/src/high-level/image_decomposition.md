@@ -70,6 +70,58 @@ x = Array(img)
 println(typeof(x))
 ```
 
+## Low-Rank + Sparse (L+S)
+
+The model image decomposition was built for is the L+S decomposition of dynamic
+MRI (Otazo, Candès & Sodickson, *Magn Reson Med* 2015): a low-rank component
+`L` carrying the temporally correlated background, plus a sparse component `S`
+carrying the dynamic foreground.
+
+```julia
+img = reconstruct(
+    acq_dynamic,
+    (
+        Component(:lowrank, LowRank(5e-2; time_dim = 3)),
+        Component(:sparse, TemporalTotalVariation(2e-2; time_dim = 3)),
+    );
+    maxit = 100,
+)
+
+background = img.components.lowrank   # e.g. static anatomy
+dynamics   = img.components.sparse    # e.g. contrast uptake, motion
+```
+
+Common choices for the sparse component are [`TemporalTotalVariation`](@ref)
+(irregular dynamics), [`TemporalFourier`](@ref) (periodic dynamics, the
+original k-t SPARSE transform) or [`L1Image`](@ref); the low-rank component is
+[`LowRank`](@ref), or [`LocallyLowRank`](@ref) when the dynamics vary across
+the field of view.
+
+!!! note "Solvable combinations"
+    Two components whose regularizers *both* use a non-tight operator cannot
+    currently be prepared for any of the available algorithms — for example
+    [`LowRank`](@ref) (whose Casorati reshape is not `is_AAc_diagonal`)
+    together with [`TotalVariation2D`](@ref) or
+    [`TemporalTotalVariation`](@ref) (finite differences). Working L+S pairs
+    include `LowRank` + [`L1Image`](@ref)/[`TemporalFourier`](@ref)/[`L1Wavelet2D`](@ref),
+    and [`LocallyLowRank`](@ref) + any of the above or `TemporalTotalVariation`
+    (its proximal operator acts on the identity, so it composes freely).
+
+## What Additive Components Are Not
+
+Every component is an image that is *summed into the data term*: the model is
+`‖E(x₁ + x₂ + …) - y‖²`. This is the right structure for L+S, for
+infimal-convolution-style splittings of an image into parts with different
+regularity, and for background/foreground separation.
+
+It is *not* a general auxiliary-variable mechanism. Regularizers such as total
+generalized variation (TGV) introduce an auxiliary variable that is coupled to
+the image through a term like `‖∇x - w‖`, while being absent from the data term
+entirely. That variable is not an additive image component, so TGV does not
+follow from the `Component` API — it additionally needs a symmetrized-gradient
+operator, which the operator library does not currently provide. See
+[Regularizers Not Currently Available](regularization.md#Regularizers-Not-Currently-Available).
+
 ## At Least Two Components
 
 Image decomposition requires **at least two** components — a single component

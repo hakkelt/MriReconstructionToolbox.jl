@@ -270,7 +270,27 @@ TemporalFourier
 img = reconstruct(acq, TemporalFourier(1e-2, time_dim=4))
 ```
 
-**Practical tip:** This works best when temporal changes are smooth or periodic. For irregular motion, consider low-rank methods instead.
+**Practical tip:** This works best when temporal changes are smooth or periodic. For irregular motion, consider temporal total variation or low-rank methods instead.
+
+#### Temporal Total Variation
+
+For dynamic imaging with irregular or non-periodic motion, penalizes the frame-to-frame differences:
+
+```@docs
+TemporalTotalVariation
+```
+
+**When to use:**
+- Free-breathing and real-time acquisitions, where the temporal Fourier assumption of periodicity fails
+- Contrast dynamics that are piecewise smooth in time (DCE-MRI, first-pass perfusion)
+- As the sparse part of an L+S model (see [Image Decomposition](image_decomposition.md))
+
+**Example:**
+```julia
+img = reconstruct(acq_dynamic, TemporalTotalVariation(2e-2; time_dim = 3))
+```
+
+**Practical tip:** Like spatial TV, this term uses a non-tight operator, so reconstruction falls back to ADMM. It is the temporal counterpart of [`TotalVariation2D`](@ref) and is often combined with it (`(TotalVariation2D(1e-3), TemporalTotalVariation(2e-2))`) — the "spatiotemporal TV" of the golden-angle radial sparse parallel (GRASP) literature.
 
 ### Low-Rank Regularization
 
@@ -296,6 +316,87 @@ img = reconstruct(acq_dynamic, LowRank(1e-1))
 ```
 
 **Practical tip:** Low-rank methods can be computationally expensive. Use for datasets where temporal correlations are strong.
+
+#### Locally Low Rank
+
+Instead of one Casorati matrix for the whole image, penalizes the nuclear norm of every spatial block separately:
+
+```@docs
+LocallyLowRank
+```
+
+**When to use:**
+- Dynamic series where the temporal dynamics differ across the field of view (cardiac motion vs. static background, focal contrast uptake) — a global low-rank model needs a high rank to represent all of them at once, a local one does not
+- Quantitative parameter mapping (T1/T2 relaxometry, MR fingerprinting), where each voxel neighbourhood follows a low-dimensional signal model
+
+**Example:**
+```julia
+img = reconstruct(acq_dynamic, LocallyLowRank(5e-2; block_size = 8, time_dim = 3))
+```
+
+**Practical tip:** `block_size` trades locality against cost and stability: 4-8 voxels for strongly varying dynamics, 12-16 when the temporal signal is smooth over larger regions. Each iteration performs one SVD of a `(∏ block_size) × n_frames` matrix per block. The block grid is fixed, so residual block boundaries can remain visible at large λ; using a smaller λ with more iterations usually removes them.
+
+### Joint Sparsity
+
+For multi-contrast, multi-echo or multi-directional data, forces the components to share a common support:
+
+```@docs
+JointSparsity
+```
+
+**When to use:**
+- Multi-echo, multi-contrast (T1w/T2w/FLAIR) or diffusion data of the same anatomy: the edges are in the same place in every image, only their intensities differ
+- Velocity- or phase-encoded series
+- Preferable to independent `L1Image`/`L1Wavelet2D` on each contrast, because the joint norm couples them
+
+**Example:**
+```julia
+# echoes stored along dimension 3, sharing the same support
+img = reconstruct(acq_multiecho, JointSparsity(1e-2; dim = 3))
+```
+
+**Practical tip:** Joint sparsity is most effective on a sparsifying transform of the images. Combining `JointSparsity` with a wavelet regularizer per contrast (`(JointSparsity(1e-2; dim = 3), L1Wavelet2D(1e-3))`) is a common compromise.
+
+### Reference-Image Prior
+
+Promotes sparsity of the *difference* to a known image instead of the image itself:
+
+```@docs
+ReferencePrior
+```
+
+**When to use:**
+- Dynamic series where a high-quality temporal average or a previous time frame is available
+- Follow-up or multi-contrast exams where an earlier high-SNR scan of the same anatomy exists
+- Interventional / real-time imaging with a fully sampled baseline
+
+**Example:**
+```julia
+x_ref = reconstruct(acq_reference, L1Wavelet2D(1e-3))
+img = reconstruct(acq, (ReferencePrior(1e-2, x_ref), L1Wavelet2D(1e-3)))
+```
+
+**Practical tip:** The reference must be in the same units as the reconstruction; when data scaling is enabled the reference is rescaled automatically. A wrong reference biases the result toward it, so combine it with an ordinary sparsity term (as in the PICCS convex combination) rather than using it alone.
+
+### Constraints
+
+Constraints are enforced exactly by projection instead of being traded off against data consistency, so they carry no `λ`:
+
+```@docs
+NonNegative
+BoxConstraint
+```
+
+**When to use:**
+- Quantitative maps with a physically meaningful range (proton density, relaxation rates, diffusion coefficients)
+- Magnitude-only or phase-resolved real-valued reconstructions
+
+Both are defined for real-valued images only; applying them to complex data throws an `ArgumentError`.
+
+**Example:**
+```julia
+img = reconstruct(acq_real, (TotalVariation2D(1e-3), NonNegative()))
+```
 
 ## Combining Multiple Regularizers
 
@@ -332,10 +433,65 @@ The regularization parameter λ controls the trade-off between data fidelity and
 - L1Wavelet: `1e-3` to `1e-2`
 - TotalVariation: `1e-4` to `5e-3`
 - TemporalFourier: `1e-2` to `1e-1`
+- TemporalTotalVariation: `1e-2` to `1e-1`
 - LowRank: `1e-2` to `1`
+- LocallyLowRank: `1e-2` to `5e-1`
+- JointSparsity: `1e-3` to `1e-2`
+- ReferencePrior: `1e-3` to `1e-1`
+- NonNegative / BoxConstraint: no parameter
 
 **Adjustment strategy:**
 1. Start with the suggested value
 2. If too noisy/aliased → increase λ
 3. If too smooth/blurry → decrease λ
 4. Typical range: adjust by factors of 2-5
+
+## Choosing a Regularizer
+
+| Data | First choice | Common combinations |
+|---|---|---|
+| Static 2D/3D anatomy | [`L1Wavelet2D`](@ref) / [`L1Wavelet3D`](@ref) | + [`TotalVariation2D`](@ref) |
+| Piecewise-constant anatomy, strong edges | [`TotalVariation2D`](@ref) / [`TotalVariation3D`](@ref) | + [`L1Wavelet2D`](@ref) |
+| Periodic dynamics (cine, cardiac) | [`TemporalFourier`](@ref) | + [`TotalVariation2D`](@ref) |
+| Irregular dynamics (free-breathing, real-time) | [`TemporalTotalVariation`](@ref) | + [`TotalVariation2D`](@ref) |
+| Strong global spatiotemporal correlation (DCE, perfusion) | [`LowRank`](@ref) | L+S: [`LowRank`](@ref) + [`TemporalTotalVariation`](@ref), see [Image Decomposition](image_decomposition.md) |
+| Spatially varying dynamics, parameter mapping | [`LocallyLowRank`](@ref) | + [`TotalVariation2D`](@ref) |
+| Multi-contrast / multi-echo / diffusion | [`JointSparsity`](@ref) | + [`L1Wavelet2D`](@ref) |
+| A high-quality prior image exists | [`ReferencePrior`](@ref) | + [`L1Wavelet2D`](@ref) |
+| Real-valued images, physical range known | [`NonNegative`](@ref) / [`BoxConstraint`](@ref) | + any penalty |
+| Parallel imaging without sparsity assumptions | [`Tikhonov`](@ref) | — |
+
+## References
+
+Sparsity and total variation:
+- Lustig, M., Donoho, D., & Pauly, J. M. (2007). *Sparse MRI: The application of compressed sensing for rapid MR imaging.* Magnetic Resonance in Medicine, 58(6), 1182-1195. — the original CS-MRI formulation with ℓ₁-wavelet and total variation.
+- Block, K. T., Uecker, M., & Frahm, J. (2007). *Undersampled radial MRI with multiple coils: Iterative image reconstruction using a total variation constraint.* Magnetic Resonance in Medicine, 57(6), 1086-1098.
+- Fessler, J. A. (2010). *Model-based image reconstruction for MRI.* IEEE Signal Processing Magazine, 27(4), 81-89. — quadratic and edge-preserving penalties, non-negativity.
+
+Dynamic imaging:
+- Lustig, M., Santos, J. M., Donoho, D. L., & Pauly, J. M. (2006). *k-t SPARSE: High frame rate dynamic MRI exploiting spatio-temporal sparsity.* Proc. ISMRM. — sparsity in the temporal Fourier domain ([`TemporalFourier`](@ref)).
+- Feng, L., Grimm, R., Block, K. T., et al. (2014). *Golden-angle radial sparse parallel MRI: Combination of compressed sensing, parallel imaging, and golden-angle radial sampling for fast and flexible dynamic volumetric MRI.* Magnetic Resonance in Medicine, 72(3), 707-717. — temporal total variation ([`TemporalTotalVariation`](@ref)).
+- Otazo, R., Candès, E., & Sodickson, D. K. (2015). *Low-rank plus sparse matrix decomposition for accelerated dynamic MRI with separation of background and dynamic components.* Magnetic Resonance in Medicine, 73(3), 1125-1136. — the L+S model, see [Image Decomposition](image_decomposition.md).
+
+Low-rank models:
+- Liang, Z.-P. (2007). *Spatiotemporal imaging with partially separable functions.* Proc. IEEE ISBI, 988-991. — the partially separable / globally low-rank model behind [`LowRank`](@ref) and [`RankLimit`](@ref).
+- Trzasko, J. D., & Manduca, A. (2011). *Local versus global low-rank promotion in dynamic MRI series reconstruction.* Proc. ISMRM, 4371. — [`LocallyLowRank`](@ref).
+- Zhang, T., Pauly, J. M., & Levesque, I. R. (2015). *Accelerating parameter mapping with a locally low rank constraint.* Magnetic Resonance in Medicine, 73(2), 655-661.
+
+Joint sparsity and prior images:
+- Majumdar, A., & Ward, R. K. (2011). *Joint reconstruction of multiecho MR images using correlated sparsity.* Magnetic Resonance Imaging, 29(7), 899-906. — [`JointSparsity`](@ref).
+- Huang, J., Chen, C., & Axel, L. (2014). *Fast multi-contrast MRI reconstruction.* Magnetic Resonance Imaging, 32(10), 1344-1352.
+- Chen, G.-H., Tang, J., & Leng, S. (2008). *Prior image constrained compressed sensing (PICCS).* Medical Physics, 35(2), 660-663. — [`ReferencePrior`](@ref).
+
+Algorithms:
+- Beck, A., & Teboulle, M. (2009). *A fast iterative shrinkage-thresholding algorithm for linear inverse problems.* SIAM Journal on Imaging Sciences, 2(1), 183-202. — FISTA.
+- Boyd, S., Parikh, N., Chu, E., Peleato, B., & Eckstein, J. (2011). *Distributed optimization and statistical learning via the alternating direction method of multipliers.* Foundations and Trends in Machine Learning, 3(1), 1-122. — ADMM.
+
+## Regularizers Not Currently Available
+
+The following terms appear in the literature and in other reconstruction packages but are not implemented here, because they need building blocks the package does not yet have:
+
+- **Total generalized variation (TGV)** and **infimal-convolution TV**: need a second-order (symmetrized gradient) operator, and TGV additionally needs an auxiliary variable that is coupled to the image but absent from the data term — which is *not* the same as the additive components of [Image Decomposition](image_decomposition.md).
+- **Structured low-rank k-space methods** (SAKE, LORAKS, ALOHA): need a block-Hankel lifting operator with an adjoint.
+- **Plug-and-play denoiser priors**: need a denoiser to be plugged in as a proximal operator; the machinery (a custom proximable function on the identity operator, as used by [`LocallyLowRank`](@ref)) is in place, only the denoisers are missing.
+- **Shift-invariant (randomly shifted) LLR**: the block grid of [`LocallyLowRank`](@ref) is fixed between iterations.
