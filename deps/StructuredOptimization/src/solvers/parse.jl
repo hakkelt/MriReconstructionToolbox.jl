@@ -453,15 +453,17 @@ function prepare(term::Term, assumption::ProximalAlgorithms.LeastSquaresTerm, va
     if !f_is_ls
         return nothing
     end
+    # The term is `‖L*x + d‖²` (e.g. `ls(A*x - y)` has displacement `d = -y`), while the assumption
+    # expects the least-squares term in the form `‖L*x - b‖²`, hence the negated displacement.
     if f isa SqrNormL2WithNormalOp
         lambda = term.lambda * f.lambda
         op = term.f.A
-        b = displacement(op)
+        b = -displacement(op)
         op = remove_displacement(op)
     else
         lambda = term.lambda
         op = extract_operators(variables, term)
-        b = displacement(term)
+        b = -displacement(term)
     end
     if !does_satisfy(op, assumption.operator)
         return nothing
