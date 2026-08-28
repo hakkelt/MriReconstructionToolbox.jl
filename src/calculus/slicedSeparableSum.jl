@@ -1,0 +1,102 @@
+# Separable sum, using slices of an array as variables
+
+export SlicedSeparableSum
+
+"""
+    SlicedSeparableSum((f_1, ..., f_k), (J_1, ..., J_k))
+
+Return the function
+```math
+g(x) = \\sum_{i=1}^k f_i(x_{J_i}).
+```
+
+    SlicedSeparableSum(f, (J_1, ..., J_k))
+
+Analogous to the previous one, but apply the same function `f` to all slices
+of the variable `x`:
+```math
+g(x) = \\sum_{i=1}^k f(x_{J_i}).
+```
+"""
+struct SlicedSeparableSum{S <: Tuple, T <: AbstractArray, N}
+  fs::S    # Tuple, where each element is a Vector with elements of the same type; the functions to prox on
+  # Example: S = Tuple{Array{ProximalOperators.NormL1{Float64},1}, Array{ProximalOperators.NormL2{Float64},1}}
+  idxs::T  # Vector, where each element is a Vector containing the indices to prox on
+  # Example: T = Array{Array{Tuple{Colon,UnitRange{Int64}},1},1}
+end
+
+function SlicedSeparableSum(fs::Tuple, idxs::Tuple)
+    ftypes = DataType[]
+    fsarr = Array{Any,1}[]
+    indarr = Array{eltype(idxs),1}[]
+    for (i,f) in enumerate(fs)
+        t = typeof(f)
+        fi = findfirst(isequal(t), ftypes)
+        if fi === nothing
+            push!(ftypes, t)
+            push!(fsarr, Any[f])
+            push!(indarr, eltype(idxs)[idxs[i]])
+        else
+            push!(fsarr[fi], f)
+            push!(indarr[fi], idxs[i])
+        end
+    end
+    fsnew = ((Array{typeof(fs[1]),1}(fs) for fs in fsarr)...,)
+    @assert typeof(fsnew) == Tuple{(Array{ft,1} for ft in ftypes)...}
+    SlicedSeparableSum{typeof(fsnew),typeof(indarr),length(fsnew)}(fsnew, indarr)
+end
+
+# Constructor for the case where the same function is applied to all slices
+SlicedSeparableSum(f::F, idxs::T) where {F, T <: Tuple} =
+SlicedSeparableSum(Tuple(f for k in eachindex(idxs)), idxs)
+
+# Unroll the loop over the different types of functions to evaluate
+function (f::SlicedSeparableSum)(x)
+    v = zero(eltype(x))
+    for (fs_group, idxs_group) = zip(f.fs, f.idxs) # For each function type
+        for (fun, idx) in zip(fs_group, idxs_group) # For each function of that type
+            v += fun(view(x, idx...))
+        end
+    end
+    return v
+end
+
+# Unroll the loop over the different types of functions to prox on
+function prox!(y, f::SlicedSeparableSum, x, gamma)
+    v = zero(eltype(x))
+    for (fs_group, idxs_group) = zip(f.fs, f.idxs) # For each function type
+        for (fun, idx) in zip(fs_group, idxs_group) # For each function of that type
+            g = if idx isa Tuple
+                prox!(view(y, idx...), fun, view(x, idx...), gamma)
+            else
+                prox!(view(y, idx), fun, view(x, idx), gamma)
+            end
+            v += g
+        end
+    end
+    return v
+end
+
+component_types(::Type{SlicedSeparableSum{S, T, N}}) where {S, T, N} = Tuple(A.parameters[1] for A in fieldtypes(S))
+
+@generated is_proximable(::Type{T}) where T <: SlicedSeparableSum = return all(is_proximable, component_types(T)) ? :(true) : :(false)
+@generated is_convex(::Type{T}) where T <: SlicedSeparableSum = return all(is_convex, component_types(T)) ? :(true) : :(false)
+@generated is_set_indicator(::Type{T}) where T <: SlicedSeparableSum = return all(is_set_indicator, component_types(T)) ? :(true) : :(false)
+@generated is_singleton_indicator(::Type{T}) where T <: SlicedSeparableSum = return all(is_singleton_indicator, component_types(T)) ? :(true) : :(false)
+@generated is_cone_indicator(::Type{T}) where T <: SlicedSeparableSum = return all(is_cone_indicator, component_types(T)) ? :(true) : :(false)
+@generated is_affine_indicator(::Type{T}) where T <: SlicedSeparableSum = return all(is_affine_indicator, component_types(T)) ? :(true) : :(false)
+@generated is_smooth(::Type{T}) where T <: SlicedSeparableSum = return all(is_smooth, component_types(T)) ? :(true) : :(false)
+@generated is_generalized_quadratic(::Type{T}) where T <: SlicedSeparableSum = return all(is_generalized_quadratic, component_types(T)) ? :(true) : :(false)
+@generated is_strongly_convex(::Type{T}) where T <: SlicedSeparableSum = return all(is_strongly_convex, component_types(T)) ? :(true) : :(false)
+
+function prox_naive(f::SlicedSeparableSum, x, gamma)
+    fy = zero(eltype(x))
+    y = similar(x)
+    for t in eachindex(f.fs)
+        for k in eachindex(f.fs[t])
+            y[f.idxs[t][k]...], fy1 = prox_naive(f.fs[t][k], x[f.idxs[t][k]...], gamma)
+            fy += fy1
+        end
+    end
+    return y, fy
+end
