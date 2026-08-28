@@ -35,7 +35,7 @@
             img_recon = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, Tikhonov(0.001); maxit = 100, verbose = false))
 
             error_norm = norm(img_recon - img_true) / norm(img_true)
-            @test error_norm < 2.5
+            @test error_norm < 0.4  # measured ≈0.20
         end
 
         @testset "Undersampled with L1Wavelet regularization" begin
@@ -72,7 +72,9 @@
             )
 
             error_norm = norm(img_recon - img_true) / norm(img_true)
-            @test error_norm < 2.5
+            # Tight enough to catch a sign-flipped solution (which lands at ≈2.0); measured ≈0.02.
+            # The sampling pattern is drawn randomly per run, so the bound keeps a wide margin.
+            @test error_norm < 0.3
         end
 
         @testset "Different algorithms" begin
@@ -88,11 +90,12 @@
 
             img_fista = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, Tikhonov(0.001); maxit = 100, verbose = false))
             error_fista = norm(img_fista - img_true) / norm(img_true)
-            @test error_fista < 2.5
+            @test error_fista < 0.3  # measured ≈0.01-0.10 depending on the random sampling pattern
 
             img_admm = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, L1Wavelet2D(0.003), ADMM(); maxit = 50, verbose = false))
             error_admm = norm(img_admm - img_true) / norm(img_true)
-            @test error_admm < 2.5
+            # A sign error in the ADMM data term lands at ≈2.0; measured ≈0.06 at 50 iterations.
+            @test error_admm < 0.3
         end
 
         @testset "With initial guess" begin

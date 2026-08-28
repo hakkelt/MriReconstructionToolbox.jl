@@ -4,6 +4,7 @@ using Reexport
 using LinearAlgebra
 using Base.Cartesian
 using ProximalOperators
+using ProximalCore
 using ProximalAlgorithms
 @reexport using AbstractOperators
 using AbstractOperators: Sum  # resolve ambiguity with ProximalOperators.Sum
@@ -29,6 +30,7 @@ const CGNR = ProximalAlgorithms.CGNR
 
 export get_operator, get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator
 export Tikhonov, L1Image, L1Wavelet2D, L1Wavelet3D, TotalVariation2D, TotalVariation3D, TemporalFourier, LowRank, RankLimit
+export TemporalTotalVariation, JointSparsity, LocallyLowRank, ReferencePrior, NonNegative, BoxConstraint
 export calculate, build_model, reconstruct, Config, SequentialExecutor, MultiThreadingExecutor
 export Component, DecomposedImage, components, total
 export BartScaling, FixedScaling, MeasurementBasedScaling, NoScaling
@@ -58,7 +60,12 @@ include("regularization/image_domain_reg.jl")
 include("regularization/wavelet_reg.jl")
 include("regularization/total_variation_reg.jl")
 include("regularization/temporal_fourier_reg.jl")
+include("regularization/temporal_total_variation_reg.jl")
 include("regularization/low_rank_reg.jl")
+include("regularization/locally_low_rank_reg.jl")
+include("regularization/joint_sparsity_reg.jl")
+include("regularization/constraint_reg.jl")
+include("regularization/reference_prior_reg.jl")
 
 include("reconstruction/components.jl")
 include("reconstruction/decomposition.jl")
