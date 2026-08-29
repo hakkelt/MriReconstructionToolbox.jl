@@ -373,3 +373,27 @@ end
         @test MriReconstructionToolbox.scale_regularization(SecondOrderTotalVariation3D(0.2), 2.5).λ ≈ 0.5
     end
 end
+
+@testitem "TotalVariation output_dimnames match the real codomain layout" tags = [:regularization] begin
+    using Test
+    using MriReconstructionToolbox
+    using NamedDims
+
+    # Regression: the names put :direction directly after the spatial axes, but the BatchOp codomain
+    # mask is (:_, :b..., :_), so the direction axis is actually last. NamedDims does not check names
+    # against sizes, so a dynamic image was silently mislabelled.
+    x2 = NamedDimsArray{(:x, :y, :t)}(rand(ComplexF32, 8, 8, 4))
+    out2 = MriReconstructionToolbox.get_operator(TotalVariation2D(0.1), x2; threaded = false) * x2
+    @test size(out2) == (8, 8, 4, 2)
+    @test dimnames(out2) == (:x, :y, :t, :direction)
+
+    x3 = NamedDimsArray{(:x, :y, :z, :t)}(rand(ComplexF32, 6, 6, 6, 3))
+    out3 = MriReconstructionToolbox.get_operator(TotalVariation3D(0.1), x3; threaded = false) * x3
+    @test size(out3) == (6, 6, 6, 3, 3)
+    @test dimnames(out3) == (:x, :y, :z, :t, :direction)
+
+    # Without batch dims the direction axis is last either way, which is why this went unnoticed.
+    xs = NamedDimsArray{(:x, :y)}(rand(ComplexF32, 8, 8))
+    outs = MriReconstructionToolbox.get_operator(TotalVariation2D(0.1), xs; threaded = false) * xs
+    @test dimnames(outs) == (:x, :y, :direction)
+end

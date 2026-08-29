@@ -25,7 +25,9 @@ function get_operator(::TotalVariation2D, x::AbstractArray; threaded::Bool = tru
     Δ = reshape(Δ, size(x)[1:2]..., size(Δ, 1)[2:end]...) # not necessary but gives an output shape easier to understand
     if x isa NamedDimsArray
         input_dimnames = dimnames(x)
-        output_dimnames = (dimnames(x)[1:2]..., :direction, dimnames(x)[3:end]...)
+        # The BatchOp codomain mask is `(:_, :b..., :_)`, so after the reshape above the codomain is
+        # `(nx, ny, batch..., ndir)` -- the direction axis is last, after the batch dims, not before.
+        output_dimnames = (dimnames(x)[1:2]..., dimnames(x)[3:end]..., :direction)
         Δ = NamedDimsOp{input_dimnames, output_dimnames}(Δ)
     end
     return Δ
@@ -65,7 +67,8 @@ function get_operator(::TotalVariation3D, x::AbstractArray; threaded::Bool = tru
     Δ = reshape(Δ, size(x)[1:3]..., size(Δ, 1)[2:end]...) # not necessary but gives an output shape easier to interpret
     if x isa NamedDimsArray
         input_dimnames = dimnames(x)
-        output_dimnames = (dimnames(x)[1:3]..., :direction, dimnames(x)[4:end]...)
+        # As in the 2D case: the direction axis is last, after the batch dims.
+        output_dimnames = (dimnames(x)[1:3]..., dimnames(x)[4:end]..., :direction)
         Δ = NamedDimsOp{input_dimnames, output_dimnames}(Δ)
     end
     return Δ
