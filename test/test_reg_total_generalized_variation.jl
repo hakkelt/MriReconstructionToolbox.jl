@@ -165,3 +165,41 @@ end
     solve(tv_model, ADMM(maxit = 1000, rho = 1.0))
     @test relative_error(total) < relative_error(copy(~tv_x))
 end
+
+@testitem "TotalGeneralizedVariation2D runs through reconstruct" tags = [:regularization, :integration] begin
+    using Test
+    using LinearAlgebra
+    using GeometricMedicalPhantoms
+    using Random
+
+    # Regression: TGV was only ever exercised through hand-built models passed to `solve`, so the
+    # public entry point had no coverage. `build_model_with_variables` chose the `normalop_ls` data
+    # term before the regularizations declared their auxiliary variables, and the operator that form
+    # stores spans the image alone -- so once TGV added its auxiliary field the solver's `x0` spanned
+    # (image, auxiliary) while the stored operator did not, and ADMM rejected the pair with
+    # "A'b must have the same size as x0".
+    Random.seed!(20260829)
+    nx, ny, nc = 32, 32, 4
+    img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
+    smaps = coil_sensitivities(nx, ny, nc)
+    pattern = create_sampling_pattern(VariableDensitySampling(PolynomialDistribution(3), 2.0, 0.15), (nx, ny))
+    acq = simulate_acquisition(img_true, AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern))
+
+    img_recon = reconstruct(acq, TotalGeneralizedVariation2D(0.005), ADMM(rho = 1.0); maxit = 50, verbose = false)
+    @test size(img_recon) == (nx, ny)
+    @test all(isfinite, img_recon)
+    # A sign-flipped or diverged solve lands near 2.0; measured ≈0.29 at 50 iterations.
+    @test norm(img_recon - img_true) / norm(img_true) < 0.6
+
+    # The auxiliary variable is what forces the plain `ls` form; a term without one must keep the
+    # `normalop_ls` optimization.
+    _, _, tgv_aux = MriReconstructionToolbox.build_model_with_variables(
+        get_encoding_operator(acq), acq.kspace_data, (TotalGeneralizedVariation2D(0.005),); threaded = false,
+    )
+    @test length(tgv_aux) == 1
+    tv_terms, _, tv_aux = MriReconstructionToolbox.build_model_with_variables(
+        get_encoding_operator(acq), acq.kspace_data, (TotalVariation2D(0.001),); threaded = false,
+    )
+    @test tv_aux == ()
+    @test any(t -> t.f isa MriReconstructionToolbox.StructuredOptimization.SqrNormL2WithNormalOp, tv_terms)
+end
