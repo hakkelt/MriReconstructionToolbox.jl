@@ -38,14 +38,19 @@ ProximalCore.is_separable(::Type{<:ProximalAverage}) = false
 (f::ProximalAverage)(x) = sum(w * g(x) for (w, g) in zip(f.weights, f.functions))
 
 function ProximalCore.prox!(y, f::ProximalAverage, x, gamma)
+    # Callers are allowed to take an in-place step (`prox!(x, f, x, gamma)`), and every scale needs
+    # to see the original `x`, so keep a copy of the input whenever it aliases the output.
+    input = y === x ? copy(x) : x
     fill!(y, zero(eltype(y)))
     buffer = similar(y)
-    value = zero(real(eltype(y)))
     for (w, g) in zip(f.weights, f.functions)
-        value += w * ProximalCore.prox!(buffer, g, x, gamma)
+        ProximalCore.prox!(buffer, g, input, gamma)
         y .+= w .* buffer
     end
-    return value
+    # The contract is that `prox!` returns the function's value *at the point it wrote*, so evaluate
+    # at `y`. Averaging the per-scale values at their own prox points would return a different (and,
+    # by convexity, strictly smaller) number whenever the scales disagree.
+    return f(y)
 end
 
 """

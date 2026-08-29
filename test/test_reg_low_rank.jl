@@ -393,5 +393,29 @@ end
         @test y ≈ y_ref
         @test avg(x) ≈ f(x)
     end
+
+    @testset "prox! is safe when it writes into its own input" begin
+        # Regression: `prox!` zeroed the output before reading the input, so an in-place step
+        # `prox!(x, f, x, gamma)` -- which callers are allowed to take -- made every scale after the
+        # first see an all-zero array and silently returned zero.
+        x = randn(16)
+        avg = PA((PO.NormL1(0.3), PO.NormL2(0.2)), [0.4, 0.6])
+        y = similar(x)
+        PC.prox!(y, avg, x, 0.8)
+        x_inplace = copy(x)
+        PC.prox!(x_inplace, avg, x_inplace, 0.8)
+        @test x_inplace ≈ y
+        @test !all(iszero, x_inplace)
+    end
+
+    @testset "prox! returns the function's value at the point it wrote" begin
+        # The per-scale proxes disagree here, so averaging their own values would give a strictly
+        # smaller (and inconsistent) number than evaluating the average at `y`.
+        x = randn(16)
+        avg = PA((PO.NormL1(0.3), PO.NormL2(0.2)), [0.4, 0.6])
+        y = similar(x)
+        value = PC.prox!(y, avg, x, 0.8)
+        @test value ≈ avg(y)
+    end
 end
 
