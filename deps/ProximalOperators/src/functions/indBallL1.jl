@@ -29,10 +29,15 @@ IndBallL1(r::R=1.0) where R = IndBallL1{R}(r)
 
 function (f::IndBallL1)(x)
     R = real(eltype(x))
-    if norm(x, 1) - f.r > f.r*eps(R)
-        return R(Inf)
+    # Same tolerance the other ball indicators use (`IndBallL2`, `IndSphereL2`, `IndSOC`,
+    # `IndHalfspace`). The previous `f.r*eps(R)` was tight enough that a point produced by this
+    # function's own prox could be reported as outside the ball: composing the prox with a linear
+    # mapping (`Precompose`) leaves a rounding error of a few `n*eps` in the ℓ1 norm, which is orders
+    # of magnitude above `eps(R)`.
+    if isapprox_le(norm(x, 1), f.r, atol=eps(R), rtol=sqrt(eps(R)))
+        return R(0)
     end
-    return R(0)
+    return R(Inf)
 end
 
 function prox!(y, f::IndBallL1, x::AbstractArray{<:Real}, gamma)

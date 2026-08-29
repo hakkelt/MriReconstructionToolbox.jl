@@ -126,6 +126,7 @@ end
     include("test_huberLoss.jl")
     include("test_separableHuberLoss.jl")
     include("test_indBallL0.jl")
+    include("test_indBallL1.jl")
     include("test_indAffine.jl")
     include("test_leastSquares.jl")
     include("test_logisticLoss.jl")
