@@ -115,14 +115,13 @@ end
         # Both the data term and the penalty are separable across the batch, so the exact minimizers
         # coincide slice by slice. Only ADMM's finite iteration budget separates them — the two problems are
         # of different size, so the solver does not take identical steps — hence the loose tolerance.
-        stacked = cat(noisy, reverse(noisy; dims = 1); dims = 3)
+        # The second slice is a different image, so a leak across the batch boundary would show up as a
+        # disagreement with the slice reconstructed on its own.
+        other = [0.03 * i for i in 1:n, _ in 1:n] .+ 0.05 .* randn(MersenneTwister(4), n, n)
+        stacked = cat(noisy, other; dims = 3)
         result = denoise(TotalGeneralizedVariation2D(0.05), stacked; maxit = 1500)
-        single = denoise(TotalGeneralizedVariation2D(0.05), noisy; maxit = 1500)
-        @test result[:, :, 1] ≈ single rtol = 2.0e-2
-        @test result[:, :, 2] ≈ reverse(single; dims = 1) rtol = 2.0e-2
-        # The second slice is the first one mirrored, so the two must be denoised to mirror images of each
-        # other -- that part is exact, since it is the same problem twice.
-        @test result[:, :, 2] ≈ reverse(result[:, :, 1]; dims = 1) rtol = 1.0e-6
+        @test result[:, :, 1] ≈ denoise(TotalGeneralizedVariation2D(0.05), noisy; maxit = 1500) rtol = 2.0e-2
+        @test result[:, :, 2] ≈ denoise(TotalGeneralizedVariation2D(0.05), other; maxit = 1500) rtol = 2.0e-2
     end
 end
 

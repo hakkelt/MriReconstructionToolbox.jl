@@ -102,18 +102,22 @@ using TestItems
     end
 
     @testset "scale_regularization rescales the intensity threshold too" begin
-        # δ is an absolute intensity, so scaling the image by `factor` has to scale δ by 1/factor for the
-        # term to keep the same relative strength.
-        reg = MriReconstructionToolbox.scale_regularization(EdgePreservingRoughness2D(0.2; δ = 0.1), 2.5)
-        @test reg.λ ≈ 0.5
-        @test reg.δ ≈ 0.04
-
-        x = randn(6, 6)
+        # δ is an absolute intensity, not a weight, so scaling the image by `factor` has to scale δ by the
+        # same factor for the term to keep its meaning.
         original = EdgePreservingRoughness2D(0.2; δ = 0.1)
         scaled = MriReconstructionToolbox.scale_regularization(original, 2.5)
-        # The scaled term evaluated on the scaled image must reproduce the original term on the original
-        # image, exactly as it does for the ℓ₁-type terms.
-        @test MriReconstructionToolbox.calculate(scaled, x ./ 2.5) ≈
-            MriReconstructionToolbox.calculate(original, x)
+        @test scaled.λ ≈ 0.5
+        @test scaled.δ ≈ 0.25
+
+        # The invariant `scale_regularization` has to satisfy: on an image scaled by `factor`, the scaled
+        # term must equal `factor²` times the original term on the original image -- `factor²` being how the
+        # least-squares data term itself scales, so the balance between the two is preserved. The ℓ₁-type
+        # terms satisfy the same identity.
+        x = randn(6, 6)
+        @test MriReconstructionToolbox.calculate(scaled, x .* 2.5) ≈
+            2.5^2 * MriReconstructionToolbox.calculate(original, x)
+        l1_original, l1_scaled = L1Image(0.2), MriReconstructionToolbox.scale_regularization(L1Image(0.2), 2.5)
+        @test MriReconstructionToolbox.calculate(l1_scaled, x .* 2.5) ≈
+            2.5^2 * MriReconstructionToolbox.calculate(l1_original, x)
     end
 end

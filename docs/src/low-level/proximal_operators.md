@@ -129,6 +129,18 @@ println("Custom norm value (before): ", val_before)
 println("Custom norm value (after prox): ", val_after)
 ```
 
+## Proximable Functions Defined by This Package
+
+Some regularization terms need a proximal operator that `ProximalOperators.jl` does not
+provide. These are defined here and used through the corresponding regularization types
+rather than directly.
+
+```@docs
+MriReconstructionToolbox.BlockNuclearNorm
+MriReconstructionToolbox.ProximalAverage
+MriReconstructionToolbox.DenoiserProx
+```
+
 ## See Also
 
 - Upstream docs: [https://juliafirstorder.github.io/ProximalOperators.jl/stable/](https://juliafirstorder.github.io/ProximalOperators.jl/stable/)

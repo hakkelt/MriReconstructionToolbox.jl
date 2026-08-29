@@ -72,13 +72,14 @@ end
 get_affected_dims(::EdgePreservingRoughness2D, ::AcquisitionInfo, image_dims) = image_dims[1:2]
 get_affected_dims(::EdgePreservingRoughness3D, ::AcquisitionInfo, image_dims) = image_dims[1:3]
 
-# ψ_δ is not homogeneous, because δ is a fixed intensity threshold: scaling the image by `factor` has to be
-# matched by scaling δ, and λ then scales linearly as it does for the ℓ₁-type terms.
+# ψ_δ is not homogeneous, because δ is an absolute intensity threshold rather than a weight. It obeys
+# `ψ_{cδ}(c t) = c ψ_δ(t)`, so an image scaled by `factor` needs δ scaled by the same factor, and λ then
+# scales linearly exactly as it does for the ℓ₁-type terms (see the scale_regularization docstring).
 function scale_regularization(reg::EdgePreservingRoughness2D, factor::Real)
-    return EdgePreservingRoughness2D(reg.λ * factor; δ = reg.δ / factor)
+    return EdgePreservingRoughness2D(reg.λ * factor; δ = reg.δ * factor)
 end
 function scale_regularization(reg::EdgePreservingRoughness3D, factor::Real)
-    return EdgePreservingRoughness3D(reg.λ * factor; δ = reg.δ / factor)
+    return EdgePreservingRoughness3D(reg.λ * factor; δ = reg.δ * factor)
 end
 
 function materialize(
