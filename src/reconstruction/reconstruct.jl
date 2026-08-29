@@ -145,6 +145,12 @@ end
 function _reconstruct_dispatch_components(acq_data, components, algorithm, x₀, config)
     decomposition_plan = get_problem_decomposition_plan(acq_data, components, config)
     img = if isnothing(decomposition_plan)
+        # The decomposition branch below validates x₀ against the plan's image size; this branch has
+        # no plan, so it validates against the acquisition's own image size. Both must check, or a
+        # mistyped component name is only caught when the problem happens to be decomposed.
+        if !isnothing(x₀)
+            check_x₀_components_size(x₀, components, get_image_size(acq_data))
+        end
         result = nothing
         @conditionally_enable_threading config.threaded begin
             result = _reconstruct_components(acq_data, components, algorithm, x₀, config)
@@ -173,6 +179,15 @@ function check_x₀_components_size(x₀, components, image_size)
         throw(ArgumentError("x₀ for image decomposition must be `nothing`, a Tuple, or a NamedTuple of per-component arrays."))
     if x₀ isa Tuple
         @argcheck length(x₀) == length(components) "x₀ tuple must have one entry per component ($(length(components))), got $(length(x₀))."
+    else
+        # A key that matches no component is silently dropped by `get_component_x0s`, which then
+        # warm-starts that component from zero instead -- so a typo would cost a whole initial guess
+        # without any indication. Reject it here instead.
+        component_names = map(c -> c.name, components)
+        unknown = filter(k -> k ∉ component_names, keys(x₀))
+        unknown_str = join(unknown, ", ")
+        known_str = join(component_names, ", ")
+        @argcheck isempty(unknown) "x₀ names ($unknown_str) do not match any component ($known_str)."
     end
     for x in values(x₀)
         @argcheck size(x) == image_size "Size of x₀ ($(size(x))) must match the image size ($image_size)"
@@ -180,12 +195,24 @@ function check_x₀_components_size(x₀, components, image_size)
     return nothing
 end
 
-function _reconstruct_components(acq_data, components, algorithm, x₀, config; scale_override = nothing)
+function _reconstruct_components(
+        acq_data, components, algorithm, x₀, config;
+        scale_override = nothing, x₀s = nothing,
+    )
     @step "Constructing encoding operator" config begin
         𝒜 = get_encoding_operator(acq_data; threaded = config.threaded, fast_planning = false)
     end
-    x̂, scale = _direct_reconstruct_components(𝒜, acq_data, config; scale_override)
-    x₀s = get_component_x0s(components, x̂, x₀)
+    # `x₀s` lets a caller that has already formed the per-component initial guesses skip the adjoint
+    # that would produce them. The decomposition path computes them in its first phase to derive the
+    # per-slice scales, and without this would recompute 𝒜'y per slice only to discard it.
+    scale = if isnothing(x₀s)
+        x̂, s = _direct_reconstruct_components(𝒜, acq_data, config; scale_override)
+        x₀s = get_component_x0s(components, x̂, x₀)
+        s
+    else
+        @argcheck !isnothing(scale_override) "scale_override is required when x₀s is supplied."
+        scale_override
+    end
     img = _iterative_reconstruct_components(𝒜, acq_data, x₀s, scale, components, algorithm, config)
     return img, scale
 end
