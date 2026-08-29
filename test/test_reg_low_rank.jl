@@ -1,11 +1,6 @@
 using TestItems
 
-@testitem "LowRank regularization" tags = [:regularization] begin
-    using Test
-    using MriReconstructionToolbox
-    using AbstractOperators
-    using NamedDims
-
+@testitem "LowRank regularization" tags = [:regularization] setup = [RegTestSetup] begin
     @testset "Constructor" begin
         reg = LowRank(0.1)
         @test reg.λ == 0.1
@@ -68,11 +63,7 @@ using TestItems
     end
 end
 
-@testitem "RankLimit regularization" tags = [:regularization] begin
-    using Test
-    using MriReconstructionToolbox
-    using AbstractOperators
-
+@testitem "RankLimit regularization" tags = [:regularization] setup = [RegTestSetup] begin
     @testset "Constructor" begin
         reg = RankLimit(5)
         @test reg.max_rank == 5
@@ -98,12 +89,8 @@ end
     end
 end
 
-@testitem "LocallyLowRank regularization" tags = [:regularization] begin
-    using Test
+@testitem "LocallyLowRank regularization" tags = [:regularization] setup = [RegTestSetup] begin
     using LinearAlgebra
-    using MriReconstructionToolbox
-    using AbstractOperators
-    using NamedDims
 
     const SO = MriReconstructionToolbox.StructuredOptimization
     const PC = MriReconstructionToolbox.ProximalCore
@@ -218,11 +205,9 @@ end
     end
 end
 
-@testitem "LocallyLowRank grid shifts" tags = [:regularization] begin
-    using Test
+@testitem "LocallyLowRank grid shifts" tags = [:regularization] setup = [RegTestSetup] begin
     using LinearAlgebra
     using Random
-    using MriReconstructionToolbox
 
     const SO = MriReconstructionToolbox.StructuredOptimization
     const PC = MriReconstructionToolbox.ProximalCore
@@ -287,11 +272,8 @@ end
     end
 end
 
-@testitem "MultiScaleLowRank regularization" tags = [:regularization] begin
-    using Test
+@testitem "MultiScaleLowRank regularization" tags = [:regularization] setup = [RegTestSetup] begin
     using LinearAlgebra
-    using MriReconstructionToolbox
-    using AbstractOperators
 
     const SO = MriReconstructionToolbox.StructuredOptimization
     const PC = MriReconstructionToolbox.ProximalCore
@@ -367,10 +349,7 @@ end
     end
 end
 
-@testitem "ProximalAverage" tags = [:regularization] begin
-    using Test
-    using MriReconstructionToolbox
-
+@testitem "ProximalAverage" tags = [:regularization] setup = [RegTestSetup] begin
     const PC = MriReconstructionToolbox.ProximalCore
     const PA = MriReconstructionToolbox.ProximalAverage
     const PO = MriReconstructionToolbox.ProximalOperators

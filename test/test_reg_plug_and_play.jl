@@ -1,25 +1,10 @@
 using TestItems
 
-@testitem "PlugAndPlay regularization" tags = [:regularization] begin
-    using Test
-    using MriReconstructionToolbox
-    using AbstractOperators
-    using NamedDims
-
-    const SO = MriReconstructionToolbox.StructuredOptimization
-    const PC = MriReconstructionToolbox.ProximalCore
-
+@testitem "PlugAndPlay regularization" tags = [:regularization] setup = [RegTestSetup, ProxOf] begin
     # A soft-thresholding "denoiser": with σ = strength√γ it removes exactly γλ when strength = √λ, so the
     # plug-and-play prox must coincide with the prox of `L1Image(λ)`. This is the reference the whole
     # machinery is checked against, since no closed form exists for a real denoiser.
     soft_threshold(image, σ) = sign.(image) .* max.(abs.(image) .- σ^2, 0)
-
-    function prox_of(reg, x, γ = 1.0)
-        term = MriReconstructionToolbox.materialize(reg, Variable(x); threaded = false)
-        y = similar(x)
-        value = PC.prox!(y, SO.extract_functions(term), x, γ)
-        return y, value
-    end
 
     @testset "Constructor" begin
         reg = PlugAndPlay(soft_threshold; strength = 0.3)

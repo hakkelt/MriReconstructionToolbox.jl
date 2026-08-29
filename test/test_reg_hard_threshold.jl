@@ -1,21 +1,6 @@
 using TestItems
 
-@testitem "HardThreshold regularization" tags = [:regularization] begin
-    using Test
-    using MriReconstructionToolbox
-    using AbstractOperators
-    using NamedDims
-
-    const SO = MriReconstructionToolbox.StructuredOptimization
-    const PC = MriReconstructionToolbox.ProximalCore
-
-    function prox_of(reg, x, γ = 1.0)
-        term = MriReconstructionToolbox.materialize(reg, Variable(x); threaded = false)
-        y = similar(x)
-        value = PC.prox!(y, SO.extract_functions(term), x, γ)
-        return y, value
-    end
-
+@testitem "HardThreshold regularization" tags = [:regularization] setup = [RegTestSetup, ProxOf] begin
     @testset "Constructor" begin
         reg = HardThreshold(0.5)
         @test reg.λ == 0.5
@@ -76,21 +61,7 @@ using TestItems
     end
 end
 
-@testitem "SparsityLimit regularization" tags = [:regularization] begin
-    using Test
-    using MriReconstructionToolbox
-    using AbstractOperators
-
-    const SO = MriReconstructionToolbox.StructuredOptimization
-    const PC = MriReconstructionToolbox.ProximalCore
-
-    function prox_of(reg, x, γ = 1.0)
-        term = MriReconstructionToolbox.materialize(reg, Variable(x); threaded = false)
-        y = similar(x)
-        PC.prox!(y, SO.extract_functions(term), x, γ)
-        return y
-    end
-
+@testitem "SparsityLimit regularization" tags = [:regularization] setup = [RegTestSetup, ProxOf] begin
     @testset "Constructor" begin
         @test SparsityLimit(10).max_nonzeros == 10
         @test_throws ArgumentError SparsityLimit(0)
@@ -107,7 +78,7 @@ end
     @testset "the prox keeps the k largest coefficients" begin
         x = randn(ComplexF64, 8, 8)
         k = 12
-        y = prox_of(SparsityLimit(k), x)
+        y, _ = prox_of(SparsityLimit(k), x)
         @test count(!iszero, y) == k
         kept = findall(!iszero, vec(y))
         @test vec(y)[kept] == vec(x)[kept]
