@@ -56,15 +56,10 @@ Return the gradient operator of the first-order part of the TGV term, collapsed 
 function get_operator(reg::TotalGeneralizedVariation2D, x::AbstractArray; threaded::Bool = true)
     @argcheck ndims(x) >= 2 "TotalGeneralizedVariation2D requires at least 2 dimensions in the input variable"
     ∇ = get_operator(TotalVariation2D(reg.λ), x; threaded)
-    inner = ∇ isa NamedDimsOp ? parent(∇) : ∇
-    collapsed = reshape(inner, length(x), 2)
-    if ∇ isa NamedDimsOp
-        return NamedDimsOp{dimnames(x), (:_, :direction)}(collapsed)
-    end
-    return collapsed
+    return _collapse_direction_axes(∇, x, 2)
 end
 
-function get_affected_dims(::TotalGeneralizedVariation2D, ::AcquisitionInfo, image_dims)
+function get_affected_dims(::TotalGeneralizedVariation2D, ::Nothing, image_dims)
     return image_dims[1:2]
 end
 

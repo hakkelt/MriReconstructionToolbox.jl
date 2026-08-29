@@ -33,7 +33,7 @@ function get_operator(::TotalVariation2D, x::AbstractArray; threaded::Bool = tru
     return Δ
 end
 
-function get_affected_dims(::TotalVariation2D, acq_info::AcquisitionInfo, image_dims)
+function get_affected_dims(::TotalVariation2D, ::Nothing, image_dims)
     return image_dims[1:2]
 end
 
@@ -74,7 +74,7 @@ function get_operator(::TotalVariation3D, x::AbstractArray; threaded::Bool = tru
     return Δ
 end
 
-function get_affected_dims(::TotalVariation3D, acq_info::AcquisitionInfo, image_dims)
+function get_affected_dims(::TotalVariation3D, ::Nothing, image_dims)
     return image_dims[1:3]
 end
 
@@ -85,18 +85,8 @@ function materialize(
         reg::Union{TotalVariation2D, TotalVariation3D}, x::Variable{T}; threaded::Bool
     ) where {T}
     Δ = get_operator(reg, ~x; threaded)
-    # If Δ carries named dimensions, reshape the underlying operator (a plain `Reshape`
-    # around it collides with the NamedDimsOp's codomain names) and rewrap: the collapsed
-    # codomain no longer maps 1:1 to the original names, so it gets an anonymous name.
-    n_directions = size(Δ, 1)[end]
-    if Δ isa NamedDimsOp
-        input_dimnames = dimnames(~x)
-        Δ = NamedDimsOp{input_dimnames, (:_, :direction)}(
-            reshape(parent(Δ), length(~x), n_directions)
-        )
-    else
-        Δ = reshape(Δ, length(~x), n_directions) # new shape: (length(~x), 2) for 2D or (length(~x), 3) for 3D -> required shape for L_{2,1} mixed norm
-    end
+    # New shape: (length(~x), 2) for 2D or (length(~x), 3) for 3D -- the shape the ℓ₂,₁ mixed norm needs.
+    Δ = _collapse_direction_axes(Δ, ~x, size(Δ, 1)[end])
     λ = real(T)(reg.λ)
     λ_repr = @sprintf "%g" λ
     x_repr = get_name(x)

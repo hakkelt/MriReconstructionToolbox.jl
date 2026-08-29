@@ -40,23 +40,13 @@ end
 
 const _Constraint = Union{NonNegative, BoxConstraint}
 
-get_operator(::_Constraint, x::AbstractArray; threaded::Bool = true) = Eye(x)
-function get_operator(::_Constraint, x::NamedDimsArray; threaded::Bool = true)
-    return NamedDimsOp{dimnames(x), dimnames(x)}(Eye(parent(x)))
-end
+get_operator(::_Constraint, x::AbstractArray; threaded::Bool = true) = identity_operator(x)
 
 # Constraints act element-wise, so no dimension is coupled -- unless the bounds are given as arrays, which
 # have the size of the full image and therefore must not be split over batch dimensions.
-get_affected_dims(::NonNegative, ::AcquisitionInfo, image_dims) = ()
 get_affected_dims(::NonNegative, ::Nothing, image_dims) = ()
 
-function get_affected_dims(reg::BoxConstraint, ::AcquisitionInfo, image_dims)
-    return _box_affected_dims(reg, image_dims)
-end
-
-get_affected_dims(reg::BoxConstraint, ::Nothing, image_dims) = _box_affected_dims(reg, image_dims)
-
-function _box_affected_dims(reg::BoxConstraint, image_dims)
+function get_affected_dims(reg::BoxConstraint, ::Nothing, image_dims)
     array_bounds = reg.lower isa AbstractArray || reg.upper isa AbstractArray
     return array_bounds ? Tuple(image_dims) : ()
 end

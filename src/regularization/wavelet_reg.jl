@@ -44,7 +44,7 @@ function get_operator(reg::L1Wavelet2D, x::AbstractArray{T}; threaded::Bool = tr
     return 𝒲
 end
 
-function get_affected_dims(::L1Wavelet2D, acq_info::AcquisitionInfo, image_dims)
+function get_affected_dims(::L1Wavelet2D, ::Nothing, image_dims)
     return image_dims[1:2]
 end
 
@@ -101,7 +101,7 @@ function get_operator(reg::L1Wavelet3D, x::AbstractArray{T}; threaded::Bool = tr
     return 𝒲
 end
 
-function get_affected_dims(::L1Wavelet3D, acq_info::AcquisitionInfo, image_dims)
+function get_affected_dims(::L1Wavelet3D, ::Nothing, image_dims)
     return image_dims[1:3]
 end
 

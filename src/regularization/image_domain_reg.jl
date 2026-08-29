@@ -17,10 +17,9 @@ struct Tikhonov{T} <: Regularization
     λ::T
 end
 
-get_operator(::Tikhonov, x::AbstractArray; threaded::Bool = true) = Eye(x)
-get_operator(::Tikhonov, x::NamedDimsArray; threaded::Bool = true) = NamedDimsOp{dimnames(x), dimnames(x)}(Eye(parent(x)))
+get_operator(::Tikhonov, x::AbstractArray; threaded::Bool = true) = identity_operator(x)
 
-function get_affected_dims(::Tikhonov, acq_info::AcquisitionInfo, image_dims)
+function get_affected_dims(::Tikhonov, ::Nothing, image_dims)
     return () # Tikhonov regularization applies element-wise, so no specific dimensions are affected
 end
 
@@ -55,10 +54,9 @@ struct L1Image{T} <: Regularization
     λ::T
 end
 
-get_operator(::L1Image, x::AbstractArray; threaded::Bool = true) = Eye(x)
-get_operator(::L1Image, x::NamedDimsArray; threaded::Bool = true) = NamedDimsOp{dimnames(x), dimnames(x)}(Eye(parent(x)))
+get_operator(::L1Image, x::AbstractArray; threaded::Bool = true) = identity_operator(x)
 
-function get_affected_dims(::L1Image, acq_info::AcquisitionInfo, image_dims)
+function get_affected_dims(::L1Image, ::Nothing, image_dims)
     return () # L1-image regularization applies element-wise, so no specific dimensions are affected
 end
 

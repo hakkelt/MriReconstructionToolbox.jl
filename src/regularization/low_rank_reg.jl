@@ -20,7 +20,7 @@ struct LowRank{T, D} <: Regularization
     λ::T
     time_dim::D
     function LowRank(λ::T; time_dim::D = nothing) where {T, D}
-        _check_lowrank_dims(time_dim)
+        _check_dim_spec(time_dim, "time_dim")
         return new{T, D}(λ, time_dim)
     end
 end
@@ -49,20 +49,13 @@ struct RankLimit{D} <: Regularization
     time_dim::D
     function RankLimit(max_rank::Int; time_dim::D = nothing) where {D}
         @argcheck max_rank > 0 "max_rank must be positive"
-        _check_lowrank_dims(time_dim)
+        _check_dim_spec(time_dim, "time_dim")
         return new{D}(max_rank, time_dim)
     end
 end
 
-function _check_lowrank_dims(time_dim)
-    @argcheck isnothing(time_dim) || time_dim isa Integer || time_dim isa Symbol "time_dim must be an Integer or Symbol"
-    return if time_dim isa Integer
-        @argcheck time_dim > 0 "time_dim must be positive"
-    end
-end
-
 function get_operator(reg::Union{LowRank, RankLimit}, x::AbstractArray; threaded::Bool = true)
-    dims = x isa NamedDimsArray ? dimnames(x) : (1:ndims(x))
+    dims = dims_of(x)
     affected_dims = 1:get_time_dim(reg.time_dim, dims)
     batch_dims = (length(affected_dims) + 1):ndims(x)
     @argcheck length(batch_dims) >= 0 "Input variable must have at least as many dimensions as affected_dims"
@@ -109,11 +102,6 @@ function get_affected_dims(reg::Union{LowRank, RankLimit}, ::Nothing, image_dims
     # that named dimensions stay Symbols (needed for problem-decomposition setdiff).
     time_dim = get_time_dim(reg.time_dim, image_dims)
     return image_dims[1:time_dim]
-end
-
-# Disambiguates against the generic Regularization fallback.
-function get_affected_dims(reg::Union{LowRank, RankLimit}, ::AcquisitionInfo, image_dims)
-    return get_affected_dims(reg, nothing, image_dims)
 end
 
 # Nuclear norm is homogeneous of degree 1, so λ scales linearly (see scale_regularization docstring).

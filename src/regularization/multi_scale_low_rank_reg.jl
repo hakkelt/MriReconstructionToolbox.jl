@@ -107,23 +107,16 @@ struct MultiScaleLowRank{T, B, D, W, RNG} <: Regularization
             @argcheck length(weights) == length(block_sizes) "one weight is required per scale"
         end
         @argcheck shift in (:none, :fixed, :random) "shift must be :none, :fixed or :random, got :$shift"
-        _check_lowrank_dims(time_dim)
+        _check_dim_spec(time_dim, "time_dim")
         return new{T, B, D, W, RNG}(λ, block_sizes, time_dim, weights, shift, rng)
     end
 end
 
-get_operator(::MultiScaleLowRank, x::AbstractArray; threaded::Bool = true) = Eye(x)
-function get_operator(::MultiScaleLowRank, x::NamedDimsArray; threaded::Bool = true)
-    return NamedDimsOp{dimnames(x), dimnames(x)}(Eye(parent(x)))
-end
+get_operator(::MultiScaleLowRank, x::AbstractArray; threaded::Bool = true) = identity_operator(x)
 
 function get_affected_dims(reg::MultiScaleLowRank, ::Nothing, image_dims)
     # As for LocallyLowRank, the blocks couple every dimension up to and including the temporal one.
     return image_dims[1:get_time_dim(reg.time_dim, image_dims)]
-end
-
-function get_affected_dims(reg::MultiScaleLowRank, ::AcquisitionInfo, image_dims)
-    return get_affected_dims(reg, nothing, image_dims)
 end
 
 # Each scale is a nuclear norm, homogeneous of degree 1, and so is their average: λ scales linearly.
@@ -143,7 +136,7 @@ end
 
 function materialize(reg::MultiScaleLowRank, x::Variable{T}; threaded::Bool) where {T}
     x_val = ~x
-    dims = x_val isa NamedDimsArray ? dimnames(x_val) : (1:ndims(x_val))
+    dims = dims_of(x_val)
     time_dim = get_time_dim(reg.time_dim, dims)
     @argcheck time_dim > 1 "MultiScaleLowRank needs at least one spatial dimension before the temporal one"
     spatial_size = NTuple{time_dim - 1, Int}(size(x_val)[1:(time_dim - 1)])

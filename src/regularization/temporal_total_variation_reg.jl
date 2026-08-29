@@ -26,16 +26,13 @@ struct TemporalTotalVariation{T, D} <: Regularization
     λ::T
     time_dim::D
     function TemporalTotalVariation(λ::T; time_dim::D = nothing) where {T, D}
-        @argcheck isnothing(time_dim) || time_dim isa Integer || time_dim isa Symbol "time_dim must be an Integer or Symbol"
-        if time_dim isa Integer
-            @argcheck time_dim > 0 "time_dim must be positive"
-        end
+        _check_dim_spec(time_dim, "time_dim")
         return new{T, D}(λ, time_dim)
     end
 end
 
 function get_operator(reg::TemporalTotalVariation, x::AbstractArray; threaded::Bool = true)
-    dims = x isa NamedDimsArray ? dimnames(x) : (1:ndims(x))
+    dims = dims_of(x)
     time_dim = get_time_dim(reg.time_dim, dims)
     @argcheck size(x, time_dim) > 1 "TemporalTotalVariation requires at least two samples along the temporal dimension"
     δ = FiniteDiff(unname(x), time_dim; threaded)
@@ -44,10 +41,6 @@ function get_operator(reg::TemporalTotalVariation, x::AbstractArray; threaded::B
         δ = NamedDimsOp{dimnames(x), dimnames(x)}(δ)
     end
     return δ
-end
-
-function get_affected_dims(reg::TemporalTotalVariation, ::AcquisitionInfo, image_dims)
-    return (image_dims[get_time_dim(reg.time_dim, image_dims)],)
 end
 
 function get_affected_dims(reg::TemporalTotalVariation, ::Nothing, image_dims)

@@ -42,7 +42,7 @@ function check_components(components::Tuple{Vararg{Component}})
     return nothing
 end
 
-function get_affected_dims(c::Component, acq_info::AcquisitionInfo, image_dims)
+function get_affected_dims(c::Component, acq_info::Union{Nothing, AcquisitionInfo}, image_dims)
     dims = Any[]
     for reg in c.regularizations
         append!(dims, get_affected_dims(reg, acq_info, image_dims))
@@ -60,13 +60,9 @@ function materialize(c::Component, x::Variable; threaded::Bool)
 end
 
 function materialize_with_auxiliaries(c::Component, x::Variable; threaded::Bool)
-    terms, auxiliaries = materialize_with_auxiliaries(c.regularizations[1], x; threaded)
-    for reg in c.regularizations[2:end]
-        reg_terms, reg_auxiliaries = materialize_with_auxiliaries(reg, x; threaded)
-        terms += reg_terms
-        auxiliaries = (auxiliaries..., reg_auxiliaries...)
-    end
-    return terms, auxiliaries
+    # The constructor guarantees at least one regularization, so the reduction needs no seed.
+    term_list, auxiliaries = materialize_all(c.regularizations, x; threaded)
+    return reduce(+, term_list), auxiliaries
 end
 
 """

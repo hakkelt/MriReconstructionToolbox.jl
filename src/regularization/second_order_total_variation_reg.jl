@@ -89,11 +89,11 @@ function get_operator(
     return composed
 end
 
-function get_affected_dims(reg::SecondOrderTotalVariation2D, ::AcquisitionInfo, image_dims)
+function get_affected_dims(reg::SecondOrderTotalVariation2D, ::Nothing, image_dims)
     return image_dims[1:2]
 end
 
-function get_affected_dims(reg::SecondOrderTotalVariation3D, ::AcquisitionInfo, image_dims)
+function get_affected_dims(reg::SecondOrderTotalVariation3D, ::Nothing, image_dims)
     return image_dims[1:3]
 end
 
@@ -106,16 +106,9 @@ function materialize(
     ) where {T}
     n_spatial = _sotv_spatial_dims(reg)
     Δ² = get_operator(reg, ~x; threaded)
-    inner = Δ² isa NamedDimsOp ? parent(Δ²) : Δ²
     # The two trailing axes are the two direction axes, so collapsing them groups the `n_spatial^2` second
     # derivatives of one voxel into one row of the matrix `NormL21` takes the row-wise ℓ₂ norm of.
-    n_components = n_spatial^2
-    collapsed = reshape(inner, length(~x), n_components)
-    if Δ² isa NamedDimsOp
-        Δ² = NamedDimsOp{dimnames(~x), (:_, :direction)}(collapsed)
-    else
-        Δ² = collapsed
-    end
+    Δ² = _collapse_direction_axes(Δ², ~x, n_spatial^2)
     λ = real(T)(reg.λ)
     repr = @sprintf "%g ⋅ ‖∇²%s‖₂,₁" λ get_name(x)
     return StructuredOptimization.Term(1, NormL21(λ, 2), Δ² * x, repr)
