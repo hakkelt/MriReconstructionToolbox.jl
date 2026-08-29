@@ -30,6 +30,8 @@ for jointly with the image (see [`materialize_with_auxiliaries`](@ref)).
   improved model. Its memory cost is `2 × length(image)` per image.
 - Only splitting algorithms handle the coupled two-variable term set: use `ADMM`. The first-order term
   couples the two variables through `∇x − w`, which the proximal-gradient algorithms cannot separate.
+  Convergence is sensitive to ADMM's penalty parameter on this term; if the adaptive default does not
+  settle, pass a fixed `rho` (`ADMM(rho = 1.0)` is what the tests here use).
 - Dimensions beyond the first two are batch dimensions, regularized independently.
 """
 struct TotalGeneralizedVariation2D{T, S} <: Regularization
