@@ -115,12 +115,23 @@ infimal-convolution-style splittings of an image into parts with different
 regularity, and for background/foreground separation.
 
 It is *not* a general auxiliary-variable mechanism. Regularizers such as total
-generalized variation (TGV) introduce an auxiliary variable that is coupled to
-the image through a term like `‖∇x - w‖`, while being absent from the data term
-entirely. That variable is not an additive image component, so TGV does not
-follow from the `Component` API — it additionally needs a symmetrized-gradient
-operator, which the operator library does not currently provide. See
-[Regularizers Not Currently Available](regularization.md#Regularizers-Not-Currently-Available).
+generalized variation introduce an auxiliary variable that is coupled to the
+image through a term like `‖∇x - w‖`, while being absent from the data term
+entirely. That variable is not an additive image component, so it does not
+follow from the `Component` API. [`TotalGeneralizedVariation2D`](@ref) therefore
+uses a separate mechanism — a regularization may declare auxiliary variables of
+its own, which are solved for alongside the image and discarded afterwards — and
+is used like any other regularizer, not as a component.
+
+Two related models *are* expressible as components, because they really are
+additive splittings:
+
+- **Infimal-convolution TV**: `Component(:cartoon, TotalVariation2D(λ))` plus
+  `Component(:ramp, SecondOrderTotalVariation2D(λ))` splits the image into a
+  piecewise-constant and a piecewise-linear part.
+- **Multi-scale low rank**: one [`LocallyLowRank`](@ref) component per block
+  size gives the exact model of Ong & Lustig, with the scales separated;
+  [`MultiScaleLowRank`](@ref) is the single-image approximation of the same idea.
 
 ## At Least Two Components
 

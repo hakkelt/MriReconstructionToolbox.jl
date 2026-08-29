@@ -29,6 +29,28 @@ function build_model(𝒜::AbstractOperator, y::AbstractArray, reg::Regularizati
 end
 
 function build_model(𝒜::AbstractOperator, y::AbstractArray, regs::Tuple; threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing, disable_normalop_optimization::Bool = false)
+    terms, _, _ = build_model_with_variables(
+        𝒜, y, regs; threaded, x₀, disable_normalop_optimization
+    )
+    return terms
+end
+
+"""
+	build_model_with_variables(𝒜, y, regs; threaded, x₀, disable_normalop_optimization)
+
+Same as [`build_model`](@ref), but also returns the variables the model was built from:
+`(terms, x, auxiliary_variables)`, where `x` is the image variable and `auxiliary_variables` is a tuple of
+the extra variables the regularizations introduced (see [`materialize_with_auxiliaries`](@ref)).
+
+Callers that need the solution must read it from `x` rather than from the solver's returned variable tuple:
+once a regularization contributes auxiliary variables, the position of the image variable in that tuple is
+an implementation detail of `extract_variables`, not something to rely on.
+"""
+function build_model_with_variables(
+        𝒜::AbstractOperator, y::AbstractArray, regs::Tuple;
+        threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing,
+        disable_normalop_optimization::Bool = false,
+    )
     x₀ = isnothing(x₀) ? 𝒜' * y : copy(x₀)
     x = Variable(unname(x₀))
     𝒜 = unname(𝒜)
@@ -39,11 +61,14 @@ function build_model(𝒜::AbstractOperator, y::AbstractArray, regs::Tuple; thre
         terms = @term normalop_ls(𝒜 * x - y)
     end
     @assert terms isa StructuredOptimization.Term
+    auxiliaries = ()
     for reg in regs
         @argcheck reg isa Regularization "All regularization terms must be of type Regularization."
-        terms += materialize(reg, x; threaded)
+        reg_terms, reg_auxiliaries = materialize_with_auxiliaries(reg, x; threaded)
+        terms += reg_terms
+        auxiliaries = (auxiliaries..., reg_auxiliaries...)
     end
-    return terms
+    return terms, x, auxiliaries
 end
 
 """
@@ -63,7 +88,9 @@ plain `ls` is always used, since the fast normal-operator path for a sum of shar
 operators requires the upstream `HCAT` normal-op fusion.
 
 # Returns
-- `(terms, vars)`: `terms::StructuredOptimization.TermSet`, `vars::NTuple{n,Variable}` in component order.
+- `(terms, vars, auxiliaries)`: `terms::StructuredOptimization.TermSet`, `vars::NTuple{n,Variable}` in
+  component order, and the tuple of auxiliary variables the regularizations introduced (see
+  [`materialize_with_auxiliaries`](@ref)) — usually empty.
 """
 function build_model(
         𝒜::AbstractOperator, y::AbstractArray, components::Tuple{Vararg{Component}};
@@ -75,8 +102,11 @@ function build_model(
     vars = Tuple(Variable(unname(x₀)) for x₀ in x₀s)
     ex = 𝒜 * reduce(+, vars)
     terms = StructuredOptimization.ls(ex - y)
+    auxiliaries = ()
     for (component, x) in zip(components, vars)
-        terms += materialize(component, x; threaded)
+        component_terms, component_auxiliaries = materialize_with_auxiliaries(component, x; threaded)
+        terms += component_terms
+        auxiliaries = (auxiliaries..., component_auxiliaries...)
     end
-    return terms, vars
+    return terms, vars, auxiliaries
 end

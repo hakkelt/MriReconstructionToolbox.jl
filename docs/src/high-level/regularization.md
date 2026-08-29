@@ -249,6 +249,94 @@ For volumetric / multislice data, promotes piecewise-constant structure in 3D:
 TotalVariation3D
 ```
 
+#### Second-Order Total Variation
+
+Penalizes the second derivatives instead of the first, so a smooth intensity ramp costs nothing:
+
+```@docs
+SecondOrderTotalVariation2D
+SecondOrderTotalVariation3D
+```
+
+**When to use:**
+- Images dominated by smooth intensity variation (coil shading, slow tissue transitions, B1 inhomogeneity), where first-order TV produces staircasing — flat plateaus separated by artificial steps
+- Almost always in combination with a first-order term rather than alone, since a jump is penalized through its (large) second derivative and is therefore blurred
+
+**Example:**
+```julia
+# first-order TV for the edges, second-order for the ramps
+img = reconstruct(acq, (TotalVariation2D(1e-3), SecondOrderTotalVariation2D(2e-3)))
+```
+
+**Practical tip:** If you find yourself tuning the balance between first- and second-order TV, use
+[`TotalGeneralizedVariation2D`](@ref) instead: it makes the same trade-off adaptively, per voxel.
+
+#### Total Generalized Variation
+
+Balances first- and second-order behaviour automatically through an auxiliary vector field:
+
+```@docs
+TotalGeneralizedVariation2D
+```
+
+**When to use:**
+- The default replacement for [`TotalVariation2D`](@ref) whenever staircasing is a concern, i.e. on any image that is not genuinely piecewise constant — which in MRI is most of them
+- Especially worthwhile at high acceleration, where the TV staircasing artifact is strongest
+
+**Example:**
+```julia
+img = reconstruct(acq, TotalGeneralizedVariation2D(1e-3), ADMM(maxit=500))
+```
+
+**Practical tip:** TGV requires `ADMM` — the auxiliary field is coupled to the image through `∇x − w`, which
+the proximal-gradient algorithms cannot separate. It also doubles the number of unknowns, so expect roughly
+twice the memory and a modest increase in cost per iteration. `ratio` rarely needs changing from its default
+of `2.0`; increasing it makes the result approach plain TV.
+
+#### Infimal-Convolution Total Variation
+
+The infimal convolution of first- and second-order TV needs no regularization type of its own: it *is* an
+image decomposition into a piecewise-constant "cartoon" part and a piecewise-linear "ramp" part, which the
+[Image Decomposition](image_decomposition.md) machinery already expresses.
+
+```julia
+components = (
+    Component(:cartoon, TotalVariation2D(1e-3)),
+    Component(:ramp, SecondOrderTotalVariation2D(1e-3)),
+)
+img = reconstruct(acq, components, ADMM(maxit=500))
+img.components.cartoon   # the edges
+img.components.ramp      # the smooth background
+```
+
+Compared to [`TotalGeneralizedVariation2D`](@ref) this is the older and slightly weaker model — the two parts
+are separated globally rather than adaptively per voxel — but it has the advantage that the separated
+components are themselves available, which is useful when the smooth part is the bias field or the background.
+
+#### Edge-Preserving Roughness (Huber)
+
+A smooth interpolation between a quadratic roughness penalty and total variation:
+
+```@docs
+EdgePreservingRoughness2D
+EdgePreservingRoughness3D
+```
+
+**When to use:**
+- When TV's piecewise-constant bias is unwanted but a quadratic penalty over-smooths edges
+- With gradient-based algorithms: the penalty is differentiable everywhere, so it needs no proximal step
+- Statistical / model-based reconstruction, where this is the classical choice of potential function
+
+**Example:**
+```julia
+img = reconstruct(acq, EdgePreservingRoughness2D(1e-3; δ = 0.01))
+```
+
+**Practical tip:** `δ` is an absolute intensity, so it must be set relative to the image scale. A workable
+recipe is to take a preliminary reconstruction, compute the magnitudes of its finite differences, and use a
+low percentile (5–20%) of those as `δ`: differences below that count as noise and are smoothed quadratically,
+those above count as edges and are preserved.
+
 ### Temporal Regularization
 
 #### Temporal Fourier Sparsity
@@ -334,7 +422,109 @@ LocallyLowRank
 img = reconstruct(acq_dynamic, LocallyLowRank(5e-2; block_size = 8, time_dim = 3))
 ```
 
-**Practical tip:** `block_size` trades locality against cost and stability: 4-8 voxels for strongly varying dynamics, 12-16 when the temporal signal is smooth over larger regions. Each iteration performs one SVD of a `(∏ block_size) × n_frames` matrix per block. The block grid is fixed, so residual block boundaries can remain visible at large λ; using a smaller λ with more iterations usually removes them.
+**Practical tip:** `block_size` trades locality against cost and stability: 4-8 voxels for strongly varying dynamics, 12-16 when the temporal signal is smooth over larger regions. Each iteration performs one SVD of a `(∏ block_size) × n_frames` matrix per block. A single fixed block grid can leave visible block boundaries at large λ; pass `shift = :random` to redraw the grid before every proximal step, which averages them out (see below).
+
+##### Shifting the Block Grid
+
+`LocallyLowRank` accepts a `shift` argument controlling where the tiling grid starts:
+
+| `shift` | Grid | Objective | Use with |
+|---|---|---|---|
+| `:none` (default) | fixed at the first voxel | stationary | any algorithm |
+| `:fixed` | one random origin, drawn once | stationary | any algorithm |
+| `:random` | redrawn before every prox | changes per iteration | `ISTA`, `FISTA`, `ADMM` only |
+
+`:random` is the standard remedy for block artifacts in the literature. The grid wraps circularly, so the
+tiling remains a permutation of the voxels and the prox stays exact — but only when every spatial extent is
+divisible by the block edge, which is checked. Because the objective is no longer the same function at every
+iteration, the line-search algorithms (`PANOC`, `PANOCplus`, `ZeroFPR`) must not be used with it.
+
+```julia
+img = reconstruct(acq_dynamic, LocallyLowRank(5e-2; block_size = 8, time_dim = 3, shift = :random), FISTA())
+```
+
+#### Multi-Scale Low Rank
+
+Penalizes the same block-wise nuclear norm at several block sizes at once:
+
+```@docs
+MultiScaleLowRank
+```
+
+**When to use:**
+- Dynamic series containing both large, globally correlated dynamics (respiratory motion of the whole field of view) and small, localized ones (focal contrast uptake), where no single `block_size` is right for both
+- As a less sensitive alternative to tuning `block_size` for [`LocallyLowRank`](@ref)
+
+**Example:**
+```julia
+img = reconstruct(acq_dynamic, MultiScaleLowRank(5e-2; block_sizes = (4, 8, 16), time_dim = 3))
+```
+
+**Practical tip:** The term uses the *proximal average* of the per-scale penalties, which approximates their
+sum; the objective value it reports is the weighted average of the per-scale penalties. If you want the exact
+multi-scale model of Ong & Lustig — one separate image component per scale — build it from components instead,
+which also gives you the separated scales:
+
+```julia
+components = Tuple(
+    Component(Symbol(:scale, b), LocallyLowRank(5e-2; block_size = b, time_dim = 3)) for b in (4, 8, 16)
+)
+```
+
+Cost grows linearly with the number of scales, so two or three are usually enough.
+
+### Hard Thresholding
+
+Penalizes or constrains the *number* of non-zero coefficients rather than their magnitude:
+
+```@docs
+HardThreshold
+SparsityLimit
+```
+
+**When to use:**
+- When the amplitude bias of the ℓ₁ terms is a problem: soft thresholding shrinks the coefficients it keeps, hard thresholding does not, so lesion or vessel intensities are not systematically underestimated
+- [`SparsityLimit`](@ref) when the sparsity level is known a priori and is easier to specify than a penalty weight — the same argument that makes [`RankLimit`](@ref) preferable to [`LowRank`](@ref) in some settings
+
+**Example:**
+```julia
+# ℓ₀ penalty on wavelet coefficients, warm-started from an ℓ₁ solution
+x_l1 = reconstruct(acq, L1Wavelet2D(1e-3))
+img = reconstruct(acq, HardThreshold(1e-3; domain = :wavelet2d); x₀ = x_l1)
+```
+
+**Practical tip:** Both terms are non-convex, so the solvers only guarantee a stationary point and the result
+depends on the starting image. Warm-starting from an ℓ₁ reconstruction is the reliable recipe. Note also that
+the threshold is `sqrt(2γλ)` rather than `γλ`, so a `λ` carried over from an ℓ₁ term will not give a
+comparable sparsity level.
+
+### Plug-and-Play Priors
+
+Uses an off-the-shelf image denoiser as the proximal operator, i.e. as an implicit image prior:
+
+```@docs
+PlugAndPlay
+```
+
+**When to use:**
+- When a denoiser is available that encodes far more about the images than any hand-written penalty — a learned denoiser (DnCNN and successors) or BM3D
+- As a drop-in upgrade of a wavelet or TV term without changing the reconstruction pipeline
+
+**Example:**
+```julia
+using BM3D
+img = reconstruct(
+    acq,
+    PlugAndPlay((image, σ) -> bm3d(image, σ); strength = 0.05),
+    FISTA(maxit = 100),
+)
+```
+
+**Practical tip:** No denoiser ships with this package; anything callable as `denoiser(image, σ)` works. The
+implicit prior has no value function, so the reported objective is `NaN` and objective-based convergence
+checks are meaningless — use `ISTA`, `FISTA` or `ADMM` with a fixed iteration budget, and never the
+line-search algorithms. To check the wiring end to end, a soft-thresholding "denoiser" reproduces
+[`L1Image`](@ref) exactly.
 
 ### Joint Sparsity
 
@@ -432,10 +622,17 @@ The regularization parameter λ controls the trade-off between data fidelity and
 - L1Image: `1e-4` to `1e-2`
 - L1Wavelet: `1e-3` to `1e-2`
 - TotalVariation: `1e-4` to `5e-3`
+- SecondOrderTotalVariation: `1e-4` to `1e-2` (roughly 2× the first-order λ when the two are combined)
+- TotalGeneralizedVariation2D: `1e-4` to `5e-3`, i.e. the same range as `TotalVariation2D`; leave `ratio` at `2.0`
+- EdgePreservingRoughness: `1e-4` to `5e-3` for λ; `δ` from the gradient magnitudes of a preliminary reconstruction
 - TemporalFourier: `1e-2` to `1e-1`
 - TemporalTotalVariation: `1e-2` to `1e-1`
 - LowRank: `1e-2` to `1`
 - LocallyLowRank: `1e-2` to `5e-1`
+- MultiScaleLowRank: `1e-2` to `5e-1`, as for LocallyLowRank
+- HardThreshold: `1e-4` to `1e-2`, but note the `sqrt(2γλ)` threshold — retune rather than reusing an ℓ₁ λ
+- SparsityLimit: no λ; set the coefficient budget from the expected sparsity
+- PlugAndPlay: `strength` `1e-2` to `1e-1`, in the units of the image intensity
 - JointSparsity: `1e-3` to `1e-2`
 - ReferencePrior: `1e-3` to `1e-1`
 - NonNegative / BoxConstraint: no parameter
@@ -452,10 +649,15 @@ The regularization parameter λ controls the trade-off between data fidelity and
 |---|---|---|
 | Static 2D/3D anatomy | [`L1Wavelet2D`](@ref) / [`L1Wavelet3D`](@ref) | + [`TotalVariation2D`](@ref) |
 | Piecewise-constant anatomy, strong edges | [`TotalVariation2D`](@ref) / [`TotalVariation3D`](@ref) | + [`L1Wavelet2D`](@ref) |
+| Edges *and* smooth intensity variation (staircasing is a problem) | [`TotalGeneralizedVariation2D`](@ref) | infimal convolution: [`TotalVariation2D`](@ref) + [`SecondOrderTotalVariation2D`](@ref) as components |
+| Smooth penalty wanted (gradient-based solver, model-based recon) | [`EdgePreservingRoughness2D`](@ref) | + [`L1Wavelet2D`](@ref) |
+| ℓ₁ amplitude bias is a problem | [`HardThreshold`](@ref) / [`SparsityLimit`](@ref) | warm-started from an ℓ₁ solution |
+| A trained or off-the-shelf denoiser is available | [`PlugAndPlay`](@ref) | — |
 | Periodic dynamics (cine, cardiac) | [`TemporalFourier`](@ref) | + [`TotalVariation2D`](@ref) |
 | Irregular dynamics (free-breathing, real-time) | [`TemporalTotalVariation`](@ref) | + [`TotalVariation2D`](@ref) |
 | Strong global spatiotemporal correlation (DCE, perfusion) | [`LowRank`](@ref) | L+S: [`LowRank`](@ref) + [`TemporalTotalVariation`](@ref), see [Image Decomposition](image_decomposition.md) |
 | Spatially varying dynamics, parameter mapping | [`LocallyLowRank`](@ref) | + [`TotalVariation2D`](@ref) |
+| Dynamics at several spatial scales at once | [`MultiScaleLowRank`](@ref) | one [`LocallyLowRank`](@ref) component per scale |
 | Multi-contrast / multi-echo / diffusion | [`JointSparsity`](@ref) | + [`L1Wavelet2D`](@ref) |
 | A high-quality prior image exists | [`ReferencePrior`](@ref) | + [`L1Wavelet2D`](@ref) |
 | Real-valued images, physical range known | [`NonNegative`](@ref) / [`BoxConstraint`](@ref) | + any penalty |
@@ -467,6 +669,11 @@ Sparsity and total variation:
 - Lustig, M., Donoho, D., & Pauly, J. M. (2007). *Sparse MRI: The application of compressed sensing for rapid MR imaging.* Magnetic Resonance in Medicine, 58(6), 1182-1195. — the original CS-MRI formulation with ℓ₁-wavelet and total variation.
 - Block, K. T., Uecker, M., & Frahm, J. (2007). *Undersampled radial MRI with multiple coils: Iterative image reconstruction using a total variation constraint.* Magnetic Resonance in Medicine, 57(6), 1086-1098.
 - Fessler, J. A. (2010). *Model-based image reconstruction for MRI.* IEEE Signal Processing Magazine, 27(4), 81-89. — quadratic and edge-preserving penalties, non-negativity.
+- Charbonnier, P., Blanc-Féraud, L., Aubert, G., & Barlaud, M. (1997). *Deterministic edge-preserving regularization in computed imaging.* IEEE Transactions on Image Processing, 6(2), 298-311. — the Huber-type potential behind [`EdgePreservingRoughness2D`](@ref).
+- Chambolle, A., & Lions, P.-L. (1997). *Image recovery via total variation minimization and related problems.* Numerische Mathematik, 76(2), 167-188. — infimal convolution of first- and second-order TV.
+- Bredies, K., Kunisch, K., & Pock, T. (2010). *Total generalized variation.* SIAM Journal on Imaging Sciences, 3(3), 492-526. — [`TotalGeneralizedVariation2D`](@ref).
+- Knoll, F., Bredies, K., Pock, T., & Stollberger, R. (2011). *Second order total generalized variation (TGV) for MRI.* Magnetic Resonance in Medicine, 65(2), 480-491.
+- Blumensath, T., & Davies, M. E. (2009). *Iterative hard thresholding for compressed sensing.* Applied and Computational Harmonic Analysis, 27(3), 265-274. — [`HardThreshold`](@ref) and [`SparsityLimit`](@ref).
 
 Dynamic imaging:
 - Lustig, M., Santos, J. M., Donoho, D. L., & Pauly, J. M. (2006). *k-t SPARSE: High frame rate dynamic MRI exploiting spatio-temporal sparsity.* Proc. ISMRM. — sparsity in the temporal Fourier domain ([`TemporalFourier`](@ref)).
@@ -477,11 +684,17 @@ Low-rank models:
 - Liang, Z.-P. (2007). *Spatiotemporal imaging with partially separable functions.* Proc. IEEE ISBI, 988-991. — the partially separable / globally low-rank model behind [`LowRank`](@ref) and [`RankLimit`](@ref).
 - Trzasko, J. D., & Manduca, A. (2011). *Local versus global low-rank promotion in dynamic MRI series reconstruction.* Proc. ISMRM, 4371. — [`LocallyLowRank`](@ref).
 - Zhang, T., Pauly, J. M., & Levesque, I. R. (2015). *Accelerating parameter mapping with a locally low rank constraint.* Magnetic Resonance in Medicine, 73(2), 655-661.
+- Ong, F., & Lustig, M. (2016). *Beyond low rank + sparse: Multiscale low rank matrix decomposition.* IEEE Journal of Selected Topics in Signal Processing, 10(4), 672-687. — [`MultiScaleLowRank`](@ref).
+- Bauschke, H. H., Goebel, R., Lucet, Y., & Wang, X. (2008). *The proximal average: Basic theory.* SIAM Journal on Optimization, 19(2), 766-785. — the construction [`MultiScaleLowRank`](@ref) uses to combine the scales.
 
 Joint sparsity and prior images:
 - Majumdar, A., & Ward, R. K. (2011). *Joint reconstruction of multiecho MR images using correlated sparsity.* Magnetic Resonance Imaging, 29(7), 899-906. — [`JointSparsity`](@ref).
 - Huang, J., Chen, C., & Axel, L. (2014). *Fast multi-contrast MRI reconstruction.* Magnetic Resonance Imaging, 32(10), 1344-1352.
 - Chen, G.-H., Tang, J., & Leng, S. (2008). *Prior image constrained compressed sensing (PICCS).* Medical Physics, 35(2), 660-663. — [`ReferencePrior`](@ref).
+
+Learned and denoiser-based priors:
+- Venkatakrishnan, S. V., Bouman, C. A., & Wohlberg, B. (2013). *Plug-and-play priors for model based reconstruction.* Proc. IEEE GlobalSIP, 945-948. — [`PlugAndPlay`](@ref).
+- Ahmad, R., Bouman, C. A., Buzzard, G. T., et al. (2020). *Plug-and-play methods for magnetic resonance imaging.* IEEE Signal Processing Magazine, 37(1), 105-116.
 
 Algorithms:
 - Beck, A., & Teboulle, M. (2009). *A fast iterative shrinkage-thresholding algorithm for linear inverse problems.* SIAM Journal on Imaging Sciences, 2(1), 183-202. — FISTA.
@@ -491,7 +704,8 @@ Algorithms:
 
 The following terms appear in the literature and in other reconstruction packages but are not implemented here, because they need building blocks the package does not yet have:
 
-- **Total generalized variation (TGV)** and **infimal-convolution TV**: need a second-order (symmetrized gradient) operator, and TGV additionally needs an auxiliary variable that is coupled to the image but absent from the data term — which is *not* the same as the additive components of [Image Decomposition](image_decomposition.md).
-- **Structured low-rank k-space methods** (SAKE, LORAKS, ALOHA): need a block-Hankel lifting operator with an adjoint.
-- **Plug-and-play denoiser priors**: need a denoiser to be plugged in as a proximal operator; the machinery (a custom proximable function on the identity operator, as used by [`LocallyLowRank`](@ref)) is in place, only the denoisers are missing.
-- **Shift-invariant (randomly shifted) LLR**: the block grid of [`LocallyLowRank`](@ref) is fixed between iterations.
+- **Structured low-rank k-space methods** (SAKE, LORAKS, ALOHA): need a block-Hankel lifting operator with an adjoint, whose normal operator has to weight each k-space sample by how many Hankel entries it appears in.
+- **Learned reconstruction networks** (unrolled networks, end-to-end variational networks): these replace the reconstruction, not the regularizer. A trained *denoiser* can be used today through [`PlugAndPlay`](@ref).
+
+Note that [`PlugAndPlay`](@ref) supplies the mechanism but no denoisers: any callable
+`denoiser(image, σ)` — BM3D, a neural network, anything — can be plugged in, but none is bundled.

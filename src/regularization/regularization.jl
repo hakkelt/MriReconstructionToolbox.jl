@@ -38,6 +38,25 @@ function materialize(reg::Regularization, ::Variable; threaded::Bool)
 end
 
 """
+	materialize_with_auxiliaries(reg, x; threaded)
+
+Create the term(s) for `reg` together with the tuple of *auxiliary variables* they introduce.
+
+Most regularizations are a function of the image alone and introduce nothing, so the default simply wraps
+[`materialize`](@ref). A few — [`TotalGeneralizedVariation2D`](@ref) is the example — are defined as the
+minimum of a joint objective over an extra field, and that field has to become a variable of the optimization
+problem: it is solved for alongside the image and discarded afterwards.
+
+Auxiliary variables are initialized to zero and are not part of the reconstructed image, so callers must
+recover the image from the image variable itself rather than from the solver's variable ordering.
+
+Returns `(terms, auxiliary_variables::Tuple)`.
+"""
+function materialize_with_auxiliaries(reg::Regularization, x::Variable; threaded::Bool)
+    return materialize(reg, x; threaded), ()
+end
+
+"""
 	get_operator(reg, x; threaded=true)
 
 Get the linear operator associated with the regularization `reg` for an input variable `x`.

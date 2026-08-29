@@ -279,3 +279,97 @@ end
     end
 end
 
+
+@testitem "Second-order TotalVariation regularization" tags = [:regularization] begin
+    using Test
+    using LinearAlgebra
+    using MriReconstructionToolbox
+    using AbstractOperators
+    using NamedDims
+
+    @testset "get_operator applies the gradient twice" for threaded in [false, true]
+        x = randn(6, 6)
+        op = get_operator(SecondOrderTotalVariation2D(1.0), x; threaded)
+        @test size(op, 2) == size(x)
+        @test size(op, 1) == (6, 6, 2, 2)
+
+        # The two trailing axes are (first-derivative direction, second-derivative direction), so slice
+        # (:, :, d, :) must be the gradient of the d-th component of the gradient of x.
+        Δ = get_operator(TotalVariation2D(1.0), x; threaded = false)
+        gradient = Δ * x
+        result = op * x
+        for d in 1:2
+            @test result[:, :, d, :] ≈ Δ * reshape(gradient[:, :, d], 6, 6)
+        end
+    end
+
+    @testset "the operator is a correct adjoint pair" for reg in
+            (SecondOrderTotalVariation2D(1.0), SecondOrderTotalVariation3D(1.0))
+        n = reg isa SecondOrderTotalVariation2D ? (5, 5) : (4, 4, 4)
+        op = get_operator(reg, randn(n...); threaded = false)
+        u = randn(n...)
+        w = randn(size(op, 1)...)
+        @test dot(op * u, w) ≈ dot(u, op' * w)
+    end
+
+    @testset "a linear ramp is free, unlike for first-order TV" begin
+        ramp2 = [2.0i + 3.0j for i in 1:6, j in 1:6]
+        @test MriReconstructionToolbox.calculate(SecondOrderTotalVariation2D(1.0), ramp2) ≈ 0 atol = 1.0e-12
+        @test MriReconstructionToolbox.calculate(TotalVariation2D(1.0), ramp2) > 1
+
+        ramp3 = [i + 2.0j + 3.0k for i in 1:5, j in 1:5, k in 1:5]
+        @test MriReconstructionToolbox.calculate(SecondOrderTotalVariation3D(1.0), ramp3) ≈ 0 atol = 1.0e-12
+        @test MriReconstructionToolbox.calculate(TotalVariation3D(1.0), ramp3) > 1
+    end
+
+    @testset "calculate is the voxelwise ℓ₂ norm of all second derivatives" begin
+        x = randn(6, 6)
+        λ = 0.3
+        op = get_operator(SecondOrderTotalVariation2D(λ), x; threaded = false)
+        d2 = reshape(op * x, length(x), 4)
+        expected = λ * sum(sqrt.(sum(abs2, d2; dims = 2)))
+        @test MriReconstructionToolbox.calculate(SecondOrderTotalVariation2D(λ), x) ≈ expected
+    end
+
+    @testset "dimensions beyond the spatial ones are batch dimensions" begin
+        x = randn(6, 6, 3)
+        λ = 0.2
+        expected = sum(
+            MriReconstructionToolbox.calculate(SecondOrderTotalVariation2D(λ), x[:, :, k]) for k in 1:3
+        )
+        @test MriReconstructionToolbox.calculate(SecondOrderTotalVariation2D(λ), x) ≈ expected
+    end
+
+    @testset "complex input" begin
+        x = randn(ComplexF64, 6, 6)
+        @test MriReconstructionToolbox.calculate(SecondOrderTotalVariation2D(0.1), x) > 0
+    end
+
+    @testset "NamedDimsArray input" begin
+        x = NamedDimsArray{(:x, :y, :time)}(randn(6, 6, 2))
+        reg = SecondOrderTotalVariation2D(0.1)
+        op = get_operator(reg, x; threaded = false)
+        @test op isa MriReconstructionToolbox.NamedDimsOp
+        @test MriReconstructionToolbox.calculate(reg, x; threaded = false) ≈
+            MriReconstructionToolbox.calculate(reg, unname(x); threaded = false)
+    end
+
+    @testset "too few dimensions" begin
+        @test_throws ArgumentError get_operator(SecondOrderTotalVariation2D(0.1), randn(6); threaded = false)
+        @test_throws ArgumentError get_operator(SecondOrderTotalVariation3D(0.1), randn(6, 6); threaded = false)
+    end
+
+    @testset "get_affected_dims" begin
+        ksp = randn(ComplexF32, 8, 8, 4)
+        info = AcquisitionInfo(ksp; image_size = (8, 8))
+        @test MriReconstructionToolbox.get_affected_dims(SecondOrderTotalVariation2D(0.1f0), info, 1:3) == 1:2
+        @test MriReconstructionToolbox.get_affected_dims(
+            SecondOrderTotalVariation3D(0.1f0), info, (:x, :y, :z, :time)
+        ) == (:x, :y, :z)
+    end
+
+    @testset "scale_regularization" begin
+        @test MriReconstructionToolbox.scale_regularization(SecondOrderTotalVariation2D(0.2), 2.5).λ ≈ 0.5
+        @test MriReconstructionToolbox.scale_regularization(SecondOrderTotalVariation3D(0.2), 2.5).λ ≈ 0.5
+    end
+end
