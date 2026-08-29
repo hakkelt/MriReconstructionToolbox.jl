@@ -81,6 +81,7 @@ LogBarrier
 LogisticLoss
 Maximum
 Quadratic
+SeparableHuberLoss
 SqrHingeLoss
 SumPositive
 ```
