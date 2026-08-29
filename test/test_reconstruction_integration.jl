@@ -3,6 +3,7 @@
     using MriReconstructionToolbox
     using LinearAlgebra
     using GeometricMedicalPhantoms
+    using Random
 
     test_type_stable(::Type{T}, value) where {T} = (@test typeof(value) == T; value)
 
@@ -39,6 +40,12 @@
         end
 
         @testset "Undersampled with L1Wavelet regularization" begin
+            # The sampling pattern is drawn at random, and the achievable error genuinely varies
+            # with the draw: over 20 seeds this lands between 0.178 and 0.331, so an unseeded run
+            # cleared the 0.3 bound only about 85% of the time. The reconstruction is converged by
+            # maxit = 50 (200 and 1000 give the same answer), so the spread is the pattern, not the
+            # solver. Fix the draw so the bound tests the reconstruction rather than the dice.
+            Random.seed!(20260829)
             nx, ny, nc = 32, 32, 4
             img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
             smaps = coil_sensitivities(nx, ny, nc)
@@ -56,6 +63,8 @@
         end
 
         @testset "Multiple regularizations" begin
+            # Seeded for the same reason as the L1Wavelet case above.
+            Random.seed!(20260829)
             nx, ny, nc = 32, 32, 4
             img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
             smaps = coil_sensitivities(nx, ny, nc)
@@ -473,6 +482,16 @@ end
 
             x₀_wrong = zeros(ComplexF32, nx, ny)
             @test_throws ArgumentError reconstruct(acq_ms, Tikhonov(0.01); x₀ = x₀_wrong, maxit = 5, verbose = false)
+
+            # `reconstruct` must not write its solution back through the caller's `x₀`. The
+            # component path handed the arrays straight to `Variable`, which stores them by
+            # reference, so `solve`'s final write-back landed in the caller's arrays -- visible
+            # whenever `scale == 1` skips the reallocating rescale, and through the `@view`s the
+            # decomposition path passes down.
+            x₀_keep = rand(ComplexF32, nx, ny, nslices)
+            x₀_ref = copy(x₀_keep)
+            reconstruct(acq_ms, Tikhonov(0.01); x₀ = x₀_keep, normalization = NoScaling(), maxit = 5, verbose = false)
+            @test x₀_keep == x₀_ref
         end
     end
 end

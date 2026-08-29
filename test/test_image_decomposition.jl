@@ -200,4 +200,11 @@ end
     @test img_decomposed isa DecomposedImage
     @test size(img_decomposed) == (nx, ny, nslices)
     @test isapprox(Array(img_decomposed), Array(img_joint); rtol = 0.1)
+
+    # Per-component `x₀`s must not be written through either: `build_model` hands them to
+    # `Variable`, which stores by reference, and `solve` writes the solution back through it.
+    x₀s = (rand(ComplexF32, nx, ny, nslices), rand(ComplexF32, nx, ny, nslices))
+    x₀s_ref = map(copy, x₀s)
+    reconstruct(acq_ms, components; x₀ = x₀s, normalization = NoScaling(), maxit = 5, verbose = false)
+    @test all(x₀s .== x₀s_ref)
 end
