@@ -55,18 +55,26 @@ function build_model_with_variables(
     x = Variable(unname(x₀))
     𝒜 = unname(𝒜)
     y = unname(y)
-    if disable_normalop_optimization
-        terms = @term ls(𝒜 * x - y)
-    else
-        terms = @term normalop_ls(𝒜 * x - y)
-    end
-    @assert terms isa StructuredOptimization.Term
+    # The regularizations are materialized first because whether any of them introduces an auxiliary
+    # variable decides which form the data term may take.
+    reg_term_list = ()
     auxiliaries = ()
     for reg in regs
         @argcheck reg isa Regularization "All regularization terms must be of type Regularization."
         reg_terms, reg_auxiliaries = materialize_with_auxiliaries(reg, x; threaded)
-        terms += reg_terms
+        reg_term_list = (reg_term_list..., reg_terms)
         auxiliaries = (auxiliaries..., reg_auxiliaries...)
+    end
+    # `normalop_ls` precomputes 𝒜'𝒜 and stores it inside the term, but that operator spans the image
+    # variable alone. Once a regularization adds an auxiliary variable (total generalized variation),
+    # the solver's `x0` spans (image, auxiliary...) while the stored operator still does not, and ADMM
+    # rejects the pair with "A'b must have the same size as x0". The plain `ls` form is assembled
+    # against the full variable tuple by `extract_operators`, so it lifts correctly.
+    use_normalop = !disable_normalop_optimization && isempty(auxiliaries)
+    terms = use_normalop ? (@term normalop_ls(𝒜 * x - y)) : (@term ls(𝒜 * x - y))
+    @assert terms isa StructuredOptimization.Term
+    for reg_terms in reg_term_list
+        terms += reg_terms
     end
     return terms, x, auxiliaries
 end
