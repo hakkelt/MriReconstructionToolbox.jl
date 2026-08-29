@@ -320,14 +320,28 @@ false
 
 julia> AbstractOperators.can_be_combined(Eye(10), FiniteDiff((11,)))
 true
+
+julia> AbstractOperators.can_be_combined(FiniteDiff((10,)), Reshape(Eye(10), 2, 5))
+false
 ```
 """
 function can_be_combined(L, R)
-    return is_eye(L) ||
-        is_eye(R) ||
+    return _is_removable_eye(L) ||
+        _is_removable_eye(R) ||
         is_null(L) ||
         (is_null(R) && is_linear(L) && all(displacement(L) .== 0))
 end
+
+"""
+	_is_removable_eye(L)
+
+Whether `L` is an identity that can simply be dropped from a composition.
+
+`is_eye` alone is not enough: `Reshape(Eye(...), dims...)` is an identity on the *values* but not on the
+*shape*, so removing it would leave the neighbouring operator with an input of the wrong number of
+dimensions. Only a shape-preserving identity may be dropped.
+"""
+_is_removable_eye(L) = is_eye(L) && size(L, 1) == size(L, 2)
 can_be_combined(L, M, R) = false
 
 """
@@ -341,8 +355,10 @@ julia> AbstractOperators.combine(Eye(10), DiagOp(rand(10)))
 ```
 """
 function combine(L, R)
-    if is_eye(L)
+    if _is_removable_eye(L)
         return R
+    elseif _is_removable_eye(R)
+        return L
     elseif is_null(L)
         if size(R, 1) == size(R, 2) && domain_type(R) == codomain_type(R)
             return L
