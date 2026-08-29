@@ -69,8 +69,8 @@ function get_operator(
     return get_operator(_epr_gradient(reg), x; threaded)
 end
 
-get_affected_dims(::EdgePreservingRoughness2D, ::AcquisitionInfo, image_dims) = image_dims[1:2]
-get_affected_dims(::EdgePreservingRoughness3D, ::AcquisitionInfo, image_dims) = image_dims[1:3]
+get_affected_dims(::EdgePreservingRoughness2D, ::Nothing, image_dims) = image_dims[1:2]
+get_affected_dims(::EdgePreservingRoughness3D, ::Nothing, image_dims) = image_dims[1:3]
 
 # ψ_δ is not homogeneous, because δ is an absolute intensity threshold rather than a weight. It obeys
 # `ψ_{cδ}(c t) = c ψ_δ(t)`, so an image scaled by `factor` needs δ scaled by the same factor, and λ then

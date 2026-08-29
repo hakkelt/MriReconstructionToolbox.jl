@@ -57,6 +57,53 @@ function materialize_with_auxiliaries(reg::Regularization, x::Variable; threaded
 end
 
 """
+	dims_of(x)
+
+The dimension identifiers of `x`: its names when it is a `NamedDimsArray`, its indices otherwise. This is
+what a `time_dim`/`dim` argument is resolved against, so that a named dimension stays a `Symbol`.
+"""
+dims_of(x::AbstractArray) = 1:ndims(x)
+dims_of(x::NamedDimsArray) = dimnames(x)
+
+"""
+	_check_dim_spec(dim, name; allow_nothing=true)
+
+Validate a dimension a regularization is parameterized by: an `Integer` index, a dimension name
+(`Symbol`), or -- when `allow_nothing` -- `nothing` to have it inferred from the image's dimension names.
+`name` only names the argument in the error message.
+"""
+function _check_dim_spec(dim, name::AbstractString; allow_nothing::Bool = true)
+    @argcheck (allow_nothing && isnothing(dim)) || dim isa Integer || dim isa Symbol "$name must be an Integer or Symbol"
+    if dim isa Integer
+        @argcheck dim > 0 "$name must be positive"
+    end
+    return nothing
+end
+
+"""
+	materialize_all(regs, x; threaded)
+
+Materialize every regularization in `regs` against the variable `x`, returning
+`(term_list::Tuple, auxiliary_variables::Tuple)`: one entry of `term_list` per regularization, and the
+concatenated auxiliary variables of all of them (see [`materialize_with_auxiliaries`](@ref)).
+
+The terms are returned as a list rather than already summed because callers differ in what they do with
+them: `build_model_with_variables` needs to know whether any auxiliary variable exists *before* it picks
+the form of the data term the regularization terms are added to.
+"""
+function materialize_all(regs, x::Variable; threaded::Bool)
+    term_list = ()
+    auxiliaries = ()
+    for reg in regs
+        @argcheck reg isa Regularization "All regularization terms must be of type Regularization."
+        reg_terms, reg_auxiliaries = materialize_with_auxiliaries(reg, x; threaded)
+        term_list = (term_list..., reg_terms)
+        auxiliaries = (auxiliaries..., reg_auxiliaries...)
+    end
+    return term_list, auxiliaries
+end
+
+"""
 	get_operator(reg, x; threaded=true)
 
 Get the linear operator associated with the regularization `reg` for an input variable `x`.
@@ -79,12 +126,45 @@ function get_operator(reg::Regularization, x::AbstractArray; threaded::Bool = tr
 end
 
 """
-	get_affected_dims(reg, x)
+	identity_operator(x)
+
+The identity operator on the domain of `x`, wrapped in a [`NamedDimsOp`](@ref) when `x` carries
+dimension names. This is what `get_operator` returns for every regularization that acts on the image
+itself rather than on a transform of it.
+"""
+identity_operator(x::AbstractArray) = Eye(x)
+identity_operator(x::NamedDimsArray) = NamedDimsOp{dimnames(x), dimnames(x)}(Eye(parent(x)))
+
+"""
+	_collapse_direction_axes(op, x, n_components)
+
+Collapse the trailing direction axes of `op`'s codomain into a single one, giving the
+`(length(x), n_components)` matrix shape the mixed ℓ₂,₁ norm is taken over: one row per voxel, one column
+per direction. A `NamedDimsOp` has to be unwrapped and rewrapped rather than reshaped in place (a
+`Reshape` around it collides with its codomain names), and the collapsed codomain no longer maps 1:1 to
+the original names, so it gets an anonymous one.
+"""
+function _collapse_direction_axes(op, x::AbstractArray, n_components::Int)
+    inner = op isa NamedDimsOp ? parent(op) : op
+    collapsed = reshape(inner, length(x), n_components)
+    return op isa NamedDimsOp ? NamedDimsOp{dimnames(x), (:_, :direction)}(collapsed) : collapsed
+end
+
+"""
+	get_affected_dims(reg, acq_info, image_dims)
 
 Get the dimensions in the image domain that are affected by the regularization `reg`.
 This is used to determine which dimensions can be used for problem decomposition during reconstruction.
+
+`acq_info` is the acquisition the term will be applied to, or `nothing` when it is not available. Terms
+implement the `::Nothing` method; the `::AcquisitionInfo` one falls back to it, so only a term whose
+affected dimensions genuinely depend on the acquisition needs to define both.
 """
-function get_affected_dims(::R, acq_info::AcquisitionInfo, image_dims) where {R <: Regularization}
+function get_affected_dims(reg::Regularization, ::AcquisitionInfo, image_dims)
+    return get_affected_dims(reg, nothing, image_dims)
+end
+
+function get_affected_dims(::R, ::Nothing, image_dims) where {R <: Regularization}
     throw(ArgumentError("get_affected_dims not implemented for $(R.name.wrapper)"))
 end
 

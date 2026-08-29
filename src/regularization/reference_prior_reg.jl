@@ -28,17 +28,10 @@ struct ReferencePrior{T, A <: AbstractArray} <: Regularization
     reference::A
 end
 
-get_operator(::ReferencePrior, x::AbstractArray; threaded::Bool = true) = Eye(x)
-function get_operator(::ReferencePrior, x::NamedDimsArray; threaded::Bool = true)
-    return NamedDimsOp{dimnames(x), dimnames(x)}(Eye(parent(x)))
-end
+get_operator(::ReferencePrior, x::AbstractArray; threaded::Bool = true) = identity_operator(x)
 
 # The penalty itself acts element-wise, but the reference image has the size of the *full* image, so the
 # problem must not be split over batch dimensions (a slice subproblem would get a mismatched reference).
-function get_affected_dims(::ReferencePrior, acq_info::AcquisitionInfo, image_dims)
-    return Tuple(image_dims)
-end
-
 get_affected_dims(::ReferencePrior, ::Nothing, image_dims) = Tuple(image_dims)
 
 # λ‖x - x_ref‖₁ is homogeneous of degree 1 in (x, x_ref) jointly, so scaling the variable by `factor`

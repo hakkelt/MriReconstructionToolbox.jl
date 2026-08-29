@@ -14,16 +14,13 @@ struct TemporalFourier{T, D} <: Regularization
     λ::T
     time_dim::D
     function TemporalFourier(λ::T; time_dim::D = nothing) where {T, D}
-        @argcheck isnothing(time_dim) || time_dim isa Integer || time_dim isa Symbol "time_dim must be an Integer or Symbol"
-        if time_dim isa Integer
-            @argcheck time_dim > 0 "time_dim must be positive"
-        end
+        _check_dim_spec(time_dim, "time_dim")
         return new{T, D}(λ, time_dim)
     end
 end
 
 function get_operator(reg::TemporalFourier, x::AbstractArray; threaded::Bool = true)
-    time_dim = get_time_dim(reg.time_dim, x isa NamedDimsArray ? dimnames(x) : (1:ndims(x)))
+    time_dim = get_time_dim(reg.time_dim, dims_of(x))
     num_threads = threaded ? Threads.nthreads() : 1
     F = DFT(unname(x), time_dim; num_threads)
     if x isa NamedDimsArray
@@ -36,7 +33,7 @@ function get_operator(reg::TemporalFourier, x::AbstractArray; threaded::Bool = t
     return F
 end
 
-function get_affected_dims(reg::TemporalFourier, ::AcquisitionInfo, image_dims)
+function get_affected_dims(reg::TemporalFourier, ::Nothing, image_dims)
     # Return the image_dims entry (a Symbol for named dimensions) rather than the index.
     return (image_dims[get_time_dim(reg.time_dim, image_dims)],)
 end

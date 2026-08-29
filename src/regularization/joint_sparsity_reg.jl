@@ -27,10 +27,7 @@ struct JointSparsity{T, D} <: Regularization
     dim::D
     function JointSparsity(λ::T; dim::D) where {T, D}
         @argcheck λ isa Real "JointSparsity requires a scalar λ"
-        @argcheck dim isa Integer || dim isa Symbol "dim must be an Integer or Symbol"
-        if dim isa Integer
-            @argcheck dim > 0 "dim must be positive"
-        end
+        _check_dim_spec(dim, "dim"; allow_nothing = false)
         return new{T, D}(λ, dim)
     end
 end
@@ -52,7 +49,7 @@ function _joint_sparsity_shape(x::AbstractArray, group_dim::Int)
 end
 
 function get_operator(reg::JointSparsity, x::AbstractArray; threaded::Bool = true)
-    dims = x isa NamedDimsArray ? dimnames(x) : (1:ndims(x))
+    dims = dims_of(x)
     group_dim = _group_dim(reg, dims)
     leading, group, trailing = _joint_sparsity_shape(x, group_dim)
     ℛ = Reshape(Eye(unname(x)), leading, group, trailing)
@@ -60,10 +57,6 @@ function get_operator(reg::JointSparsity, x::AbstractArray; threaded::Bool = tru
         ℛ = NamedDimsOp{dimnames(x), (:_, dimnames(x, group_dim), :_)}(ℛ)
     end
     return ℛ
-end
-
-function get_affected_dims(reg::JointSparsity, ::AcquisitionInfo, image_dims)
-    return (image_dims[_group_dim(reg, image_dims)],)
 end
 
 function get_affected_dims(reg::JointSparsity, ::Nothing, image_dims)
@@ -77,7 +70,7 @@ function materialize(reg::JointSparsity, x::Variable{T}; threaded::Bool) where {
     R = real(T)
     λ = R(reg.λ)
     op = get_operator(reg, ~x; threaded)
-    _, _, trailing = _joint_sparsity_shape(~x, _group_dim(reg, ~x isa NamedDimsArray ? dimnames(~x) : (1:ndims(~x))))
+    _, _, trailing = _joint_sparsity_shape(~x, _group_dim(reg, dims_of(~x)))
     # `NormL21(λ, 2)` sums the ℓ₂ norms of the *rows* of a matrix, i.e. of the groups along the second
     # dimension. For more than one trailing slice the prox is applied slice by slice, which is exactly the
     # same separable problem.

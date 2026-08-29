@@ -202,23 +202,16 @@ struct LocallyLowRank{T, B, D, RNG} <: Regularization
         @argcheck block_size isa Integer || block_size isa Tuple{Vararg{Integer}} "block_size must be an Integer or a tuple of Integers"
         @argcheck all(block_size .> 0) "block_size must be positive"
         @argcheck shift in (:none, :fixed, :random) "shift must be :none, :fixed or :random, got :$shift"
-        _check_lowrank_dims(time_dim)
+        _check_dim_spec(time_dim, "time_dim")
         return new{T, B, D, RNG}(λ, block_size, time_dim, shift, rng)
     end
 end
 
-get_operator(::LocallyLowRank, x::AbstractArray; threaded::Bool = true) = Eye(x)
-function get_operator(::LocallyLowRank, x::NamedDimsArray; threaded::Bool = true)
-    return NamedDimsOp{dimnames(x), dimnames(x)}(Eye(parent(x)))
-end
+get_operator(::LocallyLowRank, x::AbstractArray; threaded::Bool = true) = identity_operator(x)
 
 function get_affected_dims(reg::LocallyLowRank, ::Nothing, image_dims)
     # Blocks couple all spatial dimensions up to (and including) the temporal one.
     return image_dims[1:get_time_dim(reg.time_dim, image_dims)]
-end
-
-function get_affected_dims(reg::LocallyLowRank, ::AcquisitionInfo, image_dims)
-    return get_affected_dims(reg, nothing, image_dims)
 end
 
 # The nuclear norm is homogeneous of degree 1, so λ scales linearly (see scale_regularization docstring).
@@ -238,7 +231,7 @@ end
 
 function materialize(reg::LocallyLowRank, x::Variable{T}; threaded::Bool) where {T}
     x_val = ~x
-    dims = x_val isa NamedDimsArray ? dimnames(x_val) : (1:ndims(x_val))
+    dims = dims_of(x_val)
     time_dim = get_time_dim(reg.time_dim, dims)
     @argcheck time_dim > 1 "LocallyLowRank needs at least one spatial dimension before the temporal one"
     spatial_size = NTuple{time_dim - 1, Int}(size(x_val)[1:(time_dim - 1)])

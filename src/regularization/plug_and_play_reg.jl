@@ -115,10 +115,7 @@ struct PlugAndPlay{D, T} <: Regularization
     end
 end
 
-get_operator(::PlugAndPlay, x::AbstractArray; threaded::Bool = true) = Eye(x)
-function get_operator(::PlugAndPlay, x::NamedDimsArray; threaded::Bool = true)
-    return NamedDimsOp{dimnames(x), dimnames(x)}(Eye(parent(x)))
-end
+get_operator(::PlugAndPlay, x::AbstractArray; threaded::Bool = true) = identity_operator(x)
 
 _pnp_spatial_dims(reg::PlugAndPlay, n::Int) = reg.spatial_dims === nothing ? min(n, 2) : min(reg.spatial_dims, n)
 
@@ -126,8 +123,6 @@ function get_affected_dims(reg::PlugAndPlay, ::Nothing, image_dims)
     # The denoiser sees the leading dimensions jointly; the rest are looped over and stay decomposable.
     return image_dims[1:_pnp_spatial_dims(reg, length(image_dims))]
 end
-
-get_affected_dims(reg::PlugAndPlay, ::AcquisitionInfo, image_dims) = get_affected_dims(reg, nothing, image_dims)
 
 # The denoiser is a black box: nothing is known about how its output scales with its input, so the noise
 # level it is asked to remove is scaled with the image instead (σ has the units of the image).
