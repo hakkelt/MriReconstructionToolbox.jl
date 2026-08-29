@@ -249,6 +249,20 @@ end
             @test dimnames(ksp2) == (:kx, :ky, :coil, :t)
         end
 
+        @testset "Dynamic 2D Cartesian PI (plain arrays)" begin
+            # Same off-by-one as above, on the un-named branch of `_compose_with_sensitivity`.
+            ksp = rand(ComplexF32, 64, 64, 8, 10)
+            smaps = rand(ComplexF32, 64, 64, 8)
+            ℱ = get_encoding_operator(ksp, false; sensitivity_maps = smaps)
+            @test size(ℱ, 2) == (64, 64, 10)
+            img = ℱ' * ksp
+            @test size(img) == (64, 64, 10)
+            @test img ≈
+                dropdims(sum(conj.(smaps) .* ifft(fftshift(ksp, (1, 2)), (1, 2)), dims = 3), dims = 3)
+            ksp2 = ℱ * img
+            @test ksp2 ≈ fftshift(fft(reshape(img, 64, 64, 1, 10) .* smaps, (1, 2)), (1, 2))
+        end
+
         @testset "Dynamic 2D Cartesian PI with a shared 3D map" begin
             # A single 3D sensitivity map (:x, :y, :coil, :z) shared across time frames of a
             # multi-slice + time acquisition: :z is a batch dim of the map itself, on top of the
