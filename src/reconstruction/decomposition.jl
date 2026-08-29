@@ -182,7 +182,8 @@ function execute_regularized_components(plan, acq_data, config, components, algo
         printfunc = (s...) -> config.printfunc("[$id] ", s...)
         local_conf = Config(config; verbose = false, printfunc, freq = -1, threaded = slice_threaded)
         result, _ = _reconstruct_components(
-            local_acq, local_components, algorithm, x₀s, local_conf; scale_override = global_scale
+            local_acq, local_components, algorithm, nothing, local_conf;
+            scale_override = global_scale, x₀s,
         )
         results[idx] = result
     end

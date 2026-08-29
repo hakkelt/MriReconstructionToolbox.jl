@@ -208,3 +208,27 @@ end
     reconstruct(acq_ms, components; x₀ = x₀s, normalization = NoScaling(), maxit = 5, verbose = false)
     @test all(x₀s .== x₀s_ref)
 end
+
+@testitem "reconstruct: a NamedTuple x₀ with an unknown component name is rejected" tags = [:components] begin
+    using Test
+    using GeometricMedicalPhantoms
+
+    # Regression: get_component_x0s falls back to copy(x̂)/zero(x̂) for any key it does not find, so a
+    # mistyped name silently discarded the caller's initial guess and warm-started from zero instead.
+    nx, ny, nc = 16, 16, 2
+    img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
+    smaps = coil_sensitivities(nx, ny, nc)
+    acq = simulate_acquisition(img_true, AcquisitionInfo(is3D = false, sensitivity_maps = smaps))
+
+    components = (Component(:lowrank, Tikhonov(0.01)), Component(:sparse, L1Image(0.01)))
+    good = (lowrank = zeros(ComplexF32, nx, ny), sparse = zeros(ComplexF32, nx, ny))
+    typo = (lowrnak = zeros(ComplexF32, nx, ny), sparse = zeros(ComplexF32, nx, ny))
+
+    @test isnothing(MriReconstructionToolbox.check_x₀_components_size(good, components, (nx, ny)))
+    @test_throws ArgumentError MriReconstructionToolbox.check_x₀_components_size(typo, components, (nx, ny))
+    @test_throws ArgumentError reconstruct(acq, components; x₀ = typo, maxit = 5, verbose = false)
+
+    # A partial NamedTuple is still legal: the unnamed components fall back to their defaults.
+    partial = (sparse = zeros(ComplexF32, nx, ny),)
+    @test isnothing(MriReconstructionToolbox.check_x₀_components_size(partial, components, (nx, ny)))
+end
