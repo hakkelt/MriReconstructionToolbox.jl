@@ -67,6 +67,12 @@ using TestItems
         reg = MriReconstructionToolbox.scale_regularization(HardThreshold(0.2), 3.0)
         @test reg.λ ≈ 1.8
         @test reg.domain == :image
+
+        # The same invariant every term must satisfy: on an image scaled by `factor`, the scaled term
+        # equals `factor²` times the original term, matching how the data term scales.
+        x = randn(6, 6)
+        @test MriReconstructionToolbox.calculate(reg, x .* 3.0) ≈
+            3.0^2 * MriReconstructionToolbox.calculate(HardThreshold(0.2), x)
     end
 end
 

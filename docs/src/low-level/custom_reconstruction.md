@@ -17,6 +17,19 @@ using Random
 Random.seed!(0)
 ```
 
+## Building the Model Yourself
+
+`reconstruct` assembles the optimization problem through `build_model`. The variant that also
+hands back the variables is useful when a regularization introduces auxiliary variables of its
+own — [`TotalGeneralizedVariation2D`](@ref) is the example — because the solver's variable
+ordering is then no longer a reliable way to find the image.
+
+```@docs
+build_model
+MriReconstructionToolbox.build_model_with_variables
+MriReconstructionToolbox.materialize_with_auxiliaries
+```
+
 ## Two-Variable Example: Sparse + Low-Rank Wavelet Prior
 
 We build a toy reconstruction with two variables and two regularizers:
