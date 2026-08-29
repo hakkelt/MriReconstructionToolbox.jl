@@ -446,7 +446,11 @@ end
             img_decomp = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms; disable_problem_decomposition = false, maxit = 10, verbose = false))
             img_no_decomp = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms; disable_problem_decomposition = true, maxit = 10, verbose = false))
 
-            @test norm(img_decomp - img_no_decomp) / norm(img_decomp) < 1.0e-10
+            # The two paths are the same computation in a different summation order, so they can
+            # only agree to Float32 precision (eps ≈ 1.2e-7), and the order the reductions actually
+            # take depends on threading. 1e-10 was below what the element type can deliver and made
+            # this assertion flaky; 1e-5 still catches any real divergence between the paths.
+            @test norm(img_decomp - img_no_decomp) / norm(img_decomp) < 1.0e-5
 
             # Regularized case: slices are identical, so the per-slice median scale equals
             # the global scale and both paths must converge to the same solution.
