@@ -121,3 +121,26 @@ using TestItems
             2.5^2 * MriReconstructionToolbox.calculate(l1_original, x)
     end
 end
+
+@testitem "EdgePreservingRoughness with λ = 0 is a no-op" tags = [:regularization] begin
+    using Test
+    using MriReconstructionToolbox
+
+    # Regression: the constructor accepts λ >= 0, but materialize built SeparableHuberLoss(δ, λ/δ),
+    # which rejects μ == 0 -- so disabling the term raised an opaque error from inside
+    # ProximalOperators. Every other term in the package treats λ = 0 as a disabled no-op.
+    x = Variable(rand(ComplexF32, 8, 8))
+    for reg in (EdgePreservingRoughness2D(0.0), EdgePreservingRoughness2D(0.0; δ = 0.5))
+        term = MriReconstructionToolbox.materialize(reg, x; threaded = false)
+        @test term isa StructuredOptimization.Term
+        @test MriReconstructionToolbox.calculate(reg, ~x; threaded = false) ≈ 0 atol = 1.0e-12
+    end
+
+    x3 = Variable(rand(ComplexF32, 6, 6, 6))
+    term3 = MriReconstructionToolbox.materialize(EdgePreservingRoughness3D(0.0), x3; threaded = false)
+    @test term3 isa StructuredOptimization.Term
+
+    # A non-zero λ must still build the Huber term.
+    nz = MriReconstructionToolbox.materialize(EdgePreservingRoughness2D(0.1), x; threaded = false)
+    @test nz.f isa MriReconstructionToolbox.ProximalOperators.SeparableHuberLoss
+end
