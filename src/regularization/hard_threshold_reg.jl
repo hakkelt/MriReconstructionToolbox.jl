@@ -1,21 +1,28 @@
 """
-	_sparsifying_operator(domain, wavelet, levels, x; threaded)
+	_sparsifying_operator(::Val{domain}, wavelet, levels, x; threaded)
 
 Return the operator that maps the image to the domain in which sparsity is enforced by
 [`HardThreshold`](@ref) and [`SparsityLimit`](@ref). `domain` is `:image`, `:wavelet2d` or `:wavelet3d`.
 """
-function _sparsifying_operator(domain::Symbol, wavelet_type, levels::Int, x::AbstractArray; threaded::Bool)
-    domain === :image && return x isa NamedDimsArray ?
-        NamedDimsOp{dimnames(x), dimnames(x)}(Eye(parent(x))) : Eye(x)
-    domain === :wavelet2d && return get_operator(L1Wavelet2D(1; wavelet = wavelet_type, levels), x; threaded)
-    domain === :wavelet3d && return get_operator(L1Wavelet3D(1; wavelet = wavelet_type, levels), x; threaded)
+_sparsifying_operator(::Val{:image}, wavelet_type, levels::Int, x::AbstractArray; threaded::Bool) =
+    identity_operator(x)
+_sparsifying_operator(::Val{:wavelet2d}, wavelet_type, levels::Int, x::AbstractArray; threaded::Bool) =
+    get_operator(L1Wavelet2D(1; wavelet = wavelet_type, levels), x; threaded)
+_sparsifying_operator(::Val{:wavelet3d}, wavelet_type, levels::Int, x::AbstractArray; threaded::Bool) =
+    get_operator(L1Wavelet3D(1; wavelet = wavelet_type, levels), x; threaded)
+# Unreachable in practice: both constructors run `_check_sparsifying_domain` with an identical
+# message before this could be hit. Kept as defence in depth for internal callers.
+function _sparsifying_operator(::Val{domain}, wavelet_type, levels::Int, x::AbstractArray; threaded::Bool) where {domain}
     return throw(ArgumentError("domain must be :image, :wavelet2d or :wavelet3d, got :$domain"))
 end
 
-_sparsifying_affected_dims(domain::Symbol, image_dims) =
-    domain === :image ? () : (domain === :wavelet2d ? Tuple(image_dims[1:2]) : Tuple(image_dims[1:3]))
+_sparsifying_affected_dims(::Val{:image}, image_dims) = ()
+_sparsifying_affected_dims(::Val{:wavelet2d}, image_dims) = Tuple(image_dims[1:2])
+_sparsifying_affected_dims(::Val{:wavelet3d}, image_dims) = Tuple(image_dims[1:3])
 
-_sparsifying_repr(domain::Symbol) = domain === :image ? "" : "𝒲"
+_sparsifying_repr(::Val{:image}) = ""
+_sparsifying_repr(::Val{:wavelet2d}) = "𝒲"
+_sparsifying_repr(::Val{:wavelet3d}) = "𝒲"
 
 function _check_sparsifying_domain(domain::Symbol)
     return @argcheck domain in (:image, :wavelet2d, :wavelet3d) "domain must be :image, :wavelet2d or :wavelet3d, got :$domain"
@@ -57,11 +64,10 @@ struct HardThreshold{T, W} <: Regularization
 end
 
 function get_operator(reg::HardThreshold, x::AbstractArray; threaded::Bool = true)
-    return _sparsifying_operator(reg.domain, reg.wavelet, reg.levels, x; threaded)
+    return _sparsifying_operator(Val(reg.domain), reg.wavelet, reg.levels, x; threaded)
 end
 
-get_affected_dims(reg::HardThreshold, ::Nothing, image_dims) = _sparsifying_affected_dims(reg.domain, image_dims)
-get_affected_dims(reg::HardThreshold, ::AcquisitionInfo, image_dims) = get_affected_dims(reg, nothing, image_dims)
+get_affected_dims(reg::HardThreshold, ::Nothing, image_dims) = _sparsifying_affected_dims(Val(reg.domain), image_dims)
 
 # ‖·‖₀ is homogeneous of degree 0, so with `k=1, p=0` the docstring's rule gives λ_eff = λ ⋅ factor².
 function scale_regularization(reg::HardThreshold, factor::Real)
@@ -71,7 +77,7 @@ end
 function materialize(reg::HardThreshold, x::Variable{T}; threaded::Bool) where {T}
     op = get_operator(reg, ~x; threaded)
     λ = real(T)(reg.λ)
-    repr = @sprintf "%g ⋅ ‖%s%s‖₀" λ _sparsifying_repr(reg.domain) get_name(x)
+    repr = @sprintf "%g ⋅ ‖%s%s‖₀" λ _sparsifying_repr(Val(reg.domain)) get_name(x)
     return StructuredOptimization.Term(1, NormL0(λ), op * x, repr)
 end
 
@@ -112,20 +118,19 @@ struct SparsityLimit{W} <: Regularization
 end
 
 function get_operator(reg::SparsityLimit, x::AbstractArray; threaded::Bool = true)
-    return _sparsifying_operator(reg.domain, reg.wavelet, reg.levels, x; threaded)
+    return _sparsifying_operator(Val(reg.domain), reg.wavelet, reg.levels, x; threaded)
 end
 
 # Unlike the separable penalties, the budget couples every voxel of the coefficient array: splitting the
 # problem would give each sub-problem its own budget of `max_nonzeros` and so change the constraint. All
 # image dimensions are therefore reported as affected, which blocks problem decomposition.
 get_affected_dims(::SparsityLimit, ::Nothing, image_dims) = Tuple(image_dims)
-get_affected_dims(reg::SparsityLimit, ::AcquisitionInfo, image_dims) = get_affected_dims(reg, nothing, image_dims)
 
 # The constraint is scale-invariant (nnz(factor * x) == nnz(x)); no correction needed.
 scale_regularization(reg::SparsityLimit, ::Real) = reg
 
 function materialize(reg::SparsityLimit, x::Variable; threaded::Bool)
     op = get_operator(reg, ~x; threaded)
-    repr = @sprintf "nnz(%s%s) ≤ %d" _sparsifying_repr(reg.domain) get_name(x) reg.max_nonzeros
+    repr = @sprintf "nnz(%s%s) ≤ %d" _sparsifying_repr(Val(reg.domain)) get_name(x) reg.max_nonzeros
     return StructuredOptimization.Term(1, IndBallL0(reg.max_nonzeros), op * x, repr)
 end

@@ -76,21 +76,13 @@ function execute(f::Function, plan, acq_data, config, executor::ReconstructionEx
     return stack_image_slices(results, plan, Val(config.threaded))
 end
 
-function run_slices!(results, scales, f, plan, acq_data, config, ::SequentialExecutor)
-    threaded = config.threaded
-    slices = get_slices(plan, acq_data)
-    @conditionally_enable_threading threaded for (idx, id, local_acq) in slices
-        r, s = execute_single_slice(f, idx, id, local_acq, config; threaded = threaded)
-        results[idx] = r
-        scales[idx] = s
-    end
-    return nothing
-end
-
-function run_slices!(results, scales, f, plan, acq_data, config, ::MultiThreadingExecutor)
+function run_slices!(results, scales, f, plan, acq_data, config, executor::ReconstructionExecutor)
     slices = collect(get_slices(plan, acq_data))
-    @budgeted_threads for (idx, id, local_acq) in slices
-        r, s = execute_single_slice(f, idx, id, local_acq, config; threaded = false)
+    # A multi-threading executor already occupies the threads with whole slices, so the work inside a
+    # slice runs sequentially there.
+    slice_threaded = executor isa MultiThreadingExecutor ? false : config.threaded
+    for_each_item!(slices, config, executor) do (idx, id, local_acq)
+        r, s = execute_single_slice(f, idx, id, local_acq, config; threaded = slice_threaded)
         results[idx] = r
         scales[idx] = s
     end
@@ -106,43 +98,23 @@ end
 # so the regularization behaves as if that slice had been normalized by its own scale (see
 # `scale_regularization`).
 function execute_regularized(plan, acq_data, config, regularization, algorithm, x₀)
-    executor = suggest_executor(plan, config)
-    maybe_print_decomposition_info(plan, config)
-    batch_sizes = plan.image_size[collect(plan.image_batch_dims)]
-    slices = collect(get_slices(plan, acq_data))
-
-    slice_threaded = executor isa MultiThreadingExecutor ? false : config.threaded
-
-    prelim = Array{Any}(undef, batch_sizes)
-    for_each_item!(slices, config, executor) do (idx, id, local_acq)
+    prepare = function (idx, local_acq, local_conf)
         local_x₀ = isnothing(x₀) ? nothing : get_x₀_slice(x₀, plan, idx)
-        printfunc = (s...) -> config.printfunc("[$id] ", s...)
-        local_conf = Config(config; verbose = false, printfunc, freq = -1, threaded = slice_threaded)
-        𝒜 = get_encoding_operator(local_acq; threaded = false, fast_planning = true)
-        x̂, scale = _direct_reconstruct(𝒜, local_acq, local_x₀, regularization, local_conf)
-        prelim[idx] = (id, local_acq, x̂, scale)
+        # Planned properly (not `fast_planning`), because this same operator is reused for the
+        # iterative solve in phase 2 below -- otherwise phase 2 would plan an equivalent operator
+        # again from scratch.
+        𝒜 = get_encoding_operator(local_acq; threaded = false, fast_planning = false)
+        warm_start, scale = _direct_reconstruct(𝒜, local_acq, local_x₀, regularization, local_conf)
+        return warm_start, scale, 𝒜
     end
-
-    global_scale = robust_global_scale(vec(map(p -> p[4], prelim)))
-    config.verbose && config.printfunc(
-        @sprintf("Using shared scaling factor across slices: %g", global_scale)
-    )
-
-    results = Array{AbstractArray}(undef, batch_sizes)
-    indices = vec(collect(CartesianIndices(batch_sizes)))
-    for_each_item!(indices, config, executor) do idx
-        id, local_acq, x̂, scale = prelim[idx]
-        ratio = safe_scale_ratio(scale, global_scale)
+    solve_slice = function (local_acq, warm_start, ratio, global_scale, local_conf, 𝒜)
         local_reg = map(r -> scale_regularization(r, ratio), regularization)
-        printfunc = (s...) -> config.printfunc("[$id] ", s...)
-        local_conf = Config(config; verbose = false, printfunc, freq = -1, threaded = slice_threaded)
         result, _ = _reconstruct(
-            local_acq, local_reg, algorithm, x̂, local_conf; scale_override = global_scale
+            local_acq, local_reg, algorithm, warm_start, local_conf; scale_override = global_scale, 𝒜
         )
-        results[idx] = result
+        return result
     end
-
-    return stack_image_slices(results, plan, Val(config.threaded))
+    return execute_two_phase(plan, acq_data, config, prepare, solve_slice)
 end
 
 # Same two-phase scheme as `execute_regularized`, for a component (multi-variable)
@@ -150,22 +122,53 @@ end
 # phase 2 solves every slice under one shared `global_scale`, with each component's
 # regularization compensated by `scale_i / global_scale` (`scale_regularization`).
 function execute_regularized_components(plan, acq_data, config, components, algorithm, x₀)
+    prepare = function (idx, local_acq, local_conf)
+        local_x₀ = isnothing(x₀) ? nothing : slice_x₀_components(x₀, plan, idx)
+        𝒜 = get_encoding_operator(local_acq; threaded = false, fast_planning = false)
+        x̂, scale = _direct_reconstruct_components(𝒜, local_acq, local_conf)
+        return get_component_x0s(components, x̂, local_x₀), scale, 𝒜
+    end
+    solve_slice = function (local_acq, x₀s, ratio, global_scale, local_conf, 𝒜)
+        local_components = map(c -> scale_regularization(c, ratio), components)
+        result, _ = _reconstruct_components(
+            local_acq, local_components, algorithm, nothing, local_conf;
+            scale_override = global_scale, x₀s, 𝒜,
+        )
+        return result
+    end
+    return execute_two_phase(plan, acq_data, config, prepare, solve_slice)
+end
+
+# Shared skeleton of the two-phase scheme described above. `prepare(idx, local_acq, local_conf)` returns
+# `(warm_start, scale, 𝒜)` for one slice -- `𝒜` is the fully-planned encoding operator phase 1 already
+# had to build to get the warm start, cached here so phase 2 does not plan an equivalent one again;
+# `solve(local_acq, warm_start, ratio, global_scale, local_conf, 𝒜)` solves that slice under the shared
+# scale, with its regularization compensated by `ratio`, reusing that cached operator.
+function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Function)
     executor = suggest_executor(plan, config)
     maybe_print_decomposition_info(plan, config)
     batch_sizes = plan.image_size[collect(plan.image_batch_dims)]
     slices = collect(get_slices(plan, acq_data))
 
     slice_threaded = executor isa MultiThreadingExecutor ? false : config.threaded
+    slice_config = (id) -> Config(
+        config;
+        verbose = false, printfunc = (s...) -> config.printfunc("[$id] ", s...),
+        freq = -1, threaded = slice_threaded,
+    )
 
-    prelim = Array{Any}(undef, batch_sizes)
-    for_each_item!(slices, config, executor) do (idx, id, local_acq)
-        local_x₀ = isnothing(x₀) ? nothing : slice_x₀_components(x₀, plan, idx)
-        printfunc = (s...) -> config.printfunc("[$id] ", s...)
-        local_conf = Config(config; verbose = false, printfunc, freq = -1, threaded = slice_threaded)
-        𝒜 = get_encoding_operator(local_acq; threaded = false, fast_planning = false)
-        x̂, scale = _direct_reconstruct_components(𝒜, local_acq, local_conf)
-        x₀s = get_component_x0s(components, x̂, local_x₀)
-        prelim[idx] = (id, local_acq, x₀s, scale)
+    # `prelim`'s element type isn't known until `prepare` actually runs (it depends on the acquisition
+    # and warm-start array types), so the first slice is run outside the (possibly threaded) loop to
+    # learn it; `prelim` is then allocated concretely instead of as `Array{Any}`, keeping the phase-2
+    # unpacking below type-stable.
+    first_idx, first_id, first_local_acq = slices[1]
+    first_warm_start, first_scale, first_𝒜 = prepare(first_idx, first_local_acq, slice_config(first_id))
+    first_prelim = (first_id, first_local_acq, first_warm_start, first_scale, first_𝒜)
+    prelim = Array{typeof(first_prelim)}(undef, batch_sizes)
+    prelim[first_idx] = first_prelim
+    for_each_item!(@view(slices[2:end]), config, executor) do (idx, id, local_acq)
+        warm_start, scale, 𝒜 = prepare(idx, local_acq, slice_config(id))
+        prelim[idx] = (id, local_acq, warm_start, scale, 𝒜)
     end
 
     global_scale = robust_global_scale(vec(map(p -> p[4], prelim)))
@@ -176,16 +179,9 @@ function execute_regularized_components(plan, acq_data, config, components, algo
     results = Array{AbstractArray}(undef, batch_sizes)
     indices = vec(collect(CartesianIndices(batch_sizes)))
     for_each_item!(indices, config, executor) do idx
-        id, local_acq, x₀s, scale = prelim[idx]
+        id, local_acq, warm_start, scale, 𝒜 = prelim[idx]
         ratio = safe_scale_ratio(scale, global_scale)
-        local_components = map(c -> scale_regularization(c, ratio), components)
-        printfunc = (s...) -> config.printfunc("[$id] ", s...)
-        local_conf = Config(config; verbose = false, printfunc, freq = -1, threaded = slice_threaded)
-        result, _ = _reconstruct_components(
-            local_acq, local_components, algorithm, nothing, local_conf;
-            scale_override = global_scale, x₀s,
-        )
-        results[idx] = result
+        results[idx] = solve(local_acq, warm_start, ratio, global_scale, slice_config(id), 𝒜)
     end
 
     return stack_image_slices(results, plan, Val(config.threaded))
@@ -296,12 +292,18 @@ function get_acquisition_info_slice(acq_info::CartesianAcquisitionInfo, idx, ksp
     end
 end
 
+# `results` holds slices of whatever the per-slice reconstruction returned, so the element type is
+# abstract; dispatch on one element rather than testing its type here.
 function stack_image_slices(results, plan, threaded::Val)
-    if results[1] isa DecomposedImage
-        return stack_decomposed_image_slices(results, plan, threaded)
-    else
-        return stack_plain_image_slices(results, plan, threaded)
-    end
+    return stack_slices_like(first(results), results, plan, threaded)
+end
+
+function stack_slices_like(::AbstractArray, results, plan, threaded::Val)
+    return stack_plain_image_slices(results, plan, threaded)
+end
+
+function stack_slices_like(::DecomposedImage, results, plan, threaded::Val)
+    return stack_decomposed_image_slices(results, plan, threaded)
 end
 
 function stack_plain_image_slices(results, plan, ::Val{false})

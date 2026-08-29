@@ -28,6 +28,60 @@ function build_model(𝒜::AbstractOperator, y::AbstractArray, reg::Regularizati
     return build_model(𝒜, y, (reg,); threaded, x₀, disable_normalop_optimization)
 end
 
+"""
+	patch_algorithm_with_default_values(algorithm, Lf::Union{Nothing,Real}=nothing)
+
+Fill in algorithm defaults that depend on the model just built. `Lf`, when not `nothing`, is the
+Lipschitz-constant hint appropriate for the (possibly multi-variable) data term against the actual
+operator used to build the model -- `nothing` when the operator was left at its natural, non-unit norm
+(`disable_operator_normalization = true`), in which case the algorithm's own estimate against that
+operator is correct and no override is applied.
+"""
+function patch_algorithm_with_default_values(
+        algorithm::ProximalAlgorithms.IterativeAlgorithm{T}, Lf::Union{Nothing, Real} = nothing
+    ) where {
+        T <: Union{
+            ProximalAlgorithms.ForwardBackwardIteration,
+            ProximalAlgorithms.FastForwardBackwardIteration,
+        },
+    }
+    if Lf !== nothing && :Lf ∉ keys(algorithm.kwargs)
+        return ProximalAlgorithms.override_parameters(algorithm; Lf)
+    else
+        return algorithm
+    end
+end
+
+function patch_algorithm_with_default_values(
+        algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.ADMMIteration}, Lf::Union{Nothing, Real} = nothing
+    )
+    # `cg_maxit` is capped well below ADMM's own default of 100 because the inner CG is warm-started
+    # from the previous outer iterate, so a short solve per outer step is enough.
+    #
+    # Neither `rho` nor `cg_tol` is defaulted here, and both omissions are deliberate.
+    #
+    # `cg_tol` is derived by `ADMM` as `min(1e-2, tol * 100)`, keeping the inner solve tighter than
+    # the outer stopping tolerance. Pinning any constant would break that coupling and cap the
+    # reachable accuracy whenever a caller tightens `tol`.
+    #
+    # `rho` is left to ADMM's adaptive `SpectralRadiusApproximationPenalty`, which converges far
+    # faster than any fixed penalty on the problems this package builds: on a 2x-undersampled
+    # L1Wavelet + TV reconstruction the adaptive penalty reaches 0.035 relative error within 100
+    # iterations, while a fixed `rho = 1` needs ~2000 iterations to match it. Terms whose ADMM
+    # behaviour is sensitive to the penalty should document a tuned `rho` of their own rather than
+    # have one imposed on every caller here.
+    :cg_maxit ∈ keys(algorithm.kwargs) && return algorithm
+    return ProximalAlgorithms.override_parameters(algorithm; cg_maxit = 10)
+end
+
+function patch_algorithm_with_default_values(algorithm::ProximalAlgorithms.IterativeAlgorithm, Lf::Union{Nothing, Real} = nothing)
+    return algorithm
+end
+
+function patch_algorithm_with_default_values(algorithm::Tuple, Lf::Union{Nothing, Real} = nothing)
+    return map(a -> patch_algorithm_with_default_values(a, Lf), algorithm)
+end
+
 function build_model(𝒜::AbstractOperator, y::AbstractArray, regs::Tuple; threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing, disable_normalop_optimization::Bool = false)
     terms, _, _ = build_model_with_variables(
         𝒜, y, regs; threaded, x₀, disable_normalop_optimization
@@ -57,14 +111,7 @@ function build_model_with_variables(
     y = unname(y)
     # The regularizations are materialized first because whether any of them introduces an auxiliary
     # variable decides which form the data term may take.
-    reg_term_list = ()
-    auxiliaries = ()
-    for reg in regs
-        @argcheck reg isa Regularization "All regularization terms must be of type Regularization."
-        reg_terms, reg_auxiliaries = materialize_with_auxiliaries(reg, x; threaded)
-        reg_term_list = (reg_term_list..., reg_terms)
-        auxiliaries = (auxiliaries..., reg_auxiliaries...)
-    end
+    reg_term_list, auxiliaries = materialize_all(regs, x; threaded)
     # `normalop_ls` precomputes 𝒜'𝒜 and stores it inside the term, but that operator spans the image
     # variable alone. Once a regularization adds an auxiliary variable (total generalized variation),
     # the solver's `x0` spans (image, auxiliary...) while the stored operator still does not, and ADMM
