@@ -746,3 +746,29 @@ end
     result2 = combine(diag_op, z)
     @test result2 === z
 end
+
+@testitem "CR: a shape-changing identity is not combinable" tags = [:calculus, :CombinationRules] begin
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    # `Reshape(Eye(...), dims...)` is the identity on the values but not on the shape, so it may not be
+    # dropped from a composition: the neighbouring operator would be left with an input of the wrong number
+    # of dimensions. It used to be reported as combinable and then fail inside `combine`.
+    reshaping_eye = Reshape(Eye(Float64, (12, 2)), 4, 3, 2)
+    gradient = Variation(Float64, (4, 3, 2); threaded = false)
+
+    @test AbstractOperators.is_eye(reshaping_eye)
+    @test !can_be_combined(gradient, reshaping_eye)
+
+    composed = gradient * reshaping_eye
+    x = randn(12, 2)
+    @test composed * x == gradient * reshape(x, 4, 3, 2)
+
+    # A shape-preserving identity is still dropped, on either side.
+    square_eye = Eye(Float64, (12, 2))
+    scaling = DiagOp(ones(12, 2))
+    @test can_be_combined(scaling, square_eye)
+    @test combine(scaling, square_eye) === scaling
+    @test can_be_combined(square_eye, scaling)
+    @test combine(square_eye, scaling) === scaling
+end
