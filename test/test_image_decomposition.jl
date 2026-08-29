@@ -140,6 +140,20 @@ end
     bad_alg = FISTA(Lf = 1)
     solve(terms2, bad_alg; maxit = 500)
     @test any(!isfinite, ~vars2[1]) || any(!isfinite, ~vars2[2]) || norm(~vars2[1]) > 1.0e6
+
+    # ADMM only gets `cg_maxit`. Pinning `rho` would override ADMM's adaptive penalty, which
+    # converges much faster here, and pinning `cg_tol` would break its coupling to the outer `tol`.
+    admm_alg = MriReconstructionToolbox.patch_algorithm_with_default_values(ADMM(), 2)
+    @test admm_alg.kwargs[:cg_maxit] == 10
+    @test :rho ∉ keys(admm_alg.kwargs)
+    @test admm_alg.kwargs[:cg_tol] == ADMM().kwargs[:cg_tol]
+    tight = MriReconstructionToolbox.patch_algorithm_with_default_values(ADMM(tol = 1.0e-12), 2)
+    @test tight.kwargs[:cg_tol] == ADMM(tol = 1.0e-12).kwargs[:cg_tol]
+    @test tight.kwargs[:cg_tol] < admm_alg.kwargs[:cg_tol]
+    # An explicitly passed value always wins, and the other defaults still get filled in.
+    admm_user = MriReconstructionToolbox.patch_algorithm_with_default_values(ADMM(rho = 0.25), 2)
+    @test admm_user.kwargs[:rho] == 0.25
+    @test admm_user.kwargs[:cg_maxit] == 10
 end
 
 @testitem "reconstruct: multi-regularization component falls back to ADMM" tags = [:components] begin
