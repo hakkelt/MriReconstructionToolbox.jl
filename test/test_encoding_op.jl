@@ -230,6 +230,50 @@ end
             @test dimnames(wrapped_ksp) == (:kx, :ky, :coil, :z)
         end
 
+        @testset "Dynamic 2D Cartesian PI" begin
+            # Regression: composing the sensitivity operator (which has no :coil axis on the image
+            # side) against the wrong batch-dim offset lost the trailing batch dimension entirely,
+            # throwing a `DomainError` from `ℱ * 𝒮`.
+            ksp = rand(ComplexF32, 64, 64, 8, 10)
+            smaps = rand(ComplexF32, 64, 64, 8)
+            wrapped_ksp = NamedDimsArray{(:kx, :ky, :coil, :t)}(ksp)
+            wrapped_smaps = NamedDimsArray{(:x, :y, :coil)}(smaps)
+            ℱ = get_encoding_operator(wrapped_ksp; sensitivity_maps = wrapped_smaps)
+            img = ℱ' * wrapped_ksp
+            @test unname(img) ≈
+                dropdims(sum(conj.(smaps) .* ifft(fftshift(ksp, (1, 2)), (1, 2)), dims = 3), dims = 3)
+            @test dimnames(img) == (:x, :y, :t)
+            ksp2 = ℱ * img
+            @test unname(ksp2) ≈
+                fftshift(fft(reshape(unname(img), 64, 64, 1, 10) .* smaps, (1, 2)), (1, 2))
+            @test dimnames(ksp2) == (:kx, :ky, :coil, :t)
+        end
+
+        @testset "Dynamic 2D Cartesian PI with a shared 3D map" begin
+            # A single 3D sensitivity map (:x, :y, :coil, :z) shared across time frames of a
+            # multi-slice + time acquisition: :z is a batch dim of the map itself, on top of the
+            # acquisition's own :t batch dim.
+            ksp = rand(ComplexF32, 64, 64, 8, 5, 10)
+            smaps = rand(ComplexF32, 64, 64, 8, 5)
+            wrapped_ksp = NamedDimsArray{(:kx, :ky, :coil, :z, :t)}(ksp)
+            wrapped_smaps = NamedDimsArray{(:x, :y, :coil, :z)}(smaps)
+            ℱ = get_encoding_operator(wrapped_ksp; sensitivity_maps = wrapped_smaps)
+            img = ℱ' * wrapped_ksp
+            @test dimnames(img) == (:x, :y, :z, :t)
+            @test size(img) == (64, 64, 5, 10)
+            ksp2 = ℱ * img
+            @test dimnames(ksp2) == (:kx, :ky, :coil, :z, :t)
+            @test size(ksp2) == size(ksp)
+            # Slice-by-slice, this must agree with the plain 2D-multislice (no time) case.
+            for t in 1:10
+                ℱ_slice = get_encoding_operator(
+                    NamedDimsArray{(:kx, :ky, :coil, :z)}(ksp[:, :, :, :, t]);
+                    sensitivity_maps = wrapped_smaps,
+                )
+                @test unname(ℱ_slice' * ksp[:, :, :, :, t]) ≈ unname(img[:, :, :, t])
+            end
+        end
+
         @testset "3D Cartesian PI" begin
             ksp = rand(ComplexF32, 64, 64, 64, 8)
             smaps = rand(ComplexF32, 64, 64, 64, 8)

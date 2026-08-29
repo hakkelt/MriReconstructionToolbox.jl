@@ -58,20 +58,30 @@ function get_sensitivity_map_operator(
     @argcheck :y ∈ dn "sensitivity maps array must have a dimension named :y for Cartesian data"
     @argcheck dn[2] == :y "sensitivity maps array must have the second dimension named :y"
     @argcheck :coil ∈ dn "sensitivity maps array must have a dimension named :coil for sensitivity maps array"
-    @argcheck dn[end] == :coil "sensitivity maps array must have the last dimension named :coil"
-    is3D = :z ∈ dn
-    if is3D
-        @argcheck dn[3] == :z "sensitivity maps array must have the third dimension named :z for 3D data"
+    # Two 4-D layouts are accepted: (:x, :y, :z, :coil) for a true 3D map, and
+    # (:x, :y, :coil, :z) for a 2D map shared across slices, where :z is then a batch
+    # dimension of the map (like the trailing entries of `batch_dims`), not a transformed
+    # image axis. This is the layout `_check_smaps` requires for 2D acquisitions with 4D maps.
+    multislice = length(dn) == 4 && dn[3] == :coil && dn[4] == :z
+    if multislice
+        is3D = false
+    else
+        @argcheck dn[end] == :coil "sensitivity maps array must have the last dimension named :coil"
+        is3D = :z ∈ dn
+        if is3D
+            @argcheck dn[3] == :z "sensitivity maps array must have the third dimension named :z for 3D data"
+        end
     end
     tuple_batch_dims = isnothing(batch_dims) ? nothing : Tuple(batch_dims)
     𝒮 = get_sensitivity_map_operator(
         parent(sensitivity_maps), is3D; batch_dims = tuple_batch_dims, threaded
     )
     if isnothing(batch_dims) || isempty(batch_dims)
-        return NamedDimsOp{dn[1:(end - 1)], dn}(𝒮)
+        domain_dims = filter(!=(:coil), dn)
+        return NamedDimsOp{domain_dims, dn}(𝒮)
     else
         codomain_dims = (dn..., keys(batch_dims)...)
-        domain_dims = filter(dn -> dn != :coil, codomain_dims)
+        domain_dims = filter(!=(:coil), codomain_dims)
         return NamedDimsOp{domain_dims, codomain_dims}(𝒮)
     end
 end
