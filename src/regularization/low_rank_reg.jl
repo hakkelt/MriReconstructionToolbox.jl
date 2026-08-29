@@ -108,3 +108,6 @@ end
 scale_regularization(reg::LowRank, factor::Real) = LowRank(reg.λ .* factor; time_dim = reg.time_dim)
 # Rank constraints are scale-invariant (rank(factor * X) == rank(X)); no correction needed.
 scale_regularization(reg::RankLimit, factor::Real) = reg
+
+bind_dimensions(reg::LowRank, image_dims) = LowRank(reg.λ; time_dim = get_time_dim(reg.time_dim, image_dims))
+bind_dimensions(reg::RankLimit, image_dims) = RankLimit(reg.max_rank; time_dim = get_time_dim(reg.time_dim, image_dims))

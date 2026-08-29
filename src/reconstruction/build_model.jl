@@ -106,6 +106,7 @@ function build_model_with_variables(
         disable_normalop_optimization::Bool = false,
     )
     x₀ = isnothing(x₀) ? 𝒜' * y : copy(x₀)
+    regs = bind_dimensions(regs, dims_of(x₀))
     x = Variable(unname(x₀))
     𝒜 = unname(𝒜)
     y = unname(y)
@@ -152,6 +153,7 @@ function build_model(
         threaded::Bool = true, x₀s,
     )
     check_components(components)
+    components = bind_dimensions(components, dims_of(first(x₀s)))
     𝒜 = unname(𝒜)
     y = unname(y)
     # `Variable` stores the array by reference and `solve` writes the solution back through it, so

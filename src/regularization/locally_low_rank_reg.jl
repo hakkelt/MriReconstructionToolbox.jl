@@ -222,6 +222,16 @@ function scale_regularization(reg::LocallyLowRank, factor::Real)
     )
 end
 
+function bind_dimensions(reg::LocallyLowRank, image_dims)
+    return LocallyLowRank(
+        reg.λ;
+        block_size = reg.block_size,
+        time_dim = get_time_dim(reg.time_dim, image_dims),
+        shift = reg.shift,
+        rng = reg.rng,
+    )
+end
+
 function _llr_block_size(requested, spatial_size::NTuple{N, Int}) where {N}
     block_size = requested isa Integer ? ntuple(_ -> Int(requested), Val(N)) : Int.(requested)
     @argcheck length(block_size) == N "block_size must have one entry per spatial dimension ($N), got $(length(block_size))"

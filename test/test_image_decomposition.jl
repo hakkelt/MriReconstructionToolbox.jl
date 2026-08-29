@@ -232,3 +232,55 @@ end
     partial = (sparse = zeros(ComplexF32, nx, ny),)
     @test isnothing(MriReconstructionToolbox.check_x₀_components_size(partial, components, (nx, ny)))
 end
+
+@testitem "reconstruct: LowRank + Sparse with NamedDimsArray and symbol time_dim" tags = [:components, :integration] begin
+    using Test
+    using NamedDims
+    using MriReconstructionToolbox
+
+    nx, ny, nt = 16, 16, 4
+    img_true = NamedDimsArray{(:x, :y, :time)}(rand(ComplexF32, nx, ny, nt))
+    smaps = NamedDimsArray{(:x, :y, :coil)}(rand(ComplexF32, nx, ny, 2))
+    acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
+    ksp = simulate_acquisition(img_true, acq).kspace_data
+    acq_data = AcquisitionInfo(acq, kspace_data = ksp)
+
+    components = (
+        Component(:lowrank, LowRank(0.01; time_dim = :time)),
+        Component(:sparse, L1Image(0.01)),
+    )
+
+    img_recon = reconstruct(acq_data, components; maxit = 5, verbose = false)
+    @test img_recon isa DecomposedImage
+    @test size(img_recon) == (nx, ny, nt)
+    @test dimnames(img_recon) == (:x, :y, :time)
+    @test haskey(img_recon.components, :lowrank)
+    @test haskey(img_recon.components, :sparse)
+    @test all(isfinite, img_recon.components.lowrank)
+    @test all(isfinite, img_recon.components.sparse)
+end
+
+@testitem "reconstruct: LowRank + Sparse with problem decomposition and NamedDimsArray" tags = [:components, :integration] begin
+    using Test
+    using NamedDims
+    using MriReconstructionToolbox
+
+    nx, ny, nslices, nt = 16, 16, 2, 4
+    img_true = NamedDimsArray{(:x, :y, :z, :time)}(rand(ComplexF32, nx, ny, nslices, nt))
+    smaps = NamedDimsArray{(:x, :y, :coil, :z)}(rand(ComplexF32, nx, ny, 2, nslices))
+    acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
+    ksp = simulate_acquisition(img_true, acq).kspace_data
+    acq_data = AcquisitionInfo(acq, kspace_data = ksp)
+
+    components = (
+        Component(:lowrank, LowRank(0.01; time_dim = :time)),
+        Component(:sparse, TemporalFourier(0.01; time_dim = :time)),
+    )
+
+    img_recon = reconstruct(acq_data, components; maxit = 5, verbose = false)
+    @test img_recon isa DecomposedImage
+    @test size(img_recon) == (nx, ny, nslices, nt)
+    @test dimnames(img_recon) == (:x, :y, :z, :time)
+    @test all(isfinite, img_recon.components.lowrank)
+    @test all(isfinite, img_recon.components.sparse)
+end
