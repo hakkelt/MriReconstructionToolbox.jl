@@ -128,6 +128,17 @@ function scale_regularization(reg::MultiScaleLowRank, factor::Real)
     )
 end
 
+function bind_dimensions(reg::MultiScaleLowRank, image_dims)
+    return MultiScaleLowRank(
+        reg.λ;
+        block_sizes = reg.block_sizes,
+        time_dim = get_time_dim(reg.time_dim, image_dims),
+        weights = reg.weights,
+        shift = reg.shift,
+        rng = reg.rng,
+    )
+end
+
 function _mslr_weights(reg::MultiScaleLowRank, ::Type{R}) where {R <: Real}
     n = length(reg.block_sizes)
     reg.weights === nothing && return fill(R(1 / n), n)

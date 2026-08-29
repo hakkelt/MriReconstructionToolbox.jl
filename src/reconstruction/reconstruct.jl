@@ -130,6 +130,7 @@ function _reconstruct_dispatch_plain(acq_data, regularization, algorithm, x₀, 
 end
 
 function _reconstruct(acq_data, regularization, algorithm, x₀, config; scale_override = nothing, 𝒜 = nothing)
+    regularization = bind_dimensions(regularization, get_image_dims(acq_data))
     if isnothing(𝒜)
         @step "Constructing encoding operator" config begin
             𝒜 = get_encoding_operator(
@@ -221,6 +222,7 @@ function _reconstruct_components(
         acq_data, components, algorithm, x₀, config;
         scale_override = nothing, x₀s = nothing, 𝒜 = nothing,
     )
+    components = bind_dimensions(components, get_image_dims(acq_data))
     if isnothing(𝒜)
         @step "Constructing encoding operator" config begin
             𝒜 = get_encoding_operator(acq_data; threaded = config.threaded, fast_planning = false)

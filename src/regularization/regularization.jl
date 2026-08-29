@@ -6,8 +6,9 @@ abstract type Regularization end
 Evaluate the value of a regularization term `reg` at a given point `x`. This function is useful for testing and debugging.
 """
 function calculate(reg, x; threaded = true)
-    x_var = Variable(x)
-    t = materialize(reg, x_var; threaded)
+    reg_bound = bind_dimensions(reg, dims_of(x))
+    x_var = Variable(unname(x))
+    t = materialize(reg_bound, x_var; threaded)
     f = StructuredOptimization.extract_functions(t)
     op = StructuredOptimization.extract_affines((x_var,), t)
     x_val = ~x_var
@@ -183,3 +184,14 @@ therefore scale `λ` linearly with `factor`. Quadratic penalties (`Tikhonov`, `k
 returning `reg` unchanged.
 """
 scale_regularization(reg::Regularization, factor::Real) = reg
+
+"""
+	bind_dimensions(reg, image_dims)
+
+Return a copy of `reg` with any symbol-based dimension parameters (such as `time_dim=:time` or `dim=:echo`,
+or `nothing` for inferred dimensions) resolved to 1-based integer dimension indices against `image_dims`.
+"""
+bind_dimensions(reg::Regularization, image_dims) = reg
+bind_dimensions(reg::Regularization, ::Nothing) = reg
+bind_dimensions(regs::Tuple, image_dims) = map(r -> bind_dimensions(r, image_dims), regs)
+bind_dimensions(regs::Tuple, ::Nothing) = regs

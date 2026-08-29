@@ -47,10 +47,11 @@ function get_affected_dims(reg::TemporalTotalVariation, ::Nothing, image_dims)
     return (image_dims[get_time_dim(reg.time_dim, image_dims)],)
 end
 
-# L1 norm is homogeneous of degree 1, so λ scales linearly (see scale_regularization docstring).
 function scale_regularization(reg::TemporalTotalVariation, factor::Real)
     return TemporalTotalVariation(reg.λ .* factor; time_dim = reg.time_dim)
 end
+
+bind_dimensions(reg::TemporalTotalVariation, image_dims) = TemporalTotalVariation(reg.λ; time_dim = get_time_dim(reg.time_dim, image_dims))
 
 function materialize(reg::TemporalTotalVariation, x::Variable{T}; threaded::Bool) where {T}
     R = real(T)

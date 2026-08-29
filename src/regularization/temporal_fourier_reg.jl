@@ -41,6 +41,8 @@ end
 # L1 norm is homogeneous of degree 1, so λ scales linearly (see scale_regularization docstring).
 scale_regularization(reg::TemporalFourier, factor::Real) = TemporalFourier(reg.λ .* factor; time_dim = reg.time_dim)
 
+bind_dimensions(reg::TemporalFourier, image_dims) = TemporalFourier(reg.λ; time_dim = get_time_dim(reg.time_dim, image_dims))
+
 function materialize(reg::TemporalFourier, x::Variable{T}; threaded::Bool) where {T}
     R = real(T)
     λ = R.(reg.λ)

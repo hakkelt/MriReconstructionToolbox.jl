@@ -66,6 +66,8 @@ end
 # The ℓ₂,₁ norm is homogeneous of degree 1, so λ scales linearly (see scale_regularization docstring).
 scale_regularization(reg::JointSparsity, factor::Real) = JointSparsity(reg.λ * factor; dim = reg.dim)
 
+bind_dimensions(reg::JointSparsity, image_dims) = JointSparsity(reg.λ; dim = _group_dim(reg, image_dims))
+
 function materialize(reg::JointSparsity, x::Variable{T}; threaded::Bool) where {T}
     R = real(T)
     λ = R(reg.λ)
