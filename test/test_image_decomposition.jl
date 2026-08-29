@@ -66,7 +66,7 @@ end
     reg2 = Tikhonov(0.1)
     components = (Component(:sparse, reg1), Component(:smooth, reg2))
 
-    terms, vars = build_model(𝒜, y, components; threaded = false, x₀s = (copy(x_true), copy(y_true)))
+    terms, vars, _ = build_model(𝒜, y, components; threaded = false, x₀s = (copy(x_true), copy(y_true)))
     @test length(StructuredOptimization.extract_variables(terms)) == 2
     @test terms isa StructuredOptimization.TermSet
 
@@ -130,13 +130,13 @@ end
 
     components = (Component(:a, L1Image(0.01)), Component(:b, L1Image(0.01)))
 
-    terms, vars = build_model(𝒜, y, components; threaded = false, x₀s = (zero(x_true), zero(y_true)))
+    terms, vars, _ = build_model(𝒜, y, components; threaded = false, x₀s = (zero(x_true), zero(y_true)))
     default_alg = MriReconstructionToolbox.patch_algorithm_with_default_values(FISTA(), 2)
     @test default_alg.kwargs[:Lf] == 2
     solve(terms, default_alg; maxit = 500)
     @test all(isfinite, ~vars[1]) && all(isfinite, ~vars[2])
 
-    terms2, vars2 = build_model(𝒜, y, components; threaded = false, x₀s = (zero(x_true), zero(y_true)))
+    terms2, vars2, _ = build_model(𝒜, y, components; threaded = false, x₀s = (zero(x_true), zero(y_true)))
     bad_alg = FISTA(Lf = 1)
     solve(terms2, bad_alg; maxit = 500)
     @test any(!isfinite, ~vars2[1]) || any(!isfinite, ~vars2[2]) || norm(~vars2[1]) > 1.0e6

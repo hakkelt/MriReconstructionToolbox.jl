@@ -55,11 +55,18 @@ function scale_regularization(c::Component, factor::Real)
 end
 
 function materialize(c::Component, x::Variable; threaded::Bool)
-    terms = materialize(c.regularizations[1], x; threaded)
-    for reg in c.regularizations[2:end]
-        terms += materialize(reg, x; threaded)
-    end
+    terms, _ = materialize_with_auxiliaries(c, x; threaded)
     return terms
+end
+
+function materialize_with_auxiliaries(c::Component, x::Variable; threaded::Bool)
+    terms, auxiliaries = materialize_with_auxiliaries(c.regularizations[1], x; threaded)
+    for reg in c.regularizations[2:end]
+        reg_terms, reg_auxiliaries = materialize_with_auxiliaries(reg, x; threaded)
+        terms += reg_terms
+        auxiliaries = (auxiliaries..., reg_auxiliaries...)
+    end
+    return terms, auxiliaries
 end
 
 """

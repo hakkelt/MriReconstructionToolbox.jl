@@ -2,6 +2,7 @@ module MriReconstructionToolbox
 using Reexport
 
 using LinearAlgebra
+using Random: Random, AbstractRNG
 using Base.Cartesian
 using ProximalOperators
 using ProximalCore
@@ -31,6 +32,9 @@ const CGNR = ProximalAlgorithms.CGNR
 export get_operator, get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator
 export Tikhonov, L1Image, L1Wavelet2D, L1Wavelet3D, TotalVariation2D, TotalVariation3D, TemporalFourier, LowRank, RankLimit
 export TemporalTotalVariation, JointSparsity, LocallyLowRank, ReferencePrior, NonNegative, BoxConstraint
+export SecondOrderTotalVariation2D, SecondOrderTotalVariation3D, MultiScaleLowRank
+export EdgePreservingRoughness2D, EdgePreservingRoughness3D, TotalGeneralizedVariation2D
+export HardThreshold, SparsityLimit, PlugAndPlay
 export calculate, build_model, reconstruct, Config, SequentialExecutor, MultiThreadingExecutor
 export Component, DecomposedImage, components, total
 export BartScaling, FixedScaling, MeasurementBasedScaling, NoScaling
@@ -61,11 +65,17 @@ include("regularization/wavelet_reg.jl")
 include("regularization/total_variation_reg.jl")
 include("regularization/temporal_fourier_reg.jl")
 include("regularization/temporal_total_variation_reg.jl")
+include("regularization/second_order_total_variation_reg.jl")
+include("regularization/edge_preserving_reg.jl")
+include("regularization/total_generalized_variation_reg.jl")
 include("regularization/low_rank_reg.jl")
 include("regularization/locally_low_rank_reg.jl")
+include("regularization/multi_scale_low_rank_reg.jl")
 include("regularization/joint_sparsity_reg.jl")
+include("regularization/hard_threshold_reg.jl")
 include("regularization/constraint_reg.jl")
 include("regularization/reference_prior_reg.jl")
+include("regularization/plug_and_play_reg.jl")
 
 include("reconstruction/components.jl")
 include("reconstruction/decomposition.jl")

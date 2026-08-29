@@ -258,7 +258,7 @@ function _iterative_reconstruct_components(𝒜, acq_data, x₀s, scale, compone
         end
     end
     @step "Building optimization model" config begin
-        model, vars = build_model(
+        model, vars, _auxiliaries = build_model(
             unname(𝒜), unname(acq_data.kspace_data), components;
             threaded = config.threaded, x₀s,
         )
@@ -342,7 +342,7 @@ function _iterative_reconstruct(𝒜, acq_data, x₀, scale, regularization, alg
         end
     end
     @step "Building optimization model" config begin
-        model = build_model(
+        model, x_var, _auxiliaries = build_model_with_variables(
             unname(𝒜),
             unname(acq_data.kspace_data),
             regularization;
@@ -366,8 +366,11 @@ function _iterative_reconstruct(𝒜, acq_data, x₀, scale, regularization, alg
         ProximalAlgorithms.default_display(it, alg, iter, state, config.printfunc)
         algorithm = patch_algorithm_with_default_values(algorithm)
         verbose = freq != -1
-        x_var, _ = solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
-        x = ~x_var
+        solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
+        # Read the solution from the image variable itself: once a regularization contributes auxiliary
+        # variables (e.g. total generalized variation), the solver returns them alongside the image and its
+        # ordering is not something to depend on.
+        x = copy(~x_var)
     end
     if !config.disable_inverse_scale_output && scale != 1
         @step "Inverse scaling image" config begin
