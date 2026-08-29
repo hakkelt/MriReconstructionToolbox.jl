@@ -64,8 +64,12 @@ function _compose_with_sensitivity(ℱ, info::AcquisitionInfo; threaded::Bool)
     elseif smaps isa NamedDimsArray
         image_size = get_image_size(info)
         image_dims = get_image_dims(info)
-        batch_dims_size = image_size[(ndims(smaps) + 1):end]
-        batch_dim_names = image_dims[(ndims(smaps) + 1):end]
+        # `smaps` has one more dimension than it consumes from the image domain (the :coil axis
+        # isn't an image dimension), so the batch dims start right after `ndims(smaps) - 1` image
+        # dims, not after `ndims(smaps)`.
+        consumed = ndims(smaps) - 1
+        batch_dims_size = image_size[(consumed + 1):end]
+        batch_dim_names = image_dims[(consumed + 1):end]
         batch_dims = NamedTuple{batch_dim_names}(batch_dims_size)
         𝒮 = get_sensitivity_map_operator(smaps; batch_dims, threaded)
         ℱ * 𝒮

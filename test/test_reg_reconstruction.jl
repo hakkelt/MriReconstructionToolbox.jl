@@ -54,14 +54,17 @@ using TestItems
         @test relerr(img_recon) < 0.2
     end
 
-    # Pre-existing solver limitation, unrelated to the regularizers themselves: two components whose
-    # operators are both non-tight (here `LowRank`'s reshape and the finite difference of temporal TV)
-    # cannot be prepared for any of the available algorithms.
-    @testset "LowRank + TemporalTotalVariation components are not solvable" begin
+    # Regression: two components whose operators are both non-tight (here `LowRank`'s reshape and
+    # the finite difference of temporal TV) used to fail to prepare for any algorithm, because
+    # `Reshape` claimed `is_AAc_diagonal == true` without a `diag_AAc` method to back it up, so any
+    # code path that trusted the trait crashed instead of falling back to a different assumption.
+    @testset "LowRank + TemporalTotalVariation components" begin
         components = (
             Component(:lowrank, LowRank(0.02f0; time_dim = 3)),
             Component(:sparse, TemporalTotalVariation(0.02f0; time_dim = 3)),
         )
-        @test_throws Exception reconstruct(acq, components; maxit = 10, verbose = false)
+        img_recon = reconstruct(acq, components; maxit = 100, verbose = false)
+        @test img_recon isa DecomposedImage
+        @test relerr(img_recon) < 0.2
     end
 end
