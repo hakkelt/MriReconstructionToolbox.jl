@@ -78,6 +78,14 @@ is_eye(R::Reshape) = is_eye(R.A)
 is_diagonal(R::Reshape) = is_diagonal(R.A)
 is_AcA_diagonal(R::Reshape) = is_AcA_diagonal(R.A)
 is_AAc_diagonal(R::Reshape) = is_AAc_diagonal(R.A)
+# `Reshape` only changes the codomain shape, so `A'*A` (domain-side) is exactly `R.A`'s.
+diag_AAc(R::Reshape) = diag_AAc(R.A)
+# `A*A'` lives on the codomain, which `Reshape` does change, so its diagonal must be reshaped
+# to match (unless it is a scalar, which broadcasts to any shape already).
+function diag_AcA(R::Reshape)
+    d = diag_AcA(R.A)
+    return d isa Number ? d : reshape(d, R.dim_out)
+end
 is_orthogonal(R::Reshape) = is_orthogonal(R.A)
 is_invertible(R::Reshape) = is_invertible(R.A)
 is_full_row_rank(R::Reshape) = is_full_row_rank(R.A)
