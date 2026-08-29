@@ -40,12 +40,26 @@ end
     @test is_AAc_diagonal(opR) == true
     @test diag_AAc(opR) == diag_AAc(Eye(ComplexF64, (16, 16, 6)))
 
-    # `diag_AcA` lives on the codomain, which `Reshape` does change, so it must come back reshaped.
+    # `diag_AAc` lives on the codomain, which `Reshape` does change, so it must come back reshaped
+    # to `dim_out`; `diag_AcA` lives on the domain, which `Reshape` leaves alone, so it passes
+    # through unchanged. A scalar-diagonal wrapped operator (such as `Eye` above) broadcasts to
+    # either shape, so it cannot tell the two apart -- use a non-trivial `DiagOp` here.
     d = randn(ComplexF64, 20)
     op = Reshape(DiagOp(d), 4, 5)
+
+    @test is_AAc_diagonal(op) == true
+    @test size(diag_AAc(op)) == size(op, 1) == (4, 5)
+    @test diag_AAc(op) == reshape(diag_AAc(DiagOp(d)), 4, 5)
+
     @test is_AcA_diagonal(op) == true
-    @test size(diag_AcA(op)) == (4, 5)
-    @test diag_AcA(op) == reshape(diag_AcA(DiagOp(d)), 4, 5)
+    @test size(diag_AcA(op)) == size(op, 2) == (20,)
+    @test diag_AcA(op) == diag_AcA(DiagOp(d))
+
+    # The diagonals must agree with the operators they claim to describe.
+    y = randn(ComplexF64, 4, 5)
+    @test op * (op' * y) ≈ diag_AAc(op) .* y
+    x = randn(ComplexF64, 20)
+    @test op' * (op * x) ≈ diag_AcA(op) .* x
 end
 
 @testitem "Reshape: displacement and storage" tags = [:calculus, :Reshape] setup = [TestUtils] begin
