@@ -89,8 +89,10 @@ function materialize(
     R = real(T)
     λ, δ = R(reg.λ), R(reg.δ)
     # SeparableHuberLoss(ρ, μ) is `μ/2 t²` below ρ and `ρμ(|t| − ρ/2)` above it, so ρ = δ and μ = λ/δ give
-    # exactly `λ ψ_δ`.
-    f = SeparableHuberLoss(δ, λ / δ)
+    # exactly `λ ψ_δ`. At λ = 0 that is the zero function, but SeparableHuberLoss rejects μ = 0, so
+    # spell it out -- the constructor accepts λ = 0 and every other term in the package treats it as a
+    # disabled no-op rather than an error.
+    f = iszero(λ) ? ProximalOperators.Zero() : SeparableHuberLoss(δ, λ / δ)
     repr = @sprintf "%g ⋅ ∑ ψ_%g(∇%s)" λ δ get_name(x)
     return StructuredOptimization.Term(1, f, ∇ * x, repr)
 end
