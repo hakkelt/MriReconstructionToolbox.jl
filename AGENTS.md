@@ -1,159 +1,148 @@
-# Copilot Instructions for MriReconstructionToolbox
+# AGENTS.md — MriReconstructionToolbox
 
-MriReconstructionToolbox (MRT) is a Julia package for MRI image reconstruction. It provides a modular pipeline: acquisition data → encoding operators → regularization → reconstruction via proximal algorithms.
+MriReconstructionToolbox (MRT) is a Julia package for MRI image reconstruction. It provides a
+modular pipeline: acquisition data → encoding operators → regularization → reconstruction via
+proximal algorithms.
+
+## Mission
+
+Keep changes minimal and localized; avoid unrelated refactors. Never weaken a test to force it
+green — if a failure reflects a real bug, fix the source. When you touch public API, update its
+docstring, the relevant `docs/src/**` page, and its tests in the same change.
 
 ## Architecture
 
 ```
-AcquisitionInfo → Encoding Operators → Regularization → Reconstruction
-     ↓                    ↓                  ↓               ↓
-  Cartesian/         FFT/NFFT +         Tikhonov/L1/     ISTA/FISTA/
-  NonCartesian     sensitivity maps     TV/Wavelet/      ADMM/CG
-                                        LowRank
+AcquisitionInfo → Encoding operators → Regularization → Reconstruction
+   Cartesian/       FFT/NFFT +          image/transform    ISTA/FISTA/
+   NonCartesian     sensitivity maps    domain terms       ADMM/CG/CGNR
 ```
 
 | Module | Directory | Role |
 |---|---|---|
-| Acquisition Data | `src/acquisition_data/` | AcquisitionInfo types, dimension utilities, copy constructors |
-| Encoding | `src/encoding/` | Fourier (FFT/NFFT), sensitivity map, subsampling operators |
-| Regularization | `src/regularization/` | Tikhonov, L1, wavelets, TV, temporal Fourier, low-rank |
-| Reconstruction | `src/reconstruction/` | Config, model building, solver dispatch |
-| Simulation | `src/simulation/` | Phantom generation, sampling patterns, coil sensitivities |
+| Acquisition data | `src/acquisition_data/` | `AcquisitionInfo` types, dimension utilities, copy constructors |
+| Encoding | `src/encoding/` | Fourier (FFT/NFFT), sensitivity map, subsampling operators; `NamedDimsOp` wrapper |
+| Regularization | `src/regularization/` | one file per regularizer + `regularization.jl` (abstract type, contract, fallbacks) |
+| Reconstruction | `src/reconstruction/` | `config.jl`, `build_model.jl`, `decomposition.jl`, `components.jl`, `reconstruct.jl` |
+| Simulation | `src/simulation/` | phantom sampling patterns, coil sensitivities, full acquisition simulation |
 
-### Key Dependencies (all custom forks)
-- **AbstractOperators.jl** — operator algebra (Eye, DFT, HCAT, VCAT, Reshape, BatchOp, etc.)
-- **FFTWOperators** — DFT operator (note: uses `num_threads` kwarg, NOT `threaded`)
-- **NFFTOperators** — NFFT for non-Cartesian trajectories
-- **WaveletOperators** — Wavelet transforms
-- **StructuredOptimization.jl** — Variable/Term/problem algebraic optimization interface
-- **ProximalOperators.jl** / **ProximalAlgorithms.jl** — proximal functions and solvers
+`src/MriReconstructionToolbox.jl` is the authoritative list of source files (`include` order) and
+exports — read it rather than trusting a tree here.
 
-### Important API Notes
-- `materialize` is NOT exported — use `MriReconstructionToolbox.materialize(reg, x; threaded)`
-- `DFT` accepts `num_threads` keyword, not `threaded` — map via `num_threads = threaded ? Threads.nthreads() : 1`
-- `Variable(T, dims...)` — splat dimensions, do NOT pass a tuple: `Variable(Float64, 8, 8, 10)` not `Variable(Float64, (8, 8, 10))`
-- `Base.reshape` is defined for `AbstractOperator` and returns `Reshape(...)`
-- `create_sampling_pattern` returns `(:, mask)` when `subsample_freq_encoding=false` (default)
-- `@reexport using AbstractOperators` and `@reexport using ProximalOperators` both export `Sum` — resolved via explicit `using AbstractOperators: Sum`
+### Decomposition over batch dimensions
 
-## Code Standards
+The reconstruction is decomposed over batch (non-image, non-time) dimensions: each slab is solved
+independently, with and without regularization. `reconstruct.jl` merges the component and
+single-variable paths, caches the encoding operator `𝒜`, and dispatches on the regularizer's
+domain. When editing this path, preserve that a `NamedDimsOp` is unwrapped and rewrapped (not
+reshaped in place), and that dimension symbols are resolved to integer indices *before* the image
+is unnamed into a `Variable`.
 
-### Julia Best Practices
-- Follow Julia naming conventions: lowercase with underscores for functions, CamelCase for types
-- Write type-stable code; verify with `@code_warntype` and JET
-- Use multiple dispatch effectively
-- Prefer immutable structs when possible
-- Keep functions focused and composable
+### Key dependencies (custom forks, dev-pathed under `deps/`)
 
-### Comments and Documentation
-- Only comment when purpose is not obvious from name and implementation
-- Write docstrings for exported functions
+`AbstractOperators` (+ `FFTWOperators`, `NFFTOperators`, `WaveletOperators`, `DSPOperators`),
+`StructuredOptimization`, `ProximalOperators`, `ProximalAlgorithms`, `OperatorCore`,
+`NestedThreading`. These are local checkouts under `deps/` — never `Pkg.add` an upstream version;
+`Pkg.instantiate` the existing Manifest.
 
-### Code Structure
-- Keep files under ~500 lines; split into logical units
-- Format with Runic.jl before committing (see Formatting section)
+### API gotchas
 
-### Testing Requirements
-- Use **TestItems.jl** and **TestItemRunner.jl** — each test file contains `@testitem` blocks
-- One `@testitem` per file works best; multiple `@testitem` blocks per file can cause parse issues with deeply nested begin/end blocks
-- Tags: `:encoding`, `:regularization`, `:minimizer`, `:reconstruction`, `:integration`, `:nfft`, `:quality`, `:jet`, `:acquisition`, `:simulation`
-- Each `@testitem` must `using MriReconstructionToolbox` and any other needed packages
-- Run quality assurance: Aqua.jl (ambiguities=false, piracies=false, persistent_tasks=false) and JET.jl
+- `materialize` / `materialize_with_auxiliaries` / `materialize_all` are not exported — call as
+  `MriReconstructionToolbox.materialize(reg, x::Variable; threaded)`.
+- `DFT` accepts `num_threads`, not `threaded` — pass `num_threads = threaded ? Threads.nthreads() : 1`.
+- `Variable(T, dims...)` — splat, do not pass a tuple.
+- `Base.reshape` on an `AbstractOperator` returns `Reshape(...)`.
+- `create_sampling_pattern` returns `(:, mask)` when `subsample_freq_encoding=false` (default).
+- `@reexport using AbstractOperators` and `... ProximalOperators` both export `Sum`; resolved via
+  explicit `using AbstractOperators: Sum`.
 
-## Development Workflow
+## Adding a regularizer
 
-### Building and Testing
+New file `src/regularization/<name>_reg.jl`, `include`d in `MriReconstructionToolbox.jl`, type(s)
+exported there. A regularizer is `struct Foo{T} <: Regularization` plus:
 
-**Install dependencies** (from package root):
+- `get_operator(::Foo, x::AbstractArray; threaded)` — the linear operator; wrap in `NamedDimsOp`
+  when `x isa NamedDimsArray`, mapping input to output dimension names.
+- `materialize(reg::Foo, x::Variable; threaded)` — build the `StructuredOptimization.Term`
+  (operator ∘ norm function). Default throws.
+- `get_affected_dims(::Foo, dimspec, image_dims)` — which image dims the term acts on.
+- `scale_regularization(reg::Foo, factor::Real)` — only if the term is homogeneous (scale `λ`).
+- `bind_dimensions(reg::Foo, image_dims)` — only if parameterized by a dim (`time_dim`, `dim`,
+  possibly `nothing`/`Symbol`): resolve it to a concrete index here. Generic fallback is identity.
+- `materialize_with_auxiliaries` — only if the term introduces extra optimization variables
+  (see `TotalGeneralizedVariation2D`).
+
+Add a `test/test_reg_<name>.jl` (`@testitem`, `tags = [:regularization]`) and a section in
+`docs/src/high-level/regularization.md`.
+
+## Testing
+
+- **TestItems.jl** / **TestItemRunner.jl**. Each `@testitem` does `using MriReconstructionToolbox`
+  and any extra packages. Multiple `@testitem` blocks per file are fine (regularizer files often
+  have several); keep begin/end nesting shallow.
+- Tags in use: `:encoding`, `:regularization`, `:reconstruction`, `:acquisition`, `:simulation`,
+  `:minimizer`, `:components`, `:integration`, `:nfft`, `:quality` (+ `:aqua`, `:jet`),
+  `:operators`. Combine as needed.
+- Full suite: `julia --project=test test/runtests.jl`
+- Filtered:
+  ```sh
+  julia --project=test -e 'using TestItemRunner; run_tests("."; filter = ti -> :regularization in ti.tags)'
+  ```
+- Quality: Aqua (`piracies=false`, `persistent_tasks=false`, `stale_deps=false`) and JET, in
+  `test/test_quality.jl`.
+
+## Formatting
+
+Format with **Runic.jl** before committing (there is no `.runic.toml`; defaults apply):
+
 ```sh
-julia --project=. -e 'using Pkg; Pkg.instantiate()'
-julia --project=test -e 'using Pkg; Pkg.instantiate()'
+julia --project=@runic -e 'using Runic; exit(Runic.main(ARGS))' -- --inplace src/ test/
 ```
 
-**Run full test suite**:
-```sh
-julia --project=test -e 'using TestItemRunner; TestItemRunner.run_tests(".")'
+## Commit messages
+
+- First line: `<type>(<scope>): <summary>` in the imperative mood, ~72 chars, no trailing period
+  (`type` = `feat`/`fix`/`refactor`/`test`/`docs`/`chore`; `scope` optional).
+- Blank line, then a body wrapped at ~72 chars explaining *what* changed and *why* — bullets for
+  multiple distinct changes, naming the files touched.
+- Trailers: attribute the model that wrote the change as co-author, and link the session.
+
+Claude:
+
+```
+<type>(<scope>): <summary>
+
+<body>
+
+Co-Authored-By: Claude <Model> <noreply@anthropic.com>
+Claude-Session: <session URL>
 ```
 
-**Run filtered tests** (by tag):
-```sh
-julia --project=test -e '
-    using TestItemRunner
-    TestItemRunner.run_tests("."; filter = ti -> :encoding in ti.tags)
-'
+`<Model>` is the exact model, e.g. `Opus 5`, `Sonnet 5`, `Fable 5`.
+
+Gemini:
+
+```
+<type>(<scope>): <summary>
+
+<body>
+
+Co-Authored-By: Gemini <model> <gemini@localhost>
 ```
 
-**Run filtered tests** (by name):
-```sh
-julia --project=test -e '
-    using TestItemRunner
-    TestItemRunner.run_tests("."; filter = ti -> ti.name == "LowRank regularization")
-'
+Replace `<model>` with the exact model name, e.g.:
+
+```
+Co-Authored-By: Gemini 3.7 Flash <gemini@localhost>
+Co-Authored-By: Gemini 2.5 Pro <gemini@localhost>
 ```
 
-### Formatting
-- This project uses **Runic.jl** for code formatting
-- Install: `julia --project=@runic --startup-file=no -e 'using Pkg; Pkg.add("Runic")'`
-- Format src/: `julia --project=@runic --startup-file=no -e 'using Runic; exit(Runic.main(ARGS))' -- --inplace src/`
-- Format test/: `julia --project=@runic --startup-file=no -e 'using Runic; exit(Runic.main(ARGS))' -- --inplace test/`
-- Always format code before committing
-
-## Known Issues
+## Known issues
 
 | Issue | Status | Notes |
 |---|---|---|
-| `dimnames` mutation in `temporal_fourier_reg.jl` | Open | `transformed_dimnames[time_dim] = :frequency` tries to mutate a Tuple — NamedDims path untested |
-| `dimnames(::BatchOp, ::Int)` missing | Open | JET reports no matching method in `encoding_operators.jl` |
-| Aqua `stale_deps` check | Flaky on HPC | Spawns subprocess that can fail with EAGAIN under load |
-| Aqua `persistent_tasks` check | Disabled | Known false positive on Julia 1.12 HPC |
+| Aqua `stale_deps` check | Disabled | Subprocess fails with EAGAIN under HPC load |
+| Aqua `persistent_tasks` check | Disabled | False positive on Julia 1.12 HPC |
 
-## Package Structure
-
-```
-src/
-├── MriReconstructionToolbox.jl    # Main module, exports, includes
-├── acquisition_data/
-│   ├── acquisition_info.jl        # Abstract AcquisitionInfo type
-│   ├── cartesian_acquisition_info.jl
-│   ├── noncartesian_acquisition_info.jl
-│   ├── acquisition_info_copy.jl   # Copy constructors
-│   └── dimension_utils.jl         # get_image_size, get_time_dim, etc.
-├── encoding/
-│   ├── named_dims_op.jl           # NamedDimsOp wrapper
-│   ├── fourier_operators.jl       # FFT-based encoding
-│   ├── nfft_operators.jl          # NFFT-based encoding
-│   ├── sensitivity_map_operators.jl
-│   ├── subsampling_operators.jl
-│   └── encoding_operators.jl      # Main encoding pipeline
-├── regularization/
-│   ├── regularization.jl          # Abstract Regularization type, fallbacks
-│   ├── image_domain_reg.jl        # Tikhonov, L1Image
-│   ├── wavelet_reg.jl             # L1Wavelet2D, L1Wavelet3D
-│   ├── total_variation_reg.jl     # TotalVariation2D, TotalVariation3D
-│   ├── temporal_fourier_reg.jl    # TemporalFourier
-│   └── low_rank_reg.jl            # LowRank, RankLimit
-├── reconstruction/
-│   ├── config.jl                  # Config struct
-│   ├── components.jl              # Component, DecomposedImage (image decomposition)
-│   ├── decomposition.jl           # Problem decomposition over batch dims
-│   ├── build_model.jl             # Assemble optimization problem
-│   ├── progress_utils.jl          # Progress logging
-│   └── reconstruct.jl             # Main reconstruct() function
-├── simulation/
-│   ├── subsampling.jl             # Sampling pattern generation
-│   ├── sensitivities.jl           # Coil sensitivity maps
-│   └── simulate_acquisition.jl    # Full simulation pipeline
-├── scaling.jl                     # Data scaling strategies
-└── utils.jl                       # General utilities
-test/
-├── runtests.jl                    # TestItemRunner entry point
-├── Project.toml                   # Test-specific dependencies
-├── test_encoding_op.jl            # Encoding operator tests
-├── test_regularizations.jl        # Core regularization tests
-├── test_temporal_lowrank_reg.jl   # TemporalFourier, LowRank, RankLimit tests
-├── test_acquisition_data.jl       # Acquisition info, dimensions, sampling tests
-├── test_reconstruction_integration.jl  # End-to-end reconstruction tests
-├── test_minimizer.jl              # Solver/minimizer tests
-├── test_image_decomposition.jl    # Component / DecomposedImage tests (:components)
-└── test_quality.jl                # Aqua + JET quality tests
-```
+Verify any other suspected issue against current source before acting — this table is pruned when
+items are fixed.
