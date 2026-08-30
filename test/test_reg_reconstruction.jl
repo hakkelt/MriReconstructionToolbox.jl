@@ -25,13 +25,21 @@ using TestItems
     relerr(x) = norm(Array(x) .- img) / norm(img)
 
     @testset "LocallyLowRank" begin
-        @test relerr(reconstruct(acq, LocallyLowRank(0.02f0; block_size = 4, time_dim = 3);
-            maxit = 60, verbose = false)) < 0.1
+        @test relerr(
+            reconstruct(
+                acq, LocallyLowRank(0.02f0; block_size = 4, time_dim = 3);
+                maxit = 60, verbose = false
+            )
+        ) < 0.1
     end
 
     @testset "TemporalTotalVariation" begin
-        @test relerr(reconstruct(acq, TemporalTotalVariation(0.02f0; time_dim = 3);
-            maxit = 100, verbose = false)) < 0.1
+        @test relerr(
+            reconstruct(
+                acq, TemporalTotalVariation(0.02f0; time_dim = 3);
+                maxit = 100, verbose = false
+            )
+        ) < 0.1
     end
 
     @testset "L+S with LocallyLowRank and TemporalTotalVariation components" begin

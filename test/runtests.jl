@@ -1,4 +1,5 @@
 using TestItemRunner
+using MriReconstructionToolbox
 
 # Run all tests. Example filtered runs from the package root:
 #
@@ -12,4 +13,4 @@ using TestItemRunner
 #                 :quality, :jet, :acquisition, :simulation,
 #                 :components
 
-@run_package_tests
+TestItemRunner.run_tests(pkgdir(MriReconstructionToolbox))

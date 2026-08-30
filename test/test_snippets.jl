@@ -5,6 +5,7 @@ using TestItems
     using MriReconstructionToolbox
     using AbstractOperators
     using NamedDims
+    using Wavelets
 end
 
 @testsnippet ProxOf begin

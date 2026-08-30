@@ -27,6 +27,7 @@ ordering is then no longer a reliable way to find the image.
 ```@docs
 build_model
 MriReconstructionToolbox.build_model_with_variables
+MriReconstructionToolbox.materialize
 MriReconstructionToolbox.materialize_with_auxiliaries
 ```
 

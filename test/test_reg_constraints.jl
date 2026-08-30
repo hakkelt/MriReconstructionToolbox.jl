@@ -49,4 +49,3 @@ using TestItems
         @test scaled.upper ≈ 2.0
     end
 end
-

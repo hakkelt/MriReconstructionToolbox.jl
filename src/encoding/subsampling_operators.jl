@@ -22,7 +22,7 @@ Create a combined Fourier transform and subsampling operator.
 - `fast_planning::Bool=false`: Whether to use fast FFTW planning
 
 # Returns
-- Composed operator `Γ * ℱ` where `ℱ` is Fourier transform and `Γ` is subsampling
+- Composed operator `𝒫 * ℱ` where `ℱ` is Fourier transform and `𝒫` is subsampling
 
 # Method Variants
 - **Explicit parameters**: Requires `subsampled_ksp`, `img_size`, and `subsampling`
@@ -43,12 +43,12 @@ function get_subsampled_fourier_operator(
         threaded::Bool = true,
         fast_planning::Bool = false
     )
-    ksp, Γ = _build_subsampling_context(subsampled_ksp, img_size, subsampling)
+    ksp, 𝒫 = _build_subsampling_context(subsampled_ksp, img_size, subsampling)
     is3D = length(img_size) == 3
     ℱ = ksp isa NamedDimsArray ?
         get_fourier_operator(ksp; shifted_kspace_dims, shifted_image_dims, threaded, fast_planning) :
         get_fourier_operator(ksp, is3D; shifted_kspace_dims, shifted_image_dims, threaded, fast_planning)
-    return Γ * ℱ
+    return 𝒫 * ℱ
 end
 
 function get_subsampled_fourier_operator(info::CartesianAcquisitionInfo; threaded::Bool = true, fast_planning::Bool = false)
@@ -62,9 +62,9 @@ end
 	get_subsampling_operator(subsampled_ksp, img_size, subsampling)
 	get_subsampling_operator(info::CartesianAcquisitionInfo)
 
-Create the subsampling operator Γ that maps full k-space to a given
-subsampled layout. This is useful when you need Γ separately or want to
-compose it with other operators manually. For a combined `Γ * ℱ` operator,
+Create the subsampling operator 𝒫 that maps full k-space to a given
+subsampled layout. This is useful when you need 𝒫 separately or want to
+compose it with other operators manually. For a combined `𝒫 * ℱ` operator,
 use `get_subsampled_fourier_operator`.
 
 # Arguments
@@ -78,14 +78,14 @@ use `get_subsampled_fourier_operator`.
 	validated acquisition struct (must contain `image_size` and `subsampling`).
 
 # Returns
-- `Γ`: A `GetIndex` or `BatchOp{GetIndex}`. For NamedDims inputs, a
-  `NamedDimsOp` wrapping the un-named Γ is returned to preserve
+- `𝒫`: A `GetIndex` or `BatchOp{GetIndex}`. For NamedDims inputs, a
+  `NamedDimsOp` wrapping the un-named 𝒫 is returned to preserve
   dimension names.
 
 # Details
 - For NamedDims input, validates that `dimnames(subsampled_ksp)` matches the
   names implied by the subsampling pattern and the full k-space layout.
-- Batch dimensions (beyond the spatial dims) are preserved; Γ becomes a batch
+- Batch dimensions (beyond the spatial dims) are preserved; 𝒫 becomes a batch
   operator when needed.
 
 # Examples
@@ -96,21 +96,21 @@ using MriReconstructionToolbox
 ksp_full = rand(ComplexF32, 64, 64, 8)
 mask = rand(Bool, 64, 64)
 ksp_sub = ksp_full[mask, :]
-Γ = get_subsampling_operator(ksp_sub, (64, 64), mask)
+𝒫 = get_subsampling_operator(ksp_sub, (64, 64), mask)
 
 # 2D NamedDims input
 using NamedDims
 ksp_nd = NamedDimsArray{(:kxy, :coil)}(ksp_sub)
-Γ_nd = get_subsampling_operator(ksp_nd, (64, 64), mask)
+𝒫_nd = get_subsampling_operator(ksp_nd, (64, 64), mask)
 
 # Via CartesianAcquisitionInfo
 info = CartesianAcquisitionInfo(ksp_sub; is3D=false, image_size=(64, 64), subsampling=mask)
-Γ_info = get_subsampling_operator(info)
+𝒫_info = get_subsampling_operator(info)
 ```
 """
 function get_subsampling_operator(subsampled_ksp, img_size, subsampling)
-    _, Γ = _build_subsampling_context(subsampled_ksp, img_size, subsampling)
-    return Γ
+    _, 𝒫 = _build_subsampling_context(subsampled_ksp, img_size, subsampling)
+    return 𝒫
 end
 
 function get_subsampling_operator(acq_info::CartesianAcquisitionInfo)
@@ -248,8 +248,8 @@ function _get_subsampling_operator(ksp, img_size::Tuple{Int, Int}, subsampling::
     if ndims(ksp) > length(img_size)
         batch_dims = size(ksp)[3:end]
         ksp_view = @view ksp[:, :, fill(1, length(batch_dims))...]
-        Γ = GetIndex(ksp_view, subsampling)
-        return BatchOp(Γ, batch_dims; threaded = true)
+        𝒫 = GetIndex(ksp_view, subsampling)
+        return BatchOp(𝒫, batch_dims; threaded = true)
     else
         return GetIndex(ksp, subsampling)
     end
@@ -261,8 +261,8 @@ function _get_subsampling_operator(ksp, img_size::Tuple{Int, Int, Int}, subsampl
     if ndims(ksp) > length(img_size)
         batch_dims = size(ksp)[4:end]
         ksp_view = @view ksp[:, :, :, fill(1, length(batch_dims))...]
-        Γ = GetIndex(ksp_view, subsampling)
-        return BatchOp(Γ, batch_dims; threaded = true)
+        𝒫 = GetIndex(ksp_view, subsampling)
+        return BatchOp(𝒫, batch_dims; threaded = true)
     else
         return GetIndex(ksp, subsampling)
     end
@@ -401,12 +401,12 @@ end
 function _build_subsampling_context(subsampled_ksp, img_size, subsampling)
     ksp = _full_kspace_template(subsampled_ksp, img_size, subsampling)
     if ksp isa NamedDimsArray
-        Γ_unwrapped = _get_subsampling_operator(unname(ksp), img_size, subsampling)
+        𝒫_unwrapped = _get_subsampling_operator(unname(ksp), img_size, subsampling)
         D = dimnames(ksp)
         new_dimnames = _get_dimnames_from_subsampling(D, img_size, subsampling)
-        Γ = NamedDimsOp{D, new_dimnames}(Γ_unwrapped)
+        𝒫 = NamedDimsOp{D, new_dimnames}(𝒫_unwrapped)
     else
-        Γ = _get_subsampling_operator(ksp, img_size, subsampling)
+        𝒫 = _get_subsampling_operator(ksp, img_size, subsampling)
     end
-    return ksp, Γ
+    return ksp, 𝒫
 end

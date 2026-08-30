@@ -3,11 +3,12 @@ version = "0.1.0"
 
 [deps]
 AbstractOperators = "d9c5613a-d543-52d8-9afd-8f241a8c3f1c"
-GeometricMedicalPhantoms = "c297bd51-60f5-42e7-80e4-f985777cb71a"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 FFTWOperators = "c59a084b-ba08-4f3f-af9e-f4298d6caa94"
+GeometricMedicalPhantoms = "c297bd51-60f5-42e7-80e4-f985777cb71a"
 MIRTjim = "170b2178-6dee-4cb0-8729-b3e8b57834cc"
+MriReconstructionToolbox = "5999b5f3-4ffc-4695-817d-461c6e99e3c0"
 NamedDims = "356022a1-0364-5f58-8944-0da4b18d706f"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 ProximalAlgorithms = "140ffc9f-1907-541a-a177-7475e0a401e9"
@@ -19,10 +20,12 @@ WaveletOperators = "f3582904-6f60-4bbd-985d-55eab799bc9d"
 
 [sources]
 AbstractOperators = {path = "../deps/AbstractOperators"}
-GeometricMedicalPhantoms = {path = "../../GeometricMedicalPhantoms"}
 FFTWOperators = {path = "../deps/AbstractOperators/FFTWOperators"}
 ProximalAlgorithms = {path = "../deps/ProximalAlgorithms"}
 ProximalCore = {url = "https://github.com/hakkelt/ProximalCore.jl"}
 ProximalOperators = {path = "../deps/ProximalOperators"}
 StructuredOptimization = {path = "../deps/StructuredOptimization"}
 WaveletOperators = {path = "../deps/AbstractOperators/WaveletOperators"}
+
+[compat]
+GeometricMedicalPhantoms = "1"

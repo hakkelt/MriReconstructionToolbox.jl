@@ -106,7 +106,7 @@ _normalize_subsampling(subs::AbstractVector{<:CartesianIndex}) = (subs,)
 _normalize_subsampling(subs) = subs
 
 CartesianAcquisitionInfo(
-    kspace_data = nothing;
+    kspace_data;
     is3D::Union{Bool, Nothing} = nothing,
     image_size = nothing,
     sensitivity_maps = nothing,
@@ -115,18 +115,16 @@ CartesianAcquisitionInfo(
     shifted_image_dims::Union{Tuple, Integer, Symbol} = (),
 ) = CartesianAcquisitionInfo(kspace_data, is3D, image_size, sensitivity_maps, subsampling, shifted_kspace_dims, shifted_image_dims)
 
-function CartesianAcquisitionInfo(config::CartesianAcquisitionInfo; kwargs...)
-    new_kwargs = Dict{Symbol, Any}()
-    for fn in fieldnames(CartesianAcquisitionInfo)
-        if haskey(kwargs, fn)
-            new_kwargs[fn] = kwargs[fn]
-        else
-            new_kwargs[fn] = getfield(config, fn)
-        end
-    end
-    args = (new_kwargs[fn] for fn in fieldnames(CartesianAcquisitionInfo))
-    return CartesianAcquisitionInfo(args...)
-end
+CartesianAcquisitionInfo(;
+    kspace_data = nothing,
+    is3D::Union{Bool, Nothing} = nothing,
+    image_size = nothing,
+    sensitivity_maps = nothing,
+    subsampling = nothing,
+    shifted_kspace_dims::Union{Tuple, Integer, Symbol} = (),
+    shifted_image_dims::Union{Tuple, Integer, Symbol} = (),
+) = CartesianAcquisitionInfo(kspace_data, is3D, image_size, sensitivity_maps, subsampling, shifted_kspace_dims, shifted_image_dims)
+
 
 function _check_smaps(smaps, ksp, subs, is3D, img_size)
     ksp_dims_count = isnothing(subs) ? (is3D ? 3 : 2) : length(subs)

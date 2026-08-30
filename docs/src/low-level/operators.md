@@ -7,13 +7,13 @@ This page documents the low-level operator interface for MRI reconstruction. The
 The MRI encoding operator $\mathcal{A}$ maps an image to k-space measurements:
 
 ```math
-y = \mathcal{A} x = \Gamma \mathcal{F} S x
+y = \mathcal{A} x = \mathcal{P} \mathcal{F} \mathcal{S} x
 ```
 
 where:
-- `S`: Sensitivity map operator (coil sensitivities)
+- `𝒮`: Sensitivity map operator (coil sensitivities)
 - `ℱ`: Fourier transform operator
-- `Γ`: Subsampling operator (k-space sampling pattern)
+- `𝒫`: Subsampling operator (k-space sampling pattern)
 - `x`: Image (single-coil)
 - `y`: Acquired k-space data (multi-coil, potentially undersampled)
 
@@ -354,10 +354,10 @@ indices = findall(mask)
 ksp_sub = ksp_full[indices, :]
 
 # Create subsampling operator with tuple pattern
-Γ = get_subsampling_operator(ksp_sub, (nx, ny), (mask,))
+𝒫 = get_subsampling_operator(ksp_sub, (nx, ny), (mask,))
 
 # Zero-fill reconstruction
-ksp_zerofilled = Γ' * ksp_sub
+ksp_zerofilled = 𝒫' * ksp_sub
 println("Zero-filled size: ", size(ksp_zerofilled))  # (64, 64, 8)
 ```
 
@@ -463,7 +463,7 @@ acq_info = AcquisitionInfo(
 # Extract operators
 E = get_encoding_operator(acq_info)
 S = get_sensitivity_map_operator(acq_info)
-Γ = get_subsampling_operator(acq_info)
+𝒫 = get_subsampling_operator(acq_info)
 
 println("Encoding operator type: ", typeof(E))
 ```

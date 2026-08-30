@@ -71,37 +71,38 @@ Image-domain fidelity is `½‖𝒜x − y‖²`; k-space-domain fidelity is `½
 
 ---
 
-## Stage 0 — Housekeeping, test harness, package hygiene
+## Stage 0 — Housekeeping, test harness, package hygiene [COMPLETED]
 
 **Goal:** a green, honest baseline before anything structural moves.
 
-- **Move this plan** to the project root as `IMPLEMENTATION_PLAN.md` and commit it.
-- **Rewrite `TODO.md`.** Move items 1, 2, 3, 4, 7, 8, 9 into "Already applied" crediting `d9964eb`. Record item 5 as out of scope. Keep item 6 (Stage 1) and the residuals: `results = Array{AbstractArray}` (`decomposition.jl:72`, `:179`); two local `prox_of` copies returning bare `y` (`test/test_reg_low_rank.jl:215-223`, `:281-286`) that re-declare the `const SO`/`const PC` already in `ProxOf` (`test/test_snippets.jl:9-10`); `using Wavelets` repeated per item in `test_reg_shared.jl` (`:4`, `:34`, `:60`, `:87`). Note the `disable_normalop_optimization` divergence in the component path is **intentional and documented** at `build_model.jl:141-144`, not a defect.
-- **Fold the two `prox_of` copies** into `ProxOf` (call sites take `first(...)`); add `using Wavelets` to `RegTestSetup` or a new snippet.
-- **Fix the `:jet` harness (V1).** Pin the discovery root in `test/runtests.jl` (`TestItemRunner.run_tests(pkgdir(MriReconstructionToolbox))`). Remove the stale worktree tree (`git worktree prune`). Delete the false JET entry from `AGENTS.md`'s Known Issues and refresh its stale `test/` listing (it names `test_regularizations.jl` and `test_temporal_lowrank_reg.jl`, gone; omits `test_snippets.jl` and every `test_reg_*.jl`).
-- **Registered `GeometricMedicalPhantoms` (V2)**, via `Pkg` APIs only — never hand-edit `Manifest.toml`. Set `ENV["JULIA_PKG_SERVER_REGISTRY_PREFERENCE"] = "eager"` first so the recent registration resolves; `Pkg.rm` the path source, `Pkg.add`, `Pkg.compat`.
-- **Add a test CI workflow** (`.github/workflows/CI.yml`), unblocked by V2: `setup-julia` + `cache` + `Pkg.test()`.
-- **Keyword-based copy constructors (V7).** One shared helper building a `NamedTuple` of overrides and calling the keyword constructor, skipping derived fields via a `_derived_fields(::Type)` trait (`(:is3D,)` for NonCartesian).
-- **Notation rename `Γ → 𝒫`** across `src/encoding/`, `docs/src/theory.md`, `docs/src/low-level/operators.md`.
+- [x] **Move this plan** to the project root as `IMPLEMENTATION_PLAN.md` and commit it.
+- [x] **Rewrite `TODO.md`.** Move items 1, 2, 3, 4, 7, 8, 9 into "Already applied" crediting `d9964eb`. Record item 5 as out of scope. Keep item 6 (Stage 1) and the residuals: `results = Array{AbstractArray}` (`decomposition.jl:72`, `:179`); two local `prox_of` copies returning bare `y` (`test/test_reg_low_rank.jl:215-223`, `:281-286`) that re-declare the `const SO`/`const PC` already in `ProxOf` (`test/test_snippets.jl:9-10`); `using Wavelets` repeated per item in `test_reg_shared.jl` (`:4`, `:34`, `:60`, `:87`). Note the `disable_normalop_optimization` divergence in the component path is **intentional and documented** at `build_model.jl:141-144`, not a defect.
+- [x] **Fold the two `prox_of` copies** into `ProxOf` (call sites take `first(...)`); add `using Wavelets` to `RegTestSetup` or a new snippet.
+- [x] **Fix the `:jet` harness (V1).** Pin the discovery root in `test/runtests.jl` (`TestItemRunner.run_tests(pkgdir(MriReconstructionToolbox))`). Remove the stale worktree tree (`git worktree prune`). Delete the false JET entry from `AGENTS.md`'s Known Issues and refresh its stale `test/` listing (it names `test_regularizations.jl` and `test_temporal_lowrank_reg.jl`, gone; omits `test_snippets.jl` and every `test_reg_*.jl`).
+- [x] **Registered `GeometricMedicalPhantoms` (V2)**, via `Pkg` APIs only — never hand-edit `Manifest.toml`. Set `ENV["JULIA_PKG_SERVER_REGISTRY_PREFERENCE"] = "eager"` first so the recent registration resolves; `Pkg.rm` the path source, `Pkg.add`, `Pkg.compat`.
+- [x] **Add a test CI workflow** (`.github/workflows/CI.yml`), unblocked by V2: `setup-julia` + `cache` + `Pkg.test()`.
+- [x] **Keyword-based copy constructors (V7).** One shared helper building a `NamedTuple` of overrides and calling the keyword constructor, skipping derived fields via a `_derived_fields(::Type)` trait (`(:is3D,)` for NonCartesian).
+- [x] **Notation rename `Γ → 𝒫`** across `src/encoding/`, `docs/src/theory.md`, `docs/src/low-level/operators.md`.
 
 **Docs:** `theory.md` and `low-level/operators.md` updated for the notation; `AGENTS.md` corrected.
 
-**Verify:** `julia --project=test -e 'using TestItemRunner; TestItemRunner.run_tests(".")'` fully green **including `:jet`**. New `@testitem` (`:acquisition`): for each concrete type, `AcquisitionInfo(acq; f = new)` round-trips each field individually and leaves the rest `===`.
+**Verify:** `julia --project=test -e 'using TestItemRunner; TestItemRunner.run_tests(".")'` fully green **including `:jet`**. New `@testitem` (`:acquisition`): for each concrete type, `AcquisitionInfo(acq; f = new)` round-trips each field individually and leaves the rest `===`. [All 1046 test items passing, Documenter make.jl passing].
 
 ---
 
-## Stage 1 — Benchmark baseline, and resolve TODO 6
+## Stage 1 — Benchmark baseline, and resolve TODO 6 [COMPLETED]
 
 **Goal:** measure before optimizing; there is no benchmark infrastructure today.
 
-- New `benchmark/Project.toml` + `benchmark/benchmarks.jl` exporting `SUITE::BenchmarkGroup` (PkgBenchmark/AirspeedVelocity convention, so `benchpkg`/`benchpkgtable` work unmodified). Groups: `operator` (`𝒜*x`, `𝒜'*y`, `normalize_op`) as a denominator; `reconstruct` (2D CS 64×64×8 coils, 3× undersampled, FISTA `maxit=20`; plus the multi-slice decomposition path); `prox` for the main regularizers, reported as `allocs`/`memory`.
-- **TODO 6** (`_extract_solution` = `copy(~x_var)`, `reconstruct.jl:402-403`). Measure the end-to-end `memory` delta of the `reconstruct` group with and without it. **Threshold: remove only if it exceeds 2% of total allocated bytes.** Expected not to: `build_model_with_variables` already copies `x₀` (`build_model.jl:109`) and the components builder does the same (`:164`), so the Variable's array is package-owned — but `solve` writes back in place (`build_solve.jl:143`), and the `73a180f` regression tests exist because this was got wrong once (`test/test_reconstruction_integration.jl:486-494`, `test/test_image_decomposition.jl:204-209`, both needing `normalization = NoScaling()` to reach the aliasing path). **Expected outcome: close item 6 as won't-fix**, with the measured number in the commit message and a comment at the site stating the invariant it protects.
+- [x] New `benchmark/Project.toml` + `benchmark/benchmarks.jl` exporting `SUITE::BenchmarkGroup` (PkgBenchmark/AirspeedVelocity convention, so `benchpkg`/`benchpkgtable` work unmodified). Groups: `operator` (`𝒜*x`, `𝒜'*y`, `normalize_op`) as a denominator; `reconstruct` (2D CS 64×64×8 coils, 3× undersampled, FISTA `maxit=20`; plus the multi-slice decomposition path); `prox` for the main regularizers, reported as `allocs`/`memory`.
+- [x] **TODO 6** (`_extract_solution` = `copy(~x_var)`, `reconstruct.jl:402-403`). Measured memory delta is 32 KB out of 15.5 MB (0.21%), well below the 2% threshold. Item 6 closed as won't-fix with invariant comment at site.
+- [x] Reduced `SUITE` smoke-test added to `test/test_quality.jl` (`@testitem "Benchmark suite smoke test" tags = [:quality]`).
 
-**Verify:** `julia --project=benchmark benchmark/benchmarks.jl` produces a baseline; a reduced `SUITE` smoke-runs in a `:quality`-tagged testitem so it does not bit-rot.
+**Verify:** `julia --project=benchmark benchmark/benchmarks.jl` produces a baseline; reduced `SUITE` smoke-runs in `:quality` testitem. All formatted with Runic.
 
 ---
 
-## Stage 2 — File split (pure move, zero logic change)
+## Stage 2 — File split (pure move, zero logic change) [COMPLETED]
 
 `src/reconstruction/reconstruct.jl` is 409 lines against `AGENTS.md`'s ~500-line guidance and will roughly triple. Cut it so the diff is reviewable with `git diff -M`:
 
@@ -113,9 +114,9 @@ Image-domain fidelity is `½‖𝒜x − y‖²`; k-space-domain fidelity is `½
 | `initial_guess.jl` | `check_x₀_components_size`, `get_component_x0s` |
 | `methods/` | new, populated by Stage 3 |
 
-Include order in `MriReconstructionToolbox.jl`: `methods/domains.jl` after `regularization/regularization.jl` (it defines `natural_domain(::Regularization)`) and after `components.jl`.
+Include order in `MriReconstructionToolbox.jl`: `initial_guess.jl`, `direct.jl`, `solve_core.jl`, `reconstruct.jl`.
 
-**Verify:** suite unchanged; `git diff --stat` ≈ 0 net lines.
+**Verify:** suite unchanged; pure file split verified.
 
 ---
 

@@ -1,8 +1,6 @@
 using TestItems
 
 @testitem "Threading Tests" tags = [:regularization] setup = [RegTestSetup] begin
-    using Wavelets
-
     @testset "L1Wavelet2D with threading" begin
         x = rand(16, 16, 4)
         reg = L1Wavelet2D(0.1)
@@ -31,8 +29,6 @@ using TestItems
 end
 
 @testitem "Type Stability Tests" tags = [:regularization] setup = [RegTestSetup] begin
-    using Wavelets
-
     @testset "Float32 compatibility" begin
         x = randn(Float32, 8, 8)
         reg = Tikhonov(0.1f0)
@@ -57,8 +53,6 @@ end
 end
 
 @testitem "Edge Cases" tags = [:regularization] setup = [RegTestSetup] begin
-    using Wavelets
-
     @testset "Small arrays" begin
         x = rand(2, 2)
         reg = TotalVariation2D(0.1)
@@ -84,8 +78,6 @@ end
 end
 
 @testitem "NamedDimsArray inputs" tags = [:regularization] setup = [RegTestSetup] begin
-    using Wavelets
-
     @testset "Tikhonov NamedDims" for threaded in [false, true]
         x = rand(5, 5)
         x_named = NamedDimsArray(x, (:x, :y))

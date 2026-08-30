@@ -304,7 +304,7 @@ end
     end
 
     @testset "the operator is a correct adjoint pair" for reg in
-            (SecondOrderTotalVariation2D(1.0), SecondOrderTotalVariation3D(1.0))
+        (SecondOrderTotalVariation2D(1.0), SecondOrderTotalVariation3D(1.0))
         n = reg isa SecondOrderTotalVariation2D ? (5, 5) : (4, 4, 4)
         op = get_operator(reg, randn(n...); threaded = false)
         u = randn(n...)

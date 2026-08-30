@@ -5,14 +5,15 @@
 The MRI forward model describes how an image transforms into observed k-space data:
 
 ```math
-y = \Gamma \mathcal{F} \mathcal{S} x + n
+y = \mathcal{P} \mathcal{F} \mathcal{S} x + n = \mathcal{A} x + n
 ```
 
 Where:
 - ``x \in \mathbb{C}^{N_x \times N_y \times [N_z]}`` is the image to be reconstructed
 - ``\mathcal{S}`` represents coil sensitivity weighting operator
 - ``\mathcal{F}`` is the Fourier transform operator
-- ``\Gamma`` is the subsampling operator
+- ``\mathcal{P}`` is the sampling / data-consistency operator
+- ``\mathcal{A} = \mathcal{P} \mathcal{F} \mathcal{S}`` is the complete encoding operator
 - ``y`` is the observed k-space data
 - ``n`` is measurement noise
 
@@ -45,12 +46,12 @@ Transforms between image and k-space:
 **Forward operation**: Discrete Fourier Transform (DFT)
 **Adjoint operation**: Inverse DFT (scaled appropriately)
 
-#### 3. Subsampling Operator (Γ)
+#### 3. Subsampling Operator (𝒫)
 
 Selects observed k-space locations according to an undersampling pattern:
 
 ```math
-\Gamma: \mathbb{C}^{N_x \times N_y \times [N_z]} \rightarrow \mathbb{C}^{|\Omega|}
+\mathcal{P}: \mathbb{C}^{N_x \times N_y \times [N_z]} \rightarrow \mathbb{C}^{|\Omega|}
 ```
 
 Where ``\Omega`` is the set of sampled k-space locations.
@@ -60,13 +61,13 @@ Where ``\Omega`` is the set of sampled k-space locations.
 The most simple way of reconstructing the image ``x`` from observed data ``y`` is to apply the adjoint of the encoding operator:
 
 ```math
-E^H y = \mathcal{S}^H \mathcal{F}^H \Gamma^H y
+\mathcal{A}^H y = \mathcal{S}^H \mathcal{F}^H \mathcal{P}^H y
 ```
 
 For fully sampled data without noise, this gives the least-squares solution. However, in practice, data is often undersampled and noisy, making direct inversion ill-posed. To address this, we formulate the reconstruction as a regularized inverse problem, formulated as:
 
 ```math
-\hat{x} = \arg\min_x \frac{1}{2}\|Ex - y\|_2^2 + \lambda R(x)
+\hat{x} = \arg\min_x \frac{1}{2}\|\mathcal{A}x - y\|_2^2 + \lambda R(x)
 ```
 
 Where:

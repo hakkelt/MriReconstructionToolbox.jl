@@ -65,4 +65,3 @@ using TestItems
         @test reg.dim == 3
     end
 end
-
