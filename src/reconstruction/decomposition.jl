@@ -10,7 +10,7 @@ abstract type ReconstructionExecutor end
 struct SequentialExecutor <: ReconstructionExecutor end
 struct MultiThreadingExecutor <: ReconstructionExecutor end
 
-function get_problem_decomposition_plan(acq_data, regularization, config)
+function get_problem_decomposition_plan(acq_data, method::AbstractReconstructionMethod, config)
     if config.disable_problem_decomposition
         return nothing
     elseif acq_data isa NonCartesianAcquisitionInfo
@@ -20,9 +20,11 @@ function get_problem_decomposition_plan(acq_data, regularization, config)
     # Determine which image dimensions can be used for problem decomposition
     image_dims = get_image_dims(acq_data)
     image_batch_dims = collect(get_nonfourier_image_dims(acq_data))
-    for reg in regularization
-        affected_dims = get_affected_dims(reg, acq_data, image_dims)
-        image_batch_dims = setdiff(image_batch_dims, affected_dims)
+    if method isa IterativeReconstruction
+        for reg in method.regularization
+            affected_dims = get_affected_dims(reg, acq_data, image_dims)
+            image_batch_dims = setdiff(image_batch_dims, affected_dims)
+        end
     end
     image_batch_dims = tuple(image_batch_dims...)
 
@@ -97,20 +99,30 @@ end
 # final image - giving uniform output - while compensating λ per slice by `scale_i / global_scale`
 # so the regularization behaves as if that slice had been normalized by its own scale (see
 # `scale_regularization`).
-function execute_regularized(plan, acq_data, config, regularization, algorithm, x₀)
+function execute_regularized(plan, acq_data, config, method::IterativeReconstruction, x₀)
     prepare = function (idx, local_acq, local_conf)
         local_x₀ = isnothing(x₀) ? nothing : get_x₀_slice(x₀, plan, idx)
         # Planned properly (not `fast_planning`), because this same operator is reused for the
         # iterative solve in phase 2 below -- otherwise phase 2 would plan an equivalent operator
         # again from scratch.
         𝒜 = get_encoding_operator(local_acq; threaded = false, fast_planning = false)
-        warm_start, scale = _direct_reconstruct(𝒜, local_acq, local_x₀, regularization, local_conf)
+        warm_start, scale = _direct_reconstruct(𝒜, local_acq, local_x₀, method, local_conf)
         return warm_start, scale, 𝒜
     end
     solve_slice = function (local_acq, warm_start, ratio, global_scale, local_conf, 𝒜)
-        local_reg = map(r -> scale_regularization(r, ratio), regularization)
+        local_reg = map(r -> scale_regularization(r, ratio), method.regularization)
+        local_method = IterativeReconstruction(
+            local_reg,
+            method.algorithm,
+            method.domain,
+            method.fidelity,
+            method.signal_model,
+            method.exact_opnorm,
+            method.disable_operator_normalization,
+            method.disable_normalop_optimization,
+        )
         result, _ = _reconstruct(
-            local_acq, local_reg, algorithm, warm_start, local_conf; scale_override = global_scale, 𝒜
+            local_acq, local_method, warm_start, local_conf; scale_override = global_scale, 𝒜
         )
         return result
     end
@@ -121,17 +133,27 @@ end
 # reconstruction: phase 1 gets each slice's own scale from a plain direct estimate,
 # phase 2 solves every slice under one shared `global_scale`, with each component's
 # regularization compensated by `scale_i / global_scale` (`scale_regularization`).
-function execute_regularized_components(plan, acq_data, config, components, algorithm, x₀)
+function execute_regularized_components(plan, acq_data, config, method::IterativeReconstruction, x₀)
     prepare = function (idx, local_acq, local_conf)
         local_x₀ = isnothing(x₀) ? nothing : slice_x₀_components(x₀, plan, idx)
         𝒜 = get_encoding_operator(local_acq; threaded = false, fast_planning = false)
         x̂, scale = _direct_reconstruct_components(𝒜, local_acq, local_conf)
-        return get_component_x0s(components, x̂, local_x₀), scale, 𝒜
+        return get_component_x0s(method.regularization, x̂, local_x₀), scale, 𝒜
     end
     solve_slice = function (local_acq, x₀s, ratio, global_scale, local_conf, 𝒜)
-        local_components = map(c -> scale_regularization(c, ratio), components)
+        local_components = map(c -> scale_regularization(c, ratio), method.regularization)
+        local_method = IterativeReconstruction(
+            local_components,
+            method.algorithm,
+            method.domain,
+            method.fidelity,
+            method.signal_model,
+            method.exact_opnorm,
+            method.disable_operator_normalization,
+            method.disable_normalop_optimization,
+        )
         result, _ = _reconstruct_components(
-            local_acq, local_components, algorithm, nothing, local_conf;
+            local_acq, local_method, nothing, local_conf;
             scale_override = global_scale, x₀s, 𝒜,
         )
         return result

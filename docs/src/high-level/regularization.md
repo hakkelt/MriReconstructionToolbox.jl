@@ -93,8 +93,8 @@ Tikhonov
 
 **Example:**
 ```@example imports
-img₁ = reconstruct(data, Tikhonov(1e-1), verbose=false)
-img₂ = reconstruct(data, Tikhonov(1e-6), verbose=false)
+img₁ = reconstruct(data, IterativeReconstruction(Tikhonov(1e-1)), verbose=false)
+img₂ = reconstruct(data, IterativeReconstruction(Tikhonov(1e-6)), verbose=false)
 p1 = jim(img₁; title="Tikhonov λ=1e-1")
 p2 = jim(img₂; title="Tikhonov λ=1e-6")
 jim(p1, p2; layout=(1,2), size=(800,400))
@@ -116,8 +116,8 @@ L1Image
 
 **Example:**
 ```@example imports
-img₁ = reconstruct(data, L1Image(1e-2), verbose=false)
-img₂ = reconstruct(data, L1Image(1e-5), verbose=false)
+img₁ = reconstruct(data, IterativeReconstruction(L1Image(1e-2)), verbose=false)
+img₂ = reconstruct(data, IterativeReconstruction(L1Image(1e-5)), verbose=false)
 p1 = jim(img₁; title="L1Image λ=1e-2")
 p2 = jim(img₂; title="L1Image λ=1e-5")
 jim(p1, p2; layout=(1,2), size=(800,400))
@@ -153,7 +153,7 @@ example_img = rand(ComplexF32, 128, 128)
 op = get_operator(reg, example_img)
 transformed = op * x_noisy
 p1 = jim(transformed; title="Wavelet Coefficients")
-img = reconstruct(data, reg, verbose=false)
+img = reconstruct(data, IterativeReconstruction(reg), verbose=false)
 p2 = jim(img; title="L1Wavelet2D Reconstruction")
 jim(p1, p2; layout=(1,2), size=(800,400))
 savefig("l1wavelet2d_regularization.png"); nothing # hide
@@ -169,14 +169,14 @@ savefig("l1wavelet2d_regularization.png"); nothing # hide
 reg_haar = L1Wavelet2D(1e-2; wavelet=WT.haar)
 op_haar = get_operator(reg_haar, example_img)
 transformed_haar = op_haar * x_noisy
-img_haar = reconstruct(data, reg_haar, verbose=false)
+img_haar = reconstruct(data, IterativeReconstruction(reg_haar), verbose=false)
 p1 = jim(transformed_haar; title="Haar Coefficients")
 p2 = jim(img_haar; title="Haar Reconstruction")
 
 reg_level8 = L1Wavelet2D(1e-3; levels=8)
 op_level8 = get_operator(reg_level8, example_img)
 transformed_level8 = op_level8 * x_noisy
-img_level8 = reconstruct(data, reg_level8, verbose=false)
+img_level8 = reconstruct(data, IterativeReconstruction(reg_level8), verbose=false)
 p3 = jim(transformed_level8; title="Level 8 Coefficients")
 p4 = jim(img_level8; title="Level 8 Reconstruction")
 jim(p1, p2, p3, p4; layout=(2,2), size=(800,700))
@@ -229,7 +229,7 @@ TotalVariation2D
 reg = TotalVariation2D(1e-3)
 op = get_operator(reg, example_img)
 transformed = op * x_noisy
-img = reconstruct(data, reg, verbose=false)
+img = reconstruct(data, IterativeReconstruction(reg), verbose=false)
 p1 = jim(transformed[:,:,1]; title="Δx Coefficients")
 p2 = jim(transformed[:,:,2]; title="Δy Coefficients")
 p3 = jim(img; title="TotalVariation2D Reconstruction")
@@ -265,7 +265,7 @@ SecondOrderTotalVariation3D
 **Example:**
 ```julia
 # first-order TV for the edges, second-order for the ramps
-img = reconstruct(acq, (TotalVariation2D(1e-3), SecondOrderTotalVariation2D(2e-3)))
+img = reconstruct(acq, IterativeReconstruction(TotalVariation2D(1e-3), SecondOrderTotalVariation2D(2e-3)))
 ```
 
 **Practical tip:** If you find yourself tuning the balance between first- and second-order TV, use
@@ -285,7 +285,7 @@ TotalGeneralizedVariation2D
 
 **Example:**
 ```julia
-img = reconstruct(acq, TotalGeneralizedVariation2D(1e-3), ADMM(maxit=500))
+img = reconstruct(acq, IterativeReconstruction(TotalGeneralizedVariation2D(1e-3); algorithm = ADMM(maxit=500)))
 ```
 
 **Practical tip:** TGV requires `ADMM` — the auxiliary field is coupled to the image through `∇x − w`, which
@@ -304,7 +304,7 @@ components = (
     Component(:cartoon, TotalVariation2D(1e-3)),
     Component(:ramp, SecondOrderTotalVariation2D(1e-3)),
 )
-img = reconstruct(acq, components, ADMM(maxit=500))
+img = reconstruct(acq, IterativeReconstruction(components...; algorithm = ADMM(maxit=500)))
 img.components.cartoon   # the edges
 img.components.ramp      # the smooth background
 ```
@@ -329,7 +329,7 @@ EdgePreservingRoughness3D
 
 **Example:**
 ```julia
-img = reconstruct(acq, EdgePreservingRoughness2D(1e-3; δ = 0.01))
+img = reconstruct(acq, IterativeReconstruction(EdgePreservingRoughness2D(1e-3; δ = 0.01)))
 ```
 
 **Practical tip:** `δ` is an absolute intensity, so it must be set relative to the image scale. A workable
@@ -355,7 +355,7 @@ TemporalFourier
 
 **Example:**
 ```julia
-img = reconstruct(acq, TemporalFourier(1e-2, time_dim=4))
+img = reconstruct(acq, IterativeReconstruction(TemporalFourier(1e-2, time_dim=4)))
 ```
 
 **Practical tip:** This works best when temporal changes are smooth or periodic. For irregular motion, consider temporal total variation or low-rank methods instead.
@@ -375,7 +375,7 @@ TemporalTotalVariation
 
 **Example:**
 ```julia
-img = reconstruct(acq_dynamic, TemporalTotalVariation(2e-2; time_dim = 3))
+img = reconstruct(acq_dynamic, IterativeReconstruction(TemporalTotalVariation(2e-2; time_dim = 3)))
 ```
 
 **Practical tip:** Like spatial TV, this term uses a non-tight operator, so reconstruction falls back to ADMM. It is the temporal counterpart of [`TotalVariation2D`](@ref) and is often combined with it (`(TotalVariation2D(1e-3), TemporalTotalVariation(2e-2))`) — the "spatiotemporal TV" of the golden-angle radial sparse parallel (GRASP) literature.
@@ -400,7 +400,7 @@ RankLimit
 **Example:**
 ```julia
 # Dynamic series with low-rank structure
-img = reconstruct(acq_dynamic, LowRank(1e-1))
+img = reconstruct(acq_dynamic, IterativeReconstruction(LowRank(1e-1)))
 ```
 
 **Practical tip:** Low-rank methods can be computationally expensive. Use for datasets where temporal correlations are strong.
@@ -419,7 +419,7 @@ LocallyLowRank
 
 **Example:**
 ```julia
-img = reconstruct(acq_dynamic, LocallyLowRank(5e-2; block_size = 8, time_dim = 3))
+img = reconstruct(acq_dynamic, IterativeReconstruction(LocallyLowRank(5e-2; block_size = 8, time_dim = 3)))
 ```
 
 **Practical tip:** `block_size` trades locality against cost and stability: 4-8 voxels for strongly varying dynamics, 12-16 when the temporal signal is smooth over larger regions. Each iteration performs one SVD of a `(∏ block_size) × n_frames` matrix per block. A single fixed block grid can leave visible block boundaries at large λ; pass `shift = :random` to redraw the grid before every proximal step, which averages them out (see below).
@@ -440,7 +440,7 @@ divisible by the block edge, which is checked. Because the objective is no longe
 iteration, the line-search algorithms (`PANOC`, `PANOCplus`, `ZeroFPR`) must not be used with it.
 
 ```julia
-img = reconstruct(acq_dynamic, LocallyLowRank(5e-2; block_size = 8, time_dim = 3, shift = :random), FISTA())
+img = reconstruct(acq_dynamic, IterativeReconstruction(LocallyLowRank(5e-2; block_size = 8, time_dim = 3, shift = :random); algorithm = FISTA()))
 ```
 
 #### Multi-Scale Low Rank
@@ -457,7 +457,7 @@ MultiScaleLowRank
 
 **Example:**
 ```julia
-img = reconstruct(acq_dynamic, MultiScaleLowRank(5e-2; block_sizes = (4, 8, 16), time_dim = 3))
+img = reconstruct(acq_dynamic, IterativeReconstruction(MultiScaleLowRank(5e-2; block_sizes = (4, 8, 16), time_dim = 3)))
 ```
 
 **Practical tip:** The term uses the *proximal average* of the per-scale penalties, which approximates their
@@ -489,8 +489,8 @@ SparsityLimit
 **Example:**
 ```julia
 # ℓ₀ penalty on wavelet coefficients, warm-started from an ℓ₁ solution
-x_l1 = reconstruct(acq, L1Wavelet2D(1e-3))
-img = reconstruct(acq, HardThreshold(1e-3; domain = :wavelet2d); x₀ = x_l1)
+x_l1 = reconstruct(acq, IterativeReconstruction(L1Wavelet2D(1e-3)))
+img = reconstruct(acq, IterativeReconstruction(HardThreshold(1e-3; domain = :wavelet2d)); x₀ = x_l1)
 ```
 
 **Practical tip:** Both terms are non-convex, so the solvers only guarantee a stationary point and the result
@@ -515,8 +515,10 @@ PlugAndPlay
 using BM3D
 img = reconstruct(
     acq,
-    PlugAndPlay((image, σ) -> bm3d(image, σ); strength = 0.05),
-    FISTA(maxit = 100),
+    IterativeReconstruction(
+        PlugAndPlay((image, σ) -> bm3d(image, σ); strength = 0.05);
+        algorithm = FISTA(maxit = 100),
+    ),
 )
 ```
 
@@ -542,7 +544,7 @@ JointSparsity
 **Example:**
 ```julia
 # echoes stored along dimension 3, sharing the same support
-img = reconstruct(acq_multiecho, JointSparsity(1e-2; dim = 3))
+img = reconstruct(acq_multiecho, IterativeReconstruction(JointSparsity(1e-2; dim = 3)))
 ```
 
 **Practical tip:** Joint sparsity is most effective on a sparsifying transform of the images. Combining `JointSparsity` with a wavelet regularizer per contrast (`(JointSparsity(1e-2; dim = 3), L1Wavelet2D(1e-3))`) is a common compromise.
@@ -562,8 +564,8 @@ ReferencePrior
 
 **Example:**
 ```julia
-x_ref = reconstruct(acq_reference, L1Wavelet2D(1e-3))
-img = reconstruct(acq, (ReferencePrior(1e-2, x_ref), L1Wavelet2D(1e-3)))
+x_ref = reconstruct(acq_reference, IterativeReconstruction(L1Wavelet2D(1e-3)))
+img = reconstruct(acq, IterativeReconstruction(ReferencePrior(1e-2, x_ref), L1Wavelet2D(1e-3)))
 ```
 
 **Practical tip:** The reference must be in the same units as the reconstruction; when data scaling is enabled the reference is rescaled automatically. A wrong reference biases the result toward it, so combine it with an ordinary sparsity term (as in the PICCS convex combination) rather than using it alone.
@@ -585,7 +587,7 @@ Both are defined for real-valued images only; applying them to complex data thro
 
 **Example:**
 ```julia
-img = reconstruct(acq_real, (TotalVariation2D(1e-3), NonNegative()))
+img = reconstruct(acq_real, IterativeReconstruction(TotalVariation2D(1e-3), NonNegative()))
 ```
 
 ## Combining Multiple Regularizers
@@ -594,12 +596,12 @@ You can combine multiple regularization terms to exploit different image propert
 
 ```julia
 # Comprehensive regularization for dynamic imaging
-reg = (
+method = IterativeReconstruction(
     L1Wavelet2D(5e-3),      # Spatial sparsity
     TotalVariation2D(1e-3),  # Edge preservation
-    TemporalFourier(2e-2)    # Temporal smoothness
+    TemporalFourier(2e-2),   # Temporal smoothness
 )
-img = reconstruct(acq_dynamic, reg)
+img = reconstruct(acq_dynamic, method)
 ```
 
 **When to combine:**

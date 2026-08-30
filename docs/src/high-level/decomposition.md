@@ -35,7 +35,7 @@ The `reconstruct` function automatically determines if decomposition is benefici
 # 1. There are batch dimensions (e.g., time, slice)
 # 2. The batch dimensions aren't affected by regularization
 # 3. decomposition is not disabled
-img = reconstruct(acq, regularization)
+img = reconstruct(acq, IterativeReconstruction(regularization))
 ```
 
 ### Conditions for Decomposition
@@ -49,7 +49,6 @@ img = reconstruct(acq, regularization)
 - No batch dimensions exist
 - Regularization couples batch dimensions (e.g., temporal regularization)
 - Explicitly disabled
-- No regularization specified (direct reconstruction doesn't benefit)
 
 ## Understanding Batch Dimensions
 
@@ -101,13 +100,13 @@ These regularizations only affect spatial dimensions:
 
 ```julia
 # Each time point reconstructed independently
-img = reconstruct(acq_dynamic, L1Wavelet2D(5e-3))  # ✅ Decomposed over time
+img = reconstruct(acq_dynamic, IterativeReconstruction(L1Wavelet2D(5e-3)))  # ✅ Decomposed over time
 
 # Each slice reconstructed independently  
-img = reconstruct(acq_multislice, TotalVariation2D(1e-3))  # ✅ Decomposed over slices
+img = reconstruct(acq_multislice, IterativeReconstruction(TotalVariation2D(1e-3)))  # ✅ Decomposed over slices
 
 # Multiple spatial regularizers still allow decomposition
-img = reconstruct(acq, (L1Wavelet2D(5e-3), TotalVariation2D(1e-3)))  # ✅ Decomposed
+img = reconstruct(acq, IterativeReconstruction(L1Wavelet2D(5e-3), TotalVariation2D(1e-3)))  # ✅ Decomposed
 ```
 
 ### Regularization that PREVENTS Decomposition
@@ -116,13 +115,13 @@ These regularizations couple batch dimensions:
 
 ```julia
 # 3D wavelets couple slice dimension
-img = reconstruct(acq_multislice, L1Wavelet3D(5e-3))  # ❌ No decomposition
+img = reconstruct(acq_multislice, IterativeReconstruction(L1Wavelet3D(5e-3)))  # ❌ No decomposition
 
 # Temporal regularization couples time points
-img = reconstruct(acq_dynamic, TemporalFourier(1e-2))  # ❌ No decomposition
+img = reconstruct(acq_dynamic, IterativeReconstruction(TemporalFourier(1e-2)))  # ❌ No decomposition
 
 # Low-rank couples time points
-img = reconstruct(acq_dynamic, LowRank(1e-1))  # ❌ No decomposition
+img = reconstruct(acq_dynamic, IterativeReconstruction(LowRank(1e-1)))  # ❌ No decomposition
 ```
 
 ### Mixed Cases
@@ -131,8 +130,8 @@ img = reconstruct(acq_dynamic, LowRank(1e-1))  # ❌ No decomposition
 # Spatial + Temporal regularization
 # Cannot decompose over time (coupled by TemporalFourier)
 # But could decompose over other batch dimensions, like slice
-reg = (L1Wavelet2D(5e-3), TemporalFourier(1e-2))
-img = reconstruct(acq, reg)  # Partial decomposition possible
+method = IterativeReconstruction(L1Wavelet2D(5e-3), TemporalFourier(1e-2))
+img = reconstruct(acq, method)  # Partial decomposition possible
 ```
 
 ## Controlling Decomposition
@@ -143,7 +142,7 @@ Just call reconstruct normally:
 
 ```julia
 # Automatic decomposition when beneficial
-img = reconstruct(acq, L1Wavelet2D(5e-3))
+img = reconstruct(acq, IterativeReconstruction(L1Wavelet2D(5e-3)))
 ```
 
 The function will:
@@ -158,7 +157,7 @@ Disable decomposition if needed:
 
 ```julia
 # Force sequential reconstruction
-img = reconstruct(acq, regularization; 
+img = reconstruct(acq, IterativeReconstruction(regularization); 
                  disable_problem_decomposition=true)
 ```
 
@@ -171,16 +170,16 @@ img = reconstruct(acq, regularization;
 
 ```julia
 # Default: Multi-threading (recommended)
-img = reconstruct(acq, reg)
+img = reconstruct(acq, method)
 
 # Can explicitly specify executor
 using MriReconstructionToolbox: MultiThreadingExecutor, SequentialExecutor
 
 # Force multi-threading
-img = reconstruct(acq, reg; 
+img = reconstruct(acq, method; 
                  decomposition_executor=MultiThreadingExecutor())
 
 # Force sequential
-img = reconstruct(acq, reg; 
+img = reconstruct(acq, method; 
                  decomposition_executor=SequentialExecutor())
 ```

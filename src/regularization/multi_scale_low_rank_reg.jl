@@ -155,10 +155,10 @@ function materialize(reg::MultiScaleLowRank, x::Variable{T}; threaded::Bool) whe
     λ = real(T)(reg.λ)
     scales = Tuple(
         BlockNuclearNorm(
-            λ, _llr_block_size(block_size, spatial_size),
-            spatial_size, size(x_val, time_dim), num_batch, threaded;
-            shift = reg.shift, rng = reg.rng
-        ) for block_size in reg.block_sizes
+                λ, _llr_block_size(block_size, spatial_size),
+                spatial_size, size(x_val, time_dim), num_batch, threaded;
+                shift = reg.shift, rng = reg.rng
+            ) for block_size in reg.block_sizes
     )
     f = ProximalAverage(scales, _mslr_weights(reg, real(T)))
     op = get_operator(reg, x_val; threaded)

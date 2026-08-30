@@ -95,7 +95,7 @@ acq = AcquisitionInfo(ksp_sub;
                       subsampling=pattern)
 
 # Reconstruct with wavelet sparsity regularization
-img = reconstruct(acq, L1Wavelet2D(5e-3))
+img = reconstruct(acq, IterativeReconstruction(L1Wavelet2D(5e-3)))
 ```
 
 ## Documentation

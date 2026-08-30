@@ -27,7 +27,7 @@ using TestItems
     @testset "LocallyLowRank" begin
         @test relerr(
             reconstruct(
-                acq, LocallyLowRank(0.02f0; block_size = 4, time_dim = 3);
+                acq, IterativeReconstruction(LocallyLowRank(0.02f0; block_size = 4, time_dim = 3));
                 maxit = 60, verbose = false
             )
         ) < 0.1
@@ -36,7 +36,7 @@ using TestItems
     @testset "TemporalTotalVariation" begin
         @test relerr(
             reconstruct(
-                acq, TemporalTotalVariation(0.02f0; time_dim = 3);
+                acq, IterativeReconstruction(TemporalTotalVariation(0.02f0; time_dim = 3));
                 maxit = 100, verbose = false
             )
         ) < 0.1
@@ -47,7 +47,7 @@ using TestItems
             Component(:lowrank, LocallyLowRank(0.02f0; block_size = 4, time_dim = 3)),
             Component(:sparse, TemporalTotalVariation(0.02f0; time_dim = 3)),
         )
-        img_recon = reconstruct(acq, components; maxit = 100, verbose = false)
+        img_recon = reconstruct(acq, IterativeReconstruction(components...); maxit = 100, verbose = false)
         @test img_recon isa DecomposedImage
         @test relerr(img_recon) < 0.2
     end
@@ -57,7 +57,7 @@ using TestItems
             Component(:lowrank, LowRank(0.02f0; time_dim = 3)),
             Component(:sparse, L1Image(0.02f0)),
         )
-        img_recon = reconstruct(acq, components; maxit = 100, verbose = false)
+        img_recon = reconstruct(acq, IterativeReconstruction(components...); maxit = 100, verbose = false)
         @test img_recon isa DecomposedImage
         @test relerr(img_recon) < 0.2
     end
@@ -71,7 +71,7 @@ using TestItems
             Component(:lowrank, LowRank(0.02f0; time_dim = 3)),
             Component(:sparse, TemporalTotalVariation(0.02f0; time_dim = 3)),
         )
-        img_recon = reconstruct(acq, components; maxit = 100, verbose = false)
+        img_recon = reconstruct(acq, IterativeReconstruction(components...); maxit = 100, verbose = false)
         @test img_recon isa DecomposedImage
         @test relerr(img_recon) < 0.2
     end

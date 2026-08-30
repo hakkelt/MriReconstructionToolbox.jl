@@ -185,7 +185,12 @@ end
     pattern = create_sampling_pattern(VariableDensitySampling(PolynomialDistribution(3), 2.0, 0.15), (nx, ny))
     acq = simulate_acquisition(img_true, AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern))
 
-    img_recon = reconstruct(acq, TotalGeneralizedVariation2D(0.005), ADMM(rho = 1.0); maxit = 50, verbose = false)
+    img_recon = reconstruct(
+        acq,
+        IterativeReconstruction(TotalGeneralizedVariation2D(0.005); algorithm = ADMM(rho = 1.0));
+        maxit = 50,
+        verbose = false,
+    )
     @test size(img_recon) == (nx, ny)
     @test all(isfinite, img_recon)
     # A sign-flipped or diverged solve lands near 2.0; measured ≈0.29 at 50 iterations.

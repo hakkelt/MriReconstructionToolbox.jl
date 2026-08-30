@@ -1,0 +1,80 @@
+"""
+	ReconstructionDomain
+
+Abstract supertype for domains in which reconstruction optimization variables are defined.
+"""
+abstract type ReconstructionDomain end
+
+"""
+	ImageDomain <: ReconstructionDomain
+
+Specifies that the reconstruction optimization variable is defined in the image domain.
+"""
+struct ImageDomain <: ReconstructionDomain end
+
+"""
+	KSpaceDomain{C} <: ReconstructionDomain
+
+Specifies that the reconstruction optimization variable is defined in k-space.
+"""
+struct KSpaceDomain{C} <: ReconstructionDomain
+    coil_combination::C
+end
+
+KSpaceDomain() = KSpaceDomain(nothing)
+
+"""
+	CoilCombination
+
+Abstract supertype for multi-coil combination strategies.
+"""
+abstract type CoilCombination end
+
+"""
+	AdjointSensitivity <: CoilCombination
+
+Combines multi-coil data using the adjoint sensitivity encoding operator (sensitivity-weighted sum).
+"""
+struct AdjointSensitivity <: CoilCombination end
+
+"""
+	RootSumSquares <: CoilCombination
+
+Combines multi-coil data using root sum of squares across coil channels.
+"""
+struct RootSumSquares <: CoilCombination end
+
+"""
+	NoCoilCombination <: CoilCombination
+
+Leaves individual coil channels uncombined.
+"""
+struct NoCoilCombination <: CoilCombination end
+
+"""
+	DataFidelity
+
+Abstract supertype for data consistency loss terms.
+"""
+abstract type DataFidelity end
+
+"""
+	L2Loss <: DataFidelity
+
+Standard squared Euclidean loss: ‖𝒜x - y‖₂².
+"""
+struct L2Loss <: DataFidelity end
+
+"""
+	HardConsistency <: DataFidelity
+
+Hard data consistency indicator constraint: {x | 𝒜x = y}.
+"""
+struct HardConsistency <: DataFidelity end
+
+"""
+	NoFidelity <: DataFidelity
+
+No data consistency term (e.g. for pure regularization or custom models).
+"""
+struct NoFidelity <: DataFidelity end
