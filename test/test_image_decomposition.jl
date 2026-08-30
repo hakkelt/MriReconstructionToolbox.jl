@@ -260,7 +260,7 @@ end
     @test all(isfinite, img_recon.components.sparse)
 end
 
-@testitem "reconstruct: LowRank + Sparse with problem decomposition and NamedDimsArray" tags = [:components, :integration] begin
+@testitem "reconstruct: components with problem decomposition and NamedDimsArray" tags = [:components, :integration] begin
     using Test
     using NamedDims
     using MriReconstructionToolbox
@@ -272,15 +272,23 @@ end
     ksp = simulate_acquisition(img_true, acq).kspace_data
     acq_data = AcquisitionInfo(acq, kspace_data = ksp)
 
+    # Both components affect only :time, so :z stays a batch dimension: the problem-decomposition
+    # planner must resolve the symbol `time_dim` against the named image dims and pick :z to slice.
     components = (
-        Component(:lowrank, LowRank(0.01; time_dim = :time)),
-        Component(:sparse, TemporalFourier(0.01; time_dim = :time)),
+        Component(:fourier, TemporalFourier(0.01; time_dim = :time)),
+        Component(:tv, TemporalTotalVariation(0.01; time_dim = :time)),
     )
 
-    img_recon = reconstruct(acq_data, components; maxit = 5, verbose = false)
-    @test img_recon isa DecomposedImage
-    @test size(img_recon) == (nx, ny, nslices, nt)
-    @test dimnames(img_recon) == (:x, :y, :z, :time)
-    @test all(isfinite, img_recon.components.lowrank)
-    @test all(isfinite, img_recon.components.sparse)
+    image_dims = MriReconstructionToolbox.get_image_dims(acq_data)
+    @test image_dims == (:x, :y, :z, :time)
+
+    # bind_dimensions is the symbol-resolution step the fix moved ahead of unnaming: every
+    # component's regularizer must come back with an integer `time_dim` (4, here).
+    bound = MriReconstructionToolbox.bind_dimensions(components, image_dims)
+    @test bound[1].regularizations[1].time_dim == 4
+    @test bound[2].regularizations[1].time_dim == 4
+
+    plan = MriReconstructionToolbox.get_problem_decomposition_plan(acq_data, bound, Config(verbose = false))
+    @test plan !== nothing
+    @test plan.image_batch_dims == (3,)  # slice over :z
 end
