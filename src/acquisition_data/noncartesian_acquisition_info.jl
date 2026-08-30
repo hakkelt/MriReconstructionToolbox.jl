@@ -86,35 +86,24 @@ end
 
 NonCartesianAcquisitionInfo(
     kspace_data;
-    trajectory,
+    trajectory = nothing,
     dcf = nothing,
     sensitivity_maps = nothing,
-    image_size,
+    image_size = nothing,
     shifted_kspace_dims::Union{Tuple, Integer, Symbol} = (),
     shifted_image_dims::Union{Tuple, Integer, Symbol} = (),
 ) = NonCartesianAcquisitionInfo(kspace_data, trajectory, dcf, sensitivity_maps, image_size, shifted_kspace_dims, shifted_image_dims)
 
-function NonCartesianAcquisitionInfo(config::NonCartesianAcquisitionInfo; kwargs...)
-    new_kwargs = Dict{Symbol, Any}()
-    for fn in fieldnames(NonCartesianAcquisitionInfo)
-        if fn == :is3D
-            continue
-        elseif haskey(kwargs, fn)
-            new_kwargs[fn] = kwargs[fn]
-        else
-            new_kwargs[fn] = getfield(config, fn)
-        end
-    end
-    return NonCartesianAcquisitionInfo(
-        new_kwargs[:kspace_data],
-        new_kwargs[:trajectory],
-        new_kwargs[:dcf],
-        new_kwargs[:sensitivity_maps],
-        new_kwargs[:image_size],
-        new_kwargs[:shifted_kspace_dims],
-        new_kwargs[:shifted_image_dims],
-    )
-end
+NonCartesianAcquisitionInfo(;
+    kspace_data = nothing,
+    trajectory = nothing,
+    dcf = nothing,
+    sensitivity_maps = nothing,
+    image_size = nothing,
+    shifted_kspace_dims::Union{Tuple, Integer, Symbol} = (),
+    shifted_image_dims::Union{Tuple, Integer, Symbol} = (),
+) = NonCartesianAcquisitionInfo(kspace_data, trajectory, dcf, sensitivity_maps, image_size, shifted_kspace_dims, shifted_image_dims)
+
 
 function _get_acq_info_meta(info::NonCartesianAcquisitionInfo)
     meta = String[]

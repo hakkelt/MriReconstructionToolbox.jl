@@ -76,18 +76,131 @@
     end
 end
 
-@testitem "CartesianAcquisitionInfo copy constructor" tags = [:acquisition] begin
+@testitem "AcquisitionInfo copy constructors field round-trips" tags = [:acquisition] begin
     using MriReconstructionToolbox
 
-    ksp = randn(ComplexF32, 8, 8)
-    info = AcquisitionInfo(ksp; image_size = (8, 8))
-    @test info isa CartesianAcquisitionInfo
+    @testset "CartesianAcquisitionInfo individual field round-trips" begin
+        mask = rand(Bool, 16, 16)
+        ksp = randn(ComplexF32, sum(mask), 4)
+        smaps = randn(ComplexF32, 16, 16, 4)
+        orig = CartesianAcquisitionInfo(
+            ksp;
+            is3D = false,
+            image_size = (16, 16),
+            sensitivity_maps = smaps,
+            subsampling = mask,
+            shifted_kspace_dims = (1,),
+            shifted_image_dims = (2,),
+        )
 
-    new_ksp = randn(ComplexF32, 8, 8)
-    info2 = AcquisitionInfo(info; kspace_data = new_ksp)
-    @test info2.kspace_data === new_ksp
-    @test info2.image_size == (8, 8)
-    @test info2 isa CartesianAcquisitionInfo
+        # Override kspace_data
+        new_ksp = randn(ComplexF32, sum(mask), 4)
+        c1 = AcquisitionInfo(orig; kspace_data = new_ksp)
+        @test c1 isa CartesianAcquisitionInfo
+        @test c1.kspace_data === new_ksp
+        @test c1.is3D === orig.is3D
+        @test c1.image_size === orig.image_size
+        @test c1.sensitivity_maps === orig.sensitivity_maps
+        @test c1.subsampling === orig.subsampling
+        @test c1.shifted_kspace_dims === orig.shifted_kspace_dims
+        @test c1.shifted_image_dims === orig.shifted_image_dims
+
+        # Override sensitivity_maps
+        new_smaps = randn(ComplexF32, 16, 16, 4)
+        c2 = CartesianAcquisitionInfo(orig; sensitivity_maps = new_smaps)
+        @test c2.sensitivity_maps === new_smaps
+        @test c2.kspace_data === orig.kspace_data
+        @test c2.image_size === orig.image_size
+        @test c2.subsampling === orig.subsampling
+
+        # Override image_size
+        plain = CartesianAcquisitionInfo(ksp; is3D = false, image_size = (16, 16))
+        c3 = AcquisitionInfo(plain; image_size = (32, 32))
+        @test c3.image_size == (32, 32)
+        @test c3.kspace_data === plain.kspace_data
+        @test c3.is3D === plain.is3D
+
+        # Override subsampling
+        new_mask = (rand(Bool, 16, 16),)
+        c4 = AcquisitionInfo(orig; subsampling = new_mask)
+        @test c4.subsampling === new_mask
+        @test c4.kspace_data === orig.kspace_data
+
+        # Override shifted dims
+        c5 = AcquisitionInfo(orig; shifted_kspace_dims = (2,), shifted_image_dims = (1,))
+        @test c5.shifted_kspace_dims == (2,)
+        @test c5.shifted_image_dims == (1,)
+        @test c5.kspace_data === orig.kspace_data
+    end
+
+    @testset "NonCartesianAcquisitionInfo individual field round-trips" begin
+        ksp = randn(ComplexF32, 64, 4)
+        traj = randn(Float32, 2, 64)
+        dcf = rand(Float32, 64)
+        smaps = randn(ComplexF32, 16, 16, 4)
+        orig = NonCartesianAcquisitionInfo(
+            ksp;
+            trajectory = traj,
+            dcf = dcf,
+            sensitivity_maps = smaps,
+            image_size = (16, 16),
+            shifted_kspace_dims = (1,),
+            shifted_image_dims = (2,),
+        )
+        @test !orig.is3D
+
+        # Override kspace_data
+        new_ksp = randn(ComplexF32, 64, 4)
+        c1 = AcquisitionInfo(orig; kspace_data = new_ksp)
+        @test c1 isa NonCartesianAcquisitionInfo
+        @test c1.kspace_data === new_ksp
+        @test c1.trajectory === orig.trajectory
+        @test c1.dcf === orig.dcf
+        @test c1.sensitivity_maps === orig.sensitivity_maps
+        @test c1.image_size === orig.image_size
+        @test c1.is3D === orig.is3D
+        @test c1.shifted_kspace_dims === orig.shifted_kspace_dims
+        @test c1.shifted_image_dims === orig.shifted_image_dims
+
+        # Override trajectory (2D to 3D)
+        traj3d = randn(Float32, 3, 128)
+        ksp3d = randn(ComplexF32, 128, 4)
+        dcf3d = rand(Float32, 128)
+        smaps3d = randn(ComplexF32, 16, 16, 16, 4)
+        c2 = NonCartesianAcquisitionInfo(
+            orig;
+            trajectory = traj3d,
+            kspace_data = ksp3d,
+            dcf = dcf3d,
+            sensitivity_maps = smaps3d,
+            image_size = (16, 16, 16),
+        )
+        @test c2.is3D == true
+        @test c2.trajectory === traj3d
+        @test c2.image_size == (16, 16, 16)
+
+        # Override dcf
+        new_dcf = rand(Float32, 64)
+        c3 = AcquisitionInfo(orig; dcf = new_dcf)
+        @test c3.dcf === new_dcf
+        @test c3.kspace_data === orig.kspace_data
+        @test c3.trajectory === orig.trajectory
+        @test c3.sensitivity_maps === orig.sensitivity_maps
+
+        # Override sensitivity_maps
+        new_smaps = randn(ComplexF32, 16, 16, 4)
+        c4 = AcquisitionInfo(orig; sensitivity_maps = new_smaps)
+        @test c4.sensitivity_maps === new_smaps
+        @test c4.kspace_data === orig.kspace_data
+        @test c4.trajectory === orig.trajectory
+
+        # Override image_size
+        plain_nc = NonCartesianAcquisitionInfo(ksp; trajectory = traj, image_size = (16, 16))
+        c5 = AcquisitionInfo(plain_nc; image_size = (32, 32))
+        @test c5.image_size == (32, 32)
+        @test c5.kspace_data === plain_nc.kspace_data
+        @test c5.trajectory === plain_nc.trajectory
+    end
 end
 
 @testitem "Dimension utilities" tags = [:acquisition] begin

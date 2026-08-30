@@ -51,4 +51,3 @@ using TestItems
         @test dims_named == (:time,)
     end
 end
-

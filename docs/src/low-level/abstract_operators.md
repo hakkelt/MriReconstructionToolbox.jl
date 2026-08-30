@@ -119,9 +119,9 @@ Operators can be composed naturally:
 mask = rand(Bool, nx, ny); mask[32-5:32+5, 32-5:32+5] .= true;  # Fully sample center
 sum(mask) # Count of sampled points
 
-Γ = GetIndex(zeros(ComplexF32, nx, ny), (mask,))
+𝒫 = GetIndex(zeros(ComplexF32, nx, ny), (mask,))
 
-ℱ_sub = Γ * ℱ # Compose: subsampled Fourier transform
+ℱ_sub = 𝒫 * ℱ # Compose: subsampled Fourier transform
 
 x = randn(ComplexF32, nx, ny);
 y = ℱ_sub * x; # Apply the composition

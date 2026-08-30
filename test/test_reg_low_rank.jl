@@ -205,22 +205,13 @@ end
     end
 end
 
-@testitem "LocallyLowRank grid shifts" tags = [:regularization] setup = [RegTestSetup] begin
+@testitem "LocallyLowRank grid shifts" tags = [:regularization] setup = [RegTestSetup, ProxOf] begin
     using LinearAlgebra
     using Random
-
-    const SO = MriReconstructionToolbox.StructuredOptimization
-    const PC = MriReconstructionToolbox.ProximalCore
 
     materialized(reg, x) = SO.extract_functions(
         MriReconstructionToolbox.materialize(reg, Variable(x); threaded = false)
     )
-
-    function prox_of(reg, x, γ = 1.0)
-        y = similar(x)
-        PC.prox!(y, materialized(reg, x), x, γ)
-        return y
-    end
 
     @testset "Constructor" begin
         @test LocallyLowRank(0.1; block_size = 4).shift == :none
@@ -241,7 +232,7 @@ end
         # The wrapped tiling is still a permutation of the voxels, so shifting the image by -offset,
         # applying the unshifted prox and shifting back must reproduce it bit for bit.
         rolled = circshift(x, (-offset[1], -offset[2], 0))
-        expected = circshift(prox_of(unshifted, rolled), (offset[1], offset[2], 0))
+        expected = circshift(first(prox_of(unshifted, rolled)), (offset[1], offset[2], 0))
         @test y ≈ expected
     end
 
@@ -272,18 +263,8 @@ end
     end
 end
 
-@testitem "MultiScaleLowRank regularization" tags = [:regularization] setup = [RegTestSetup] begin
+@testitem "MultiScaleLowRank regularization" tags = [:regularization] setup = [RegTestSetup, ProxOf] begin
     using LinearAlgebra
-
-    const SO = MriReconstructionToolbox.StructuredOptimization
-    const PC = MriReconstructionToolbox.ProximalCore
-
-    function prox_of(reg, x, γ = 1.0)
-        term = MriReconstructionToolbox.materialize(reg, Variable(x); threaded = false)
-        y = similar(x)
-        PC.prox!(y, SO.extract_functions(term), x, γ)
-        return y
-    end
 
     @testset "Constructor" begin
         reg = MultiScaleLowRank(0.1; block_sizes = (4, 8))
@@ -298,9 +279,10 @@ end
 
     @testset "get_operator" begin
         x = randn(8, 8, 4)
-        op = get_operator(MultiScaleLowRank(0.1; block_sizes = (4,), time_dim = 3), x; threaded = false)
-        @test op isa Eye
-        @test op * x ≈ x
+        reg = MultiScaleLowRank(0.1; block_sizes = (4, 8), time_dim = 3)
+        op = get_operator(reg, x; threaded = false)
+        @test op isa AbstractOperators.Eye
+        @test size(op) == (size(x), size(x))
     end
 
     @testset "a single scale reduces to LocallyLowRank" for threaded in [false, true]
@@ -309,7 +291,7 @@ end
         llr = LocallyLowRank(0.3; block_size = 4, time_dim = 3)
         @test MriReconstructionToolbox.calculate(mslr, x; threaded) ≈
             MriReconstructionToolbox.calculate(llr, x; threaded)
-        @test prox_of(mslr, x) ≈ prox_of(llr, x)
+        @test first(prox_of(mslr, x)) ≈ first(prox_of(llr, x))
     end
 
     @testset "the prox is the weighted average of the per-scale proxes" begin
@@ -318,10 +300,10 @@ end
         weights = [0.2, 0.5, 0.3]
         mslr = MultiScaleLowRank(0.3; block_sizes = scales, time_dim = 3, weights)
         expected = sum(
-            w .* prox_of(LocallyLowRank(0.3; block_size = b, time_dim = 3), x, 0.7)
+            w .* first(prox_of(LocallyLowRank(0.3; block_size = b, time_dim = 3), x, 0.7))
                 for (w, b) in zip(weights, scales)
         )
-        @test prox_of(mslr, x, 0.7) ≈ expected
+        @test first(prox_of(mslr, x, 0.7)) ≈ expected
     end
 
     @testset "the value is the weighted average of the per-scale penalties" begin
@@ -397,4 +379,3 @@ end
         @test value ≈ avg(y)
     end
 end
-

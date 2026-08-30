@@ -51,4 +51,3 @@ using TestItems
         @test scaled.reference ≈ x_ref .* 2.5
     end
 end
-
