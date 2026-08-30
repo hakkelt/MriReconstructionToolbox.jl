@@ -192,6 +192,4 @@ Return a copy of `reg` with any symbol-based dimension parameters (such as `time
 or `nothing` for inferred dimensions) resolved to 1-based integer dimension indices against `image_dims`.
 """
 bind_dimensions(reg::Regularization, image_dims) = reg
-bind_dimensions(reg::Regularization, ::Nothing) = reg
 bind_dimensions(regs::Tuple, image_dims) = map(r -> bind_dimensions(r, image_dims), regs)
-bind_dimensions(regs::Tuple, ::Nothing) = regs

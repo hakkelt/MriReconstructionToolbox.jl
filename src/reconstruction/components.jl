@@ -57,7 +57,6 @@ end
 function bind_dimensions(c::Component, image_dims)
     return Component(c.name, map(reg -> bind_dimensions(reg, image_dims), c.regularizations)...)
 end
-bind_dimensions(c::Component, ::Nothing) = c
 
 function materialize(c::Component, x::Variable; threaded::Bool)
     terms, _ = materialize_with_auxiliaries(c, x; threaded)
