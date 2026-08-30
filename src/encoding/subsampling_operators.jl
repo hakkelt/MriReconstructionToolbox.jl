@@ -321,13 +321,15 @@ function _get_subsampling_operator(ksp, img_size, subsampling::AbstractArray)
     end
 
     spreading_dim_count = ndims(subsampling)
+    n_in = ndims(first_op, 2)::Int + spreading_dim_count
+    n_out = ndims(first_op, 1)::Int + spreading_dim_count
     domain_mask = ntuple(
-        i -> i <= ndims(first_op, 2) ? :_ : :s,
-        ndims(first_op, 2) + spreading_dim_count,
+        i -> i <= ndims(first_op, 2)::Int ? :_ : :s,
+        n_in,
     )
     codomain_mask = ntuple(
-        i -> i <= ndims(first_op, 1) ? :_ : :s,
-        ndims(first_op, 1) + spreading_dim_count,
+        i -> i <= ndims(first_op, 1)::Int ? :_ : :s,
+        n_out,
     )
     return BatchOp(operators, domain_mask => codomain_mask; threaded = true)
 end

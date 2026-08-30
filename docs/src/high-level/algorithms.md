@@ -7,11 +7,11 @@ MriReconstructionToolbox supports multiple iterative optimization algorithms for
 **Not sure which to use?** Let `reconstruct()` choose automatically:
 
 ```julia
-img = reconstruct(acq, regularization)
-# Automatically selects appropriate algorithm
+img = reconstruct(acq, IterativeReconstruction(regularization))
+# Automatically selects appropriate algorithm from DEFAULT_ALGORITHMS
 ```
 
-**How does it decides?** Here's a decision tree:
+**How does it decide?** Here's a decision tree:
 
 ```
 Is your problem smooth (no L1, TV, etc.)?
@@ -107,9 +107,9 @@ as `x`. If `λ` is zero, the problem reduces to a least-squares problem:
 
 **Example:**
 ```@example imports
-reconstruct(data, Tikhonov(1e-4), CGNR(maxit=2), verbose=false) # hide
+reconstruct(data, IterativeReconstruction(Tikhonov(1e-4); algorithm = CGNR(maxit=2)), verbose=false) # hide
 GC.gc() # hide
-img = reconstruct(data, Tikhonov(1e-4), CGNR(maxit=20));
+img = reconstruct(data, IterativeReconstruction(Tikhonov(1e-4); algorithm = CGNR(maxit=20)));
 nothing # hide
 ```
 
@@ -157,9 +157,9 @@ where `f` is smooth.
 
 **Example:**
 ```@example imports
-reconstruct(data, L1Wavelet2D(5e-3), FISTA(maxit=2), verbose=false) # hide
+reconstruct(data, IterativeReconstruction(L1Wavelet2D(5e-3); algorithm = FISTA(maxit=2)), verbose=false) # hide
 GC.gc() # hide
-img = reconstruct(data, L1Wavelet2D(5e-3), FISTA(maxit=100));
+img = reconstruct(data, IterativeReconstruction(L1Wavelet2D(5e-3); algorithm = FISTA(maxit=100)));
 nothing # hide
 ```
 
@@ -222,9 +222,9 @@ for their specific update rules and references.
 ```@example imports
 # Multiple regularizers
 reg = (L1Wavelet2D(5e-3), TotalVariation2D(1e-3))
-reconstruct(data, reg, ADMM(maxit=2), verbose=false) # hide
+reconstruct(data, IterativeReconstruction(reg...; algorithm = ADMM(maxit=2)), verbose=false) # hide
 GC.gc() # hide
-img = reconstruct(data, reg, ADMM(maxit=50));
+img = reconstruct(data, IterativeReconstruction(reg...; algorithm = ADMM(maxit=50)));
 nothing # hide
 ```
 
@@ -242,11 +242,11 @@ Typical ranges:
 **Strategy:**
 ```julia
 # Start with more iterations to see convergence behavior
-img = reconstruct(acq, reg, FISTA(maxit=200), verbose=true)
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(maxit=200)), verbose=true)
 # Check output to see when convergence plateaus
 
 # Then use fewer iterations in production
-img = reconstruct(acq, reg, FISTA(maxit=80))
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(maxit=80)))
 ```
 
 ### Convergence Tolerance
@@ -255,13 +255,13 @@ Controls early stopping:
 
 ```julia
 # Stricter convergence
-img = reconstruct(acq, reg, FISTA(maxit=200, tol=1e-6))
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(maxit=200, tol=1e-6)))
 
 # Looser convergence (faster but less accurate)
-img = reconstruct(acq, reg, FISTA(maxit=200, tol=1e-3))
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(maxit=200, tol=1e-3)))
 
 # Disable early stopping
-img = reconstruct(acq, reg, FISTA(maxit=100, tol=0))
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(maxit=100, tol=0)))
 ```
 
 **Practical tip:** Default `tol=1e-4` is usually good. Tighten to 1e-5 or 1e-6 if you need higher accuracy.
@@ -272,13 +272,13 @@ Track convergence:
 
 ```julia
 # Show progress every iteration
-img = reconstruct(acq, reg, algorithm; verbose=true, freq=1)
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithm); verbose=true, freq=1)
 
 # Show progress every 10 iterations
-img = reconstruct(acq, reg, algorithm; verbose=true, freq=10)
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithm); verbose=true, freq=10)
 
 # No output
-img = reconstruct(acq, reg, algorithm; verbose=false)
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithm); verbose=false)
 ```
 
 **What to look for:**
@@ -293,9 +293,9 @@ img = reconstruct(acq, reg, algorithm; verbose=false)
 Try multiple algorithms automatically:
 
 ```julia
-# Provide tuple of algorithms to try
+# Provide tuple of candidate algorithms to try
 algorithms = (CG(maxit=20), FISTA(maxit=100), ADMM(maxit=50))
-img = reconstruct(acq, reg, algorithms)
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithms))
 
 # Package automatically selects best for problem
 # - CG tried first for smooth problems
@@ -329,10 +329,10 @@ Use previous solution as initialization:
 
 ```julia
 # First reconstruction
-img1 = reconstruct(acq, L1Wavelet2D(5e-3))
+img1 = reconstruct(acq, IterativeReconstruction(L1Wavelet2D(5e-3)))
 
 # Use as initialization for refined reconstruction
-img2 = reconstruct(acq, L1Wavelet2D(3e-3); x₀=img1)
+img2 = reconstruct(acq, IterativeReconstruction(L1Wavelet2D(3e-3)); x₀=img1)
 ```
 
 **When useful:**

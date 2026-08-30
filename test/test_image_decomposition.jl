@@ -106,7 +106,7 @@ end
 
     img_recon = reconstruct(
         acq_with_data,
-        (Component(:smooth, Tikhonov(0.01)), Component(:sparse, L1Image(0.05)));
+        IterativeReconstruction(Component(:smooth, Tikhonov(0.01)), Component(:sparse, L1Image(0.05)));
         maxit = 150, verbose = false,
     )
 
@@ -171,10 +171,10 @@ end
         Component(:sparse, L1Image(0.001)),
     )
 
-    img_recon = reconstruct(acq_with_data, components; maxit = 20, verbose = false)
+    img_recon = reconstruct(acq_with_data, IterativeReconstruction(components...); maxit = 20, verbose = false)
     @test img_recon isa DecomposedImage
 
-    @test_throws ErrorException reconstruct(acq_with_data, components, FISTA(); maxit = 20, verbose = false)
+    @test_throws ErrorException reconstruct(acq_with_data, IterativeReconstruction(components...; algorithm = FISTA()); maxit = 20, verbose = false)
 end
 
 @testitem "reconstruct: components interact with problem decomposition" tags = [:components, :integration] begin
@@ -194,8 +194,8 @@ end
 
     components = (Component(:smooth, Tikhonov(0.005)), Component(:sparse, L1Image(0.005)))
 
-    img_decomposed = reconstruct(acq_ms, components; maxit = 30, verbose = false)
-    img_joint = reconstruct(acq_ms, components; maxit = 30, verbose = false, disable_problem_decomposition = true)
+    img_decomposed = reconstruct(acq_ms, IterativeReconstruction(components...); maxit = 30, verbose = false)
+    img_joint = reconstruct(acq_ms, IterativeReconstruction(components...); maxit = 30, verbose = false, disable_problem_decomposition = true)
 
     @test img_decomposed isa DecomposedImage
     @test size(img_decomposed) == (nx, ny, nslices)
@@ -205,7 +205,7 @@ end
     # `Variable`, which stores by reference, and `solve` writes the solution back through it.
     x₀s = (rand(ComplexF32, nx, ny, nslices), rand(ComplexF32, nx, ny, nslices))
     x₀s_ref = map(copy, x₀s)
-    reconstruct(acq_ms, components; x₀ = x₀s, normalization = NoScaling(), maxit = 5, verbose = false)
+    reconstruct(acq_ms, IterativeReconstruction(components...); x₀ = x₀s, normalization = NoScaling(), maxit = 5, verbose = false)
     @test all(x₀s .== x₀s_ref)
 end
 
@@ -226,7 +226,7 @@ end
 
     @test isnothing(MriReconstructionToolbox.check_x₀_components_size(good, components, (nx, ny)))
     @test_throws ArgumentError MriReconstructionToolbox.check_x₀_components_size(typo, components, (nx, ny))
-    @test_throws ArgumentError reconstruct(acq, components; x₀ = typo, maxit = 5, verbose = false)
+    @test_throws ArgumentError reconstruct(acq, IterativeReconstruction(components...); x₀ = typo, maxit = 5, verbose = false)
 
     # A partial NamedTuple is still legal: the unnamed components fall back to their defaults.
     partial = (sparse = zeros(ComplexF32, nx, ny),)
@@ -250,7 +250,7 @@ end
         Component(:sparse, L1Image(0.01)),
     )
 
-    img_recon = reconstruct(acq_data, components; maxit = 5, verbose = false)
+    img_recon = reconstruct(acq_data, IterativeReconstruction(components...); maxit = 5, verbose = false)
     @test img_recon isa DecomposedImage
     @test size(img_recon) == (nx, ny, nt)
     @test dimnames(img_recon) == (:x, :y, :time)
@@ -288,7 +288,7 @@ end
     @test bound[1].regularizations[1].time_dim == 4
     @test bound[2].regularizations[1].time_dim == 4
 
-    plan = MriReconstructionToolbox.get_problem_decomposition_plan(acq_data, bound, Config(verbose = false))
+    plan = MriReconstructionToolbox.get_problem_decomposition_plan(acq_data, IterativeReconstruction(bound...), Config(verbose = false))
     @test plan !== nothing
     @test plan.image_batch_dims == (3,)  # slice over :z
 end

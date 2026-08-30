@@ -57,19 +57,18 @@ SUITE["reconstruct"] = BenchmarkGroup()
 # FISTA maxit=20 with L1Wavelet2D
 reg_wavelet = L1Wavelet2D(0.01)
 fista_alg = FISTA(maxit = 20)
+method_fista = IterativeReconstruction(reg_wavelet; algorithm = fista_alg)
 
 SUITE["reconstruct"]["2D_CS_FISTA"] = @benchmarkable reconstruct(
     $acq_2d_ksp,
-    $reg_wavelet,
-    $fista_alg;
+    $method_fista;
     verbose = false,
 )
 
 # Multi-slice 2D CS
 SUITE["reconstruct"]["multi_slice_FISTA"] = @benchmarkable reconstruct(
     $acq_ms_ksp,
-    $reg_wavelet,
-    $fista_alg;
+    $method_fista;
     verbose = false,
 )
 

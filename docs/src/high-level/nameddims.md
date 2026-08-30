@@ -265,7 +265,7 @@ acq = simulate_acquisition(img_true, acq)
 # acq.kspace_data is now NamedDimsArray{(:kx, :ky, :coil)}
 
 # 5. Reconstruct
-img_recon = reconstruct(acq, L1Wavelet2D(5e-3), verbose=false)
+img_recon = reconstruct(acq, IterativeReconstruction(L1Wavelet2D(5e-3)), verbose=false)
 
 # 6. Compare
 dimnames(img_recon)  # (:x, :y) - preserved from input

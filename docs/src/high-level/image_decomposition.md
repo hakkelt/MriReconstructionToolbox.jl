@@ -29,7 +29,7 @@ Random.seed!(123)
 ```
 
 Declare each component with a name and one or more regularizations, then pass
-the tuple of components as the regularization argument to `reconstruct`:
+the components to `IterativeReconstruction`:
 
 ```@example imgdecomp
 using MriReconstructionToolbox
@@ -39,7 +39,10 @@ acq = AcquisitionInfo(ksp; is3D = false)
 
 img = reconstruct(
     acq,
-    (Component(:smooth, Tikhonov(0.01)), Component(:sparse, L1Image(0.05)));
+    IterativeReconstruction(
+        Component(:smooth, Tikhonov(0.01)),
+        Component(:sparse, L1Image(0.05)),
+    );
     maxit = 30, verbose = false,
 )
 
@@ -80,7 +83,7 @@ carrying the dynamic foreground.
 ```julia
 img = reconstruct(
     acq_dynamic,
-    (
+    IterativeReconstruction(
         Component(:lowrank, LowRank(5e-2; time_dim = 3)),
         Component(:sparse, TemporalTotalVariation(2e-2; time_dim = 3)),
     );
@@ -98,14 +101,14 @@ original k-t SPARSE transform) or [`L1Image`](@ref); the low-rank component is
 the field of view.
 
 !!! note "Solvable combinations"
-    Two components whose regularizers *both* use a non-tight operator cannot
-    currently be prepared for any of the available algorithms — for example
-    [`LowRank`](@ref) (whose Casorati reshape is not `is_AAc_diagonal`)
-    together with [`TotalVariation2D`](@ref) or
-    [`TemporalTotalVariation`](@ref) (finite differences). Working L+S pairs
-    include `LowRank` + [`L1Image`](@ref)/[`TemporalFourier`](@ref)/[`L1Wavelet2D`](@ref),
-    and [`LocallyLowRank`](@ref) + any of the above or `TemporalTotalVariation`
-    (its proximal operator acts on the identity, so it composes freely).
+    - **L+S dynamic MRI**: `LowRank` (or `LocallyLowRank`) + `TemporalTotalVariation`
+      (or `TemporalFourier` or `L1Image`) cleanly separates background from motion/contrast.
+    - **Infimal convolution TV**: `Component(:cartoon, TotalVariation2D(λ))` +
+      `Component(:ramp, SecondOrderTotalVariation2D(λ))` splits the image into a
+      piecewise-constant and a piecewise-linear part.
+    - **Multi-scale low rank**: one [`LocallyLowRank`](@ref) component per block
+      size gives the exact model of Ong & Lustig, with the scales separated;
+      [`MultiScaleLowRank`](@ref) is the single-image approximation of the same idea.
 
 ## What Additive Components Are Not
 
@@ -141,7 +144,7 @@ regularization API:
 
 ```@example imgdecomp
 try
-    reconstruct(acq, (Component(:only, L1Image(0.05)),); verbose = false)
+    reconstruct(acq, IterativeReconstruction(Component(:only, L1Image(0.05))); verbose = false)
 catch e
     println(e)
 end
@@ -157,7 +160,7 @@ regularization API:
 ```@example imgdecomp
 img_multi = reconstruct(
     acq,
-    (
+    IterativeReconstruction(
         Component(:structured, L1Wavelet2D(0.01), TotalVariation2D(0.005)),
         Component(:sparse, L1Image(0.05)),
     );
@@ -186,7 +189,10 @@ L+S/RPCA warm start. Override this with `x₀` as a `Tuple` (component order) or
 x̂ = reconstruct(acq; verbose = false)
 img_warm = reconstruct(
     acq,
-    (Component(:smooth, Tikhonov(0.01)), Component(:sparse, L1Image(0.05)));
+    IterativeReconstruction(
+        Component(:smooth, Tikhonov(0.01)),
+        Component(:sparse, L1Image(0.05)),
+    );
     x₀ = (smooth = x̂, sparse = zero(x̂)),
     maxit = 30, verbose = false,
 )
@@ -236,7 +242,10 @@ acq_ms = AcquisitionInfo(ksp_ms; is3D = false)
 
 img_ms = reconstruct(
     acq_ms,
-    (Component(:smooth, Tikhonov(0.01)), Component(:sparse, L1Image(0.05)));
+    IterativeReconstruction(
+        Component(:smooth, Tikhonov(0.01)),
+        Component(:sparse, L1Image(0.05)),
+    );
     maxit = 10, verbose = false,
 )
 println(size(img_ms))

@@ -54,11 +54,11 @@ using TestItems
         acq = AcquisitionInfo(ksp)
         config = Config(; verbose = false)
 
-        plan_noreg = MriReconstructionToolbox.get_problem_decomposition_plan(acq, (), config)
+        plan_noreg = MriReconstructionToolbox.get_problem_decomposition_plan(acq, DirectReconstruction(), config)
         @test !isnothing(plan_noreg) # :time is a batch dim without regularization
 
         reg = LowRank(0.1; time_dim = :time)
-        plan = MriReconstructionToolbox.get_problem_decomposition_plan(acq, (reg,), config)
+        plan = MriReconstructionToolbox.get_problem_decomposition_plan(acq, IterativeReconstruction(reg), config)
         @test isnothing(plan) # LowRank couples the time dimension
     end
 end

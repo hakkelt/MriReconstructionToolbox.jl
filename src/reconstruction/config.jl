@@ -12,12 +12,9 @@ Fields (with defaults):
 - freq::Union{Nothing,Int} = nothing — progress print frequency (iterations)
 - verbose::Bool = true — enable/disable logging output
 - threaded::Bool = (Threads.nthreads() > 1) — enable threaded execution when available
-- exact_opnorm::Bool = false — use exact operator norm for stepsize estimation
 - decomposition_executor::Union{Nothing,ReconstructionExecutor} = nothing — override executor for decomposition
 - disable_inverse_scale_output::Bool = false — skip rescaling the final output
-- disable_normalop_optimization::Bool = false — disable normal-operator optimizations
 - disable_problem_decomposition::Bool = false — disable automatic problem decomposition
-- disable_operator_normalization::Bool = false — disable operator normalization
 - printfunc::Function = println — custom logging function
 
 Constructors:
@@ -48,12 +45,9 @@ Base.@kwdef struct Config
     freq::Union{Nothing, Int} = nothing
     verbose::Bool = true
     threaded::Bool = nthreads() > 1
-    exact_opnorm::Bool = false
     decomposition_executor::Union{Nothing, ReconstructionExecutor} = nothing
     disable_inverse_scale_output::Bool = false
-    disable_normalop_optimization::Bool = false
     disable_problem_decomposition::Bool = false
-    disable_operator_normalization::Bool = false
     printfunc::Function = println
 end
 

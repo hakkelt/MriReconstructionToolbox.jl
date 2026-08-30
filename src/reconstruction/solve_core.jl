@@ -1,5 +1,5 @@
 """
-	_iterative_reconstruct_core(𝒜, acq_data, x₀_or_x₀s, scale, algorithm, config; build)
+	_iterative_reconstruct_core(𝒜, acq_data, x₀_or_x₀s, scale, method, config; build)
 
 Shared driver behind the single-variable and `Component` iterative reconstructions: k-space/warm-start
 scaling, the `disable_operator_normalization` guard, model building (via `build`), solver setup and
@@ -8,7 +8,9 @@ auxiliaries)` as `build_model_with_variables`/`build_model` do; `vars` is either
 (single-variable path) or a `Tuple` of them (component path), and every step below that differs by
 shape dispatches on that (`_scale_x0`, `_inv_scale`, `_max_abs`, `_n_vars`, `_extract_solution`).
 """
-function _iterative_reconstruct_core(𝒜, acq_data, x₀_or_x₀s, scale, algorithm, config; build::Function)
+function _iterative_reconstruct_core(
+        𝒜, acq_data, x₀_or_x₀s, scale, method::IterativeReconstruction, config; build::Function
+    )
     if scale != 1
         @step "Scaling k-space data" config begin
             acq_data = AcquisitionInfo(acq_data; kspace_data = acq_data.kspace_data ./ scale)
@@ -16,9 +18,9 @@ function _iterative_reconstruct_core(𝒜, acq_data, x₀_or_x₀s, scale, algor
             x₀_or_x₀s = _scale_x0(x₀_or_x₀s, scale)
         end
     end
-    if !config.disable_operator_normalization
+    if !method.disable_operator_normalization
         @step "Normalizing encoding operator" config begin
-            𝒜 = normalize_op(𝒜, config.exact_opnorm)
+            𝒜 = normalize_op(𝒜, method.exact_opnorm)
         end
     end
     @step "Building optimization model" config begin
@@ -41,8 +43,8 @@ function _iterative_reconstruct_core(𝒜, acq_data, x₀_or_x₀s, scale, algor
         # Lipschitz constant is n (not 1) when 𝒜 is normalized to unit norm, since
         # ‖[𝒜 … 𝒜]‖ = √n‖𝒜‖. When 𝒜 was left at its natural norm (disabled normalization), this
         # estimate no longer holds; let the algorithm derive its own instead of overriding it.
-        Lf = config.disable_operator_normalization ? nothing : _n_vars(vars)
-        algorithm = patch_algorithm_with_default_values(algorithm, Lf)
+        Lf = method.disable_operator_normalization ? nothing : _n_vars(vars)
+        algorithm = patch_algorithm_with_default_values(method.algorithm, Lf)
         verbose = freq != -1
         solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
         # Read the solution from the image variable(s) themselves: once a regularization contributes

@@ -15,6 +15,7 @@ makedocs(;
         "High-level Interface" => [
             "AcquisitionInfo" => "high-level/acquisition_info.md",
             "Simulation Tools" => "high-level/simulation.md",
+            "Reconstruction Methods" => "high-level/methods.md",
             "Reconstruction" => "high-level/reconstruction.md",
             "Regularization" => "high-level/regularization.md",
             "Optimization Algorithms" => "high-level/algorithms.md",
@@ -27,7 +28,7 @@ makedocs(;
             "Custom Reconstruction" => "low-level/custom_reconstruction.md",
             "AbstractOperators.jl" => "low-level/abstract_operators.md",
             "ProximalOperators.jl" => "low-level/proximal_operators.md",
-        ]
+        ],
     ],
     checkdocs = :none,
     doctest = false

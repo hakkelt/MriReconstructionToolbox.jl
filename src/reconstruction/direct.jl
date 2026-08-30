@@ -28,8 +28,8 @@ function _resolve_scale(acq_data, x̂, config, scale_override)
     return real(eltype(x̂))(scale)
 end
 
-function _direct_reconstruct(𝒜, acq_data, x₀, regularization, config; scale_override = nothing)
-    direct_recon_only = regularization == ()
+function _direct_reconstruct(𝒜, acq_data, x₀, method::AbstractReconstructionMethod, config; scale_override = nothing)
+    direct_recon_only = method isa AbstractDirectMethod
     if !isnothing(x₀) && direct_recon_only
         config.verbose && config.printfunc(
             "Warning: Initial guess x₀ is ignored when no regularization is specified."

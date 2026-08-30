@@ -1,17 +1,19 @@
 # [Image Reconstruction](@id reconstruction)
 
-The `reconstruct` function is the primary high-level interface for MRI image reconstruction from k-space data. It handles both direct (adjoint-based) and iterative reconstruction with regularization, with automatic problem decomposition and performance optimization.
+The `reconstruct` function is the primary high-level interface for MRI image reconstruction from k-space data. It accepts an `AcquisitionInfo` object and an `AbstractReconstructionMethod` (defaulting to `DirectReconstruction()`), with automatic problem decomposition and performance optimization.
 
 ## API Reference
 
 ```@docs
 reconstruct
+DirectReconstruction
+IterativeReconstruction
 Config
 ```
 
 ## Basic Usage
 
-The simplest reconstruction requires only k-space data:
+The simplest reconstruction performs direct adjoint reconstruction ($\mathcal{A}^* y$):
 
 ```@setup recon
 using MriReconstructionToolbox
@@ -35,7 +37,7 @@ println("Reconstructed image size: ", size(x_direct))
 
 ### 1. Direct Reconstruction (No Regularization)
 
-When no regularization is specified, `reconstruct` performs a direct reconstruction using the adjoint of the encoding operator:
+When no method is explicitly specified, `reconstruct` defaults to `DirectReconstruction()` using the adjoint of the encoding operator:
 
 ```@example recon
 # Fully sampled data
@@ -44,7 +46,7 @@ smaps = rand(ComplexF32, 64, 64, 4)
 acq_full = AcquisitionInfo(ksp_full; is3D=false, sensitivity_maps=smaps)
 
 # Direct reconstruction: x = 𝒜' * y
-x_direct = reconstruct(acq_full)
+x_direct = reconstruct(acq_full, DirectReconstruction())
 println("Direct reconstruction completed")
 println("Output type: ", typeof(x_direct))
 ```
@@ -57,7 +59,7 @@ where $\mathcal{A}$ is the encoding operator and $y$ is the k-space data.
 
 ### 2. Iterative Reconstruction with Regularization
 
-For undersampled data, add regularization to solve:
+For undersampled data, configure an `IterativeReconstruction` to solve:
 ```math
 \min_x \frac{1}{2}\|\mathcal{A}x - y\|_2^2 + \sum_i \lambda_i R_i(x)
 ```
@@ -66,6 +68,7 @@ For undersampled data, add regularization to solve:
 # Undersampled acquisition
 mask = rand(Bool, 64, 64)
 mask[25:40, 25:40] .= true  # Fully sample center
+smaps = rand(ComplexF32, 64, 64, 4)
 acq_under = AcquisitionInfo(
     nothing;
     is3D=false,
@@ -79,13 +82,13 @@ phantom = rand(ComplexF32, 64, 64)
 data = simulate_acquisition(phantom, acq_under)
 
 # Reconstruct with L2 regularization
-x_tikhonov = reconstruct(data, Tikhonov(0.01); maxit=20, verbose=false)
+x_tikhonov = reconstruct(data, IterativeReconstruction(Tikhonov(0.01)); maxit=20, verbose=false)
 println("Tikhonov reconstruction completed")
 ```
 
 ## Configuration Control
 
-The `Config` struct centralizes reconstruction parameters. You can pass configuration either as a `Config` object or as keyword arguments. It can make easy to pass common options together, while still allowing overrides via keywords.
+The `Config` struct centralizes execution parameters such as iterations, tolerances, normalization, and threading. You can pass configuration either as a `Config` object or as keyword arguments.
 
 ```@example recon
 # Method 1: Keyword arguments
@@ -121,18 +124,6 @@ Config(
 )
 ```
 
-#### Performance Options
-
-```@example recon
-# Threading and performance
-Config(
-    threaded=true,                          # Enable multi-threading
-    exact_opnorm=false,                     # Fast operator norm estimation
-    disable_problem_decomposition=false,    # Enable automatic decomposition
-    disable_operator_normalization=false    # Enable operator normalization
-)
-```
-
 #### Normalization
 
 ```@docs
@@ -150,20 +141,22 @@ nothing # hide
 
 ## Algorithm Selection
 
-Choose optimization algorithms based on your problem:
+Specify optimization algorithms via `IterativeReconstruction`:
 
 ```@example recon
 # Single algorithm
-x_cg = reconstruct(data, Tikhonov(0.01), FISTA(); maxit=30, verbose=false)
+x_fista = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); algorithm=FISTA()); maxit=30, verbose=false)
 nothing # hide
 ```
 
 ```@example recon
-# Tuple of algorithms (tries in order until convergence)
+# Tuple of algorithms (tries in order based on problem structure)
 x_auto = reconstruct(
     data,
-    Tikhonov(0.01),
-    (CG(), FISTA(), ADMM());
+    IterativeReconstruction(
+        Tikhonov(0.01);
+        algorithm=(CG(), FISTA(), ADMM())
+    );
     maxit=50,
     verbose=false
 )
@@ -171,36 +164,34 @@ nothing # hide
 ```
 
 Common algorithms:
-- **CG**: Conjugate Gradient - best for quadratic problems (Tikhonov regularization)
-- **FISTA**: Fast Iterative Shrinkage-Thresholding - for L1 regularization
-- **ADMM**: Alternating Direction Method of Multipliers - for composite regularization
+- **CG / CGNR**: Conjugate Gradient - best for quadratic problems (Tikhonov / least squares)
+- **FISTA**: Fast Iterative Shrinkage-Thresholding - for L1 / sparsity regularization
+- **ADMM**: Alternating Direction Method of Multipliers - for composite / multi-term regularization
 
-See [Optimization Algorithms](algorithms.md) for detailed information.
+See [Optimization Algorithms](algorithms.md) and [Reconstruction Methods](methods.md) for detailed information.
 
 ## Multiple Regularization Terms
 
-Combine multiple regularization terms for advanced reconstruction:
+Combine multiple regularization terms for composite regularization:
 
 ```@example recon
 # Wavelet sparsity + Total Variation
 x_composite = reconstruct(
     data,
-    (L1Wavelet2D(0.005), TotalVariation2D(0.002));
+    IterativeReconstruction(L1Wavelet2D(0.005), TotalVariation2D(0.002));
     maxit=50,
     verbose=false
 )
 nothing # hide
 ```
 
-See [Regularization](regularization.md) for available regularization methods.
+See [Regularization](regularization.md) for available regularization terms.
 
-For an additive multi-component model instead — e.g. a low-rank background plus
-a sparse foreground, each solved as its own variable — pass a tuple of
-`Component`s instead of `Regularization`s; see [Image Decomposition](image_decomposition.md).
+For additive multi-component models (e.g. low-rank background plus sparse foreground), pass `Component`s into `IterativeReconstruction`; see [Image Decomposition](image_decomposition.md).
 
 ## Initial Guess
 
-Provide a custom initial estimate:
+Provide a custom initial estimate via `x₀`:
 
 ```@example recon
 # Use direct reconstruction as initial guess
@@ -209,7 +200,7 @@ x_init = reconstruct(data; verbose=false)
 # Refine with regularization
 x_refined = reconstruct(
     data,
-    L1Wavelet2D(0.005);
+    IterativeReconstruction(L1Wavelet2D(0.005));
     x₀=x_init,
     maxit=30,
     verbose=false
@@ -217,43 +208,35 @@ x_refined = reconstruct(
 nothing # hide
 ```
 
-## Advanced Features
+## Advanced Method Options
 
 ### Operator Normalization
 
-By default, the encoding operator is normalized for better convergence:
+By default, the encoding operator is normalized to unit norm for stable step size selection. This can be configured on `IterativeReconstruction`:
 
 ```@example recon
-# Standard (normalized operator)
-x_norm = reconstruct(data, Tikhonov(0.01); maxit=20, verbose=false)
-
-# Disable normalization
+# Disable operator normalization
 x_unnorm = reconstruct(
     data,
-    Tikhonov(0.01);
-    disable_operator_normalization=true,
+    IterativeReconstruction(Tikhonov(0.01); disable_operator_normalization=true);
     maxit=20,
     verbose=false
 )
-println("Both reconstructions completed")
+println("Unnormalized reconstruction completed")
 ```
-
-Operator normalization typically improves convergence by ensuring the encoding operator has unit norm, which helps algorithms choose better stepsizes.
 
 ### Normal Operator Optimization
 
-For least-squares problems, `reconstruct` can exploit efficient normal operator implementations:
+For least-squares problems, `IterativeReconstruction` can exploit efficient normal operator implementations $\mathcal{A}^*\mathcal{A}$:
 
 ```@example recon
-# Standard optimization (enabled by default)
-config_opt = Config(disable_normalop_optimization=false)
-
-# Disable for debugging
-config_noopt = Config(disable_normalop_optimization=true)
+# Disable normal operator optimization for debugging
+method_noopt = IterativeReconstruction(
+    Tikhonov(0.01);
+    disable_normalop_optimization=true
+)
 nothing # hide
 ```
-
-When enabled, instead of computing $\|\mathcal{A}x - y\|_2^2$ directly, it computes $\|\mathcal{A}^H\mathcal{A}x - \mathcal{A}^Hy\|_2^2$, which can be more efficient when $\mathcal{A}^H\mathcal{A}$ has an optimized implementation.
 
 ### Output Scaling
 
@@ -261,12 +244,12 @@ Control whether the output is scaled back to the original data range:
 
 ```@example recon
 # Standard (output is inverse-scaled)
-x_scaled = reconstruct(data, Tikhonov(0.01); maxit=20, verbose=false)
+x_scaled = reconstruct(data, IterativeReconstruction(Tikhonov(0.01)); maxit=20, verbose=false)
 
 # Keep scaled output
 x_unscaled = reconstruct(
     data,
-    Tikhonov(0.01);
+    IterativeReconstruction(Tikhonov(0.01));
     disable_inverse_scale_output=true,
     maxit=20,
     verbose=false
@@ -327,7 +310,7 @@ config_custom = Config(
     verbose=true
 )
 
-x_custom = reconstruct(data, Tikhonov(0.01); config=config_custom, maxit=5)
+x_custom = reconstruct(data, IterativeReconstruction(Tikhonov(0.01)); config=config_custom, maxit=5)
 println("Captured ", length(messages), " log messages")
 println("First message: ", messages[1])
 ```
