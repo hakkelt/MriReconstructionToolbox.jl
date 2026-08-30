@@ -116,3 +116,19 @@ end
     @test_call target_modules = (MRT,) MeasurementBasedScaling()
     @test_call target_modules = (MRT,) NoScaling()
 end
+
+@testitem "Benchmark suite smoke test" tags = [:quality] begin
+    using BenchmarkTools
+    using MriReconstructionToolbox
+
+    benchmark_file = joinpath(pkgdir(MriReconstructionToolbox), "benchmark", "benchmarks.jl")
+    @test isfile(benchmark_file)
+    include(benchmark_file)
+    @test haskey(SUITE, "operator")
+    @test haskey(SUITE, "reconstruct")
+    @test haskey(SUITE, "prox")
+
+    # Quick smoke test execution (1 sample, 1 eval)
+    results = run(SUITE, samples = 1, evals = 1)
+    @test results isa BenchmarkTools.BenchmarkGroup
+end
