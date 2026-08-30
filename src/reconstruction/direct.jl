@@ -1,0 +1,45 @@
+function _direct_reconstruct_components(𝒜, acq_data, config; scale_override = nothing)
+    @step "Getting initial estimate" config begin
+        x̂ = 𝒜' * acq_data.kspace_data
+    end
+    return x̂, _resolve_scale(acq_data, x̂, config, scale_override)
+end
+
+# The scale is either imposed by the caller (decomposition uses one shared scale for every slice),
+# derived from the direct estimate, or absent; a zero estimate would blow up the scaled problem, so it
+# falls back to no scaling.
+function _resolve_scale(acq_data, x̂, config, scale_override)
+    if !isnothing(scale_override)
+        scale = scale_override
+        config.verbose && config.printfunc(@sprintf("Using scaling factor: %g", scale))
+    elseif config.normalization != NoScaling()
+        @step "Computing scaling factor" config begin
+            scale = get_scale(config.normalization, acq_data, x̂)
+        end
+        if scale == 0
+            config.verbose &&
+                config.printfunc("Warning: Computed scale is zero, defaulting to scale=1.0")
+            scale = 1
+        end
+        config.verbose && config.printfunc(@sprintf("Using scaling factor: %g", scale))
+    else
+        scale = 1
+    end
+    return real(eltype(x̂))(scale)
+end
+
+function _direct_reconstruct(𝒜, acq_data, x₀, regularization, config; scale_override = nothing)
+    direct_recon_only = regularization == ()
+    if !isnothing(x₀) && direct_recon_only
+        config.verbose && config.printfunc(
+            "Warning: Initial guess x₀ is ignored when no regularization is specified."
+        )
+        x₀ = nothing
+    end
+    if isnothing(x₀)
+        @step (direct_recon_only ? "Reconstructing image" : "Getting initial estimate") config begin
+            x₀ = 𝒜' * acq_data.kspace_data
+        end
+    end
+    return x₀, _resolve_scale(acq_data, x₀, config, scale_override)
+end
