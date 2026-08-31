@@ -5,7 +5,7 @@ Proximable indicator function representing the hard data consistency constraint 
 The proximal operator computes the orthogonal projection:
 ``\\operatorname{proj}(x) = x - \\mathcal{A}^* (\\mathcal{A} \\mathcal{A}^*)^{-1} (\\mathcal{A}x - y)``.
 
-When `is_AAc_diagonal(𝒜)` is true (e.g. single-coil Cartesian or `KSpaceDomain`), ``(\\mathcal{A} \\mathcal{A}^*)^{-1}``
+When `is_AAc_diagonal(𝒜)` is true (e.g. single-coil Cartesian or a `KSpaceToImage` signal model), ``(\\mathcal{A} \\mathcal{A}^*)^{-1}``
 is evaluated directly in closed form via `diag_AAc(𝒜)`. Otherwise, ``(\\mathcal{A} \\mathcal{A}^*) v = r`` is solved
 iteratively using Conjugate Gradient up to `inner_maxit` iterations and tolerance `inner_tol`.
 """

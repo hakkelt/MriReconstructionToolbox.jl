@@ -6,6 +6,60 @@ Abstract type representing receiver coil compression algorithms.
 abstract type CoilCompressionMethod end
 
 """
+    _resolve_coil_dim(data, coil_dim) -> Int
+
+Resolve the coil axis of `data`: an explicit `coil_dim` (a `Symbol` name or integer index), else
+the `:coil` dimension of a `NamedDimsArray`, else the trailing-dims convention (4 if `ndims ≥ 4`,
+otherwise 3). Throws if the result is out of range.
+"""
+function _resolve_coil_dim(data::AbstractArray, coil_dim)
+    c_idx = if !isnothing(coil_dim)
+        coil_dim isa Symbol ? findfirst(==(coil_dim), dimnames(data)) : coil_dim
+    elseif data isa NamedDimsArray && :coil ∈ dimnames(data)
+        findfirst(==(:coil), dimnames(data))
+    else
+        ndims(data) >= 4 ? 4 : 3
+    end
+    @argcheck !isnothing(c_idx) && 1 <= c_idx <= ndims(data) "Invalid coil dimension"
+    return c_idx
+end
+
+_rewrap_like(ref::AbstractArray, data::AbstractArray) =
+    ref isa NamedDimsArray ? NamedDimsArray{dimnames(ref)}(data) : data
+
+"""
+    _apply_slicewise_compression(hybrid, C, c_idx) -> Array
+
+Apply a per-readout-slice compression matrix `C` of size `(n_virtual, Nc, Nx)` to `hybrid`
+(readout on dim 1, coils on `c_idx`), returning the compressed hybrid-space array. Shared by
+`GeometricCompression` calibration and `compress_coils_with_matrix(::AbstractArray)`.
+"""
+function _apply_slicewise_compression(hybrid::AbstractArray, C::AbstractArray, c_idx::Int)
+    Nc = size(hybrid, c_idx)
+    n_virtual = size(C, 1)
+    Nx = size(hybrid, 1)
+
+    slice_ndims = ndims(hybrid) - 1
+    slice_c_idx = c_idx - 1
+    perm_slice = ntuple(i -> i == 1 ? slice_c_idx : (i <= slice_c_idx ? i - 1 : i), slice_ndims)
+    inv_perm_slice = ntuple(i -> i == slice_c_idx ? 1 : (i < slice_c_idx ? i + 1 : i), slice_ndims)
+
+    out_size = ntuple(i -> i == c_idx ? n_virtual : size(hybrid, i), ndims(hybrid))
+    out = zeros(eltype(hybrid), out_size)
+
+    for ix in 1:Nx
+        slice_data = selectdim(hybrid, 1, ix)
+        flat_slice = reshape(permutedims(slice_data, perm_slice), Nc, :)
+        comp_flat = C[:, :, ix] * flat_slice
+
+        slice_sz = size(slice_data)
+        perm_sz = ntuple(i -> i == 1 ? n_virtual : slice_sz[perm_slice[i]], slice_ndims)
+        selectdim(out, 1, ix) .= permutedims(reshape(comp_flat, perm_sz), inv_perm_slice)
+    end
+    return out
+end
+
+"""
     SVDCompression <: CoilCompressionMethod
 
 Principal component / SVD coil compression (Buehrer et al. 2007, Huang et al. 2008).
@@ -51,14 +105,7 @@ function compress_coils(
         method::CoilCompressionMethod = SVDCompression(),
         coil_dim = nothing,
     )
-    c_idx = if !isnothing(coil_dim)
-        coil_dim isa Symbol ? findfirst(==(coil_dim), dimnames(data)) : coil_dim
-    elseif data isa NamedDimsArray && :coil ∈ dimnames(data)
-        findfirst(==(:coil), dimnames(data))
-    else
-        ndims(data) >= 4 ? 4 : 3
-    end
-    @argcheck !isnothing(c_idx) && 1 <= c_idx <= ndims(data) "Invalid coil dimension"
+    c_idx = _resolve_coil_dim(data, coil_dim)
 
     Nc = size(data, c_idx)
     @argcheck 1 <= n_virtual <= Nc "n_virtual ($n_virtual) must be between 1 and coil count ($Nc)"
@@ -100,21 +147,17 @@ function compress_coils(
             C_3d[:, :, ix] = Matrix(V_cur')
         end
 
-        return compress_coils_with_matrix(data, C_3d; coil_dim)
+        # Apply here, reusing the k-space `hybrid` we already transformed, instead of letting
+        # `compress_coils_with_matrix` recompute the same `ifft(ifftshift(...))`.
+        comp_data = fftshift(fft(_apply_slicewise_compression(hybrid, C_3d, c_idx), 1), 1)
+        return _rewrap_like(data, comp_data), C_3d
     else
         throw(ArgumentError("Unknown coil compression method: $(typeof(method))"))
     end
 end
 
 function compress_coils_with_matrix(data::AbstractArray, C::AbstractMatrix; coil_dim = nothing)
-    c_idx = if !isnothing(coil_dim)
-        coil_dim isa Symbol ? findfirst(==(coil_dim), dimnames(data)) : coil_dim
-    elseif data isa NamedDimsArray && :coil ∈ dimnames(data)
-        findfirst(==(:coil), dimnames(data))
-    else
-        ndims(data) >= 4 ? 4 : 3
-    end
-    @argcheck !isnothing(c_idx) && 1 <= c_idx <= ndims(data) "Invalid coil dimension"
+    c_idx = _resolve_coil_dim(data, coil_dim)
 
     Nc = size(data, c_idx)
     n_virtual = size(C, 1)
@@ -131,23 +174,12 @@ function compress_coils_with_matrix(data::AbstractArray, C::AbstractMatrix; coil
     comp_perm = reshape(comp_flat, out_perm_size)
     comp_data = permutedims(comp_perm, inv_perm)
 
-    if data isa NamedDimsArray
-        return NamedDimsArray{dimnames(data)}(comp_data), C
-    else
-        return comp_data, C
-    end
+    return _rewrap_like(data, comp_data), C
 end
 
 function compress_coils_with_matrix(data::AbstractArray, C::AbstractArray; coil_dim = nothing)
     @argcheck ndims(C) == 3 "Slice-wise compression matrix must have 3 dimensions (n_virtual, n_coils, n_readout)"
-    c_idx = if !isnothing(coil_dim)
-        coil_dim isa Symbol ? findfirst(==(coil_dim), dimnames(data)) : coil_dim
-    elseif data isa NamedDimsArray && :coil ∈ dimnames(data)
-        findfirst(==(:coil), dimnames(data))
-    else
-        ndims(data) >= 4 ? 4 : 3
-    end
-    @argcheck !isnothing(c_idx) && 1 <= c_idx <= ndims(data) "Invalid coil dimension"
+    c_idx = _resolve_coil_dim(data, coil_dim)
 
     Nc = size(data, c_idx)
     n_virtual = size(C, 1)
@@ -158,41 +190,9 @@ function compress_coils_with_matrix(data::AbstractArray, C::AbstractArray; coil_
     raw = unname(data)
     is_image_space = data isa NamedDimsArray && (:x ∈ dimnames(data) || :kx ∉ dimnames(data))
 
-    hybrid = if is_image_space
-        copy(raw)
-    else
-        ifft(ifftshift(raw, 1), 1)
-    end
+    hybrid = is_image_space ? raw : ifft(ifftshift(raw, 1), 1)
+    comp_hybrid = _apply_slicewise_compression(hybrid, C, c_idx)
+    comp_data = is_image_space ? comp_hybrid : fftshift(fft(comp_hybrid, 1), 1)
 
-    slice_ndims = ndims(raw) - 1
-    slice_c_idx = c_idx - 1
-    perm_slice = ntuple(i -> i == 1 ? slice_c_idx : (i <= slice_c_idx ? i - 1 : i), slice_ndims)
-    inv_perm_slice = ntuple(i -> i == slice_c_idx ? 1 : (i < slice_c_idx ? i + 1 : i), slice_ndims)
-
-    out_size = ntuple(i -> i == c_idx ? n_virtual : size(raw, i), ndims(raw))
-    comp_hybrid = zeros(eltype(raw), out_size)
-
-    for ix in 1:Nx
-        slice_data = selectdim(hybrid, 1, ix)
-        flat_slice = reshape(permutedims(slice_data, perm_slice), Nc, :)
-        comp_flat = C[:, :, ix] * flat_slice
-
-        slice_sz = size(slice_data)
-        perm_sz = ntuple(i -> i == 1 ? n_virtual : slice_sz[perm_slice[i]], slice_ndims)
-        comp_perm = reshape(comp_flat, perm_sz)
-        comp_slice = permutedims(comp_perm, inv_perm_slice)
-        selectdim(comp_hybrid, 1, ix) .= comp_slice
-    end
-
-    comp_data = if is_image_space
-        comp_hybrid
-    else
-        fftshift(fft(comp_hybrid, 1), 1)
-    end
-
-    if data isa NamedDimsArray
-        return NamedDimsArray{dimnames(data)}(comp_data), C
-    else
-        return comp_data, C
-    end
+    return _rewrap_like(data, comp_data), C
 end

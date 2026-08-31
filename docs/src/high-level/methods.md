@@ -38,7 +38,6 @@ DirectReconstruction(; coil_combination = AdjointSensitivity())
 IterativeReconstruction(
     regularization...;
     algorithm = DEFAULT_ALGORITHMS,
-    domain = ImageDomain(),
     fidelity = L2Loss(),
     signal_model = nothing,
     exact_opnorm = false,
@@ -47,15 +46,21 @@ IterativeReconstruction(
 )
 ```
 
-#### Reconstruction Domains
+#### Signal Models
 
-- `ImageDomain()`: Optimization variable is defined in the image domain $x \in \mathbb{C}^N$.
-- `KSpaceDomain()`: Optimization variable is defined in the k-space domain.
+The `signal_model` keyword sets how the optimization variable maps to the image:
+
+- `nothing` (default): the variable *is* the image, $x \in \mathbb{C}^N$.
+- `TemporalBasis(Φ; time_dim)`: the variable holds subspace coefficients that expand to a dynamic
+  image series via $\Phi$.
+- `KSpaceToImage(coil_combination = RootSumSquares())`: the variable is the full multi-channel
+  k-space; the solve enforces data consistency with the subsampling operator only, and the result is
+  transformed to an image (inverse FFT + coil combination) afterwards. Used by `SPIRiT(; iterative = true)`.
 
 #### Data Fidelity Terms
 
 - `L2Loss()`: Standard $\ell_2$-norm data fidelity $\frac{1}{2}\|\mathcal{A}x - y\|_2^2$. Used by default.
-- `HardConsistency(; inner_maxit = 50, inner_tol = 1e-6)`: Hard data consistency constraint indicator $\{x \mid \mathcal{A}x = y\}$. When $\mathcal{A}\mathcal{A}^*$ is diagonal (single-coil Cartesian, `KSpaceDomain`), the projection is computed directly in closed form. Otherwise, an inner Conjugate Gradient iteration is evaluated. Ideal for pairing with `DouglasRachford()` or POCS-style projections.
+- `HardConsistency(; inner_maxit = 50, inner_tol = 1e-6)`: Hard data consistency constraint indicator $\{x \mid \mathcal{A}x = y\}$. When $\mathcal{A}\mathcal{A}^*$ is diagonal (single-coil Cartesian, or a `KSpaceToImage` signal model), the projection is computed directly in closed form. Otherwise, an inner Conjugate Gradient iteration is evaluated. Ideal for pairing with `DouglasRachford()` or POCS-style projections.
 - `NoFidelity()`: Omits the data consistency term completely (useful for unconstrained optimization or custom models).
 
 #### Solver Selection and Configuration
@@ -101,14 +106,13 @@ SPIRiT
 SPIRiTConsistency
 ```
 
-### Method, Domain, Fidelity and Coil-Combination Types
+### Method, Signal-Model, Fidelity and Coil-Combination Types
 
 [`DirectReconstruction`](@ref) and [`IterativeReconstruction`](@ref) are documented on the
 [Reconstruction](reconstruction.md) page.
 
 ```@docs
-ImageDomain
-KSpaceDomain
+KSpaceToImage
 CoilCombination
 AdjointSensitivity
 RootSumSquares

@@ -60,6 +60,33 @@ end
     @test dimnames(𝒜_model, 1) == (:kx, :ky, :time)
 end
 
+@testitem "KSpaceToImage signal model: dim queries and encoding operator" tags = [:encoding, :reconstruction] begin
+    using Test
+    using MriReconstructionToolbox
+    using NamedDims
+    const MRT = MriReconstructionToolbox
+
+    Nx, Ny, Nc = 8, 8, 4
+    ksp = NamedDimsArray{(:kx, :ky, :coil)}(zeros(ComplexF32, Nx, Ny, Nc))
+    acq = CartesianAcquisitionInfo(ksp; is3D = false, image_size = (Nx, Ny))
+
+    @test KSpaceToImage().coil_combination === RootSumSquares()
+
+    m_rss = IterativeReconstruction(signal_model = KSpaceToImage(RootSumSquares()))
+    @test MRT.variable_dims(m_rss, acq) == (:kx, :ky, :coil)
+    @test MRT.variable_size(m_rss, acq) == (Nx, Ny, Nc)
+    @test MRT.output_dims(m_rss, acq) == (:x, :y)
+
+    m_nocc = IterativeReconstruction(signal_model = KSpaceToImage(NoCoilCombination()))
+    @test MRT.output_dims(m_nocc, acq) == (:x, :y, :coil)
+
+    # Fully sampled ⇒ identity encoding operator (variable is k-space, no subsampling)
+    𝒜 = build_encoding_operator(acq, m_rss)
+    @test 𝒜 isa MriReconstructionToolbox.NamedDimsOp
+    @test dimnames(𝒜, 1) == (:kx, :ky, :coil)
+    @test dimnames(𝒜, 2) == (:kx, :ky, :coil)
+end
+
 @testitem "Subspace reconstruction with TemporalBasis identity and permutation" tags = [:reconstruction, :minimizer] begin
     using Test
     using MriReconstructionToolbox

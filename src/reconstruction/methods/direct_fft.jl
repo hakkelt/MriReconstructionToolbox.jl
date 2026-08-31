@@ -1,55 +1,64 @@
 """
-    _direct_ifft(acq::CartesianAcquisitionInfo, k::AbstractArray; dims = (1, 2))
+    _cartesian_fourier_op(acq::CartesianAcquisitionInfo, template::AbstractArray; threaded = true, fast_planning = true)
 
-Computes the inverse Fourier transform from k-space to image space, respecting `shifted_kspace_dims`
-and `shifted_image_dims` from `acq`.
+Bare Cartesian Fourier operator (image → k-space) for `acq`, planned for an array shaped like
+`template`. Honors `shifted_kspace_dims` / `shifted_image_dims`; `op * x` is the forward transform,
+`op' * k` the inverse. Reuses [`get_fourier_operator`](@ref) — no `fft`/`fftshift` calls here.
+
+`template` must be a plain array (not a `NamedDimsArray`) so the operator stays unwrapped and its
+outputs stay plain; the direct methods re-attach dimension names themselves.
 """
-function _direct_ifft(acq::CartesianAcquisitionInfo, k::AbstractArray; dims = (1, 2))
+function _cartesian_fourier_op(
+        acq::CartesianAcquisitionInfo, template::AbstractArray; threaded::Bool = true, fast_planning::Bool = true
+    )
     is3D = acq.is3D
-    sK = _normalize_shifted_dims(acq.shifted_kspace_dims, is3D, acq.kspace_data, "shifted_kspace_dims", (:kx, :ky, :kz))
-    sI = _normalize_shifted_dims(acq.shifted_image_dims, is3D, acq.kspace_data, "shifted_image_dims", (:x, :y, :z))
-
-    k_to_shift = tuple([d for d in dims if d ∉ sK]...)
-    img_to_shift = tuple([d for d in dims if d ∈ sI]...)
-
-    res = if !isempty(k_to_shift)
-        ifftshift(k, k_to_shift)
-    else
-        k
-    end
-
-    res = ifft(res, dims)
-
-    if !isempty(img_to_shift)
-        res = ifftshift(res, img_to_shift)
-    end
-    return res
+    sk = _normalize_shifted_dims(acq.shifted_kspace_dims, is3D, acq.kspace_data, "shifted_kspace_dims", (:kx, :ky, :kz))
+    si = _normalize_shifted_dims(acq.shifted_image_dims, is3D, acq.kspace_data, "shifted_image_dims", (:x, :y, :z))
+    return get_fourier_operator(template, is3D; shifted_kspace_dims = sk, shifted_image_dims = si, threaded, fast_planning)
 end
 
+# Thin direction-named aliases over a `_cartesian_fourier_op` result.
+_direct_fft(op, x::AbstractArray) = op * x       # image → k-space
+_direct_ifft(op, k::AbstractArray) = op' * k     # k-space → image
+
 """
-    _direct_fft(acq::CartesianAcquisitionInfo, x::AbstractArray; dims = (1, 2))
+    _kspace_to_image(ksp, coil_combine, sens, acq::CartesianAcquisitionInfo)
 
-Computes the forward Fourier transform from image space to k-space, respecting `shifted_kspace_dims`
-and `shifted_image_dims` from `acq`.
+Transform a completed multi-coil Cartesian k-space `ksp` (coils on dim 3) to an image, applying
+`coil_combine` (`AdjointSensitivity` with `sens`, `RootSumSquares`, or `NoCoilCombination`) and
+dropping the coil axis unless combination is skipped. Shared tail for the direct methods
+(GRAPPA, SPIRiT, ...).
 """
-function _direct_fft(acq::CartesianAcquisitionInfo, x::AbstractArray; dims = (1, 2))
-    is3D = acq.is3D
-    sK = _normalize_shifted_dims(acq.shifted_kspace_dims, is3D, acq.kspace_data, "shifted_kspace_dims", (:kx, :ky, :kz))
-    sI = _normalize_shifted_dims(acq.shifted_image_dims, is3D, acq.kspace_data, "shifted_image_dims", (:x, :y, :z))
+function _kspace_to_image(
+        ksp::AbstractArray,
+        coil_combine::CoilCombination,
+        sens::Union{Nothing, AbstractArray},
+        acq::CartesianAcquisitionInfo,
+    )
+    Nx, Ny = get_image_size(acq)[1:2]
+    kplain = unname(ksp)
+    op = _cartesian_fourier_op(acq, kplain)
+    coil_imgs = (op' * kplain) .* sqrt(Nx * Ny)
 
-    k_to_shift = tuple([d for d in dims if d ∉ sK]...)
-    img_to_shift = tuple([d for d in dims if d ∈ sI]...)
-
-    res = if !isempty(img_to_shift)
-        fftshift(x, img_to_shift)
+    c_dim = 3
+    img_out = if coil_combine isa AdjointSensitivity
+        @argcheck !isnothing(sens) "AdjointSensitivity coil combination requires sensitivity maps."
+        sum(coil_imgs .* conj.(unname(sens)); dims = c_dim)
+    elseif coil_combine isa RootSumSquares
+        sqrt.(sum(abs2, coil_imgs; dims = c_dim))
+    elseif coil_combine isa NoCoilCombination
+        coil_imgs
     else
-        x
+        throw(ArgumentError("Unsupported coil combination: $(typeof(coil_combine))"))
     end
 
-    res = fft(res, dims)
+    combined = !(coil_combine isa NoCoilCombination)
+    combined && (img_out = dropdims(img_out; dims = c_dim))
 
-    if !isempty(k_to_shift)
-        res = fftshift(res, k_to_shift)
+    if acq.kspace_data isa NamedDimsArray
+        out_d = combined ? filter(!=(:coil), get_image_dims(acq)) : get_image_dims(acq)
+        return NamedDimsArray{out_d}(img_out)
+    else
+        return img_out
     end
-    return res
 end

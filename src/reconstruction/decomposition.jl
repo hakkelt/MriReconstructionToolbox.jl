@@ -134,7 +134,6 @@ function execute_regularized(plan, acq_data, config, method::IterativeReconstruc
         local_method = IterativeReconstruction(
             local_reg,
             method.algorithm,
-            method.domain,
             method.fidelity,
             method.signal_model,
             method.exact_opnorm,
@@ -165,7 +164,6 @@ function execute_regularized_components(plan, acq_data, config, method::Iterativ
         local_method = IterativeReconstruction(
             local_components,
             method.algorithm,
-            method.domain,
             method.fidelity,
             method.signal_model,
             method.exact_opnorm,

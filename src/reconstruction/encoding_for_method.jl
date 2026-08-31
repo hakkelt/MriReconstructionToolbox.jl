@@ -30,6 +30,7 @@ function signal_model_operator(method::IterativeReconstruction, acq::Acquisition
 end
 
 signal_model_operator(::Nothing, ::AcquisitionInfo; threaded::Bool = true) = nothing
+signal_model_operator(::KSpaceToImage, ::AcquisitionInfo; threaded::Bool = true) = nothing
 
 function signal_model_operator(model::TemporalBasis, acq::AcquisitionInfo; threaded::Bool = true)
     img_dims = get_image_dims(acq)
@@ -82,56 +83,84 @@ end
 
 get_affected_dims(::Nothing, ::Any, ::Any) = ()
 get_affected_dims(model::TemporalBasis, ::Any, image_dims) = (image_dims[get_time_dim(model.time_dim, image_dims)],)
+get_affected_dims(::KSpaceToImage, ::Any, image_dims) = image_dims
 
-function variable_dims(method::IterativeReconstruction, acq::AcquisitionInfo)
-    if method.domain isa KSpaceDomain
-        k_dims = dimnames(acq.kspace_data)
-        return k_dims
-    end
-    return variable_dims(method.signal_model, acq)
-end
+variable_dims(method::IterativeReconstruction, acq::AcquisitionInfo) = variable_dims(method.signal_model, acq)
 variable_dims(::Nothing, acq::AcquisitionInfo) = get_image_dims(acq)
 function variable_dims(model::TemporalBasis, acq::AcquisitionInfo)
     img_dims = get_image_dims(acq)
     t_idx = get_time_dim(model.time_dim, img_dims)
     return ntuple(i -> i == t_idx ? :coeff : img_dims[i], length(img_dims))
 end
+variable_dims(::KSpaceToImage, acq::AcquisitionInfo) = dimnames(acq.kspace_data)
 
-function variable_size(method::IterativeReconstruction, acq::AcquisitionInfo)
-    if method.domain isa KSpaceDomain
-        img_sz = get_image_size(acq)
-        raw_ksp = unname(acq.kspace_data)
-        trailing_dims = size(raw_ksp)[3:end]
-        return (img_sz[1], img_sz[2], trailing_dims...)
-    end
-    return variable_size(method.signal_model, acq)
-end
+variable_size(method::IterativeReconstruction, acq::AcquisitionInfo) = variable_size(method.signal_model, acq)
 variable_size(::Nothing, acq::AcquisitionInfo) = get_image_size(acq)
 function variable_size(model::TemporalBasis, acq::AcquisitionInfo)
     img_size = get_image_size(acq)
     t_idx = get_time_dim(model.time_dim, get_image_dims(acq))
     return ntuple(i -> i == t_idx ? size(model.Φ, 2) : img_size[i], length(img_size))
 end
-
-function output_dims(method::IterativeReconstruction, acq::AcquisitionInfo)
-    if method.domain isa KSpaceDomain
-        if method.domain.coil_combination isa NoCoilCombination
-            return get_image_dims(acq)
-        else
-            return filter(!=(:coil), get_image_dims(acq))
-        end
-    end
-    return output_dims(method.signal_model, acq)
+function variable_size(::KSpaceToImage, acq::AcquisitionInfo)
+    img_sz = get_image_size(acq)
+    return (img_sz[1], img_sz[2], size(acq.kspace_data)[3:end]...)
 end
+
+output_dims(method::IterativeReconstruction, acq::AcquisitionInfo) = output_dims(method.signal_model, acq)
 output_dims(::Nothing, acq::AcquisitionInfo) = get_image_dims(acq)
 output_dims(::TemporalBasis, acq::AcquisitionInfo) = get_image_dims(acq)
+function output_dims(model::KSpaceToImage, acq::AcquisitionInfo)
+    return model.coil_combination isa NoCoilCombination ? get_image_dims(acq) : filter(!=(:coil), get_image_dims(acq))
+end
+
+"""
+    model_encoding_operator(model, acq::AcquisitionInfo; threaded::Bool, fast_planning::Bool)
+
+Encoding operator mapping the reconstruction optimization variable to the measured k-space:
+- `nothing` — the physical encoding operator `𝒜`.
+- `TemporalBasis` — `𝒜 * ℳ`, with `ℳ` expanding subspace coefficients to the image series.
+- `KSpaceToImage` — just the subsampling operator `𝒫` (the variable *is* k-space).
+"""
+function model_encoding_operator(::Nothing, acq::AcquisitionInfo; threaded::Bool, fast_planning::Bool)
+    return get_encoding_operator(acq; threaded, fast_planning)
+end
+
+function model_encoding_operator(model::TemporalBasis, acq::AcquisitionInfo; threaded::Bool, fast_planning::Bool)
+    𝒜 = get_encoding_operator(acq; threaded, fast_planning)
+    ℳ = signal_model_operator(model, acq; threaded)
+    if 𝒜 isa NamedDimsOp && ℳ isa NamedDimsOp
+        @argcheck dimnames(𝒜, 2) == dimnames(ℳ, 1) "signal model codomain does not match encoding operator domain"
+    end
+    return 𝒜 * ℳ
+end
+
+function model_encoding_operator(::KSpaceToImage, acq::AcquisitionInfo; threaded::Bool, fast_planning::Bool)
+    isnothing(acq.subsampling) || return get_subsampling_operator(acq)
+    raw = unname(acq.kspace_data)
+    P = Eye(eltype(raw), size(raw)...)
+    return acq.kspace_data isa NamedDimsArray ?
+        NamedDimsOp{dimnames(acq.kspace_data), dimnames(acq.kspace_data)}(P) : P
+end
+
+"""
+    apply_signal_model(model, x̂, acq::AcquisitionInfo; threaded::Bool)
+
+Map a solved optimization variable `x̂` to the output image: identity for `nothing`, `ℳ * x̂` for
+`TemporalBasis`, and an inverse Fourier transform + coil combination for `KSpaceToImage`.
+"""
+apply_signal_model(::Nothing, x̂, ::AcquisitionInfo; threaded::Bool) = x̂
+function apply_signal_model(model::TemporalBasis, x̂, acq::AcquisitionInfo; threaded::Bool)
+    return signal_model_operator(model, acq; threaded) * x̂
+end
+function apply_signal_model(model::KSpaceToImage, x̂, acq::AcquisitionInfo; threaded::Bool)
+    return _kspace_to_image(x̂, model.coil_combination, acq.sensitivity_maps, acq)
+end
 
 """
     build_encoding_operator(acq::AcquisitionInfo, method::AbstractReconstructionMethod; threaded::Bool = true, fast_planning::Bool = false)
 
-Builds the complete encoding operator for the reconstruction method, composing the physical
-acquisition encoding operator `𝒜` with the signal model `ℳ` (if present) as `𝒜 * ℳ`.
-Under `KSpaceDomain`, builds only the subsampling operator `𝒫`.
+Builds the encoding operator mapping the reconstruction optimization variable to the measured
+k-space, dispatching on the method's signal model (see [`model_encoding_operator`](@ref)).
 """
 function build_encoding_operator(
         acq::AcquisitionInfo,
@@ -139,25 +168,6 @@ function build_encoding_operator(
         threaded::Bool = true,
         fast_planning::Bool = false,
     )
-    if method isa IterativeReconstruction && method.domain isa KSpaceDomain
-        if isnothing(acq.subsampling)
-            raw = unname(acq.kspace_data)
-            P = Eye(eltype(raw), size(raw)...)
-            if acq.kspace_data isa NamedDimsArray
-                return NamedDimsOp{dimnames(acq.kspace_data), dimnames(acq.kspace_data)}(P)
-            else
-                return P
-            end
-        else
-            return get_subsampling_operator(acq)
-        end
-    end
-
-    𝒜 = get_encoding_operator(acq; threaded, fast_planning)
-    ℳ = signal_model_operator(method, acq; threaded)
-    isnothing(ℳ) && return 𝒜
-    if 𝒜 isa NamedDimsOp && ℳ isa NamedDimsOp
-        @argcheck dimnames(𝒜, 2) == dimnames(ℳ, 1) "signal model codomain does not match encoding operator domain"
-    end
-    return 𝒜 * ℳ
+    model = method isa IterativeReconstruction ? method.signal_model : nothing
+    return model_encoding_operator(model, acq; threaded, fast_planning)
 end

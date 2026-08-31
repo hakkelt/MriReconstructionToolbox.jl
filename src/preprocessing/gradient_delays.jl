@@ -57,13 +57,24 @@ function estimate_gradient_delays(
     return _estimate_delays_core(traj, ksp, method)
 end
 
+"""
+    _spoke_angles(traj::AbstractArray)
+
+Azimuthal angle of each spoke, from its first-to-last sample displacement in the kx/ky plane.
+"""
+function _spoke_angles(traj::AbstractArray)
+    Nsamples = size(traj, 2)
+    Nspokes = size(traj, 3)
+    kx_end = traj[1, Nsamples, 1:Nspokes] .- traj[1, 1, 1:Nspokes]
+    ky_end = traj[2, Nsamples, 1:Nspokes] .- traj[2, 1, 1:Nspokes]
+    return atan.(ky_end, kx_end)
+end
+
 function _extract_spoke_angles_and_shifts(traj::AbstractArray, ksp::AbstractArray)
     Nsamples = size(traj, 2)
     Nspokes = size(traj, 3)
 
-    kx_end = traj[1, Nsamples, 1:Nspokes] .- traj[1, 1, 1:Nspokes]
-    ky_end = traj[2, Nsamples, 1:Nspokes] .- traj[2, 1, 1:Nspokes]
-    angles = atan.(ky_end, kx_end)
+    angles = _spoke_angles(traj)
 
     ksp_mag = if ndims(ksp) >= 3
         coil_dims = Tuple(3:ndims(ksp))
@@ -110,12 +121,9 @@ end
 function _apply_gradient_delays(traj::AbstractArray, delays::Tuple{Real, Real})
     dx, dy = delays
     traj_corr = copy(traj)
-    Nsamples = size(traj, 2)
     Nspokes = size(traj, 3)
 
-    kx_end = traj[1, Nsamples, 1:Nspokes] .- traj[1, 1, 1:Nspokes]
-    ky_end = traj[2, Nsamples, 1:Nspokes] .- traj[2, 1, 1:Nspokes]
-    angles = atan.(ky_end, kx_end)
+    angles = _spoke_angles(traj)
 
     for s in 1:Nspokes
         shift_x = dx * cos(angles[s])
@@ -133,12 +141,9 @@ end
 
 function _apply_gradient_delays(traj::AbstractArray, delays::NamedTuple)
     traj_corr = copy(traj)
-    Nsamples = size(traj, 2)
     Nspokes = size(traj, 3)
 
-    kx_end = traj[1, Nsamples, 1:Nspokes] .- traj[1, 1, 1:Nspokes]
-    ky_end = traj[2, Nsamples, 1:Nspokes] .- traj[2, 1, 1:Nspokes]
-    angles = atan.(ky_end, kx_end)
+    angles = _spoke_angles(traj)
 
     for s in 1:Nspokes
         θ = angles[s]

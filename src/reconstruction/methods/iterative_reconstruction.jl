@@ -1,23 +1,22 @@
 """
-	IterativeReconstruction{R, A, D<:ReconstructionDomain, F<:DataFidelity, M} <: AbstractIterativeMethod
+	IterativeReconstruction{R, A, F<:DataFidelity, M} <: AbstractIterativeMethod
 
 Configures an iterative reconstruction problem with regularization terms, solver algorithms,
-reconstruction domain, data fidelity, and signal modeling options.
+data fidelity, and signal modeling options.
 
 # Fields
 - `regularization::R`: Tuple of regularization terms (`Regularization` or `Component`).
 - `algorithm::A`: Solver algorithm or tuple of candidate algorithms.
-- `domain::D`: Reconstruction domain (default `ImageDomain()`).
 - `fidelity::F`: Data fidelity term (default `L2Loss()`).
-- `signal_model::M`: Signal model (default `nothing`).
+- `signal_model::M`: Signal model mapping the optimization variable to the image (default `nothing`);
+  e.g. `TemporalBasis` for subspace reconstruction or `KSpaceToImage` for a k-space-domain solve.
 - `exact_opnorm::Bool`: Use exact operator norm for step size estimation (default `false`).
 - `disable_operator_normalization::Bool`: Skip operator normalization (default `false`).
 - `disable_normalop_optimization::Bool`: Disable normal operator optimization (default `false`).
 """
-struct IterativeReconstruction{R <: Tuple, A, D <: ReconstructionDomain, F <: DataFidelity, M} <: AbstractIterativeMethod
+struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M} <: AbstractIterativeMethod
     regularization::R
     algorithm::A
-    domain::D
     fidelity::F
     signal_model::M
     exact_opnorm::Bool
@@ -27,18 +26,16 @@ struct IterativeReconstruction{R <: Tuple, A, D <: ReconstructionDomain, F <: Da
     function IterativeReconstruction(
             regularization::Tuple,
             algorithm,
-            domain::D,
             fidelity::F,
             signal_model::M,
             exact_opnorm::Bool,
             disable_operator_normalization::Bool,
             disable_normalop_optimization::Bool,
-        ) where {D <: ReconstructionDomain, F <: DataFidelity, M}
+        ) where {F <: DataFidelity, M}
         _validate_regularization(regularization)
-        return new{typeof(regularization), typeof(algorithm), D, F, M}(
+        return new{typeof(regularization), typeof(algorithm), F, M}(
             regularization,
             algorithm,
-            domain,
             fidelity,
             signal_model,
             exact_opnorm,
@@ -61,7 +58,6 @@ end
 function IterativeReconstruction(;
         regularization = (),
         algorithm = DEFAULT_ALGORITHMS,
-        domain::ReconstructionDomain = ImageDomain(),
         fidelity::DataFidelity = L2Loss(),
         signal_model = nothing,
         exact_opnorm::Bool = false,
@@ -72,7 +68,6 @@ function IterativeReconstruction(;
     return IterativeReconstruction(
         regs_tuple,
         algorithm,
-        domain,
         fidelity,
         signal_model,
         exact_opnorm,
@@ -86,7 +81,6 @@ function IterativeReconstruction(
         reg::Union{Regularization, Component},
         more_regs::Union{Regularization, Component}...;
         algorithm = DEFAULT_ALGORITHMS,
-        domain::ReconstructionDomain = ImageDomain(),
         fidelity::DataFidelity = L2Loss(),
         signal_model = nothing,
         exact_opnorm::Bool = false,
@@ -97,7 +91,6 @@ function IterativeReconstruction(
     return IterativeReconstruction(
         regs_tuple,
         algorithm,
-        domain,
         fidelity,
         signal_model,
         exact_opnorm,

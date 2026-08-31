@@ -331,6 +331,17 @@ function _copy_operator_impl(
         op::NFFTOp{T, D, P, K, DC}; storage_type = nothing, threaded = nothing
     ) where {T, D, P, K, DC}
     new_threaded = threaded === nothing ? op.threaded : threaded
+    if storage_type === nothing
+        # `mul!` writes the plan's internal scratch (`plan.tmpVec` / `plan.tmpVecHat`), so a
+        # plan shared between two operator copies races when they run concurrently. `Base.copy`
+        # on an `NFFTPlan` gives the copy its own scratch and FFT plans while only *copying*
+        # (not recomputing) the expensive gridding tables -- far cheaper than replanning from
+        # the trajectory, and safe for per-thread copies. `dcf` is read-only in `mul!`, so it
+        # is shared per the copy convention; `ksp_buffer` is operator-owned scratch, so copied.
+        return NFFTOp{T, D, P, K, DC}(copy(op.plan), similar(op.ksp_buffer), op.dcf, new_threaded)
+    end
+    # Storage-backend change: rebuild on the requested array type from the trajectory, which
+    # the plan still carries (`plan.k`, in the flattened 2D form `create_plan` reshapes to).
     image_size = NFFT.size_in(op.plan)
     ksp_shape = size(op.dcf)
     trajectory = reshape(collect(op.plan.k), D, ksp_shape...)
