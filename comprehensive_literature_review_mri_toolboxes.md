@@ -417,11 +417,11 @@ struct NoCoilCombination <: CoilCombination end
 
 How consistency with the measured data enters the objective.
 
-- `L2Loss()`: prepend the quadratic term `½‖𝒜x − y‖₂²` (image domain) or `½‖𝒟k − y‖₂²`
+- `L2Loss()`: prepend the quadratic term `½‖𝒜x − y‖₂²` (image domain) or `½‖𝒫k − y‖₂²`
   (k-space domain).
 - `HardConsistency()`: prepend the indicator of the affine consistency set,
-  `i_{𝒟k = y}`, enforced exactly by projection. Requires a splitting algorithm that
-  accepts a non-smooth-plus-non-smooth objective (`DouglasRachford`, `ADMM`).
+  `i_{𝒫k = y}` or `i_{𝒜x = y}`, enforced by projection (evaluated in closed form when
+  `𝒜𝒜*` is diagonal, or via inner CG iterations otherwise).
 - `NoFidelity()`: prepend nothing; the objective is entirely specified by `regularization`.
   Use when a data-consistency term is already present among the supplied terms.
 """
@@ -431,7 +431,7 @@ struct HardConsistency <: DataFidelity end
 struct NoFidelity      <: DataFidelity end
 ```
 
-**Notation.** $\mathcal{A}$ denotes the full image-domain encoding operator (sensitivities ∘ Fourier ∘ sampling), as built today by `get_encoding_operator`. $\mathcal{D}$ denotes the **k-space data-consistency operator**: the restriction of a full multi-channel Cartesian k-space array to the acquired samples, i.e. the sampling operator alone, with no sensitivity or Fourier factor. $\mathcal{D}$ is the k-space-domain counterpart of $\mathcal{A}$ and is what appears in every `KSpaceDomain` formulation below. MRT's existing `get_subsampling_operator` is the starting point, extended to carry the coil dimension through unchanged.
+**Notation.** $\mathcal{A}$ denotes the full image-domain encoding operator (sensitivities ∘ Fourier ∘ sampling), as built by `get_encoding_operator`. $\mathcal{P}$ denotes the **sampling and data-consistency operator** (was $\Gamma$ / $\mathcal{D}$): the restriction of a full multi-channel Cartesian k-space array to the acquired samples, i.e. the sampling operator alone, with no sensitivity or Fourier factor. $\mathcal{P}$ is the k-space-domain counterpart of $\mathcal{A}$ and is what appears in every `KSpaceDomain` formulation below. MRT's existing `get_subsampling_operator` already treats trailing dimensions as batch dimensions and carries the coil dimension through unchanged.
 
 ---
 
@@ -574,12 +574,12 @@ natural_domain(::InKSpace)      = KSpaceDomain()
 | **Unregularized iterative LS** | image | `L2Loss` | $\min_x \tfrac{1}{2}\|\mathcal{A}x - y\|_2^2$ | — | `CG`, `CGNR` | ✅ |
 | **$L+S$ Decomposition** | image | `L2Loss` | $\min_{L,S} \tfrac{1}{2}\|\mathcal{A}(L+S) - y\|_2^2 + \|L\|_* + \lambda \|\mathcal{F}_t S\|_1$ | `Component(:L, LowRank)`, `Component(:S, …)` | `ADMM`, `FISTA` | ✅ |
 | **Subspace / T2-Shuffling** | image | `L2Loss` | $\min_\alpha \tfrac{1}{2}\|\mathcal{A}\Phi\alpha - y\|_2^2 + \lambda R(\alpha)$ | any; `signal_model = TemporalBasis(Φ)` | `FISTA`, `ADMM` | ✅ |
-| **Iterative Homodyne** | image | `L2Loss` | $\min_{m} \tfrac{1}{2}\|\mathcal{A}(e^{i\phi_0} m) - y\|_2^2 + \lambda R(m)$, $m$ real | `TotalVariation`; `signal_model = PhaseDemodulation(ϕ₀)` | `CG`, `FISTA` | ✅ |
+| **Phase-Constrained Recon** | image | `L2Loss` | $\min_{m} \tfrac{1}{2}\|\mathcal{A}(e^{i\phi_0} m) - y\|_2^2 + \lambda R(m)$, $m$ real | `TotalVariation`; `signal_model = PhaseDemodulation(ϕ₀)` | `CG`, `FISTA` | ✅ |
 | **POCS (Partial Fourier)** | image | `HardConsistency` | $\min_x\; i_{\{\mathcal{A}x = y\}}(x) + i_{\{x \,=\, e^{i\phi_0} m,\; m \in \mathbb{R}\}}(x)$ | `PhaseConstraint(ϕ₀)` | `DouglasRachford` | ✅ |
-| **SPIRiT** | k-space | `L2Loss` | $\min_k \tfrac{1}{2}\|\mathcal{D}k - y\|_2^2 + \tfrac{1}{2}\|(I - G)k\|_2^2 + \lambda \|\Psi \mathcal{F}^{-1} k\|_1$ | `SPIRiTConsistency(G)`, `L1Wavelet2D` | `CGNR`, `FISTA`, `ADMM` | ✅ |
-| **SAKE** | k-space | `HardConsistency` | $\min_k\; i_{\{\operatorname{rank}\mathcal{H}(k)\,\le\, r\}}(k) + i_{\{\mathcal{D}k = y\}}(k)$ | `HankelRankLimit(kernel_size, rank)` | `DouglasRachford` | ❌ |
-| **LORAKS / AC-LORAKS** | k-space | `L2Loss` | $\min_k \tfrac{1}{2}\|\mathcal{D}k - y\|_2^2 + \lambda\, J_r(\mathcal{C}(k))$ | `LORAKSRankPenalty(r)` | `ADMM`, `DouglasRachford` | ❌ |
-| **PRUNO** | k-space | `HardConsistency` | $\min_k \tfrac{1}{2}\|N k\|_2^2 + i_{\{\mathcal{D}k = y\}}(k)$ | `NullSpaceConsistency(N)` | `DouglasRachford` | ✅ |
+| **SPIRiT** | k-space | `L2Loss` | $\min_k \tfrac{1}{2}\|\mathcal{P}k - y\|_2^2 + \tfrac{1}{2}\|(I - G)k\|_2^2 + \lambda \|\Psi \mathcal{F}^{-1} k\|_1$ | `SPIRiTConsistency(G)`, `L1Wavelet2D` | `CGNR`, `FISTA`, `ADMM` | ✅ |
+| **SAKE** | k-space | `HardConsistency` | $\min_k\; i_{\{\operatorname{rank}\mathcal{H}(k)\,\le\, r\}}(k) + i_{\{\mathcal{P}k = y\}}(k)$ | `HankelRankLimit(kernel_size, rank)` | `DouglasRachford` | ❌ |
+| **LORAKS / AC-LORAKS** | k-space | `L2Loss` | $\min_k \tfrac{1}{2}\|\mathcal{P}k - y\|_2^2 + \lambda\, J_r(\mathcal{C}(k))$ | `LORAKSRankPenalty(r)` | `ADMM`, `DouglasRachford` | ❌ |
+| **PRUNO** | k-space | `HardConsistency` | $\min_k \tfrac{1}{2}\|N k\|_2^2 + i_{\{\mathcal{P}k = y\}}(k)$ | `NullSpaceConsistency(N)` | `DouglasRachford` | ✅ |
 
 **Corrections relative to the previous draft, and why they matter:**
 
