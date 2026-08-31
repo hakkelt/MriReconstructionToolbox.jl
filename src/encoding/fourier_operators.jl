@@ -185,6 +185,24 @@ function get_fourier_operator(
     return BatchOp(𝒩, batch_dims; threaded)
 end
 
+"""
+    _axis_dft_op(template, dims::Tuple; kspace_shift = false, threaded = true, fast_planning = false)
+
+Bare `BACKWARD`-normalized `DFT` over `dims` of an array shaped like `template`, optionally with an
+`fftshift` on the k-space (codomain) side. `op * x` is `fft(x, dims)` (or `fftshift(fft(x, dims), dims)`
+with `kspace_shift`); `op' * k` is the matching inverse (`ifft(ifftshift(k, dims), dims)`). Used where
+only a subset of axes is transformed (readout-only coil compression, spatial-only sensitivity maps),
+so `get_fourier_operator` — which assumes a full Cartesian layout — does not apply.
+"""
+function _axis_dft_op(
+        template::AbstractArray, dims::Tuple;
+        kspace_shift::Bool = false, threaded::Bool = true, fast_planning::Bool = false,
+    )
+    flags = fast_planning ? FFTW.ESTIMATE : FFTW.MEASURE
+    ℱ = DFT(template, dims; normalization = FFTWOperators.BACKWARD, flags, num_threads = threaded ? nthreads() : 1)
+    return kspace_shift ? fftshift_op(ℱ; codomain_shifts = dims) : ℱ
+end
+
 function _normalize_shifted_dims(
         shifted_dims::Union{Tuple, Integer, Symbol},
         is3D::Bool,

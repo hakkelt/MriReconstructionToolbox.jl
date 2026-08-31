@@ -39,12 +39,11 @@ export HardThreshold, SparsityLimit, PlugAndPlay
 export calculate, build_model, reconstruct, Config, SequentialExecutor, MultiThreadingExecutor
 export AbstractReconstructionMethod, AbstractIterativeMethod, AbstractDirectMethod
 export DirectReconstruction, IterativeReconstruction, DEFAULT_ALGORITHMS
-export ReconstructionDomain, ImageDomain, KSpaceDomain
 export CoilCombination, AdjointSensitivity, RootSumSquares, NoCoilCombination
 export DataFidelity, L2Loss, HardConsistency, NoFidelity, HardConsistencyProx
 export lower, check_applicable, variable_dims, variable_size, output_dims
 export Component, DecomposedImage, components, total
-export TemporalBasis, build_encoding_operator, signal_model_operator
+export TemporalBasis, KSpaceToImage, build_encoding_operator, signal_model_operator
 export BartScaling, FixedScaling, MeasurementBasedScaling, NoScaling
 export ISTA, FISTA, ADMM, DouglasRachford, CG, CGNR
 export AcquisitionInfo, CartesianAcquisitionInfo, NonCartesianAcquisitionInfo

@@ -125,13 +125,7 @@ function _reconstruct(
             fidelity = method.fidelity,
         )
         x̂ = _iterative_reconstruct_core(𝒜, acq_data, x̂, scale, method, config; build)
-        if method.domain isa KSpaceDomain
-            cc = isnothing(method.domain.coil_combination) ? RootSumSquares() : method.domain.coil_combination
-            x̂ = _kspace_to_image(x̂, cc, acq_data.sensitivity_maps, acq_data)
-        elseif method.signal_model !== nothing
-            ℳ = signal_model_operator(method, acq_data; threaded = config.threaded)
-            x̂ = ℳ * x̂
-        end
+        x̂ = apply_signal_model(method.signal_model, x̂, acq_data; threaded = config.threaded)
         if acq_data.kspace_data isa NamedDimsArray && !(x̂ isa NamedDimsArray)
             x̂ = NamedDimsArray{output_dims(method, acq_data)}(x̂)
         end

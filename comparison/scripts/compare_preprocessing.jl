@@ -53,8 +53,8 @@ using .ComparisonHarness
         mask = abs.(img) .> 1e-4
         mask_3d = repeat(mask, 1, 1, num_coils)
         
-        err_bart = norm(mrt_mag[mask_3d] - bart_mag[mask_3d]) / norm(mrt_mag[mask_3d])
-        err_sp = norm(mrt_mag[mask_3d] - sp_mag[mask_3d]) / norm(mrt_mag[mask_3d])
+        err_bart = nrmse(bart_mag[mask_3d], mrt_mag[mask_3d])
+        err_sp = nrmse(sp_mag[mask_3d], mrt_mag[mask_3d])
         @info "ESPIRiT Masked Magnitude NRMSE: MRT vs BART = $(err_bart), MRT vs SigPy = $(err_sp)"
         
         # Relax tolerance slightly due to numerical differences in SVD/eig implementations

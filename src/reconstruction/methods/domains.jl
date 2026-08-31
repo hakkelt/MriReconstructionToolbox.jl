@@ -1,29 +1,4 @@
 """
-	ReconstructionDomain
-
-Abstract supertype for domains in which reconstruction optimization variables are defined.
-"""
-abstract type ReconstructionDomain end
-
-"""
-	ImageDomain <: ReconstructionDomain
-
-Specifies that the reconstruction optimization variable is defined in the image domain.
-"""
-struct ImageDomain <: ReconstructionDomain end
-
-"""
-	KSpaceDomain{C} <: ReconstructionDomain
-
-Specifies that the reconstruction optimization variable is defined in k-space.
-"""
-struct KSpaceDomain{C} <: ReconstructionDomain
-    coil_combination::C
-end
-
-KSpaceDomain() = KSpaceDomain(nothing)
-
-"""
 	CoilCombination
 
 Abstract supertype for multi-coil combination strategies.
@@ -52,6 +27,20 @@ Leaves individual coil channels uncombined.
 struct NoCoilCombination <: CoilCombination end
 
 """
+	KSpaceToImage(coil_combination = RootSumSquares())
+
+Signal model for a k-space-domain reconstruction: the optimization variable is the full
+multi-channel k-space, the encoding operator during the solve is just the subsampling operator
+`𝒫`, and the recovered k-space is mapped to an image afterwards by an inverse Fourier transform
+followed by `coil_combination` (see `_kspace_to_image`). Used by `SPIRiT(; iterative = true)`.
+"""
+struct KSpaceToImage{C <: CoilCombination}
+    coil_combination::C
+end
+
+KSpaceToImage() = KSpaceToImage(RootSumSquares())
+
+"""
 	DataFidelity
 
 Abstract supertype for data consistency loss terms.
@@ -70,7 +59,7 @@ struct L2Loss <: DataFidelity end
 
 Hard data consistency indicator constraint: {x | 𝒜x = y}.
 Projections onto the constraint are evaluated via `HardConsistencyProx`. When `is_AAc_diagonal(𝒜)`
-is true (single-coil Cartesian, KSpaceDomain), projection is evaluated directly in closed form;
+is true (single-coil Cartesian, or a `KSpaceToImage` signal model), projection is evaluated directly in closed form;
 otherwise an inner Conjugate Gradient solver with maximum iterations `inner_maxit` and relative
 tolerance `inner_tol` is used.
 """

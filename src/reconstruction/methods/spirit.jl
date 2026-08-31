@@ -16,53 +16,110 @@ scale_regularization(reg::SPIRiTConsistency, factor::Real) = SPIRiTConsistency(r
 
 bind_dimensions(reg::SPIRiTConsistency, ::Any) = reg
 
+"""
+    _spirit_plane_dft(T, Nx, Ny, batch; threaded)
+
+Planned batched 2D `DFT` over the `(1, 2)` axes of an `Nx×Ny×batch` complex array, `BACKWARD`
+normalized (`dft * ·` is the unnormalized forward transform, `dft' * ·` the `1/N` inverse) — the
+same convention the raw `fft` / `ifft` calls it replaces had.
+"""
+function _spirit_plane_dft(::Type{T}, Nx::Integer, Ny::Integer, batch::Integer; threaded::Bool) where {T}
+    return DFT(
+        zeros(T, Nx, Ny, batch), (1, 2);
+        normalization = FFTWOperators.BACKWARD,
+        num_threads = threaded ? nthreads() : 1,
+    )
+end
+
+"""
+    _spirit_gfft(kernel, Nx, Ny; threaded)
+
+Zero-pad the calibrated `Kx×Ky×Nc×Nc` SPIRiT kernel onto the full `Nx×Ny` grid and Fourier
+transform every coil-pair slice in one batched apply, yielding the `Nx×Ny×Nc×Nc` frequency-domain
+convolution kernel `Ĝ` with `Ĝ[:, :, src, target]` layout.
+"""
+function _spirit_gfft(kernel::AbstractArray, Nx::Integer, Ny::Integer; threaded::Bool = true)
+    Kx, Ky, Nc, _ = size(kernel)
+    T = eltype(kernel)
+    pad_x, pad_y = Kx ÷ 2, Ky ÷ 2
+    padded = zeros(T, Nx, Ny, Nc * Nc)
+    for idx in 1:(Nc * Nc)
+        j, i = fldmod1(idx, Nc)          # column-major over (src j, target i), matching the loop below
+        slice = @view padded[:, :, idx]
+        slice[1:Kx, 1:Ky] .= kernel[:, :, j, i]
+        padded[:, :, idx] .= circshift(slice, (-pad_x, -pad_y))
+    end
+    dft = _spirit_plane_dft(T, Nx, Ny, Nc * Nc; threaded)
+    return reshape(dft * padded, Nx, Ny, Nc, Nc)
+end
+
+"""
+    SPIRiTConsistencyOp{T} <: AbstractOperators.LinearOperator
+
+The SPIRiT self-consistency operator `(I − G)` on the multi-channel k-space `ℂ^{Nx×Ny×Nc}`, where
+`G` is the calibrated coil-mixing convolution. The forward/adjoint transforms go through one cached
+planned `DFT`, and the frequency-domain coil mix accumulates into reused scratch, so `mul!` is
+allocation-free in steady state. Owns its scratch ⇒ not thread-safe; `copy_operator` gives a copy
+its own buffers and plan.
+"""
+struct SPIRiTConsistencyOp{
+        T, D <: AbstractOperators.AbstractOperator, A4 <: AbstractArray{T, 4}, A3 <: AbstractArray{T, 3},
+    } <: AbstractOperators.LinearOperator
+    G_fft::A4
+    dft::D
+    x_freq::A3
+    acc::A3
+    Gx::A3
+end
+
+function SPIRiTConsistencyOp(G_fft::AbstractArray{T, 4}, Nx::Integer, Ny::Integer; threaded::Bool = true) where {T}
+    Nc = size(G_fft, 3)
+    dft = _spirit_plane_dft(T, Nx, Ny, Nc; threaded)
+    scratch() = zeros(T, Nx, Ny, Nc)
+    return SPIRiTConsistencyOp(G_fft, dft, scratch(), scratch(), scratch())
+end
+
+function _spirit_consistency_mul!(y::AbstractArray, op::SPIRiTConsistencyOp, x::AbstractArray, adjoint::Bool)
+    AbstractOperators.check(y, op, x)   # domain and codomain coincide, so one check covers both directions
+    Nc = size(x, 3)
+    mul!(op.x_freq, op.dft, x)                    # batched unnormalized forward DFT, all coils
+    fill!(op.acc, zero(eltype(op.acc)))
+    Ĝ, xf, ac = op.G_fft, op.x_freq, op.acc
+    Nkx, Nky = size(ac, 1), size(ac, 2)
+    @inbounds for d in 1:Nc, c in 1:Nc, py in 1:Nky, px in 1:Nkx
+        g = adjoint ? conj(Ĝ[px, py, d, c]) : Ĝ[px, py, c, d]
+        ac[px, py, d] += xf[px, py, c] * g
+    end
+    mul!(op.Gx, op.dft', op.acc)                  # batched 1/N inverse DFT, all coils
+    @. y = x - op.Gx
+    return y
+end
+
+mul!(y::AbstractArray, op::SPIRiTConsistencyOp, x::AbstractArray) = _spirit_consistency_mul!(y, op, x, false)
+function mul!(y::AbstractArray, adj::AbstractOperators.AdjointOperator{<:SPIRiTConsistencyOp}, x::AbstractArray)
+    return _spirit_consistency_mul!(y, adj.A, x, true)
+end
+
+Base.size(op::SPIRiTConsistencyOp) = (size(op.x_freq), size(op.x_freq))
+AbstractOperators.domain_type(::SPIRiTConsistencyOp{T}) where {T} = T
+AbstractOperators.codomain_type(::SPIRiTConsistencyOp{T}) where {T} = T
+AbstractOperators.domain_array_type(::SPIRiTConsistencyOp{T}) where {T} = Array{T}
+AbstractOperators.codomain_array_type(::SPIRiTConsistencyOp{T}) where {T} = Array{T}
+AbstractOperators.fun_name(::SPIRiTConsistencyOp) = "(I-G)"
+AbstractOperators.is_thread_safe(::SPIRiTConsistencyOp) = false
+
+function AbstractOperators._copy_operator_impl(op::SPIRiTConsistencyOp; storage_type = nothing, threaded = nothing)
+    Nx, Ny, Nc = size(op.x_freq)
+    dft = _spirit_plane_dft(eltype(op.x_freq), Nx, Ny, Nc; threaded = threaded === nothing ? true : threaded)
+    scratch() = zeros(eltype(op.x_freq), Nx, Ny, Nc)
+    return SPIRiTConsistencyOp(copy(op.G_fft), dft, scratch(), scratch(), scratch())
+end
+
 function get_operator(reg::SPIRiTConsistency, x::AbstractArray; threaded::Bool = true)
-    Kx, Ky, Nc, _ = size(reg.kernel)
     Nx, Ny = size(x, 1), size(x, 2)
-    T = eltype(x)
-    pad_x = Kx ÷ 2
-    pad_y = Ky ÷ 2
-
-    G_fft = zeros(T, Nx, Ny, Nc, Nc)
-    for j in 1:Nc, i in 1:Nc
-        padded = zeros(T, Nx, Ny)
-        padded[1:Kx, 1:Ky] = reg.kernel[:, :, j, i]
-        padded = circshift(padded, (-pad_x, -pad_y))
-        G_fft[:, :, j, i] = fft(padded)
-    end
-
-    fwd! = (y, x_in) -> begin
-        fill!(y, zero(T))
-        for i in 1:Nc
-            y[:, :, i] .= x_in[:, :, i]
-        end
-        for j in 1:Nc
-            xj_fft = fft(x_in[:, :, j])
-            for i in 1:Nc
-                y[:, :, i] .-= ifft(xj_fft .* G_fft[:, :, j, i])
-            end
-        end
-    end
-
-    adj! = (y, x_in) -> begin
-        fill!(y, zero(T))
-        for i in 1:Nc
-            y[:, :, i] .= x_in[:, :, i]
-        end
-        for i in 1:Nc
-            xi_fft = fft(x_in[:, :, i])
-            for j in 1:Nc
-                y[:, :, j] .-= ifft(xi_fft .* conj.(G_fft[:, :, j, i]))
-            end
-        end
-    end
-
-    op = MyLinOp(T, (Nx, Ny, Nc), (Nx, Ny, Nc), fwd!, adj!)
-    if x isa NamedDimsArray
-        return NamedDimsOp{dimnames(x), dimnames(x)}(op)
-    else
-        return op
-    end
+    G_fft = _spirit_gfft(reg.kernel, Nx, Ny; threaded)
+    op = SPIRiTConsistencyOp(complex(eltype(x)).(G_fft), Nx, Ny; threaded)
+    return x isa NamedDimsArray ? NamedDimsOp{dimnames(x), dimnames(x)}(op) : op
 end
 
 function materialize(reg::SPIRiTConsistency, x::Variable{T}; threaded::Bool) where {T}
@@ -87,7 +144,8 @@ for missing k-space samples using self-consistency iterations.
 - `maxit`: Number of iterations (default: `25`).
 - `λ`: Regularization parameter on self-consistency (default: `1.0`).
 - `coil_combination`: Method for combining reconstructed multi-coil channels (`RootSumSquares()` or `AdjointSensitivity()`).
-- `iterative`: If `true`, lowers to `IterativeReconstruction` with `KSpaceDomain` and `DouglasRachford`.
+- `iterative`: If `true`, lowers to an `IterativeReconstruction` with a `KSpaceToImage` signal model
+  and hard data consistency.
 """
 struct SPIRiT{C <: CoilCombination} <: AbstractDirectMethod
     kernel_size::Tuple{Int, Int}
@@ -115,8 +173,7 @@ struct SPIRiT{C <: CoilCombination} <: AbstractDirectMethod
     end
 end
 
-function _calibrate_spirit_kernel(acq::CartesianAcquisitionInfo, method::SPIRiT)
-    raw_ksp = _get_full_kspace(acq)
+function _calibrate_spirit_kernel(acq::CartesianAcquisitionInfo, method::SPIRiT, raw_ksp::AbstractArray = _get_full_kspace(acq))
     Nx, Ny = size(raw_ksp, 1), size(raw_ksp, 2)
     Nc = size(raw_ksp, 3)
     T = eltype(raw_ksp)
@@ -170,77 +227,29 @@ function lower(method::SPIRiT, acq::CartesianAcquisitionInfo)
     kernel = _calibrate_spirit_kernel(acq, method)
     return IterativeReconstruction(
         SPIRiTConsistency(kernel; λ = method.λ);
-        domain = KSpaceDomain(method.coil_combination),
+        signal_model = KSpaceToImage(method.coil_combination),
         fidelity = HardConsistency(),
         algorithm = FISTA(adaptive = true),
     )
 end
 
-function _kspace_to_image(ksp::AbstractArray, coil_combine::CoilCombination, sens::Union{Nothing, AbstractArray}, acq::CartesianAcquisitionInfo)
-    Nx, Ny = get_image_size(acq)[1:2]
-    f_dims = (1, 2)
-    coil_imgs = _direct_ifft(acq, unname(ksp); dims = f_dims) .* sqrt(Nx * Ny)
-
-    c_dim = 3
-    img_out = if coil_combine isa AdjointSensitivity
-        @argcheck !isnothing(sens) "AdjointSensitivity coil combination requires sensitivity maps."
-        sum(coil_imgs .* conj.(unname(sens)); dims = c_dim)
-    elseif coil_combine isa RootSumSquares
-        sqrt.(sum(abs2, coil_imgs; dims = c_dim))
-    elseif coil_combine isa NoCoilCombination
-        coil_imgs
-    else
-        throw(ArgumentError("Unsupported coil combination: $(typeof(coil_combine))"))
-    end
-
-    if !(coil_combine isa NoCoilCombination)
-        img_out = dropdims(img_out; dims = c_dim)
-    end
-
-    if acq.kspace_data isa NamedDimsArray
-        out_d = !(coil_combine isa NoCoilCombination) ? filter(!=(:coil), get_image_dims(acq)) : get_image_dims(acq)
-        return NamedDimsArray{out_d}(img_out)
-    else
-        return img_out
-    end
-end
-
 function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::SPIRiT)
     raw_ksp = _get_full_kspace(acq)
     Nx, Ny = size(raw_ksp, 1), size(raw_ksp, 2)
-    Nc = size(raw_ksp, 3)
-    T = eltype(raw_ksp)
-
-    Kx, Ky = method.kernel_size
-    pad_x = Kx ÷ 2
-    pad_y = Ky ÷ 2
 
     mask = to_displayable_mask(acq.subsampling, (Nx, Ny))
     mask_3d = reshape(mask, Nx, Ny, fill(1, ndims(raw_ksp) - 2)...)
 
-    G_kernels = _calibrate_spirit_kernel(acq, method)
+    G_fft = _spirit_gfft(_calibrate_spirit_kernel(acq, method, raw_ksp), Nx, Ny)
+    op = SPIRiTConsistencyOp(complex(eltype(raw_ksp)).(G_fft), Nx, Ny)
 
-    # Iterative projection onto data consistency + G convolution
+    # Iterative projection onto data consistency + G convolution. `op` applies (I − G), so the
+    # G-convolved estimate is `x_ksp − (I − G) x_ksp`.
     x_ksp = copy(raw_ksp)
-
-    # Pad kernels to full grid for fast FFT convolution
-    G_fft = zeros(T, Nx, Ny, Nc, Nc)
-    for j in 1:Nc, i in 1:Nc
-        padded = zeros(T, Nx, Ny)
-        padded[1:Kx, 1:Ky] = G_kernels[:, :, j, i]
-        padded = circshift(padded, (-pad_x, -pad_y))
-        G_fft[:, :, j, i] = fft(padded)
-    end
-
+    img_minus_g = similar(x_ksp)
     for _ in 1:(method.maxit)
-        Gx = zeros(T, Nx, Ny, Nc)
-        for j in 1:Nc
-            x_j_fft = fft(x_ksp[:, :, j])
-            for i in 1:Nc
-                Gx[:, :, i] .+= ifft(x_j_fft .* G_fft[:, :, j, i])
-            end
-        end
-        x_ksp = ifelse.(mask_3d, raw_ksp, Gx)
+        mul!(img_minus_g, op, x_ksp)
+        x_ksp = ifelse.(mask_3d, raw_ksp, x_ksp .- img_minus_g)
     end
 
     return _kspace_to_image(x_ksp, method.coil_combination, acq.sensitivity_maps, acq)

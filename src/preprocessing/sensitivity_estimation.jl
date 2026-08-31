@@ -143,9 +143,10 @@ function _estimate_sensitivities_core(
     # IFFT from centered k-space to uncentered image space
     lowres_img = zeros(complex(T), size(ksp_trailing))
     f_dims = ntuple(identity, length(spatial_dims))
+    ℱ = _axis_dft_op(zeros(complex(T), spatial_dims...), f_dims; kspace_shift = true)
     for c in 1:Nc
         cal_c = selectdim(cal_ksp, N, c)
-        selectdim(lowres_img, N, c) .= ifft(ifftshift(cal_c, f_dims), f_dims) .* sqrt(prod(spatial_dims))
+        selectdim(lowres_img, N, c) .= (ℱ' * collect(cal_c)) .* sqrt(prod(spatial_dims))
     end
 
     rss = sqrt.(sum(abs2.(lowres_img), dims = N))
@@ -170,9 +171,10 @@ function _estimate_sensitivities_core(
     f_dims = ntuple(identity, length(spatial_dims))
 
     coil_imgs = zeros(complex(T), size(ksp_trailing))
+    ℱ = _axis_dft_op(zeros(complex(T), spatial_dims...), f_dims; kspace_shift = true)
     for c in 1:Nc
         ksp_c = selectdim(ksp_trailing, N, c)
-        selectdim(coil_imgs, N, c) .= ifft(ifftshift(ksp_c, f_dims), f_dims) .* sqrt(prod(spatial_dims))
+        selectdim(coil_imgs, N, c) .= (ℱ' * collect(ksp_c)) .* sqrt(prod(spatial_dims))
     end
 
     K = method.kernel_size
@@ -244,6 +246,7 @@ function _estimate_sensitivities_core(
     V_sub = F_svd.V[:, 1:num_vecs]
 
     f_dims = ntuple(identity, length(spatial_dims))
+    ℱ = _axis_dft_op(zeros(complex(T), spatial_dims...), f_dims)
     V_img = zeros(complex(T), spatial_dims..., Nc, num_vecs)
     for v_idx in 1:num_vecs
         kernel_arr = reshape(V_sub[:, v_idx], kernel_dims..., Nc)
@@ -254,7 +257,7 @@ function _estimate_sensitivities_core(
             padded[init_ranges...] = flipped[init_ranges..., c]
             shift_amounts = ntuple(i -> -(kernel_dims[i] ÷ 2), length(spatial_dims))
             padded = circshift(padded, shift_amounts)
-            V_img[fill(:, length(spatial_dims))..., c, v_idx] .= fft(padded, f_dims) .* sqrt(prod(spatial_dims))
+            V_img[fill(:, length(spatial_dims))..., c, v_idx] .= (ℱ * padded) .* sqrt(prod(spatial_dims))
         end
     end
 

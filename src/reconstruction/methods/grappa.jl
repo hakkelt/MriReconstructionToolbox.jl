@@ -116,26 +116,5 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::GRAPPA)
         end
     end
 
-    # Transform completed k-space to image space
-    f_dims = (1, 2)
-    coil_imgs = _direct_ifft(acq, ksp_recon; dims = f_dims) .* sqrt(Nx * Ny)
-
-    img_out = if method.coil_combination isa AdjointSensitivity && !isnothing(acq.sensitivity_maps)
-        sens = unname(acq.sensitivity_maps)
-        sum(coil_imgs .* conj.(sens); dims = 3)
-    else
-        sqrt.(sum(abs2, coil_imgs; dims = 3))
-    end
-
-    # `img_out` still carries the reduced coil axis as a singleton at position 3; drop it
-    # rather than truncating with `reshape`, which would silently discard any trailing
-    # batch/time dimension.
-    img_out = dropdims(img_out; dims = 3)
-
-    if acq.kspace_data isa NamedDimsArray
-        out_dims = filter(!=(:coil), get_image_dims(acq))
-        return NamedDimsArray{out_dims}(img_out)
-    else
-        return img_out
-    end
+    return _kspace_to_image(ksp_recon, method.coil_combination, acq.sensitivity_maps, acq)
 end

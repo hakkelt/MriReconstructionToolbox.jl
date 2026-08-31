@@ -14,8 +14,7 @@ function setup_matlab_paths()
     mat"addpath(genpath($(joinpath(base_path, \"espirit-matlab-examples\"))))"
     mat"addpath(genpath($(joinpath(base_path, \"RING\"))))"
     mat"addpath(genpath($(joinpath(base_path, \"primal-dual-toolbox\"))))"
-    
-    # Exclude .git directories from MATLAB path just in case
+    return
 end
 
 export setup_matlab_paths
