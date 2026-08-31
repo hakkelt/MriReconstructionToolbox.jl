@@ -384,6 +384,27 @@ info2 = AcquisitionInfo(info1; sensitivity_maps=smaps)
 println("With sensitivity maps:", info2)
 ```
 
+## Density Compensation (Non-Cartesian)
+
+Non-Cartesian acquisitions (such as radial, spiral, or arbitrary k-space trajectories) require density compensation factors (DCF) for direct adjoint reconstruction. `NonCartesianAcquisitionInfo` holds the trajectory and optional `dcf` array.
+
+You can compute the DCF directly using `density_compensation`:
+
+```julia
+# Compute iterative Pipe-Menon DCF (default)
+acq_dcf = density_compensation(acq; method = PipeMenonDCF(iterations = 20))
+
+# Or compute geometric Voronoi DCF for 2D trajectories
+acq_vor = density_compensation(acq; method = VoronoiDCF())
+```
+
+```@docs
+density_compensation
+DensityCompensationMethod
+PipeMenonDCF
+VoronoiDCF
+```
+
 ## Integration with Other Functions
 
 `AcquisitionInfo` is accepted by:
