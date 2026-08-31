@@ -14,6 +14,7 @@ makedocs(;
         "Theoretical Background" => "theory.md",
         "High-level Interface" => [
             "AcquisitionInfo" => "high-level/acquisition_info.md",
+            "Preprocessing" => "high-level/preprocessing.md",
             "Simulation Tools" => "high-level/simulation.md",
             "Reconstruction Methods" => "high-level/methods.md",
             "Reconstruction" => "high-level/reconstruction.md",
