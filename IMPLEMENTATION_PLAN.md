@@ -257,16 +257,99 @@ Note `check_kwargs` (`config.jl:85-90`) rejects any `reconstruct` keyword that i
   hard-coded `ComplexF32`, producing an abstract `Complex` eltype (and an FFT `MethodError`) when
   fed `ComplexF64` data — fixed.
 
-**Still outstanding after this pass** (tracked, not done):
+**Still outstanding after this pass** — carried into Stage 10 below.
 
-- `domain = KSpaceDomain()` remains inert — no `is_operator_composable` / `natural_domain` /
-  `InKSpace` / `InImageDomain` machinery (design V4). Blocks a real `SPIRiTConsistency`.
-- `GeometricCompression` throws (was a silent SVD stub); a real implementation is deferred.
-- `DouglasRachford` still has no up-front term-count check (V3); a wrong count surfaces as an
-  opaque solver failure.
-- FFT-based direct methods (`grappa.jl`, `spirit.jl`, `partial_fourier.jl`) still hard-code
-  `ifftshift`/`fftshift` and ignore `acq.shifted_kspace_dims` / `shifted_image_dims` (correct for
-  the default DC-centred convention only).
+---
+
+## Stage 10 — Post-review follow-up (the review findings not fixed in Stage 9)
+
+Four items surfaced by the `9547c3f..` review need more than a localized fix. Decisions taken
+with the maintainer are recorded inline. Order: Part 4 (§5 doc reconciliation, done in the
+Stage-9-fix commit) → Part 2 → Part 3 → Part 4-code → Part 1.
+
+### 10.1 — `KSpaceDomain` dispatch + a real `SPIRiTConsistency` (finding #10, design V4)
+
+`IterativeReconstruction.domain` is stored and copied but nothing dispatches on it —
+`KSpaceDomain()` silently runs an image-domain solve — and `SPIRiTConsistency` has no working
+`materialize`. Scope is restricted to what SPIRiT needs (V4: no universal auto-wrap).
+
+- **`build_encoding_operator`** (`src/reconstruction/encoding_for_method.jl`) branches on
+  `method.domain`: `ImageDomain()` → today's `𝒜 = 𝒫∘ℱ∘𝒮`; `KSpaceDomain(cc)` → `𝒜 = 𝒫` only
+  (variable is multi-channel k-space; requires a coil axis and no `sensitivity_maps`).
+- `variable_dims` / `variable_size` / `output_dims` methods for
+  `IterativeReconstruction{…,KSpaceDomain}` (variable = full k-space grid incl. coil; output =
+  coil-combined image).
+- **Output transform** in `_reconstruct` (`src/reconstruction/reconstruct.jl:118-135`): when
+  `domain isa KSpaceDomain`, apply `ifftshift`→`ifft`→coil-combine via a shared helper
+  `_kspace_to_image(k, cc, sens)` factored from `methods/spirit.jl:131-140`.
+- **`SPIRiTConsistency` as a real term** (`src/reconstruction/methods/spirit.jl`):
+  `get_operator` → the linear `(I − G)` on the k-space variable, `G` a small custom
+  `AbstractOperator` subtype built from `reg.kernel` (the FFT-padded coil-mixing convolution
+  already assembled at `spirit.jl:104-115`), modelled on `deps/AbstractOperators/…/DiagOp`;
+  `materialize` → `(reg.λ/2)·SqrNormL2 ∘ get_operator`; `get_affected_dims` → all image dims
+  (added); `scale_regularization` scales `λ`; `bind_dimensions` identity fallback.
+- **Opt-in iterative SPIRiT (decided: yes).** Add `SPIRiT(...; iterative::Bool = false)`.
+  `false` → today's direct fixed-point method, unchanged. `true` → a `lower(method, acq)`
+  overload (new; called from `reconstruct.jl:37`) calibrates the kernel from the ACS
+  (`_calibrate_spirit_kernel(acq, method)` factored from `spirit.jl:61-102`) and returns
+  `IterativeReconstruction(SPIRiTConsistency(kernel; λ = method.λ);
+  domain = KSpaceDomain(method.coil_combination), fidelity = HardConsistency(),
+  algorithm = DouglasRachford())`.
+- Reuse `HardConsistencyProx` / `is_AAc_diagonal` (`src/reconstruction/hard_consistency.jl`) —
+  already special-case `KSpaceDomain` with a closed-form projection when `𝒜 = 𝒫`.
+- Tests (`test/test_phase3_methods.jl`): `KSpaceDomain` unregularized LS on fully-sampled data
+  reproduces per-coil `ifft` to machine precision; `IterativeReconstruction(SPIRiTConsistency(k);
+  domain = KSpaceDomain(), fidelity = HardConsistency())` on R=2 data recovers the phantom
+  within the direct-`SPIRiT` tolerance; adjoint dot-test on `(I − G)`.
+- Files: `encoding_for_method.jl`, `reconstruct.jl`, `methods/reconstruction_method.jl`,
+  `methods/spirit.jl`, `methods/domains.jl` (docstring), `src/MriReconstructionToolbox.jl`.
+
+### 10.2 — Better diagnostic on a single-solver parse failure (revised V3)
+
+The original V3 "DR needs an up-front two-proximable-terms check" is **rejected**: it should not
+be DR-special (FISTA etc. have their own assumptions), and a naive term count can wrongly reject
+a problem whose terms `ProximalOperators` merges at a higher level. Instead: wrap the lone
+`solve(model, algorithm; …)` call in `_iterative_reconstruct_core`
+(`src/reconstruction/solve_core.jl:50`) in `try/catch` and rethrow
+`StructuredOptimization`'s generic `"cannot parse this problem for solver …"` as an
+`ArgumentError` that names the chosen algorithm, the `fidelity` type and the regularizer types.
+No behaviour change (the candidate-tuple path already falls through). Message-only.
+Test in `test/test_minimizer.jl`.
+
+### 10.3 — Direct FFT methods honour `shifted_kspace_dims` / `shifted_image_dims`
+
+`methods/{partial_fourier,grappa,spirit}.jl` hard-code `ifftshift`/`fftshift`, correct only for
+the default DC-centred convention; an acquisition built with a non-default shift is silently
+half-FOV-wrong (the encoding-operator path already handles this via `get_fourier_operator`).
+New shared helper (`src/reconstruction/methods/direct_fft.jl`, included in
+`MriReconstructionToolbox.jl`): `_direct_ifft(acq, k; dims)` / `_direct_fft(acq, x; dims)` that
+apply the shift only on axes **not** in the corresponding `shifted_*` set (reuse
+`_normalize_shifted_dims`, `fourier_operators.jl:93-98`). Replace the inline calls in the three
+method files. Test: same phantom built two ways (default vs pre-`ifftshift`ed +
+`shifted_kspace_dims`) gives the same `Homodyne` / `GRAPPA` image.
+
+### 10.4 — Real `GeometricCompression` and `RING` (contracts change — decided)
+
+Both currently `throw`. Implement for real; the return contracts change.
+
+- **`GeometricCompression`** (`src/preprocessing/coil_compression.jl`, Zhang 2013): per-`x`
+  SVD compression with bases aligned across `x` by a Procrustes rotation
+  (`R = U·Vt` from `svd(prevVᴴ·curV)`). `compress_coils` returns `C` of shape
+  `(n_virtual, n_coils, Nx)`; `compress_coils_with_matrix` gains a 3-D-`C` method (apply
+  `C[:,:,ix]` slice-wise, sensitivity maps too); `SVDCompression` keeps the 2-D `C`. Update
+  docstring + `preprocessing.md`.
+- **`RING`** (`src/preprocessing/gradient_delays.jl`, Rosenzweig 2019): fit the anisotropic
+  `2×2` delay tensor from per-spoke sub-sample shifts (reuse the parabolic peak-fit in
+  `_estimate_delays_core(::OpposingSpokes)`) against
+  `δ_s = Sxx·cos²θ + Syy·sin²θ + 2·Sxy·cosθ·sinθ`. `estimate_gradient_delays(...; method = RING())`
+  returns `(dx, dy, dxy)` (NamedTuple); `OpposingSpokes` still returns `(dx, dy)`.
+  `_apply_gradient_delays` gains a NamedTuple method. Drop the `@test_throws RING` guard.
+
+### Verification for Stage 10
+
+Per part: Runic (`--project=@runic --inplace src/ test/`) → filtered suite for the touched tags
+→ before each commit the full `run_tests(pkgdir(MriReconstructionToolbox); filter = ti ->
+!(:jet in ti.tags))` and `julia --project=docs docs/make.jl`. One commit per part.
 
 ---
 
@@ -282,4 +365,9 @@ julia --project=test -e 'using TestItemRunner; TestItemRunner.run_tests(".")'
 
 ## Design-document updates to make alongside the code
 
-§5 of `comprehensive_literature_review_mri_toolboxes.md` needs: the `Γ`/`𝒟` → `𝒫` notation change; `IterativeHomodyne` → `PhaseConstrained`; the corrected `DouglasRachford` note (V3) and the fact that `HardConsistency` is general via inner CG rather than restricted to diagonal `𝒜𝒜'`; the restricted auto-wrap rule (V4); removal of the "extend `get_subsampling_operator` to carry the coil dimension" claim (V5); the new sensitivity-estimation and opposing-spokes literature (Stages 7, 9a); and the note that Cartesian density compensation is deliberately not implemented (Stage 5).
+§5 of `comprehensive_literature_review_mri_toolboxes.md` — **reconciled** in the Stage-9-fix
+commit: `𝒫` notation, `IterativeHomodyne` → `PhaseConstrained`, `DouglasRachford` in
+`DEFAULT_ALGORITHMS`, `HardConsistency` general via inner CG, the restricted auto-wrap rule (V4),
+`is_operator_composable` status note, V5 wording, SAKE/LORAKS/PRUNO and `PhaseDemodulation` marked
+not implemented, density-compensation status corrected. Sensitivity-estimation (McKenzie/Walsh/
+Uecker) and opposing-spokes (Peters/Block-Uecker/Rosenzweig) references were already present.
