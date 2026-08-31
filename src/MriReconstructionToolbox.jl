@@ -16,7 +16,7 @@ using NFFTOperators: NFFTOp
 using NestedThreading: @budgeted_threads, with_full_threads, with_restricted_threads
 @reexport using WaveletOperators: WaveletOp, WT, wavelet
 @reexport using FFTWOperators: FFTWOperators, DFT, fftshift_op, ifftshift_op, alternate_sign!
-using FFTW: FFTW
+using FFTW: FFTW, fft, ifft, fftshift, ifftshift
 using ArgCheck: @argcheck
 using Printf: @sprintf
 using Statistics: quantile, median, mean
@@ -49,6 +49,9 @@ export BartScaling, FixedScaling, MeasurementBasedScaling, NoScaling
 export ISTA, FISTA, ADMM, DouglasRachford, CG, CGNR
 export AcquisitionInfo, CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
 export density_compensation, DensityCompensationMethod, PipeMenonDCF, VoronoiDCF
+export prewhiten, estimate_noise_covariance
+export compress_coils, CoilCompressionMethod, SVDCompression, GeometricCompression
+export estimate_sensitivities, SensitivityEstimationMethod, SelfCalibrating, AdaptiveCombine, ESPIRiT
 export simulate_acquisition, coil_sensitivities
 export UniformRandomSampling, VariableDensitySampling, PoissonDiskSampling, GaussianDistribution, PolynomialDistribution
 export create_sampling_pattern, to_displayable_mask
@@ -59,6 +62,10 @@ include("acquisition_data/noncartesian_acquisition_info.jl")
 include("acquisition_data/acquisition_info_copy.jl")
 include("acquisition_data/dimension_utils.jl")
 include("acquisition_data/density_compensation.jl")
+
+include("preprocessing/prewhitening.jl")
+include("preprocessing/coil_compression.jl")
+include("preprocessing/sensitivity_estimation.jl")
 
 include("scaling.jl")
 include("utils.jl")

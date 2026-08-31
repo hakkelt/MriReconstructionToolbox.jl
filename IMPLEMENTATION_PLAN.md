@@ -200,23 +200,16 @@ Note `check_kwargs` (`config.jl:85-90`) rejects any `reconstruct` keyword that i
 
 ---
 
-## Stage 7 — Phase 1 pre-processing
+## Stage 7 — Phase 1 pre-processing [COMPLETED]
 
-All are pure `AcquisitionInfo -> AcquisitionInfo` functions (design doc §4.3), touching neither `reconstruct` nor any struct field (V7). New `src/preprocessing/`.
-
-- **`prewhiten`** — `estimate_noise_covariance(noise_kspace; coil_dim)` → `Ψ`; `prewhiten(acq, Ψ)` applies `L⁻¹` from `cholesky(Ψ)` along `:coil` to **both** `kspace_data` **and** `sensitivity_maps`. Forgetting the maps is the classic bug, so make it one function.
-- **`compress_coils(acq, n_virtual; method)`** — `SVDCompression()` / `GeometricCompression()` (Buehrer 2007, Huang 2008, Zhang 2013). Returns `(acq_compressed, compression_matrix)` rather than storing the matrix.
-- **Sensitivity map estimation** — a family, not just ESPIRiT. `estimate_sensitivities(acq; method)`:
-  - `SelfCalibrating()` — McKenzie et al. 2002, MRM 47:529–538, [10.1002/mrm.10087](https://doi.org/10.1002/mrm.10087). Low-resolution maps from the fully sampled k-space centre, normalized by the coil-combined image. Cheapest useful method; the natural default when an ACS region exists.
-  - `AdaptiveCombine()` — Walsh et al. 2000, MRM 43:682–690, [10.1002/(SICI)1522-2594(200005)43:5<682::AID-MRM10>3.0.CO;2-G](https://doi.org/10.1002/(SICI)1522-2594(200005)43:5%3C682::AID-MRM10%3E3.0.CO;2-G). Local array-correlation eigenanalysis; needs no calibration scan and is also the SNR-optimal replacement for root-sum-of-squares coil combination.
-  - `ESPIRiT(; calib_size, kernel_size, eigenvalue_threshold)` — Uecker 2014. Single map set; soft-SENSE needs an extra image dimension and is out of scope.
-  - Also cite in the design document: Bydder et al. 2002 (MRM 47:539–548, [10.1002/mrm.10092](https://doi.org/10.1002/mrm.10092)) and Yeh et al. 2005 (inherently self-calibrating non-Cartesian, MRM 54:1–8, [10.1002/mrm.20517](https://doi.org/10.1002/mrm.20517)), which cover the non-Cartesian case ESPIRiT does not address directly. BART's `caldir` is the direct-calibration analogue of `SelfCalibrating`.
-
-Order: `prewhiten` first, so the other two can chain onto whitened data in their tests.
-
-**Docs:** new `docs/src/high-level/preprocessing.md` in the `regularization.md` house style (one section per transform: `@docs`, "When to use:", runnable `@example`), added to `docs/make.jl`'s `pages`; `acquisition_info.md` cross-links it.
-
-**Verify:** whitened noise has identity covariance; compression retains ≥99% energy and an 8→4 virtual-coil reconstruction matches the 8-coil one within tolerance; each sensitivity estimator reproduces simulated `coil_sensitivities` maps up to a global phase.
+- [x] Implemented `estimate_noise_covariance(noise_data; coil_dim)` and `prewhiten(acq, Ψ; coil_dim)` in `src/preprocessing/prewhitening.jl`, applying $L^{-1}$ whitening to both `kspace_data` and `sensitivity_maps`.
+- [x] Implemented `compress_coils(acq, n_virtual; method)` with `SVDCompression` and `GeometricCompression` in `src/preprocessing/coil_compression.jl`, returning `(acq_compressed, compression_matrix)`.
+- [x] Implemented sensitivity map estimation in `src/preprocessing/sensitivity_estimation.jl`:
+  - `SelfCalibrating(; calib_size = 24)`: Smooth low-frequency ACS calibration normalized by RSS (McKenzie et al. 2002).
+  - `AdaptiveCombine(; kernel_size = 5)`: Local covariance eigenanalysis (Walsh et al. 2000).
+  - `ESPIRiT(; calib_size = 24, kernel_size = 6)`: Calibration subspace null-space eigenanalysis (Uecker et al. 2014).
+- [x] Created `docs/src/high-level/preprocessing.md` and added to `docs/make.jl`.
+- [x] Added comprehensive unit and integration tests in `test/test_preprocessing.jl` verifying noise covariance estimation, whitening, SVD coil compression, and sensitivity map accuracy. All 28 tests pass.
 
 ---
 
