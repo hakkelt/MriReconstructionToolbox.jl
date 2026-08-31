@@ -255,3 +255,26 @@ end
     # NoFidelity with empty regularizations throws ArgumentError
     @test_throws ArgumentError build_model(𝒜, y, (); fidelity = NoFidelity())
 end
+
+@testitem "Diagnostic ArgumentError on single-solver parse failure" tags = [:minimizer, :reconstruction] begin
+    using Test
+    using MriReconstructionToolbox
+
+    nx, ny = 16, 16
+    x = rand(ComplexF32, nx, ny)
+    acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny))
+    acq_data = simulate_acquisition(x, acq)
+
+    # Incompatible single solver (DouglasRachford with L2Loss and 2 L1 terms) throws informative ArgumentError
+    method = IterativeReconstruction(L1Image(0.1), L1Image(0.2); algorithm = DouglasRachford(), fidelity = L2Loss())
+    err = try
+        reconstruct(acq_data, method; verbose = false)
+        nothing
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    @test occursin("Cannot parse problem for algorithm", err.msg)
+    @test occursin("DouglasRachford", err.msg)
+    @test occursin("L2Loss", err.msg)
+end

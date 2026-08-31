@@ -86,6 +86,14 @@ end
     rec_orig = reconstruct(acq_sim, DirectReconstruction(); verbose = false)
     rec_comp = reconstruct(acq_comp, DirectReconstruction(); verbose = false)
     @test isapprox(rec_comp, rec_orig; rtol = 0.05)
+
+    # GeometricCompression
+    acq_geom, C_geom = compress_coils(acq_sim, Nv; method = GeometricCompression())
+    @test size(C_geom) == (Nv, Nc, Nx)
+    @test size(acq_geom.kspace_data, :coil) == Nv
+    @test size(acq_geom.sensitivity_maps, :coil) == Nv
+    rec_geom = reconstruct(acq_geom, DirectReconstruction(); verbose = false)
+    @test isapprox(rec_geom, rec_orig; rtol = 0.05)
 end
 
 @testitem "Sensitivity map estimation: SelfCalibrating, AdaptiveCombine, ESPIRiT" tags = [:acquisition, :encoding, :simulation] begin
@@ -200,13 +208,4 @@ end
     d = estimate_gradient_delays(acq; method = OpposingSpokes())
     @test isapprox(d[1], delay_true[1]; atol = 2.0e-3)
     @test isapprox(d[2], delay_true[2]; atol = 2.0e-3)
-
-    @test_throws ArgumentError estimate_gradient_delays(acq; method = RING())
-end
-
-@testitem "Coil compression: unimplemented methods throw" tags = [:preprocessing] begin
-    using Test
-    using MriReconstructionToolbox
-    data = randn(ComplexF64, 16, 16, 8)
-    @test_throws ArgumentError compress_coils(data, 4; method = GeometricCompression())
 end

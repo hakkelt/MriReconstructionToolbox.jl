@@ -28,10 +28,12 @@ const DEFAULT_ALGORITHMS = (CG(), CGNR(), FISTA(), ADMM(), DouglasRachford())
 
 """
 	lower(method::AbstractReconstructionMethod)
+	lower(method::AbstractReconstructionMethod, acq::AcquisitionInfo)
 
 Lowers high-level method specifications into canonical reconstruction methods.
 """
 lower(m::AbstractReconstructionMethod) = m
+lower(m::AbstractReconstructionMethod, ::AcquisitionInfo) = lower(m)
 
 """
 	check_applicable(method::AbstractReconstructionMethod, acq::AcquisitionInfo)
