@@ -101,6 +101,24 @@ SPIRiT
 SPIRiTConsistency
 ```
 
+### Method, Domain, Fidelity and Coil-Combination Types
+
+[`DirectReconstruction`](@ref) and [`IterativeReconstruction`](@ref) are documented on the
+[Reconstruction](reconstruction.md) page.
+
+```@docs
+ImageDomain
+KSpaceDomain
+CoilCombination
+AdjointSensitivity
+RootSumSquares
+NoCoilCombination
+DataFidelity
+L2Loss
+HardConsistency
+NoFidelity
+```
+
 ## Method Extension Interface
 
 Custom reconstruction methods implement the following interface hooks:

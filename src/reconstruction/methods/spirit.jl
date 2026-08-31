@@ -1,8 +1,15 @@
 """
     SPIRiTConsistency{T} <: Regularization
 
-Self-consistency k-space convolution regularization term \$\\|(I - G) x\\|_2^2\$ for SPIRiT reconstruction
-(Lustig & Pauly 2010, MRM 64:457-471).
+Self-consistency k-space convolution regularization term ``\\tfrac{\\lambda}{2}\\|(I - G)\\,k\\|_2^2``
+for SPIRiT reconstruction (Lustig & Pauly 2010, MRM 64:457-471), where ``k`` is the multi-channel
+k-space and ``G`` the calibrated coil-mixing convolution.
+
+!!! warning
+    This term operates on a **k-space** optimization variable and requires
+    `IterativeReconstruction(...; domain = KSpaceDomain())`, whose dispatch machinery is not wired
+    up yet. `materialize` therefore throws. For a working SPIRiT reconstruction today use the
+    direct method [`SPIRiT`](@ref).
 """
 struct SPIRiTConsistency{T} <: Regularization
     kernel::T
@@ -11,6 +18,17 @@ struct SPIRiTConsistency{T} <: Regularization
         return new{typeof(kernel)}(kernel, Float64(λ))
     end
 end
+
+function materialize(::SPIRiTConsistency, ::Variable; threaded::Bool)
+    throw(ArgumentError(
+        "SPIRiTConsistency requires a k-space optimization variable " *
+            "(IterativeReconstruction(...; domain = KSpaceDomain())), which is not yet supported. " *
+            "Use the direct `SPIRiT()` method instead.",
+    ))
+end
+
+get_affected_dims(::SPIRiTConsistency, ::Nothing, image_dims) = image_dims
+get_affected_dims(::SPIRiTConsistency, ::AcquisitionInfo, image_dims) = image_dims
 
 """
     SPIRiT{C <: CoilCombination} <: AbstractDirectMethod
@@ -55,6 +73,8 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::SPIRiT)
     raw_ksp = _get_full_kspace(acq)
     Nx, Ny = size(raw_ksp, 1), size(raw_ksp, 2)
     Nc = size(raw_ksp, 3)
+    T = complex(real(eltype(raw_ksp)))
+    raw_ksp = convert(Array{T}, raw_ksp)
 
     mask = to_displayable_mask(acq.subsampling, (Nx, Ny))
     mask_3d = reshape(mask, Nx, Ny, 1)
@@ -73,7 +93,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::SPIRiT)
     num_by = cal_ky - Ky + 1
     num_b = num_bx * num_by
 
-    A_mat = zeros(ComplexF32, num_b, Kx * Ky * Nc)
+    A_mat = zeros(T, num_b, Kx * Ky * Nc)
     b_idx = 1
     for bx in 1:num_bx, by in 1:num_by
         patch = calib[bx:(bx + Kx - 1), by:(by + Ky - 1), :]
@@ -82,7 +102,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::SPIRiT)
     end
 
     center_idx = pad_x + 1 + pad_y * Kx
-    G_kernels = zeros(ComplexF32, Kx, Ky, Nc, Nc)
+    G_kernels = zeros(T, Kx, Ky, Nc, Nc)
 
     for target_c in 1:Nc
         target_feat_idx = center_idx + (target_c - 1) * Kx * Ky
@@ -91,7 +111,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::SPIRiT)
         X_src = A_mat[:, src_cols]
         w = X_src \ y_tgt
 
-        full_w = zeros(ComplexF32, Kx * Ky * Nc)
+        full_w = zeros(T, Kx * Ky * Nc)
         full_w[src_cols] = w
         full_w_3d = reshape(full_w, Kx, Ky, Nc)
         for src_c in 1:Nc
@@ -104,9 +124,9 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::SPIRiT)
     x_ksp = copy(raw_ksp)
 
     # Pad kernels to full grid for fast FFT convolution
-    G_fft = zeros(ComplexF32, Nx, Ny, Nc, Nc)
+    G_fft = zeros(T, Nx, Ny, Nc, Nc)
     for j in 1:Nc, i in 1:Nc
-        padded = zeros(ComplexF32, Nx, Ny)
+        padded = zeros(T, Nx, Ny)
         padded[1:Kx, 1:Ky] = G_kernels[:, :, j, i]
         padded = circshift(padded, (-pad_x, -pad_y))
         G_fft[:, :, j, i] = fft(padded)
@@ -114,7 +134,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::SPIRiT)
 
     for _ in 1:(method.maxit)
         # Apply G via FFT convolution across coils
-        Gx = zeros(ComplexF32, Nx, Ny, Nc)
+        Gx = zeros(T, Nx, Ny, Nc)
         for j in 1:Nc
             x_j_fft = fft(x_ksp[:, :, j])
             for i in 1:Nc
@@ -137,11 +157,13 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::SPIRiT)
         sqrt.(sum(abs2, coil_imgs; dims = 3))
     end
 
+    # Drop the reduced coil axis (singleton at position 3) instead of truncating with
+    # `reshape`, which would discard any trailing batch/time dimension.
+    img_out = dropdims(img_out; dims = 3)
+
     if acq.kspace_data isa NamedDimsArray
-        img_dims = get_image_dims(acq)
-        out_dims = filter(!=(:coil), img_dims)
-        out_arr = reshape(img_out, ntuple(i -> size(img_out, i), length(out_dims)))
-        return NamedDimsArray{out_dims}(out_arr)
+        out_dims = filter(!=(:coil), get_image_dims(acq))
+        return NamedDimsArray{out_dims}(img_out)
     else
         return img_out
     end

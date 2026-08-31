@@ -81,3 +81,24 @@ end
     mask = abs.(unname(img_series)) .> 0.1
     @test isapprox(unname(rec)[mask], unname(img_series)[mask]; rtol = 0.05)
 end
+
+@testitem "Pseudo-replica: non-Cartesian acquisition" tags = [:analysis, :nfft] begin
+    using Test
+    using MriReconstructionToolbox
+
+    Nsamples, Nspokes, Nc = 48, 21, 4
+    angles = range(0, π, length = Nspokes + 1)[1:Nspokes]
+    r = range(-0.49, 0.49, length = Nsamples)
+    traj = zeros(2, Nsamples, Nspokes)
+    for s in 1:Nspokes
+        traj[1, :, s] = r .* cos(angles[s])
+        traj[2, :, s] = r .* sin(angles[s])
+    end
+    ksp = randn(ComplexF64, Nsamples, Nspokes, Nc) .* 0.01
+    acq = NonCartesianAcquisitionInfo(ksp; trajectory = traj, image_size = (24, 24))
+
+    # Must not throw on `acq.subsampling` (a field NonCartesianAcquisitionInfo lacks)
+    out = pseudo_replica(acq; replicas = 4, noise_std = 1.0, normalization = NoScaling())
+    @test size(out.g_factor)[1:2] == (24, 24)   # per-coil output (no coil combination without sens maps)
+    @test all(isfinite, out.g_factor)
+end

@@ -51,9 +51,13 @@ function signal_model_operator(model::TemporalBasis, acq::AcquisitionInfo; threa
         R_out = Reshape(Eye(T, (N_spatial, Nt)), img_size...)
         ℳ = R_out * (L * R_in')
     else
-        # General case via PermuteDims to trailing axis, LMatrixOp, and permute back
-        perm = ntuple(i -> i == time_dim_idx ? length(img_size) : (i > time_dim_idx ? i - 1 : i), length(img_size))
-        inv_perm = ntuple(i -> i == length(img_size) ? time_dim_idx : (i >= time_dim_idx ? i + 1 : i), length(img_size))
+        # General case via PermuteDims to trailing axis, LMatrixOp, and permute back.
+        # `perm` moves the time/coeff axis to the last position (output dim time_dim_idx..N-1
+        # come from input time_dim_idx+1..N, output dim N from input time_dim_idx); `inv_perm`
+        # is its inverse and restores the original axis order.
+        N = length(img_size)
+        perm = ntuple(i -> i < time_dim_idx ? i : (i == N ? time_dim_idx : i + 1), N)
+        inv_perm = ntuple(i -> i == time_dim_idx ? N : (i >= time_dim_idx ? i - 1 : i), N)
         perm_img_size = ntuple(i -> img_size[perm[i]], length(img_size))
         perm_coeff_size = ntuple(i -> coeff_size[perm[i]], length(coeff_size))
 

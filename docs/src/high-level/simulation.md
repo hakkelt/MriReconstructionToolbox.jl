@@ -46,7 +46,7 @@ acq = AcquisitionInfo(is3D=false,
 acq_with_data = simulate_acquisition(img, acq)
 
 # 5. Reconstruct and compare
-img_recon = reconstruct(acq_with_data, L1Wavelet2D(5e-3), verbose=false)
+img_recon = reconstruct(acq_with_data, IterativeReconstruction(L1Wavelet2D(5e-3)), verbose=false)
 nothing # hide
 ```
 
@@ -271,7 +271,7 @@ noise = noise_level * randn(ComplexF32, size(acq.kspace_data))
 acq = AcquisitionInfo(acq; kspace_data=acq.kspace_data .+ noise)
 
 # Reconstruct noisy data
-img_recon = reconstruct(acq, L1Wavelet2D(5e-3))
+img_recon = reconstruct(acq, IterativeReconstruction(L1Wavelet2D(5e-3)))
 ```
 
 ### Custom Subsampling Patterns

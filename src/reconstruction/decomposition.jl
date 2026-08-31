@@ -4,6 +4,11 @@ struct ProblemDecompositionPlan{N, M, K, L}
     kspace_size::NTuple{K, Int}
     kspace_batch_dims::NTuple{L, Int}
     slices_sensitivity_maps::Bool
+    # Size of the *reconstructed image* per non-batch layout. Equals `variable_size` unless a
+    # shape-changing `signal_model` (e.g. `TemporalBasis` with K < Nt) is in play, in which case
+    # the signal-model-affected dims carry their expanded image size here. Used only to allocate
+    # the merged output in `stack_*_image_slices`.
+    output_size::NTuple{N, Int}
 end
 
 abstract type ReconstructionExecutor end
@@ -41,6 +46,16 @@ function get_problem_decomposition_plan(acq_data, method::AbstractReconstruction
         variable_batch_dims = tuple(findall(in(variable_batch_dims), collect(image_dims))...)
     end
 
+    # The merged output has the reconstructed *image* size; it differs from `var_size` only
+    # where a shape-changing signal model expands a variable dimension (e.g. subspace K -> Nt).
+    out_size = var_size
+    if method isa IterativeReconstruction && method.signal_model !== nothing
+        img_size = get_image_size(acq_data)
+        aff = get_affected_dims(method.signal_model, acq_data, image_dims)
+        aff_idx = findall(in(aff), collect(image_dims))
+        out_size = ntuple(d -> d in aff_idx ? img_size[d] : var_size[d], length(var_size))
+    end
+
     kspace_size = size(acq_data.kspace_data)
 
     # Calculate how the variable batch dimensions map to k-space batch dimensions
@@ -64,6 +79,7 @@ function get_problem_decomposition_plan(acq_data, method::AbstractReconstruction
         kspace_size,
         kspace_batch_dims,
         slices_sensitivity_maps,
+        out_size,
     )
 end
 
@@ -333,7 +349,7 @@ function stack_slices_like(::DecomposedImage, results, plan, threaded::Val)
 end
 
 function stack_plain_image_slices(results, plan, ::Val{false})
-    full_image = similar(unname(results[1]), plan.variable_size)
+    full_image = similar(unname(results[1]), plan.output_size)
     for (output_slice, result) in
         zip(eachslice(full_image; dims = plan.variable_batch_dims), results)
         output_slice .= unname(result)
@@ -342,7 +358,7 @@ function stack_plain_image_slices(results, plan, ::Val{false})
 end
 
 function stack_plain_image_slices(results, plan, ::Val{true})
-    full_image = similar(unname(results[1]), plan.variable_size)
+    full_image = similar(unname(results[1]), plan.output_size)
     extended_results = collect(
         zip(eachslice(full_image; dims = plan.variable_batch_dims), results)
     )

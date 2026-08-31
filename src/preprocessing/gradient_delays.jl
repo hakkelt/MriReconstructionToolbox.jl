@@ -16,8 +16,12 @@ struct OpposingSpokes <: GradientDelayMethod end
 """
     RING <: GradientDelayMethod
 
-Radial Intersections for Navigation and Gradient delay estimation (Rosenzweig et al. 2019).
-Estimates anisotropic gradient delays from spoke trajectory intersections.
+Radial Intersections for Navigation and Gradient delay estimation (Rosenzweig et al. 2019):
+estimates the full anisotropic 2×2 delay tensor from spoke trajectory intersections.
+
+!!! warning
+    Not implemented yet — `estimate_gradient_delays` / `correct_gradient_delays` throw for this
+    method. Use [`OpposingSpokes`](@ref) for an isotropic estimate.
 """
 struct RING <: GradientDelayMethod end
 
@@ -65,10 +69,12 @@ function _estimate_delays_core(traj::AbstractArray, ksp::AbstractArray, ::Opposi
     ky_end = traj[2, Nsamples, 1:Nspokes] .- traj[2, 1, 1:Nspokes]
     angles = atan.(ky_end, kx_end)
 
-    # Combine multi-coil kspace by RSS along readouts if multi-channel
+    # Combine multi-coil k-space by root-sum-of-squares over the coil dimension(s), which
+    # for radial data are all dims past (samples, spokes). Reducing over the spoke axis
+    # instead would collapse the very axis the per-spoke peak fit needs.
     ksp_mag = if ndims(ksp) >= 3
-        # average/sum over coils
-        sqrt.(sum(abs2, ksp; dims = 2))
+        coil_dims = Tuple(3:ndims(ksp))
+        dropdims(sqrt.(sum(abs2, ksp; dims = coil_dims)); dims = coil_dims)
     else
         abs.(ksp)
     end
@@ -99,9 +105,8 @@ function _estimate_delays_core(traj::AbstractArray, ksp::AbstractArray, ::Opposi
     return (delay_vec[1], delay_vec[2])
 end
 
-function _estimate_delays_core(traj::AbstractArray, ksp::AbstractArray, ::RING)
-    # RING method: estimates delays from trajectory intersections
-    return _estimate_delays_core(traj, ksp, OpposingSpokes())
+function _estimate_delays_core(::AbstractArray, ::AbstractArray, ::RING)
+    throw(ArgumentError("RING gradient-delay estimation is not implemented yet; use OpposingSpokes()."))
 end
 
 function _apply_gradient_delays(traj::AbstractArray, delays::Tuple{Real, Real})

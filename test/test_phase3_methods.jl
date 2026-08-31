@@ -165,3 +165,149 @@ end
     @test dimnames(rec_spirit) == (:x, :y)
     @test isapprox(abs.(unname(rec_spirit))[mask_obj], img[mask_obj]; rtol = 0.18)
 end
+
+@testitem "Partial Fourier: PhaseConstrained recovers a phased phantom" tags = [:reconstruction, :acquisition] begin
+    using Test
+    using MriReconstructionToolbox
+    using LinearAlgebra
+    using NamedDims
+    using FFTW
+
+    Nx, Ny, Nc = 40, 40, 4
+    img = zeros(ComplexF64, Nx, Ny)
+    img[10:30, 12:28] .= 1.0
+    img[18:24, 18:24] .= 0.4
+    img .*= cis.(0.4 .* [x / Nx + y / Ny for x in 1:Nx, y in 1:Ny])
+
+    sens = zeros(ComplexF64, Nx, Ny, Nc)
+    X = [(x - Nx / 2) / Nx for x in 1:Nx, y in 1:Ny]
+    Y = [(y - Ny / 2) / Ny for x in 1:Nx, y in 1:Ny]
+    for c in 1:Nc
+        a = (c - 1) * 2π / Nc
+        sens[:, :, c] = exp.(-((X .- cos(a) / 2) .^ 2 .+ (Y .- sin(a) / 2) .^ 2)) .* cis.(0.5 .* (X .* cos(a) .+ Y .* sin(a)))
+    end
+    sens ./= sqrt.(sum(abs2, sens; dims = 3)) .+ 1.0e-8
+
+    full = zeros(ComplexF64, Nx, Ny, Nc)
+    for c in 1:Nc
+        full[:, :, c] = fftshift(fft(img .* sens[:, :, c])) ./ sqrt(Nx * Ny)
+    end
+
+    pf = 26
+    mask_y = falses(Ny)
+    mask_y[1:pf] .= true
+    acq = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky, :coil)}(full[:, 1:pf, :]);
+        is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_y),
+        sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(sens),
+    )
+
+    rec = reconstruct(acq, PhaseConstrained(); verbose = false)
+    @test rec isa NamedDimsArray
+    @test dimnames(rec) == (:x, :y)
+    obj = abs.(img) .> 0.2
+    @test isapprox(abs.(unname(rec))[obj], abs.(img)[obj]; rtol = 0.05)
+end
+
+@testitem "GRAPPA: arbitrary undersampling factor and default even kernel" tags = [:reconstruction, :acquisition, :encoding] begin
+    using Test
+    using MriReconstructionToolbox
+    using LinearAlgebra
+    using NamedDims
+    using FFTW
+
+    Nx, Ny, Nc = 40, 40, 6
+    img = zeros(ComplexF64, Nx, Ny)
+    img[10:30, 10:30] .= 1.0
+    img[15:20, 22:26] .= 0.5
+
+    sens = zeros(ComplexF64, Nx, Ny, Nc)
+    X = [(x - Nx / 2) / Nx for x in 1:Nx, y in 1:Ny]
+    Y = [(y - Ny / 2) / Ny for x in 1:Nx, y in 1:Ny]
+    for c in 1:Nc
+        a = (c - 1) * 2π / Nc
+        sens[:, :, c] = exp.(-((X .- cos(a) / 2) .^ 2 .+ (Y .- sin(a) / 2) .^ 2)) .* cis.(0.6 .* (X .* cos(a) .+ Y .* sin(a)))
+    end
+    sens ./= sqrt.(sum(abs2, sens; dims = 3)) .+ 1.0e-8
+
+    full = zeros(ComplexF64, Nx, Ny, Nc)
+    for c in 1:Nc
+        full[:, :, c] = fftshift(fft(img .* sens[:, :, c])) ./ sqrt(Nx * Ny)
+    end
+
+    for R in (2, 3)
+        mask_y = falses(Ny)
+        mask_y[1:R:Ny] .= true
+        c0 = Ny ÷ 2 + 1
+        mask_y[(c0 - 6):(c0 + 5)] .= true
+        acq = CartesianAcquisitionInfo(
+            NamedDimsArray{(:kx, :ky, :coil)}(full[:, mask_y, :]);
+            is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_y),
+            sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(sens),
+        )
+        # default kernel_size = (4, 3) is even along kx - must not throw
+        rec = reconstruct(acq, GRAPPA(calib_size = (40, 12)); verbose = false)
+        @test dimnames(rec) == (:x, :y)
+        rel = norm(abs.(unname(rec)) .- abs.(img)) / norm(abs.(img))
+        @test rel < (R == 2 ? 0.05 : 0.2)
+    end
+end
+
+@testitem "Direct methods: trailing time batch dimension is preserved" tags = [:reconstruction, :acquisition, :encoding] begin
+    using Test
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: Homodyne, POCS, PhaseConstrained
+    using NamedDims
+    using FFTW
+
+    Nx, Ny, Nc, Nt = 32, 32, 4, 3
+    sens = zeros(ComplexF64, Nx, Ny, Nc)
+    for c in 1:Nc
+        sens[:, :, c] .= cis(2π * c / Nc) / sqrt(Nc)
+    end
+    imgs = zeros(ComplexF64, Nx, Ny, Nt)
+    for t in 1:Nt
+        imgs[8:24, 8:24, t] .= 1.0 + 0.1t
+    end
+    full = zeros(ComplexF64, Nx, Ny, Nc, Nt)
+    for c in 1:Nc, t in 1:Nt
+        full[:, :, c, t] = fftshift(fft(imgs[:, :, t] .* sens[:, :, c])) ./ sqrt(Nx * Ny)
+    end
+    mask_y = falses(Ny)
+    mask_y[1:22] .= true                       # partial Fourier band
+    acq_pf = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky, :coil, :time)}(full[:, 1:22, :, :]);
+        is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_y),
+        sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(sens),
+    )
+    for M in (Homodyne(), POCS(maxit = 4), PhaseConstrained())
+        rec = reconstruct(acq_pf, M; verbose = false)
+        @test size(rec) == (Nx, Ny, Nt)
+        @test dimnames(rec) == (:x, :y, :time)
+    end
+
+    mask_r = falses(Ny)
+    mask_r[1:2:Ny] .= true
+    c0 = Ny ÷ 2 + 1
+    mask_r[(c0 - 6):(c0 + 5)] .= true
+    acq_r = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky, :coil, :time)}(full[:, mask_r, :, :]);
+        is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_r),
+        sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(sens),
+    )
+    for M in (GRAPPA(calib_size = (32, 12)), SPIRiT(calib_size = (32, 12), maxit = 6))
+        rec = reconstruct(acq_r, M; verbose = false)
+        @test size(rec) == (Nx, Ny, Nt)
+        @test dimnames(rec) == (:x, :y, :time)
+    end
+end
+
+@testitem "SPIRiTConsistency: materialize throws an actionable error" tags = [:reconstruction, :regularization] begin
+    using Test
+    using MriReconstructionToolbox
+
+    kernel = randn(ComplexF64, 3, 3, 4, 4)
+    reg = SPIRiTConsistency(kernel)
+    x = Variable(randn(ComplexF64, 8, 8, 4))
+    @test_throws ArgumentError MriReconstructionToolbox.materialize(reg, x; threaded = false)
+end

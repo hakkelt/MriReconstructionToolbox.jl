@@ -42,8 +42,10 @@ function pseudo_replica(
     end
     ref_std = (noise_std / sqrt(N_spatial))
 
-    # Acceleration factor (if subsampling present)
-    R_acc = if !isnothing(acq.subsampling)
+    # Acceleration factor (if subsampling present). Only Cartesian acquisitions carry a
+    # `subsampling` mask; non-Cartesian acceleration is folded into the trajectory, so fall
+    # back to R = 1 and let the empirical std carry the g-factor there.
+    R_acc = if acq isa CartesianAcquisitionInfo && !isnothing(acq.subsampling)
         mask = to_displayable_mask(acq.subsampling, (spatial_size[1], spatial_size[2]))
         Float64(length(mask) / count(mask))
     else

@@ -110,8 +110,10 @@ function _estimate_sensitivities_core(
         c_idx::Int,
         is3D::Bool,
     ) where {T, N}
-    perm = ntuple(i -> i == c_idx ? N : (i >= c_idx ? i - 1 : i), N)
-    inv_perm = ntuple(i -> i == N ? c_idx : (i >= c_idx ? i + 1 : i), N)
+    # Move the coil axis to the trailing position: output dim c_idx..N-1 come from input
+    # dim c_idx+1..N, output dim N comes from input dim c_idx. `inv_perm` restores the layout.
+    perm = ntuple(i -> i == N ? c_idx : (i >= c_idx ? i + 1 : i), N)
+    inv_perm = ntuple(i -> i == c_idx ? N : (i >= c_idx ? i - 1 : i), N)
     ksp_trailing = permutedims(kspace, perm)
 
     spatial_dims = size(ksp_trailing)[1:(N - 1)]
@@ -157,8 +159,10 @@ function _estimate_sensitivities_core(
         c_idx::Int,
         is3D::Bool,
     ) where {T, N}
-    perm = ntuple(i -> i == c_idx ? N : (i >= c_idx ? i - 1 : i), N)
-    inv_perm = ntuple(i -> i == N ? c_idx : (i >= c_idx ? i + 1 : i), N)
+    # Move the coil axis to the trailing position: output dim c_idx..N-1 come from input
+    # dim c_idx+1..N, output dim N comes from input dim c_idx. `inv_perm` restores the layout.
+    perm = ntuple(i -> i == N ? c_idx : (i >= c_idx ? i + 1 : i), N)
+    inv_perm = ntuple(i -> i == c_idx ? N : (i >= c_idx ? i - 1 : i), N)
     ksp_trailing = permutedims(kspace, perm)
 
     spatial_dims = size(ksp_trailing)[1:(N - 1)]
@@ -200,8 +204,10 @@ function _estimate_sensitivities_core(
         c_idx::Int,
         is3D::Bool,
     ) where {T, N}
-    perm = ntuple(i -> i == c_idx ? N : (i >= c_idx ? i - 1 : i), N)
-    inv_perm = ntuple(i -> i == N ? c_idx : (i >= c_idx ? i + 1 : i), N)
+    # Move the coil axis to the trailing position: output dim c_idx..N-1 come from input
+    # dim c_idx+1..N, output dim N comes from input dim c_idx. `inv_perm` restores the layout.
+    perm = ntuple(i -> i == N ? c_idx : (i >= c_idx ? i + 1 : i), N)
+    inv_perm = ntuple(i -> i == c_idx ? N : (i >= c_idx ? i - 1 : i), N)
     ksp_trailing = permutedims(kspace, perm)
 
     spatial_dims = size(ksp_trailing)[1:(N - 1)]

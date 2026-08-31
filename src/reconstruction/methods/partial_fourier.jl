@@ -114,6 +114,33 @@ struct POCS{C <: CoilCombination} <: AbstractDirectMethod
     end
 end
 
+"""
+    _pf_coil_dim(acq)
+
+Integer position of the coil axis in the (full) k-space array, or `0` when there is none.
+Resolved from dimension names when the k-space is a `NamedDimsArray`, else assumed to be
+axis 3 for arrays with a third dimension.
+"""
+function _pf_coil_dim(acq::CartesianAcquisitionInfo)
+    if acq.kspace_data isa NamedDimsArray
+        idx = findfirst(==(:coil), dimnames(acq.kspace_data))
+        return isnothing(idx) ? 0 : Int(idx)
+    end
+    return ndims(acq.kspace_data) >= 3 ? 3 : 0
+end
+
+function _pf_finalize(acq::CartesianAcquisitionInfo, img_out, coil_reduced::Bool, c_dim::Int)
+    if coil_reduced && c_dim > 0
+        img_out = dropdims(img_out; dims = c_dim)
+    end
+    if acq.kspace_data isa NamedDimsArray
+        img_dims = get_image_dims(acq)
+        out_dims = coil_reduced ? filter(!=(:coil), img_dims) : img_dims
+        return NamedDimsArray{out_dims}(unname(img_out))
+    end
+    return img_out
+end
+
 function _get_full_kspace(acq::CartesianAcquisitionInfo)
     raw_ksp = unname(acq.kspace_data)
     if isnothing(acq.subsampling)
@@ -183,13 +210,15 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::Homodyne)
     W_mat = reshape(W_1d, w_shape)
     W_sym_mat = reshape(W_sym, w_shape)
 
+    c_dim = _pf_coil_dim(acq)
+    coil_reduced = !isnothing(acq.sensitivity_maps)
+
     # 1. Estimate phase
     ksp_sym = ksp .* W_sym_mat
     f_dims = (1, 2)
     lowres_coil = ifft(ifftshift(ksp_sym, f_dims), f_dims) .* sqrt(prod(spatial_sz))
-    lowres_combined = if !isnothing(acq.sensitivity_maps)
+    lowres_combined = if coil_reduced
         sens = unname(acq.sensitivity_maps)
-        c_dim = ndims(ksp) >= 3 ? 3 : 1
         sum(lowres_coil .* conj.(sens); dims = c_dim)
     else
         lowres_coil
@@ -199,26 +228,17 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::Homodyne)
     # 2. Homodyne weighted inverse FFT
     ksp_hom = ksp .* W_mat
     img_coil = ifft(ifftshift(ksp_hom, f_dims), f_dims) .* sqrt(prod(spatial_sz))
-    img_combined = if !isnothing(acq.sensitivity_maps)
+    img_combined = if coil_reduced
         sens = unname(acq.sensitivity_maps)
-        c_dim = ndims(ksp) >= 3 ? 3 : 1
         sum(img_coil .* conj.(sens); dims = c_dim)
     else
         img_coil
     end
 
     # 3. Demodulate phase and take real part
-    img_out = real.(img_combined .* cis.(-phase_est))
-    img_out = complex.(img_out)
+    img_out = complex.(real.(img_combined .* cis.(-phase_est)))
 
-    if acq.kspace_data isa NamedDimsArray
-        img_dims = get_image_dims(acq)
-        out_dims = isnothing(acq.sensitivity_maps) ? img_dims : filter(!=(:coil), img_dims)
-        out_arr = reshape(img_out, ntuple(i -> size(img_out, i), length(out_dims)))
-        return NamedDimsArray{out_dims}(out_arr)
-    else
-        return img_out
-    end
+    return _pf_finalize(acq, img_out, coil_reduced, c_dim)
 end
 
 function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::POCS)
@@ -253,21 +273,76 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::POCS)
         ksp_pocs = ifelse.(mask_nd, ksp, ksp_updated)
     end
 
+    c_dim = _pf_coil_dim(acq)
+    coil_reduced = !isnothing(acq.sensitivity_maps)
     final_coil_imgs = ifft(ifftshift(ksp_pocs, f_dims), f_dims) .* sqrt(prod(spatial_sz))
-    img_out = if !isnothing(acq.sensitivity_maps)
+    img_out = if coil_reduced
         sens = unname(acq.sensitivity_maps)
-        c_dim = ndims(ksp) >= 3 ? 3 : 1
         sum(final_coil_imgs .* conj.(sens); dims = c_dim)
     else
         final_coil_imgs
     end
 
-    if acq.kspace_data isa NamedDimsArray
-        img_dims = get_image_dims(acq)
-        out_dims = isnothing(acq.sensitivity_maps) ? img_dims : filter(!=(:coil), img_dims)
-        out_arr = reshape(img_out, ntuple(i -> size(img_out, i), length(out_dims)))
-        return NamedDimsArray{out_dims}(out_arr)
-    else
-        return img_out
+    return _pf_finalize(acq, img_out, coil_reduced, c_dim)
+end
+
+# Phase-constrained partial-Fourier reconstruction (Margosian et al. 1986): estimate the
+# low-resolution phase φ from the symmetric centre, then solve the real-valued least-squares
+# problem  min_{m ∈ ℝ}  Σ_c ‖ 𝒫 ℱ ( s_c · e^{iφ_c} · m ) − y_c ‖²  by conjugate gradient on the
+# normal equations. With sensitivity maps a single real image is recovered; without them each
+# coil is solved independently and combined by root-sum-of-squares.
+function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::PhaseConstrained)
+    ksp = _get_full_kspace(acq)
+    img_sz = get_image_size(acq)
+    spatial_sz = (img_sz[1], img_sz[2])
+    f_dims = (1, 2)
+    R = real(eltype(ksp))
+
+    band = partial_fourier_band(acq)
+    N = band.total_size
+    W_sym = zeros(R, N)
+    W_sym[band.symmetric_range] .= one(R)
+    w_shape = ntuple(i -> i == band.dim ? N : 1, ndims(ksp))
+    eiϕ = cis.(angle.(ifft(ifftshift(ksp .* reshape(W_sym, w_shape), f_dims), f_dims)))
+
+    mask = to_displayable_mask(acq.subsampling, spatial_sz)
+    mask_nd = reshape(mask, size(mask)..., ntuple(_ -> 1, ndims(ksp) - 2)...)
+
+    c_dim = _pf_coil_dim(acq)
+    has_sens = !isnothing(acq.sensitivity_maps)
+    s = has_sens ? unname(acq.sensitivity_maps) : nothing
+    scale = sqrt(prod(spatial_sz))
+
+    fwd = m -> begin
+        coilwise = has_sens ? (s .* eiϕ .* m) : (eiϕ .* m)
+        mask_nd .* (fftshift(fft(coilwise, f_dims), f_dims) ./ scale)
     end
+    adj = r -> begin
+        img = ifft(ifftshift(mask_nd .* r, f_dims), f_dims) .* scale
+        img = has_sens ? sum(conj.(s) .* conj.(eiϕ) .* img; dims = c_dim) : (conj.(eiϕ) .* img)
+        real.(img)
+    end
+
+    b = adj(ksp)
+    m = zero(b)
+    rk = b - adj(fwd(m))
+    p = copy(rk)
+    rs_old = sum(abs2, rk)
+    for _ in 1:25
+        Ap = adj(fwd(p))
+        α = rs_old / max(real(sum(conj.(p) .* Ap)), eps(R))
+        m = m .+ α .* p
+        rk = rk .- α .* Ap
+        rs_new = sum(abs2, rk)
+        rs_new < 1.0e-12 * length(b) && break
+        p = rk .+ (rs_new / rs_old) .* p
+        rs_old = rs_new
+    end
+
+    if c_dim == 0
+        return _pf_finalize(acq, complex.(m), false, 0)
+    end
+    # `m` still carries a singleton coil axis at `c_dim`; `_pf_finalize` drops it.
+    img_out = has_sens ? complex.(m) : complex.(sqrt.(sum(abs2, m; dims = c_dim)))
+    return _pf_finalize(acq, img_out, true, c_dim)
 end

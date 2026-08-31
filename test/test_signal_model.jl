@@ -91,3 +91,42 @@ end
     rec_perm = reconstruct(acq_data, method_perm; verbose = false)
     @test isapprox(rec_perm, img_true; rtol = 1.0e-4, atol = 1.0e-4)
 end
+
+@testitem "Signal model: non-trailing time dimension" tags = [:reconstruction, :minimizer] begin
+    using Test
+    using MriReconstructionToolbox
+    using LinearAlgebra
+    using NamedDims
+    using FFTW
+
+    Nx, Ny, Nt, Nsl, K = 12, 12, 6, 3, 3
+    Φ = Matrix(qr(randn(ComplexF64, Nt, K)).Q[:, 1:K])
+    coeff = randn(ComplexF64, Nx, Ny, K, Nsl)
+    imgs = similar(coeff, Nx, Ny, Nt, Nsl)
+    for x in 1:Nx, y in 1:Ny, s in 1:Nsl
+        imgs[x, y, :, s] = Φ * coeff[x, y, :, s]
+    end
+    img_true = NamedDimsArray{(:x, :y, :time, :slice)}(imgs)
+    ksp_dummy = NamedDimsArray{(:kx, :ky, :time, :slice)}(zeros(ComplexF64, Nx, Ny, Nt, Nsl))
+    acq = simulate_acquisition(img_true, CartesianAcquisitionInfo(ksp_dummy; is3D = false))
+
+    method = IterativeReconstruction(;
+        algorithm = CGNR(maxit = 30, tol = 1.0e-8),
+        signal_model = TemporalBasis(Φ; time_dim = :time),   # not the last image dim
+    )
+    # 1. operator forward matches the manual Φ expansion along a non-trailing axis
+    op = MriReconstructionToolbox.signal_model_operator(method, acq)
+    c = NamedDimsArray{(:x, :y, :coeff, :slice)}(randn(ComplexF64, Nx, Ny, K, Nsl))
+    y = op * c
+    man = similar(unname(c), Nx, Ny, Nt, Nsl)
+    for x in 1:Nx, yy in 1:Ny, s in 1:Nsl
+        man[x, yy, :, s] = Φ * unname(c)[x, yy, :, s]
+    end
+    @test unname(y) ≈ man
+
+    # 2. full reconstruction over an extra batch dim (problem decomposition + shape-changing model)
+    rec = reconstruct(acq, method; verbose = false)
+    @test size(rec) == (Nx, Ny, Nt, Nsl)
+    @test dimnames(rec) == (:x, :y, :time, :slice)
+    @test norm(unname(rec) .- imgs) / norm(imgs) < 1.0e-3
+end
