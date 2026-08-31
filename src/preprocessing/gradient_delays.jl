@@ -9,7 +9,7 @@ abstract type GradientDelayMethod end
     OpposingSpokes <: GradientDelayMethod
 
 Classical gradient delay estimation using cross-correlation / peak shifting of opposing radial spokes
-(Peters et al. 2003, Block & Uecker 2011).
+(Peters et al. 2003, Block & Uecker 2011). Returns `(dx, dy)`.
 """
 struct OpposingSpokes <: GradientDelayMethod end
 
@@ -18,10 +18,7 @@ struct OpposingSpokes <: GradientDelayMethod end
 
 Radial Intersections for Navigation and Gradient delay estimation (Rosenzweig et al. 2019):
 estimates the full anisotropic 2×2 delay tensor from spoke trajectory intersections.
-
-!!! warning
-    Not implemented yet — `estimate_gradient_delays` / `correct_gradient_delays` throw for this
-    method. Use [`OpposingSpokes`](@ref) for an isotropic estimate.
+Returns a NamedTuple `(dx = Sxx, dy = Syy, dxy = Sxy)`.
 """
 struct RING <: GradientDelayMethod end
 
@@ -47,7 +44,8 @@ end
 """
     estimate_gradient_delays(acq::NonCartesianAcquisitionInfo; method = OpposingSpokes())
 
-Estimates the 2D gradient delay vector `(dx, dy)` in trajectory units.
+Estimates the gradient delay parameters. Returns `(dx, dy)` for `OpposingSpokes()` or
+`(dx = Sxx, dy = Syy, dxy = Sxy)` for `RING()`.
 """
 function estimate_gradient_delays(
         acq::NonCartesianAcquisitionInfo;
@@ -59,19 +57,14 @@ function estimate_gradient_delays(
     return _estimate_delays_core(traj, ksp, method)
 end
 
-function _estimate_delays_core(traj::AbstractArray, ksp::AbstractArray, ::OpposingSpokes)
-    # traj has size (D, Nsamples, Nspokes, ...)
+function _extract_spoke_angles_and_shifts(traj::AbstractArray, ksp::AbstractArray)
     Nsamples = size(traj, 2)
     Nspokes = size(traj, 3)
 
-    # Compute spoke angles from endpoint or trajectory vector
     kx_end = traj[1, Nsamples, 1:Nspokes] .- traj[1, 1, 1:Nspokes]
     ky_end = traj[2, Nsamples, 1:Nspokes] .- traj[2, 1, 1:Nspokes]
     angles = atan.(ky_end, kx_end)
 
-    # Combine multi-coil k-space by root-sum-of-squares over the coil dimension(s), which
-    # for radial data are all dims past (samples, spokes). Reducing over the spoke axis
-    # instead would collapse the very axis the per-spoke peak fit needs.
     ksp_mag = if ndims(ksp) >= 3
         coil_dims = Tuple(3:ndims(ksp))
         dropdims(sqrt.(sum(abs2, ksp; dims = coil_dims)); dims = coil_dims)
@@ -80,7 +73,6 @@ function _estimate_delays_core(traj::AbstractArray, ksp::AbstractArray, ::Opposi
     end
     ksp_mag_2d = reshape(ksp_mag, Nsamples, Nspokes)
 
-    # Sample coordinates along readout
     r0 = range(-0.5, 0.5, length = Nsamples)
     dr = step(r0)
 
@@ -98,15 +90,21 @@ function _estimate_delays_core(traj::AbstractArray, ksp::AbstractArray, ::Opposi
             shifts[s] = r0[peak_idx]
         end
     end
+    return angles, shifts
+end
 
-    # Fit dx * cos(θ) + dy * sin(θ) = shifts
+function _estimate_delays_core(traj::AbstractArray, ksp::AbstractArray, ::OpposingSpokes)
+    angles, shifts = _extract_spoke_angles_and_shifts(traj, ksp)
     A = [cos.(angles) sin.(angles)]
     delay_vec = A \ shifts
     return (delay_vec[1], delay_vec[2])
 end
 
-function _estimate_delays_core(::AbstractArray, ::AbstractArray, ::RING)
-    throw(ArgumentError("RING gradient-delay estimation is not implemented yet; use OpposingSpokes()."))
+function _estimate_delays_core(traj::AbstractArray, ksp::AbstractArray, ::RING)
+    angles, shifts = _extract_spoke_angles_and_shifts(traj, ksp)
+    A = [cos.(angles) .^ 2 sin.(angles) .^ 2 (2.0 .* cos.(angles) .* sin.(angles))]
+    p = A \ shifts
+    return (dx = p[1], dy = p[2], dxy = p[3])
 end
 
 function _apply_gradient_delays(traj::AbstractArray, delays::Tuple{Real, Real})
@@ -124,6 +122,29 @@ function _apply_gradient_delays(traj::AbstractArray, delays::Tuple{Real, Real})
         shift_y = dy * sin(angles[s])
         traj_corr[1, :, s] .-= shift_x
         traj_corr[2, :, s] .-= shift_y
+    end
+
+    if traj isa NamedDimsArray
+        return NamedDimsArray{dimnames(traj)}(traj_corr)
+    else
+        return traj_corr
+    end
+end
+
+function _apply_gradient_delays(traj::AbstractArray, delays::NamedTuple)
+    traj_corr = copy(traj)
+    Nsamples = size(traj, 2)
+    Nspokes = size(traj, 3)
+
+    kx_end = traj[1, Nsamples, 1:Nspokes] .- traj[1, 1, 1:Nspokes]
+    ky_end = traj[2, Nsamples, 1:Nspokes] .- traj[2, 1, 1:Nspokes]
+    angles = atan.(ky_end, kx_end)
+
+    for s in 1:Nspokes
+        θ = angles[s]
+        shift = delays.dx * cos(θ)^2 + delays.dy * sin(θ)^2 + 2.0 * delays.dxy * cos(θ) * sin(θ)
+        traj_corr[1, :, s] .-= shift * cos(θ)
+        traj_corr[2, :, s] .-= shift * sin(θ)
     end
 
     if traj isa NamedDimsArray

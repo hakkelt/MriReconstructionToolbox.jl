@@ -83,7 +83,13 @@ end
 get_affected_dims(::Nothing, ::Any, ::Any) = ()
 get_affected_dims(model::TemporalBasis, ::Any, image_dims) = (image_dims[get_time_dim(model.time_dim, image_dims)],)
 
-variable_dims(method::IterativeReconstruction, acq::AcquisitionInfo) = variable_dims(method.signal_model, acq)
+function variable_dims(method::IterativeReconstruction, acq::AcquisitionInfo)
+    if method.domain isa KSpaceDomain
+        k_dims = dimnames(acq.kspace_data)
+        return k_dims
+    end
+    return variable_dims(method.signal_model, acq)
+end
 variable_dims(::Nothing, acq::AcquisitionInfo) = get_image_dims(acq)
 function variable_dims(model::TemporalBasis, acq::AcquisitionInfo)
     img_dims = get_image_dims(acq)
@@ -91,7 +97,15 @@ function variable_dims(model::TemporalBasis, acq::AcquisitionInfo)
     return ntuple(i -> i == t_idx ? :coeff : img_dims[i], length(img_dims))
 end
 
-variable_size(method::IterativeReconstruction, acq::AcquisitionInfo) = variable_size(method.signal_model, acq)
+function variable_size(method::IterativeReconstruction, acq::AcquisitionInfo)
+    if method.domain isa KSpaceDomain
+        img_sz = get_image_size(acq)
+        raw_ksp = unname(acq.kspace_data)
+        trailing_dims = size(raw_ksp)[3:end]
+        return (img_sz[1], img_sz[2], trailing_dims...)
+    end
+    return variable_size(method.signal_model, acq)
+end
 variable_size(::Nothing, acq::AcquisitionInfo) = get_image_size(acq)
 function variable_size(model::TemporalBasis, acq::AcquisitionInfo)
     img_size = get_image_size(acq)
@@ -99,7 +113,16 @@ function variable_size(model::TemporalBasis, acq::AcquisitionInfo)
     return ntuple(i -> i == t_idx ? size(model.Φ, 2) : img_size[i], length(img_size))
 end
 
-output_dims(method::IterativeReconstruction, acq::AcquisitionInfo) = output_dims(method.signal_model, acq)
+function output_dims(method::IterativeReconstruction, acq::AcquisitionInfo)
+    if method.domain isa KSpaceDomain
+        if method.domain.coil_combination isa NoCoilCombination
+            return get_image_dims(acq)
+        else
+            return filter(!=(:coil), get_image_dims(acq))
+        end
+    end
+    return output_dims(method.signal_model, acq)
+end
 output_dims(::Nothing, acq::AcquisitionInfo) = get_image_dims(acq)
 output_dims(::TemporalBasis, acq::AcquisitionInfo) = get_image_dims(acq)
 
@@ -108,6 +131,7 @@ output_dims(::TemporalBasis, acq::AcquisitionInfo) = get_image_dims(acq)
 
 Builds the complete encoding operator for the reconstruction method, composing the physical
 acquisition encoding operator `𝒜` with the signal model `ℳ` (if present) as `𝒜 * ℳ`.
+Under `KSpaceDomain`, builds only the subsampling operator `𝒫`.
 """
 function build_encoding_operator(
         acq::AcquisitionInfo,
@@ -115,6 +139,20 @@ function build_encoding_operator(
         threaded::Bool = true,
         fast_planning::Bool = false,
     )
+    if method isa IterativeReconstruction && method.domain isa KSpaceDomain
+        if isnothing(acq.subsampling)
+            raw = unname(acq.kspace_data)
+            P = Eye(eltype(raw), size(raw)...)
+            if acq.kspace_data isa NamedDimsArray
+                return NamedDimsOp{dimnames(acq.kspace_data), dimnames(acq.kspace_data)}(P)
+            else
+                return P
+            end
+        else
+            return get_subsampling_operator(acq)
+        end
+    end
+
     𝒜 = get_encoding_operator(acq; threaded, fast_planning)
     ℳ = signal_model_operator(method, acq; threaded)
     isnothing(ℳ) && return 𝒜

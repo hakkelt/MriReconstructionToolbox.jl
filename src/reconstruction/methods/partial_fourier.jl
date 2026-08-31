@@ -216,7 +216,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::Homodyne)
     # 1. Estimate phase
     ksp_sym = ksp .* W_sym_mat
     f_dims = (1, 2)
-    lowres_coil = ifft(ifftshift(ksp_sym, f_dims), f_dims) .* sqrt(prod(spatial_sz))
+    lowres_coil = _direct_ifft(acq, ksp_sym; dims = f_dims) .* sqrt(prod(spatial_sz))
     lowres_combined = if coil_reduced
         sens = unname(acq.sensitivity_maps)
         sum(lowres_coil .* conj.(sens); dims = c_dim)
@@ -227,7 +227,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::Homodyne)
 
     # 2. Homodyne weighted inverse FFT
     ksp_hom = ksp .* W_mat
-    img_coil = ifft(ifftshift(ksp_hom, f_dims), f_dims) .* sqrt(prod(spatial_sz))
+    img_coil = _direct_ifft(acq, ksp_hom; dims = f_dims) .* sqrt(prod(spatial_sz))
     img_combined = if coil_reduced
         sens = unname(acq.sensitivity_maps)
         sum(img_coil .* conj.(sens); dims = c_dim)
@@ -258,7 +258,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::POCS)
     ksp_sym = ksp .* reshape(W_sym, w_shape)
 
     # Initial phase estimate from symmetric ACS
-    lowres_coil = ifft(ifftshift(ksp_sym, f_dims), f_dims)
+    lowres_coil = _direct_ifft(acq, ksp_sym; dims = f_dims)
     phase_est = angle.(lowres_coil)
 
     # POCS iteration on multi-coil k-space
@@ -267,15 +267,15 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::POCS)
     mask_nd = reshape(mask, size(mask)..., fill(1, ndims(ksp) - 2)...)
 
     for iter in 1:(method.maxit)
-        img_coil = ifft(ifftshift(ksp_pocs, f_dims), f_dims)
+        img_coil = _direct_ifft(acq, ksp_pocs; dims = f_dims)
         img_constrained = abs.(img_coil) .* cis.(phase_est)
-        ksp_updated = fftshift(fft(img_constrained, f_dims), f_dims)
+        ksp_updated = _direct_fft(acq, img_constrained; dims = f_dims)
         ksp_pocs = ifelse.(mask_nd, ksp, ksp_updated)
     end
 
     c_dim = _pf_coil_dim(acq)
     coil_reduced = !isnothing(acq.sensitivity_maps)
-    final_coil_imgs = ifft(ifftshift(ksp_pocs, f_dims), f_dims) .* sqrt(prod(spatial_sz))
+    final_coil_imgs = _direct_ifft(acq, ksp_pocs; dims = f_dims) .* sqrt(prod(spatial_sz))
     img_out = if coil_reduced
         sens = unname(acq.sensitivity_maps)
         sum(final_coil_imgs .* conj.(sens); dims = c_dim)
@@ -303,7 +303,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::PhaseConstra
     W_sym = zeros(R, N)
     W_sym[band.symmetric_range] .= one(R)
     w_shape = ntuple(i -> i == band.dim ? N : 1, ndims(ksp))
-    eiϕ = cis.(angle.(ifft(ifftshift(ksp .* reshape(W_sym, w_shape), f_dims), f_dims)))
+    eiϕ = cis.(angle.(_direct_ifft(acq, ksp .* reshape(W_sym, w_shape); dims = f_dims)))
 
     mask = to_displayable_mask(acq.subsampling, spatial_sz)
     mask_nd = reshape(mask, size(mask)..., ntuple(_ -> 1, ndims(ksp) - 2)...)
@@ -315,10 +315,10 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::PhaseConstra
 
     fwd = m -> begin
         coilwise = has_sens ? (s .* eiϕ .* m) : (eiϕ .* m)
-        mask_nd .* (fftshift(fft(coilwise, f_dims), f_dims) ./ scale)
+        mask_nd .* (_direct_fft(acq, coilwise; dims = f_dims) ./ scale)
     end
     adj = r -> begin
-        img = ifft(ifftshift(mask_nd .* r, f_dims), f_dims) .* scale
+        img = _direct_ifft(acq, mask_nd .* r; dims = f_dims) .* scale
         img = has_sens ? sum(conj.(s) .* conj.(eiϕ) .* img; dims = c_dim) : (conj.(eiϕ) .* img)
         real.(img)
     end

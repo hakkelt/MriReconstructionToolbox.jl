@@ -174,7 +174,7 @@ end
     img_recon = reconstruct(acq_with_data, IterativeReconstruction(components...); maxit = 20, verbose = false)
     @test img_recon isa DecomposedImage
 
-    @test_throws ErrorException reconstruct(acq_with_data, IterativeReconstruction(components...; algorithm = FISTA()); maxit = 20, verbose = false)
+    @test_throws ArgumentError reconstruct(acq_with_data, IterativeReconstruction(components...; algorithm = FISTA()); maxit = 20, verbose = false)
 end
 
 @testitem "reconstruct: components interact with problem decomposition" tags = [:components, :integration] begin

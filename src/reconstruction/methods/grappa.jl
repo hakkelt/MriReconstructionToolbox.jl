@@ -118,7 +118,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::GRAPPA)
 
     # Transform completed k-space to image space
     f_dims = (1, 2)
-    coil_imgs = ifft(ifftshift(ksp_recon, f_dims), f_dims) .* sqrt(Nx * Ny)
+    coil_imgs = _direct_ifft(acq, ksp_recon; dims = f_dims) .* sqrt(Nx * Ny)
 
     img_out = if method.coil_combination isa AdjointSensitivity && !isnothing(acq.sensitivity_maps)
         sens = unname(acq.sensitivity_maps)

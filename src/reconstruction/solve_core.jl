@@ -47,7 +47,22 @@ function _iterative_reconstruct_core(
         R_type = real(eltype(_first_x0(x₀_or_x₀s)))
         algorithm = patch_algorithm_with_default_values(method.algorithm, Lf; eltype_real = R_type)
         verbose = freq != -1
-        solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
+        try
+            solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
+        catch e
+            if e isa ErrorException && occursin("cannot parse this problem for solver", e.msg)
+                reg_types = map(typeof, ensure_tuple(method.regularization))
+                throw(
+                    ArgumentError(
+                        "Cannot parse problem for algorithm $(typeof(algorithm)). " *
+                            "Data fidelity: $(typeof(method.fidelity)), Regularization: $(reg_types). " *
+                            "Check that the objective satisfies the solver assumptions."
+                    )
+                )
+            else
+                rethrow(e)
+            end
+        end
         # Read the solution from the image variable(s) themselves: once a regularization contributes
         # auxiliary variables (e.g. total generalized variation), the solver returns them alongside the
         # image and its ordering is not something to depend on.

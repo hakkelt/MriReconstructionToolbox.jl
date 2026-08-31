@@ -42,7 +42,7 @@
     )
     @test_throws ArgumentError correct_gradient_delays(acq_cart)
 
-    # 2. Estimation and correction
+    # 2. Estimation and correction with OpposingSpokes
     delays_est = estimate_gradient_delays(acq_noncart; method = OpposingSpokes())
     @test isapprox(delays_est[1], delay_true[1]; atol = 1.0e-3)
     @test isapprox(delays_est[2], delay_true[2]; atol = 1.0e-3)
@@ -50,6 +50,36 @@
     acq_corr = correct_gradient_delays(acq_noncart; method = OpposingSpokes())
     @test acq_corr isa NonCartesianAcquisitionInfo
     @test norm(unname(acq_corr.trajectory) - traj_true) < 2.0e-3
+
+    # 3. Estimation and correction with RING (anisotropic delay tensor)
+    Sxx, Syy, Sxy = 0.02, -0.015, 0.005
+    traj_ring = copy(traj_true)
+    for s in 1:Nspokes
+        θ = angles[s]
+        shift = Sxx * cos(θ)^2 + Syy * sin(θ)^2 + 2.0 * Sxy * cos(θ) * sin(θ)
+        traj_ring[1, :, s] .+= shift * cos(θ)
+        traj_ring[2, :, s] .+= shift * sin(θ)
+    end
+    ksp_ring = zeros(ComplexF32, Nsamples, Nspokes)
+    for s in 1:Nspokes
+        θ = angles[s]
+        shift_s = Sxx * cos(θ)^2 + Syy * sin(θ)^2 + 2.0 * Sxy * cos(θ) * sin(θ)
+        ksp_ring[:, s] = exp.(-50.0f0 .* (r .- shift_s) .^ 2)
+    end
+    acq_ring_data = NonCartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky)}(ksp_ring);
+        trajectory = NamedDimsArray{(:dim, :kx, :ky)}(traj_ring),
+        image_size = (32, 32),
+    )
+    delays_ring = estimate_gradient_delays(acq_ring_data; method = RING())
+    @test delays_ring isa NamedTuple
+    @test isapprox(delays_ring.dx, Sxx; atol = 1.0e-3)
+    @test isapprox(delays_ring.dy, Syy; atol = 1.0e-3)
+    @test isapprox(delays_ring.dxy, Sxy; atol = 1.0e-3)
+
+    acq_ring_corr = correct_gradient_delays(acq_ring_data; method = RING())
+    @test acq_ring_corr isa NonCartesianAcquisitionInfo
+    @test norm(unname(acq_ring_corr.trajectory) - traj_true) < 2.0e-3
 end
 
 @testitem "Partial Fourier reconstruction: Homodyne, StepRamp, POCS" tags = [:reconstruction, :acquisition] begin
@@ -163,7 +193,7 @@ end
     rec_spirit = reconstruct(acq, SPIRiT(kernel_size = (5, 5), calib_size = (32, 12), maxit = 20); verbose = false)
     @test rec_spirit isa NamedDimsArray
     @test dimnames(rec_spirit) == (:x, :y)
-    @test isapprox(abs.(unname(rec_spirit))[mask_obj], img[mask_obj]; rtol = 0.18)
+    @test norm(abs.(unname(rec_spirit))[mask_obj] .- img[mask_obj]) / norm(img[mask_obj]) < 0.18
 end
 
 @testitem "Partial Fourier: PhaseConstrained recovers a phased phantom" tags = [:reconstruction, :acquisition] begin
@@ -302,12 +332,130 @@ end
     end
 end
 
-@testitem "SPIRiTConsistency: materialize throws an actionable error" tags = [:reconstruction, :regularization] begin
+@testitem "SPIRiTConsistency: operator adjoint test and KSpaceDomain reconstruction" tags = [:reconstruction, :regularization] begin
     using Test
     using MriReconstructionToolbox
+    using NamedDims
+    using LinearAlgebra
+    using FFTW
 
-    kernel = randn(ComplexF64, 3, 3, 4, 4)
-    reg = SPIRiTConsistency(kernel)
-    x = Variable(randn(ComplexF64, 8, 8, 4))
-    @test_throws ArgumentError MriReconstructionToolbox.materialize(reg, x; threaded = false)
+    Nx, Ny, Nc = 16, 16, 4
+    Kx, Ky = 3, 3
+    kernel = rand(ComplexF64, Kx, Ky, Nc, Nc)
+    cx, cy = 2, 2
+    for c in 1:Nc
+        kernel[cx, cy, c, c] = 0.0
+    end
+
+    reg = SPIRiTConsistency(kernel; λ = 1.0)
+    @test MriReconstructionToolbox.scale_regularization(reg, 2.0).λ == 2.0
+    @test MriReconstructionToolbox.bind_dimensions(reg, (:x, :y)) === reg
+
+    # 1. Adjoint dot-test on (I - G)
+    x = randn(ComplexF64, Nx, Ny, Nc)
+    y = randn(ComplexF64, Nx, Ny, Nc)
+    op = MriReconstructionToolbox.get_operator(reg, x; threaded = false)
+    Ax = op * x
+    Aty = op' * y
+    @test isapprox(dot(y, Ax), dot(Aty, x); rtol = 1.0e-10)
+
+    # 2. Fully-sampled KSpaceDomain solve matches direct IFFT
+    img = zeros(ComplexF64, Nx, Ny)
+    img[4:12, 4:12] .= 1.0
+    sens = zeros(ComplexF64, Nx, Ny, Nc)
+    for c in 1:Nc
+        sens[:, :, c] .= cis(2π * c / Nc) / sqrt(Nc)
+    end
+    ksp_full = zeros(ComplexF64, Nx, Ny, Nc)
+    for c in 1:Nc
+        ksp_full[:, :, c] = fftshift(fft(img .* sens[:, :, c])) ./ sqrt(Nx * Ny)
+    end
+    acq_full = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky, :coil)}(ksp_full);
+        is3D = false, image_size = (Nx, Ny),
+        sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(sens),
+    )
+    rec_kspace = reconstruct(acq_full, IterativeReconstruction(; domain = KSpaceDomain(AdjointSensitivity()), algorithm = CGNR(maxit = 5), fidelity = L2Loss()); verbose = false)
+    @test isapprox(abs.(unname(rec_kspace)), abs.(img); atol = 1.0e-5)
+end
+
+@testitem "Iterative SPIRiT reconstruction (lowering)" tags = [:reconstruction, :acquisition] begin
+    using Test
+    using MriReconstructionToolbox
+    using NamedDims
+    using LinearAlgebra
+    using FFTW
+
+    Nx, Ny, Nc = 32, 32, 4
+    img = zeros(Float32, Nx, Ny)
+    img[8:24, 8:24] .= 1.0f0
+
+    sens_true = zeros(ComplexF32, Nx, Ny, Nc)
+    X = [(x - Nx / 2) / Nx for x in 1:Nx, y in 1:Ny]
+    Y = [(y - Ny / 2) / Ny for x in 1:Nx, y in 1:Ny]
+    for c in 1:Nc
+        angle = (c - 1) * 2π / Nc
+        sens_true[:, :, c] = exp.(-((X .- cos(angle) / 2) .^ 2 .+ (Y .- sin(angle) / 2) .^ 2)) .* cis.(0.5f0 .* (X .* cos(angle) .+ Y .* sin(angle)))
+    end
+    rss = sqrt.(sum(abs2, sens_true; dims = 3))
+    sens_true ./= (rss .+ 1.0f-8)
+
+    ksp_full = zeros(ComplexF32, Nx, Ny, Nc)
+    for c in 1:Nc
+        ksp_full[:, :, c] = fftshift(fft(img .* sens_true[:, :, c])) ./ sqrt(Nx * Ny)
+    end
+
+    R_acc = 2
+    cal_range = 11:22
+    mask_y = falses(Ny)
+    mask_y[1:R_acc:Ny] .= true
+    mask_y[cal_range] .= true
+    subs = (:, mask_y)
+
+    acq = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky, :coil)}(ksp_full[:, mask_y, :]);
+        is3D = false,
+        image_size = (Nx, Ny),
+        subsampling = subs,
+        sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(sens_true),
+    )
+
+    rec_iter = reconstruct(acq, SPIRiT(kernel_size = (5, 5), calib_size = (32, 12), maxit = 20, iterative = true); verbose = false)
+    @test rec_iter isa NamedDimsArray
+    @test dimnames(rec_iter) == (:x, :y)
+    mask_obj = img .> 0.5
+    @test norm(abs.(unname(rec_iter))[mask_obj] .- img[mask_obj]) / norm(img[mask_obj]) < 0.2
+end
+
+@testitem "Direct FFT methods respect shifted_kspace_dims" tags = [:reconstruction, :acquisition] begin
+    using Test
+    using MriReconstructionToolbox
+    using NamedDims
+    using FFTW
+    using LinearAlgebra
+
+    Nx, Ny = 32, 32
+    mag = zeros(Float32, Nx, Ny)
+    mag[8:24, 8:24] .= 1.0f0
+    img_true = NamedDimsArray{(:x, :y)}(ComplexF32.(mag))
+
+    # Standard DC-centered k-space
+    ksp_centered = fftshift(fft(unname(img_true))) ./ sqrt(Nx * Ny)
+    # Pre-shifted (corner-centered) k-space
+    ksp_unshifted = fft(unname(img_true)) ./ sqrt(Nx * Ny)
+
+    acq_default = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky)}(ksp_centered);
+        is3D = false, image_size = (Nx, Ny),
+    )
+    acq_shifted = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky)}(ksp_unshifted);
+        is3D = false, image_size = (Nx, Ny),
+        shifted_kspace_dims = (1, 2),
+    )
+
+    rec_default = reconstruct(acq_default, DirectReconstruction(); verbose = false)
+    rec_shifted = reconstruct(acq_shifted, DirectReconstruction(); verbose = false)
+
+    @test isapprox(abs.(unname(rec_default)), abs.(unname(rec_shifted)); atol = 1.0e-5)
 end
