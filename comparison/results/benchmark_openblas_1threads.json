@@ -1,0 +1,228 @@
+{
+    "bart_binary": "/project/c_mrrecon/bart_openblas",
+    "bart_startup_time_ms": 40.968612,
+    "benchmarks": [
+        {
+            "category": "Base 1C",
+            "framework": "MRT (OpenBLAS)",
+            "method": "1-Coil Adjoint",
+            "nrmse_gt": 1.6983030093342677e-7,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 0.099132
+        },
+        {
+            "category": "Base 1C",
+            "framework": "SigPy",
+            "method": "1-Coil Adjoint",
+            "nrmse_gt": 1.1217921318643142e-7,
+            "nrmse_mrt": 1.3123677161877863e-7,
+            "threads": 1,
+            "time_ms": 0.473112
+        },
+        {
+            "category": "Base 1C",
+            "framework": "BART (OpenBLAS)",
+            "method": "1-Coil Adjoint",
+            "nrmse_gt": 1.626778782792826e-7,
+            "nrmse_mrt": 1.2608327892849047e-7,
+            "threads": 1,
+            "time_ms": 3.638561999999998
+        },
+        {
+            "category": "Base MC",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 6.3381268911027404e-9,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 1.361667
+        },
+        {
+            "category": "Base MC",
+            "framework": "SigPy",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 6.338117376189417e-9,
+            "nrmse_mrt": 3.9038167538600363e-16,
+            "threads": 1,
+            "time_ms": 3.463593
+        },
+        {
+            "category": "Base MC",
+            "framework": "BART (OpenBLAS)",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 9.450447180370247e-8,
+            "nrmse_mrt": 7.778722675925253e-8,
+            "threads": 1,
+            "time_ms": 10.629678999999996
+        },
+        {
+            "category": "Non-Cartesian",
+            "framework": "MRT (OpenBLAS)",
+            "method": "DCF Adjoint (Gridding)",
+            "nrmse_gt": 0.08516514301300049,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 24.519857
+        },
+        {
+            "category": "Non-Cartesian",
+            "framework": "MRIReco",
+            "method": "DCF Adjoint (Gridding)",
+            "nrmse_gt": 0.08543765544891357,
+            "nrmse_mrt": 0.03789009153842926,
+            "threads": 1,
+            "time_ms": 31.460278000000002
+        },
+        {
+            "category": "Base MC",
+            "framework": "MRT (OpenBLAS)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 6.3381436677366645e-9,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 79.72898500000001
+        },
+        {
+            "category": "Base MC",
+            "framework": "SigPy",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 6.33811747375227e-9,
+            "nrmse_mrt": 2.621252714072881e-14,
+            "threads": 1,
+            "time_ms": 101.327427
+        },
+        {
+            "category": "Base MC",
+            "framework": "BART (OpenBLAS)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 1.409465539836674e-7,
+            "nrmse_mrt": 1.3994293105282615e-7,
+            "threads": 1,
+            "time_ms": 329.68771599999997
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Total Variation (30 it)",
+            "nrmse_gt": 0.01159288074603864,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 1088.834028
+        },
+        {
+            "category": "Sparsity",
+            "framework": "BART (OpenBLAS)",
+            "method": "Total Variation (30 it)",
+            "nrmse_gt": 0.02553849294781685,
+            "nrmse_mrt": 0.01876976433425077,
+            "threads": 1,
+            "time_ms": 501.89845599999995
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRT (OpenBLAS)",
+            "method": "L1-Wavelet (30 it)",
+            "nrmse_gt": 0.008374983912875283,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 213.99859099999998
+        },
+        {
+            "category": "Sparsity",
+            "framework": "BART (OpenBLAS)",
+            "method": "L1-Wavelet (30 it)",
+            "nrmse_gt": 0.004428598564118147,
+            "nrmse_mrt": 0.006854456272206814,
+            "threads": 1,
+            "time_ms": 538.731942
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRT (OpenBLAS)",
+            "method": "TGV (30 it)",
+            "nrmse_gt": 0.009670165515219169,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 1639.157723
+        },
+        {
+            "category": "Sparsity",
+            "framework": "BART (OpenBLAS)",
+            "method": "TGV (30 it)",
+            "nrmse_gt": 0.02291085757315159,
+            "nrmse_mrt": 0.01871182344844073,
+            "threads": 1,
+            "time_ms": 586.79351
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Global Low-Rank (20 it)",
+            "nrmse_gt": 0.11749744686503213,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 194.13302299999998
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Locally Low-Rank (20 it)",
+            "nrmse_gt": 0.11095562473423096,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 212.036937
+        },
+        {
+            "category": "Dynamic",
+            "framework": "BART (OpenBLAS)",
+            "method": "Locally Low-Rank (20 it)",
+            "nrmse_gt": 0.08111909668076746,
+            "nrmse_mrt": 0.06537016989958223,
+            "threads": 1,
+            "time_ms": 280.90262499999994
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Temporal TV (20 it)",
+            "nrmse_gt": 0.08782904308054383,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 923.082864
+        },
+        {
+            "category": "Dynamic",
+            "framework": "BART (OpenBLAS)",
+            "method": "Temporal TV (20 it)",
+            "nrmse_gt": 0.11447979803172134,
+            "nrmse_mrt": 0.06007771787014758,
+            "threads": 1,
+            "time_ms": 311.720524
+        },
+        {
+            "category": "K-Space",
+            "framework": "MRT (OpenBLAS)",
+            "method": "GRAPPA (RSS)",
+            "nrmse_gt": 0.021231618555057077,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 15.332422
+        },
+        {
+            "category": "K-Space",
+            "framework": "MRT (OpenBLAS)",
+            "method": "GRAPPA (Sensitivity)",
+            "nrmse_gt": 0.024369705810319536,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 19.152552
+        }
+    ],
+    "blas_vendor": "/scratch/c_mrrecon/juliaup_depot/juliaup/julia-1.12.7+0.x64.linux.gnu/bin/../lib/julia/libopenblas64_.so",
+    "hostname": "x1001c4s3b0n1",
+    "julia_threads": 1,
+    "julia_version": "1.12.7",
+    "pinned_cpus": "48",
+    "use_mkl": false
+}
