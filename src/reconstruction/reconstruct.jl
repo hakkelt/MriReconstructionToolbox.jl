@@ -67,7 +67,7 @@ function _reconstruct_dispatch_plain(acq_data, method::AbstractReconstructionMet
         first(reconstruction_result)
     else
         if !isnothing(x₀)
-            @argcheck size(x₀) == decomposition_plan.image_size "Size of x₀ ($(size(x₀))) must match the image size ($(decomposition_plan.image_size))"
+            @argcheck size(x₀) == decomposition_plan.variable_size "Size of x₀ ($(size(x₀))) must match the variable size ($(decomposition_plan.variable_size))"
         end
         result = if method isa AbstractDirectMethod
             # Direct reconstruction needs no scaling; keep slices identical to the
@@ -85,7 +85,7 @@ function _reconstruct_dispatch_plain(acq_data, method::AbstractReconstructionMet
             execute_regularized(decomposition_plan, acq_data, config, method, x₀)
         end
         if acq_data.kspace_data isa NamedDimsArray
-            result = NamedDimsArray{get_image_dims(acq_data)}(unname(result))
+            result = NamedDimsArray{output_dims(method, acq_data)}(unname(result))
         end
         result
     end
@@ -99,8 +99,8 @@ function _reconstruct(
     fast_planning = method isa DirectReconstruction
     if isnothing(𝒜)
         @step "Constructing encoding operator" config begin
-            𝒜 = get_encoding_operator(
-                acq_data; threaded = config.threaded, fast_planning
+            𝒜 = build_encoding_operator(
+                acq_data, method; threaded = config.threaded, fast_planning
             )
         end
     end
@@ -125,8 +125,12 @@ function _reconstruct(
             fidelity = method.fidelity,
         )
         x̂ = _iterative_reconstruct_core(𝒜, acq_data, x̂, scale, method, config; build)
+        if method.signal_model !== nothing
+            ℳ = signal_model_operator(method, acq_data; threaded = config.threaded)
+            x̂ = ℳ * x̂
+        end
         if acq_data.kspace_data isa NamedDimsArray
-            x̂ = NamedDimsArray{dimnames(𝒜, 2)}(x̂)
+            x̂ = NamedDimsArray{output_dims(method, acq_data)}(x̂)
         end
     end
 
@@ -150,12 +154,12 @@ function _reconstruct_dispatch_components(acq_data, method::IterativeReconstruct
         first(result)
     else
         if !isnothing(x₀)
-            check_x₀_components_size(x₀, components, decomposition_plan.image_size)
+            check_x₀_components_size(x₀, components, decomposition_plan.variable_size)
         end
         execute_regularized_components(decomposition_plan, acq_data, config, method, x₀)
     end
     if acq_data.kspace_data isa NamedDimsArray && !(total(img) isa NamedDimsArray)
-        img_dimnames = get_image_dims(acq_data)
+        img_dimnames = output_dims(method, acq_data)
         img = DecomposedImage(
             NamedDimsArray{img_dimnames}(unname(total(img))),
             NamedTuple{keys(img.components)}(
@@ -173,14 +177,14 @@ function _reconstruct_components(
     components = bind_dimensions(method.regularization, get_image_dims(acq_data))
     if isnothing(𝒜)
         @step "Constructing encoding operator" config begin
-            𝒜 = get_encoding_operator(acq_data; threaded = config.threaded, fast_planning = false)
+            𝒜 = build_encoding_operator(acq_data, method; threaded = config.threaded, fast_planning = false)
         end
     end
     # `x₀s` lets a caller that has already formed the per-component initial guesses skip the adjoint
     # that would produce them. The decomposition path computes them in its first phase to derive the
     # per-slice scales, and without this would recompute 𝒜'y per slice only to discard it.
     scale = if isnothing(x₀s)
-        x̂, s = _direct_reconstruct_components(𝒜, acq_data, config; scale_override)
+        x̂, s = _direct_reconstruct_components(𝒜, acq_data, method, config; scale_override)
         x₀s = get_component_x0s(components, x̂, x₀)
         s
     else
@@ -195,7 +199,7 @@ function _reconstruct_components(
     xs = _iterative_reconstruct_core(𝒜, acq_data, x₀s, scale, method, config; build)
     total_x = broadcast(+, xs...)
     if acq_data.kspace_data isa NamedDimsArray
-        img_dimnames = dimnames(𝒜, 2)
+        img_dimnames = output_dims(method, acq_data)
         total_x = NamedDimsArray{img_dimnames}(total_x)
         xs = map(x -> NamedDimsArray{img_dimnames}(x), xs)
     end

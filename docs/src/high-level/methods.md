@@ -65,6 +65,18 @@ IterativeReconstruction(
 - `disable_operator_normalization`: Disable automatic scaling of $\mathcal{A}$ to unit norm.
 - `disable_normalop_optimization`: Disable normal-operator substitution ($\mathcal{A}^*\mathcal{A}$) in least-squares models.
 
+#### Signal Models (`ℳ`)
+
+Signal models map low-dimensional subspace or parameter representations to dynamic/multi-contrast image series $\mathcal{M}: \mathbb{C}^K \to \mathbb{C}^{N_{\text{frames}}}$, composing with the physical encoding operator as $\mathcal{A}_{\text{eff}} = \mathcal{A} \mathcal{M}$.
+
+- `TemporalBasis(Φ; time_dim = :time)`: Subspace reconstruction with basis matrix $\Phi \in \mathbb{C}^{N_t \times K}$. The optimization variable is the coefficient array $c \in \mathbb{C}^{N_x \times N_y \times K}$, and the final reconstructed image is $x(r, t) = \sum_{k=1}^K \Phi(t, k) c(r, k)$.
+
+```@docs
+TemporalBasis
+build_encoding_operator
+signal_model_operator
+```
+
 ## Method Extension Interface
 
 Custom reconstruction methods implement the following interface hooks:
@@ -74,3 +86,4 @@ Custom reconstruction methods implement the following interface hooks:
 - `variable_dims(method, acq_data)`: Returns dimension names/indices of the optimization variable.
 - `variable_size(method, acq_data)`: Returns expected dimensions/shape of the optimization variable.
 - `output_dims(method, acq_data)`: Returns dimension names of the final reconstructed image.
+

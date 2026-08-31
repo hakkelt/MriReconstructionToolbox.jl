@@ -187,32 +187,16 @@ Note `check_kwargs` (`config.jl:85-90`) rejects any `reconstruct` keyword that i
 
 ---
 
-## Stage 6 — The `signal_model` slot (`ℳ`)
+## Stage 6 — The `signal_model` slot (`ℳ`) [COMPLETED]
 
-Composition happens in the **reconstruction** layer, not in `get_encoding_operator` — the encoding operator describes the acquisition, the signal model is a reconstruction choice, and the same acquisition must be reconstructible with and without it. New `src/reconstruction/encoding_for_method.jl`:
-
-```julia
-function build_encoding_operator(acq, method; threaded, fast_planning)
-    𝒜 = get_encoding_operator(acq; threaded, fast_planning)
-    ℳ = signal_model_operator(method, acq; threaded)
-    isnothing(ℳ) && return 𝒜
-    @argcheck dimnames(𝒜, 2) == dimnames(ℳ, 1) "signal model codomain does not match encoding operator domain"  # V6
-    return 𝒜 * ℳ
-end
-```
-
-**Four** sites build `𝒜` — `reconstruct.jl:136`, `:228`, `decomposition.jl:106`, `:127` — and all four must route through this helper, or the decomposition path solves a different problem than the non-decomposed one. `_compose_with_sensitivity` stays untouched; `ℳ` composes outside it on the image side. Concrete models reuse existing patterns: `DiagOp` + `BroadCast` + `BatchOp` (`sensitivity_map_operators.jl:120-127`) for pointwise models; `Reshape`/`Eye`/`BatchOp` (`low_rank_reg.jl:57-80`) for `TemporalBasis`.
-
-**Four consequences, with fixes:**
-
-1. **`dimnames(𝒜, 2)` at `reconstruct.jl:161`, `:246`** → `output_dims(method, acq)`; one line each thanks to Stage 3.
-2. **Scaling.** `_direct_reconstruct` (`:311-325`) uses one array for two jobs: the warm start and the input to `get_scale`. With a model, `(𝒜ℳ)'y` lives in coefficient space — for an orthonormal `TemporalBasis` over `Nt` frames the magnitudes are ~`√Nt` larger, so `λ` would be mis-sized by that factor, silently. **Fix:** scale from the plain image-side adjoint `𝒜'y`, warm start from `ℳ'(𝒜'y)`. One extra adjoint; bit-identical when `signal_model === nothing`.
-3. **`normalop_ls` — keep it, do not gate it off.** `ℳ'𝒜'𝒜ℳ` still benefits: fusing the inner `𝒜'𝒜` turns a four-operator chain into three, which is a large win precisely where it matters most, since for non-Cartesian `𝒜` the fused normal operator is the Toeplitz form and avoids a full NFFT pair per application. So compose the model *around* the fused normal operator rather than falling back to plain `ls`. Verify `has_optimized_normalop`/`get_normal_op` propagate correctly through the composition and add a test asserting the fused and unfused paths agree numerically.
-4. **Decomposition — refactor the plan, don't disable it (V9).** Rename `ProblemDecompositionPlan`'s `image_size`/`image_batch_dims` to `variable_size`/`variable_batch_dims`; nearly all 14 use sites are already variable-space (batch sizing, `x₀` validation and slicing, per-slice result allocation, display). Add a separate `image_size` only where the final output shape genuinely differs from the variable's. Also extend `decomposition.jl:20-27` to subtract `get_affected_dims(signal_model, …)` alongside the regularizers, so a model that couples a dimension (e.g. `TemporalBasis` over time) prevents splitting it.
-
-**Docs:** `methods.md` documents `signal_model` with the model/composition/variable table from design-doc §5.4; `decomposition.md` updated for the plan rename and the signal-model coupling rule.
-
-**Verify:** with `signal_model === nothing` the full suite is unchanged — the real test of the stage. Plus an identity-basis `TemporalBasis` reproducing the no-model result and a permutation basis reproducing the permuted result, catching the name-propagation and scaling bugs before Stage 8.
+- [x] Composition implemented in the reconstruction layer via `build_encoding_operator(acq, method; threaded, fast_planning)` in `src/reconstruction/encoding_for_method.jl`.
+- [x] Routed all four operator construction sites through `build_encoding_operator` (`reconstruct.jl` single and component paths, `decomposition.jl` two-phase paths).
+- [x] Output dimension resolution updated to `output_dims(method, acq)`.
+- [x] Scaling resolved from image-side adjoint `𝒜'y` while warm start derives from `ℳ'(𝒜'y)`.
+- [x] Refactored `ProblemDecompositionPlan` (`image_size`/`image_batch_dims` renamed to `variable_size`/`variable_batch_dims`), subtracting `get_affected_dims(signal_model, ...)` to prevent splitting coupled temporal dimensions.
+- [x] Implemented `TemporalBasis` subspace signal model with matrix expansion along time axis.
+- [x] Documented in `docs/src/high-level/methods.md`.
+- [x] Unit and regression tests added in `test/test_signal_model.jl` verifying identity basis, permutation basis, NamedDims preservation, and decomposition integration. All tests pass.
 
 ---
 

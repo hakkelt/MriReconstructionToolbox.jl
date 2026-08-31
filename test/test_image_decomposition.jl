@@ -290,5 +290,5 @@ end
 
     plan = MriReconstructionToolbox.get_problem_decomposition_plan(acq_data, IterativeReconstruction(bound...), Config(verbose = false))
     @test plan !== nothing
-    @test plan.image_batch_dims == (3,)  # slice over :z
+    @test plan.variable_batch_dims == (3,)  # slice over :z
 end
