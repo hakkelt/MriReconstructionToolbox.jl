@@ -48,7 +48,7 @@ function _reconstruct_dispatch(acq_data, method::DirectReconstruction, x₀, con
 end
 
 function _reconstruct_dispatch(acq_data, method::IterativeReconstruction, x₀, config)
-    if method.regularization isa Tuple{Vararg{Component}}
+    if method.regularization isa Tuple{Component, Vararg{Component}}
         check_components(method.regularization)
         return _reconstruct_dispatch_components(acq_data, method, x₀, config)
     else
@@ -122,6 +122,7 @@ function _reconstruct(
             𝒜, y, bound_regs;
             threaded = config.threaded, x₀,
             disable_normalop_optimization = method.disable_normalop_optimization,
+            fidelity = method.fidelity,
         )
         x̂ = _iterative_reconstruct_core(𝒜, acq_data, x̂, scale, method, config; build)
         if acq_data.kspace_data isa NamedDimsArray
@@ -186,7 +187,11 @@ function _reconstruct_components(
         @argcheck !isnothing(scale_override) "scale_override is required when x₀s is supplied."
         scale_override
     end
-    build = (𝒜, y; x₀) -> build_model(𝒜, y, components; threaded = config.threaded, x₀s = x₀)
+    build = (𝒜, y; x₀) -> build_model(
+        𝒜, y, components;
+        threaded = config.threaded, x₀s = x₀,
+        fidelity = method.fidelity,
+    )
     xs = _iterative_reconstruct_core(𝒜, acq_data, x₀s, scale, method, config; build)
     total_x = broadcast(+, xs...)
     if acq_data.kspace_data isa NamedDimsArray

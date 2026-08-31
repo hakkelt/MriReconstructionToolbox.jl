@@ -44,7 +44,8 @@ function _iterative_reconstruct_core(
         # ‖[𝒜 … 𝒜]‖ = √n‖𝒜‖. When 𝒜 was left at its natural norm (disabled normalization), this
         # estimate no longer holds; let the algorithm derive its own instead of overriding it.
         Lf = method.disable_operator_normalization ? nothing : _n_vars(vars)
-        algorithm = patch_algorithm_with_default_values(method.algorithm, Lf)
+        R_type = real(eltype(_first_x0(x₀_or_x₀s)))
+        algorithm = patch_algorithm_with_default_values(method.algorithm, Lf; eltype_real = R_type)
         verbose = freq != -1
         solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
         # Read the solution from the image variable(s) themselves: once a regularization contributes

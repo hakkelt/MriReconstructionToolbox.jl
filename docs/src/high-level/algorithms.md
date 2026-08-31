@@ -228,6 +228,30 @@ img = reconstruct(data, IterativeReconstruction(reg...; algorithm = ADMM(maxit=5
 nothing # hide
 ```
 
+### Douglas-Rachford Splitting (`DouglasRachford`)
+
+**When to use:**
+- Problems with two proximable terms, such as hard data consistency (`HardConsistency`) with an indicator or proximable regularizer (e.g. `NonNegative`, `BoxConstraint`, `L1Image`).
+- Alternating projections between two convex sets / constraints.
+
+**How it works:**
+Douglas-Rachford splitting solves problems of the form ``\min f(x) + g(x)`` where both ``f`` and ``g`` have efficient proximal operators. It updates iterates via reflected proximal evaluations:
+```math
+y_{k+1} = \operatorname{prox}_{\gamma f}(x_k), \quad z_{k+1} = \operatorname{prox}_{\gamma g}(2 y_{k+1} - x_k), \quad x_{k+1} = x_k + z_{k+1} - y_{k+1}
+```
+
+**Parameters:**
+- `gamma`: Step size parameter (defaulted automatically to `1.0` or `1 / L_f`).
+- `maxit`: Maximum number of iterations.
+- `tol`: Convergence tolerance.
+
+**Pros:**
+- ✅ Exact splitting for two proximable terms without requiring inner linear solves
+- ✅ Direct support for hard consistency constraints and indicators
+
+**Cons:**
+- ❌ Restricted to at most two proximable terms
+
 ## Tuning Algorithm Parameters
 
 ### Maximum Iterations
