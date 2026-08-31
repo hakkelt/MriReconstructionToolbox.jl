@@ -23,6 +23,7 @@ makedocs(;
             "Named Dimensions" => "high-level/nameddims.md",
             "Problem Decomposition" => "high-level/decomposition.md",
             "Image Decomposition" => "high-level/image_decomposition.md",
+            "Noise & Analysis" => "high-level/analysis.md",
         ],
         "Low-Level Interface" => [
             "MRI Operators" => "low-level/operators.md",

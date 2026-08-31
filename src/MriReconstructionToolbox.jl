@@ -52,6 +52,7 @@ export density_compensation, DensityCompensationMethod, PipeMenonDCF, VoronoiDCF
 export prewhiten, estimate_noise_covariance
 export compress_coils, CoilCompressionMethod, SVDCompression, GeometricCompression
 export estimate_sensitivities, SensitivityEstimationMethod, SelfCalibrating, AdaptiveCombine, ESPIRiT
+export pseudo_replica
 export simulate_acquisition, coil_sensitivities
 export UniformRandomSampling, VariableDensitySampling, PoissonDiskSampling, GaussianDistribution, PolynomialDistribution
 export create_sampling_pattern, to_displayable_mask
@@ -109,6 +110,8 @@ include("reconstruction/initial_guess.jl")
 include("reconstruction/direct.jl")
 include("reconstruction/solve_core.jl")
 include("reconstruction/reconstruct.jl")
+
+include("analysis/pseudo_replica.jl")
 
 include("simulation/subsampling.jl")
 include("simulation/sensitivities.jl")
