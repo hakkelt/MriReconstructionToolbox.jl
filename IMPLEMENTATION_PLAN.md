@@ -175,17 +175,15 @@ Note `check_kwargs` (`config.jl:85-90`) rejects any `reconstruct` keyword that i
 
 ---
 
-## Stage 5 — Density compensation
+## Stage 5 — Density compensation [COMPLETED]
 
-Scoped down. `NonCartesianAcquisitionInfo` already carries `dcf` (`:20`), so **no method-level `dcf` field is needed** — DCF is a property of the trajectory, not of the reconstruction. What is missing is the *computation*:
-
-- `density_compensation(acq; method = PipeMenonDCF() | VoronoiDCF())` returning `AcquisitionInfo(acq; dcf)`. `PipeMenonDCF` can delegate to `NFFTTools.sdc` (already used at `NFFTOp.jl:105`); `VoronoiDCF` is new.
-- **Cartesian DCF is not implemented.** Uniform Cartesian sampling has no non-uniform sample density in the gridding sense, and variable-density Cartesian does not need a DCF — the sampling operator already accounts for which samples exist. `acquisition_info.jl:44` correctly rejects `dcf` on Cartesian data; leave it.
-- **Out of scope (V8):** the `NFFTOp` forward/adjoint `dcf` asymmetry. Fixing it correctly needs upstream work to preserve the NFFT normal-operator optimization, and adjoint correctness belongs in `NFFTOperators`' own tests. File upstream; note the dependency here.
-
-**Docs:** `docs/src/high-level/acquisition_info.md` documents `density_compensation` alongside the existing `dcf` field.
-
-**Verify:** a radial phantom where a computed DCF measurably improves the direct reconstruction (`:quality`, `:nfft`).
+- [x] Implemented `density_compensation(acq; method = PipeMenonDCF() | VoronoiDCF())` in `src/acquisition_data/density_compensation.jl` returning updated `NonCartesianAcquisitionInfo` with `dcf`.
+- [x] `PipeMenonDCF` delegates to `NFFTTools.sdc` using NFFT operators.
+- [x] `VoronoiDCF` computes exact 2D Voronoi polygon cell areas via geometric clipping.
+- [x] Cartesian acquisitions reject density compensation with an informative `ArgumentError`.
+- [x] Preserves `NamedDimsArray` dimension names when trajectory is named.
+- [x] Documented in `docs/src/high-level/acquisition_info.md`.
+- [x] Unit and quality tests added in `test/test_density_compensation.jl` verifying radial phantom direct reconstruction improvements. All tests pass.
 
 ---
 
