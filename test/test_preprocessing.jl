@@ -152,3 +152,61 @@ end
     @test isapprox(abs.(unname(rec_adaptive))[mask], abs.(unname(img))[mask]; rtol = 0.15)
     @test isapprox(abs.(unname(rec_espirit))[mask], abs.(unname(img))[mask]; rtol = 0.15)
 end
+
+@testitem "Sensitivity estimation: coil axis need not be trailing" tags = [:preprocessing] begin
+    using Test
+    using MriReconstructionToolbox
+    using LinearAlgebra
+    using NamedDims
+
+    Nx, Ny, Nc = 32, 32, 4
+    ksp = randn(ComplexF64, Nx, Ny, Nc)
+
+    s_trailing = estimate_sensitivities(ksp; method = SelfCalibrating(), coil_dim = 3)
+    s_leading = estimate_sensitivities(permutedims(ksp, (3, 1, 2)); method = SelfCalibrating(), coil_dim = 1)
+    @test permutedims(s_leading, (2, 3, 1)) ≈ s_trailing
+
+    # NamedDims with a non-trailing coil axis
+    kn = NamedDimsArray{(:coil, :kx, :ky)}(permutedims(ksp, (3, 1, 2)))
+    sn = estimate_sensitivities(kn; method = SelfCalibrating())
+    @test dimnames(sn) == (:coil, :x, :y)
+    @test permutedims(unname(sn), (2, 3, 1)) ≈ s_trailing
+end
+
+@testitem "Gradient delays: multi-coil k-space is combined over the coil axis" tags = [:preprocessing, :acquisition, :nfft] begin
+    using Test
+    using MriReconstructionToolbox
+
+    Nsamples, Nspokes, Nc = 64, 30, 8
+    angles = range(0, 2π, length = Nspokes + 1)[1:Nspokes]
+    r = range(-0.5, 0.5, length = Nsamples)
+    traj = zeros(2, Nsamples, Nspokes)
+    for s in 1:Nspokes
+        traj[1, :, s] = r .* cos(angles[s])
+        traj[2, :, s] = r .* sin(angles[s])
+    end
+    delay_true = (0.02, -0.015)
+    traj_d = copy(traj)
+    for s in 1:Nspokes
+        traj_d[1, :, s] .+= delay_true[1] * cos(angles[s])
+        traj_d[2, :, s] .+= delay_true[2] * sin(angles[s])
+    end
+    ksp = zeros(ComplexF64, Nsamples, Nspokes, Nc)
+    for s in 1:Nspokes, c in 1:Nc
+        sh = delay_true[1] * cos(angles[s]) + delay_true[2] * sin(angles[s])
+        ksp[:, s, c] = (0.8 + 0.4c / Nc) .* exp.(-50 .* (r .- sh) .^ 2)
+    end
+    acq = NonCartesianAcquisitionInfo(ksp; trajectory = traj_d, image_size = (64, 64))
+    d = estimate_gradient_delays(acq; method = OpposingSpokes())
+    @test isapprox(d[1], delay_true[1]; atol = 2.0e-3)
+    @test isapprox(d[2], delay_true[2]; atol = 2.0e-3)
+
+    @test_throws ArgumentError estimate_gradient_delays(acq; method = RING())
+end
+
+@testitem "Coil compression: unimplemented methods throw" tags = [:preprocessing] begin
+    using Test
+    using MriReconstructionToolbox
+    data = randn(ComplexF64, 16, 16, 8)
+    @test_throws ArgumentError compress_coils(data, 4; method = GeometricCompression())
+end

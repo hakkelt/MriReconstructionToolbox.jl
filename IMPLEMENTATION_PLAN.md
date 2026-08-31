@@ -120,7 +120,11 @@ Include order in `MriReconstructionToolbox.jl`: `initial_guess.jl`, `direct.jl`,
 
 ---
 
-## Stage 3 — Method types, and the API break in one commit
+## Stage 3 — Method types, and the API break in one commit [COMPLETED]
+
+> Landed across commits `93c9e69` (file split) and `19f39f6` (`AbstractReconstructionMethod` +
+> unified `reconstruct` API). Note: `19f39f6` did not update this file at the time — recorded here
+> retroactively.
 
 New under `src/reconstruction/methods/`: `reconstruction_method.jl`, `domains.jl`, `iterative_reconstruction.jl`, `direct_reconstruction.jl`.
 
@@ -230,7 +234,39 @@ Note `check_kwargs` (`config.jl:85-90`) rejects any `reconstruct` keyword that i
 - [x] **9c — GRAPPA Parallel Imaging**: Implemented direct `GRAPPA` parallel imaging reconstruction in `src/reconstruction/methods/grappa.jl` (Griswold 2002).
 - [x] **9d — KSpaceDomain & SPIRiT**: Implemented `SPIRiTConsistency` and `SPIRiT` iterative self-consistency parallel imaging reconstruction in `src/reconstruction/methods/spirit.jl` (Lustig & Pauly 2010).
 - [x] Documented in `docs/src/high-level/methods.md` and `docs/src/high-level/preprocessing.md`.
-- [x] Added unit and integration tests in `test/test_phase3_methods.jl`. All 19 tests pass.
+- [x] Added unit and integration tests in `test/test_phase3_methods.jl`.
+
+### 9 — post-review corrections (code review of `9547c3f..`)
+
+- **9a**: `estimate_gradient_delays` combined multi-coil k-space over the *spoke* axis instead of
+  the coil axis — fixed. `RING` was a silent alias of `OpposingSpokes`; it now throws
+  `ArgumentError` (not implemented) rather than returning a different algorithm than requested.
+- **9b**: `PhaseConstrained` was exported/documented with **no `_direct_reconstruct` method**
+  (`MethodError`). Now implemented as a direct method: phase from the symmetric centre, real-image
+  phase-constrained least squares solved by CG. `Homodyne`/`POCS` output rewrap dropped trailing
+  batch/time dims (`reshape` truncation) and hard-coded the coil axis at position 3 — fixed via
+  `_pf_coil_dim` / `_pf_finalize`.
+- **9c**: GRAPPA crashed with the documented default even kernel `(4, 3)` (`BoundsError`) and, for
+  `R > 2`, fitted missing k-space from zero-filled lines. Reworked: stride `R` detected from the
+  mask, source lines spaced `R` apart, one kernel fitted per missing-line offset `t = 1..R-1`.
+  Verified for `R = 2, 3, 4`.
+- **9d**: `SPIRiTConsistency` was exported/documented but implemented **no `materialize`**
+  (generic `ArgumentError` fallback). It operates on a k-space variable and needs
+  `domain = KSpaceDomain()` dispatch, which is **still not wired** (see below); `materialize` now
+  throws a specific, actionable error pointing at the direct `SPIRiT()` method. `SPIRiT` itself
+  hard-coded `ComplexF32`, producing an abstract `Complex` eltype (and an FFT `MethodError`) when
+  fed `ComplexF64` data — fixed.
+
+**Still outstanding after this pass** (tracked, not done):
+
+- `domain = KSpaceDomain()` remains inert — no `is_operator_composable` / `natural_domain` /
+  `InKSpace` / `InImageDomain` machinery (design V4). Blocks a real `SPIRiTConsistency`.
+- `GeometricCompression` throws (was a silent SVD stub); a real implementation is deferred.
+- `DouglasRachford` still has no up-front term-count check (V3); a wrong count surfaces as an
+  opaque solver failure.
+- FFT-based direct methods (`grappa.jl`, `spirit.jl`, `partial_fourier.jl`) still hard-code
+  `ifftshift`/`fftshift` and ignore `acq.shifted_kspace_dims` / `shifted_image_dims` (correct for
+  the default DC-centred convention only).
 
 ---
 

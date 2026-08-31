@@ -45,7 +45,7 @@ This document presents a review of the state of computational MRI reconstruction
 
 * ⚠️ **(unverified)** marks cells that could not be confirmed against the upstream source at the time of writing and must be checked before this table is published anywhere.
 * **BART TGV:** BART's `pics` supports TGV and infimal-convolution TGV directly (`-R TGV`, `-R ICTGV`, parameterized by `alpha1:alpha0` and `gamma1:gamma2`). MRT's `TotalGeneralizedVariation2D` is therefore *not* a unique capability — the distinguishing MRT feature is that TGV composes with the same `Component`/decomposition machinery as every other regularizer.
-* **MRT DCF:** MRT has no density compensation at all. Earlier drafts of this table described it as "implicit in the acquisition", which contradicted §2.3 — the NFFT adjoint is used unweighted.
+* **MRT DCF:** as built (Stage 5), MRT provides `density_compensation(acq; method = PipeMenonDCF() | VoronoiDCF())` for **non-Cartesian** acquisitions, returning a `NonCartesianAcquisitionInfo` with `dcf` populated. Cartesian acquisitions reject it with an informative `ArgumentError` — uniform Cartesian sampling needs no density compensation, deliberately not implemented. (Earlier drafts said MRT had none at all.)
 * **MRT learned recon:** `PlugAndPlay` covers denoiser-as-prox, but not unrolled networks with learned data-consistency steps (MoDL, VarNet). The distinction matters; see §2.7.2.
 
 ---
@@ -240,7 +240,7 @@ To expand MRT's utility while preserving its clean, Julia-idiomatic architecture
 
 ```
 Phase 0: Enabling Infrastructure (blocking prerequisites)
-├── 0.1 `AbstractReconstructionMethod` refactor of `reconstruct` (§5) + deprecation shim
+├── 0.1 `AbstractReconstructionMethod` refactor of `reconstruct` (§5) — clean break, no shim (done)
 ├── 0.2 Solver integration: alias/export DouglasRachford (and AFBA if needed),
 │        extend `patch_algorithm_with_default_values`, verify StructuredOptimization
 │        supports the resulting term structures
@@ -293,11 +293,9 @@ streaming pipelines.
 
 ### 5.1 Motivation & Design Goals
 
-Currently, `reconstruct` has the positional signature:
-```julia
-reconstruct(acq_data, [regularization], [algorithm]; kwargs...)
-```
-This is natural for proximal minimization $\min_x \tfrac{1}{2}\|\mathcal{A}x - y\|_2^2 + \sum_i R_i(x)$, but it tightly couples `reconstruct` to image-space iterative regularization. Alternative reconstruction methods (`GRAPPA`, `Homodyne`, `SAKE`, or the direct adjoint $\mathcal{A}^H y$) cannot be expressed at all.
+The original `reconstruct` had the positional signature `reconstruct(acq_data, [regularization], [algorithm]; kwargs...)`.
+(As built: this signature was **deleted outright** — clean break, no deprecation shim.)
+This was natural for proximal minimization $\min_x \tfrac{1}{2}\|\mathcal{A}x - y\|_2^2 + \sum_i R_i(x)$, but it tightly couples `reconstruct` to image-space iterative regularization. Alternative reconstruction methods (`GRAPPA`, `Homodyne`, `SAKE`, or the direct adjoint $\mathcal{A}^H y$) cannot be expressed at all.
 
 By taking an explicit `method::AbstractReconstructionMethod` as the second positional argument:
 ```julia
@@ -329,7 +327,7 @@ AbstractReconstructionMethod
 │       ├── SAKE
 │       ├── LORAKS
 │       ├── POCS
-│       └── IterativeHomodyne
+│       └── PhaseConstrained   (as built: a direct method, see §5.7)
 └── AbstractDirectMethod
     ├── DirectReconstruction           # zero-filled adjoint 𝒜'y / gridding, optional DCF
     ├── GRAPPA                         # k-space convolution kernel synthesis
@@ -438,7 +436,7 @@ struct NoFidelity      <: DataFidelity end
 ### 5.4 `IterativeReconstruction`
 
 ```julia
-const DEFAULT_ALGORITHMS = (CG(), CGNR(), FISTA(), ADMM())
+const DEFAULT_ALGORITHMS = (CG(), CGNR(), FISTA(), ADMM(), DouglasRachford())
 
 """
     IterativeReconstruction(
@@ -478,7 +476,7 @@ Concrete signal models and the paradigms they unlock:
 | Signal model              | Composition           | Variable            | Enables                        |
 | :------------------------ | :-------------------- | :------------------ | :----------------------------- |
 | `nothing`                 | `𝒜`                  | image `x`           | standard CS-SENSE              |
-| `PhaseDemodulation(ϕ₀)`   | `𝒜 ∘ diag(e^{iϕ₀})`  | real image `m`      | iterative homodyne (§5.6)      |
+| `PhaseDemodulation(ϕ₀)`   | `𝒜 ∘ diag(e^{iϕ₀})`  | real image `m`      | phase-constrained recon — *not built; shipped as the direct `PhaseConstrained` instead* |
 | `TemporalBasis(Φ)`        | `𝒜 ∘ Φ`              | coefficients `α`    | subspace recon (§2.7.1)        |
 | `OffResonance(ΔB₀, R₂*)`  | time-segmented `𝒜`   | image `x`           | B₀ correction (§2.4.1)         |
 
@@ -564,22 +562,43 @@ natural_domain(::InKSpace)      = KSpaceDomain()
 
 **Trade-off, stated plainly:** auto-wrapping makes `SPIRiT(; regularization = (L1Wavelet2D(λ),))` read exactly like the paper, at the cost of an implicit transform. The `natural_domain` trait keeps that implicitness *inspectable* (a user can query it) and *overridable* (via the wrappers), which is why it is preferred over either extreme.
 
+**Restriction (finding V4).** "Any image prior auto-wraps" is *false*. `materialize` returns an
+opaque `Term`; the only composable seam is `get_operator`, which several terms lack in a usable
+form (`PlugAndPlay` has a custom prox, `TotalGeneralizedVariation2D` introduces auxiliary
+variables, `MultiScaleLowRank` is a `ProximalAverage`, `RankLimit`/`HardThreshold` are
+prox-of-`x` forms). Auto-wrap is therefore **opt-in** via a trait
+`is_operator_composable(reg) -> Bool`, `true` only for the wavelet / TV / L1 / LLR family; every
+other term under `KSpaceDomain` errors informatively and names `InKSpace(reg)`. `natural_domain`
+still declares intent, but `is_operator_composable` gates whether the wrap is actually possible.
+
+**Status:** none of `natural_domain` / `is_operator_composable` / `InImageDomain` / `InKSpace`
+exists yet — `domain = KSpaceDomain()` is currently inert. Tracked in `IMPLEMENTATION_PLAN.md`
+(post-review follow-up, Part 1).
+
 ---
 
 ### 5.6 Classification of Iterative Methods
 
+**As-built status (2026-08).** Rows marked *(built)* exist and are tested. Everything else is a
+design target: `PhaseDemodulation`, `HankelRankLimit`, `LORAKSRankPenalty`, `NullSpaceConsistency`
+and the SAKE / LORAKS / PRUNO presets are **not implemented**. `Phase-Constrained Recon` shipped
+instead as the *direct* method `PhaseConstrained` (Margosian, CG on the real-image normal
+equations — see §5.7), not as a `signal_model`. `SPIRiT` shipped as a *direct* fixed-point
+method; `SPIRiTConsistency` + `KSpaceDomain` (the k-space variational form in this table) are the
+post-review follow-up (`IMPLEMENTATION_PLAN.md`, Part 1).
+
 | Method | Domain | Data Fidelity | Mathematical Formulation | Regularizer / Constraint | Solver | Convex? |
 | :--- | :---: | :---: | :--- | :--- | :--- | :---: |
-| **CS-SENSE / Regularized Recon** | image | `L2Loss` | $\min_x \tfrac{1}{2}\|\mathcal{A}x - y\|_2^2 + \lambda \|\Psi x\|_1$ | `L1Wavelet`, `TotalVariation`, `LLR` | `FISTA`, `ADMM` | ✅ |
-| **Unregularized iterative LS** | image | `L2Loss` | $\min_x \tfrac{1}{2}\|\mathcal{A}x - y\|_2^2$ | — | `CG`, `CGNR` | ✅ |
-| **$L+S$ Decomposition** | image | `L2Loss` | $\min_{L,S} \tfrac{1}{2}\|\mathcal{A}(L+S) - y\|_2^2 + \|L\|_* + \lambda \|\mathcal{F}_t S\|_1$ | `Component(:L, LowRank)`, `Component(:S, …)` | `ADMM`, `FISTA` | ✅ |
-| **Subspace / T2-Shuffling** | image | `L2Loss` | $\min_\alpha \tfrac{1}{2}\|\mathcal{A}\Phi\alpha - y\|_2^2 + \lambda R(\alpha)$ | any; `signal_model = TemporalBasis(Φ)` | `FISTA`, `ADMM` | ✅ |
-| **Phase-Constrained Recon** | image | `L2Loss` | $\min_{m} \tfrac{1}{2}\|\mathcal{A}(e^{i\phi_0} m) - y\|_2^2 + \lambda R(m)$, $m$ real | `TotalVariation`; `signal_model = PhaseDemodulation(ϕ₀)` | `CG`, `FISTA` | ✅ |
-| **POCS (Partial Fourier)** | image | `HardConsistency` | $\min_x\; i_{\{\mathcal{A}x = y\}}(x) + i_{\{x \,=\, e^{i\phi_0} m,\; m \in \mathbb{R}\}}(x)$ | `PhaseConstraint(ϕ₀)` | `DouglasRachford` | ✅ |
-| **SPIRiT** | k-space | `L2Loss` | $\min_k \tfrac{1}{2}\|\mathcal{P}k - y\|_2^2 + \tfrac{1}{2}\|(I - G)k\|_2^2 + \lambda \|\Psi \mathcal{F}^{-1} k\|_1$ | `SPIRiTConsistency(G)`, `L1Wavelet2D` | `CGNR`, `FISTA`, `ADMM` | ✅ |
-| **SAKE** | k-space | `HardConsistency` | $\min_k\; i_{\{\operatorname{rank}\mathcal{H}(k)\,\le\, r\}}(k) + i_{\{\mathcal{P}k = y\}}(k)$ | `HankelRankLimit(kernel_size, rank)` | `DouglasRachford` | ❌ |
-| **LORAKS / AC-LORAKS** | k-space | `L2Loss` | $\min_k \tfrac{1}{2}\|\mathcal{P}k - y\|_2^2 + \lambda\, J_r(\mathcal{C}(k))$ | `LORAKSRankPenalty(r)` | `ADMM`, `DouglasRachford` | ❌ |
-| **PRUNO** | k-space | `HardConsistency` | $\min_k \tfrac{1}{2}\|N k\|_2^2 + i_{\{\mathcal{P}k = y\}}(k)$ | `NullSpaceConsistency(N)` | `DouglasRachford` | ✅ |
+| **CS-SENSE / Regularized Recon** *(built)* | image | `L2Loss` | $\min_x \tfrac{1}{2}\|\mathcal{A}x - y\|_2^2 + \lambda \|\Psi x\|_1$ | `L1Wavelet`, `TotalVariation`, `LLR` | `FISTA`, `ADMM` | ✅ |
+| **Unregularized iterative LS** *(built)* | image | `L2Loss` | $\min_x \tfrac{1}{2}\|\mathcal{A}x - y\|_2^2$ | — | `CG`, `CGNR` | ✅ |
+| **$L+S$ Decomposition** *(built)* | image | `L2Loss` | $\min_{L,S} \tfrac{1}{2}\|\mathcal{A}(L+S) - y\|_2^2 + \|L\|_* + \lambda \|\mathcal{F}_t S\|_1$ | `Component(:L, LowRank)`, `Component(:S, …)` | `ADMM`, `FISTA` | ✅ |
+| **Subspace / T2-Shuffling** *(built)* | image | `L2Loss` | $\min_\alpha \tfrac{1}{2}\|\mathcal{A}\Phi\alpha - y\|_2^2 + \lambda R(\alpha)$ | any; `signal_model = TemporalBasis(Φ)` | `FISTA`, `ADMM` | ✅ |
+| **Phase-Constrained Recon** *(built as direct `PhaseConstrained`)* | image | `L2Loss` | $\min_{m \in \mathbb{R}} \tfrac{1}{2}\sum_c\|\mathcal{P}\mathcal{F}(s_c e^{i\phi_c} m) - y_c\|_2^2$ | none (direct); CG on normal eqns | — | ✅ |
+| **POCS (Partial Fourier)** *(built as direct `POCS`)* | image | consistency ∧ phase | alternating projection, no λ (Haacke 1991) | — | fixed-point | ✅ |
+| **SPIRiT** *(direct built; k-space variational form = Part 1)* | k-space | `L2Loss` | $\min_k \tfrac{1}{2}\|\mathcal{P}k - y\|_2^2 + \tfrac{\lambda}{2}\|(I - G)k\|_2^2$ | `SPIRiTConsistency(G)` | `DouglasRachford`, `CGNR` | ✅ |
+| **SAKE** *(not implemented)* | k-space | `HardConsistency` | $\min_k\; i_{\{\operatorname{rank}\mathcal{H}(k)\,\le\, r\}}(k) + i_{\{\mathcal{P}k = y\}}(k)$ | `HankelRankLimit(kernel_size, rank)` | `DouglasRachford` | ❌ |
+| **LORAKS / AC-LORAKS** *(not implemented)* | k-space | `L2Loss` | $\min_k \tfrac{1}{2}\|\mathcal{P}k - y\|_2^2 + \lambda\, J_r(\mathcal{C}(k))$ | `LORAKSRankPenalty(r)` | `ADMM`, `DouglasRachford` | ❌ |
+| **PRUNO** *(not implemented)* | k-space | `HardConsistency` | $\min_k \tfrac{1}{2}\|N k\|_2^2 + i_{\{\mathcal{P}k = y\}}(k)$ | `NullSpaceConsistency(N)` | `DouglasRachford` | ✅ |
 
 **Corrections relative to the previous draft, and why they matter:**
 
@@ -587,7 +606,7 @@ natural_domain(::InKSpace)      = KSpaceDomain()
 * **SAKE** previously used the nuclear norm $\|\mathcal{H}(k)\|_*$ in the table while the accompanying preset used a hard rank limit. The published algorithm is hard-rank (Cadzow); the table now matches the code, and the non-convexity is flagged.
 * **LORAKS** previously wrote $\min \operatorname{rank}(\mathcal{C}(k))$, which is not a proximal-solvable objective and is not what LORAKS does. Replaced with the penalized form from Haldar (2014).
 * **PRUNO** previously combined `data_fidelity = :none` with a `HardDataConstraint()` term in the regularizer list — the same constraint expressed twice, in two different places. It now uses `HardConsistency`, which is what that combination meant. This redundancy is the clearest evidence that fidelity belongs on its own axis rather than as an ordinary term.
-* **Solver column** no longer lists `AFBA`, which MRT does not expose. `DouglasRachford` is retained but is **Phase 0.2 work**: `MriReconstructionToolbox.jl` currently aliases only `ISTA`, `FISTA`, `ADMM`, `CG`, `CGNR`, and `patch_algorithm_with_default_values` in `build_model.jl` handles only ForwardBackward/FastForwardBackward/ADMM iterations. Four rows of this table are blocked on that work.
+* **Solver column** no longer lists `AFBA`, which MRT does not expose. `DouglasRachford` **is now aliased, exported and patched** (`patch_algorithm_with_default_values` supplies `gamma`); it is part of `DEFAULT_ALGORITHMS`. `HardConsistency` is general via an inner CG when `𝒜𝒜'` is not diagonal, not restricted to the diagonal case.
 
 ---
 
@@ -627,7 +646,7 @@ estimation, inverse transform, phase demodulation, and real part.
 - `readout_dim`: which encoding dimension is partially sampled; `nothing` infers it.
 - `ramp`: `LinearRamp()` or `StepRamp()`.
 
-Discards residual phase; see `IterativeHomodyne` and `POCS` for phase-preserving variants.
+Discards residual phase; see `PhaseConstrained` and `POCS` for phase-preserving variants.
 """
 Base.@kwdef struct Homodyne{S, R} <: AbstractDirectMethod
     symmetric_band::S = nothing
@@ -680,21 +699,19 @@ lower(m::POCS) = IterativeReconstruction(
 )
 
 """
-    IterativeHomodyne(; symmetric_band = nothing, regularization = (), algorithm = (CG(), FISTA()))
+    PhaseConstrained(; coil_combination = AdjointSensitivity())
 
-Partial Fourier reconstruction optimizing a real-valued image under an estimated phase map.
+Partial Fourier reconstruction optimizing a real-valued image under an estimated phase map
+(Margosian et al. 1986).
+
+As built: `PhaseConstrained <: AbstractDirectMethod` (not an iterative preset). The low-resolution
+phase is estimated from the symmetric centre and the real-valued least-squares problem
+`min_{m ∈ ℝ} Σ_c ‖𝒫 ℱ (s_c e^{iφ_c} m) − y_c‖²` is solved by conjugate gradient on the normal
+equations. `_direct_reconstruct(acq, ::PhaseConstrained)` in `methods/partial_fourier.jl`.
 """
-Base.@kwdef struct IterativeHomodyne{S, R, A} <: AbstractIterativeMethod
-    symmetric_band::S = nothing
-    regularization::R = ()
-    algorithm::A = (CG(), FISTA())
+struct PhaseConstrained{C <: CoilCombination} <: AbstractDirectMethod
+    coil_combination::C
 end
-
-lower(m::IterativeHomodyne) = IterativeReconstruction(
-    ensure_tuple(m.regularization);
-    algorithm = m.algorithm, domain = ImageDomain(), data_fidelity = L2Loss(),
-    signal_model = PhaseDemodulation(; symmetric_band = m.symmetric_band),
-)
 
 """
     SPIRiT(; kernel_size = (5, 5), calib_size = (24, 24), regularization = (), algorithm = (CGNR(),))
@@ -782,27 +799,16 @@ with no indication of what to do. A shim in the style of the existing mixed-tupl
 `reconstruct.jl` keeps old code working for one release cycle:
 
 ```julia
-function reconstruct(
-        acq_data::AcquisitionInfo,
-        regularization::Union{Regularization, Component, Tuple{Vararg{Union{Regularization, Component}}}},
-        algorithm = DEFAULT_ALGORITHMS;
-        kwargs...,
-    )
-    Base.depwarn(
-        "reconstruct(acq_data, regularization, algorithm) is deprecated; use " *
-        "reconstruct(acq_data, IterativeReconstruction(regularization; algorithm)) instead.",
-        :reconstruct,
-    )
-    return reconstruct(acq_data, IterativeReconstruction(regularization; algorithm); kwargs...)
-end
+reconstruct(acq_data, IterativeReconstruction(regularization; algorithm); kwargs...)
 ```
 
-Note one behavioral subtlety this shim must preserve: today `reconstruct(acq_data)` with no
-regularization returns the **direct adjoint**, not an unregularized iterative solve
-(`reconstruct.jl` short-circuits when `regularization == ()`). `DirectReconstruction()` as the new
-default therefore preserves existing behavior exactly — but `reconstruct(acq_data, ())` routed
-through the shim must also land on `DirectReconstruction`, not on `IterativeReconstruction` with an
-empty objective.
+As built: **no deprecation shim was added** — the old positional
+`reconstruct(acq_data, regularization, algorithm)` form is gone entirely (the package had no
+users). The only surviving signature is the `method`-based one above.
+
+`reconstruct(acq_data)` with no method still returns the **direct adjoint**: the default method is
+`DirectReconstruction()`, and the `regularization == ()` short-circuit became
+`method isa AbstractDirectMethod`.
 
 ---
 

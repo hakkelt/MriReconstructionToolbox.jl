@@ -3,10 +3,13 @@
 
 Generalized Autocalibrating Partially Parallel Acquisitions (Griswold et al. 2002, MRM 47:1202-1210).
 A direct parallel imaging method that synthesizes missing k-space lines via localized multi-channel convolution
-calibrated from fully sampled central autocalibration signal (ACS) lines.
+calibrated from fully sampled central autocalibration signal (ACS) lines. Handles arbitrary integer
+undersampling factors `R` along `ky`: the stride is detected from the sampling mask and a separate kernel
+is fitted for each of the `R - 1` missing-line positions.
 
 # Fields
-- `kernel_size`: Convolution kernel size `(Kx, Ky)` (default: `(4, 3)`).
+- `kernel_size`: `(Kx, Ky_src)` — number of `kx` taps and number of source `ky` lines (spaced `R`
+  apart) used per fitted kernel (default: `(4, 3)`).
 - `calib_size`: ACS calibration region size (default: `(24, 24)`).
 - `coil_combination`: Method for combining synthesized multi-coil channels (`RootSumSquares()` or `AdjointSensitivity()`).
 """
@@ -34,66 +37,81 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::GRAPPA)
     raw_ksp = _get_full_kspace(acq)
     Nx, Ny = size(raw_ksp, 1), size(raw_ksp, 2)
     Nc = size(raw_ksp, 3)
+    T = complex(real(eltype(raw_ksp)))
 
     mask = to_displayable_mask(acq.subsampling, (Nx, Ny))
-    cal_kx, cal_ky = min(Nx, method.calib_size[1]), min(Ny, method.calib_size[2])
+    acquired = vec(any(mask; dims = 1))
 
+    cal_kx, cal_ky = min(Nx, method.calib_size[1]), min(Ny, method.calib_size[2])
     cx, cy = Nx ÷ 2 + 1, Ny ÷ 2 + 1
     cal_range_x = (cx - cal_kx ÷ 2):(cx + cal_kx ÷ 2 - 1)
     cal_range_y = (cy - cal_ky ÷ 2):(cy + cal_ky ÷ 2 - 1)
-
     calib = raw_ksp[cal_range_x, cal_range_y, :]
 
-    # Detect undersampling factor R along ky
-    acquired_lines = findall(vec(any(mask; dims = 1)))
-    diffs = diff(acquired_lines)
-    R_acc = maximum(diffs)
-    if R_acc <= 1
-        R_acc = 2
-    end
+    # Detect the regular undersampling stride R along ky: the smallest gap between
+    # consecutive acquired lines that exceeds one (gaps of one come from the ACS block).
+    acquired_lines = findall(acquired)
+    gaps = filter(>(1), diff(acquired_lines))
+    R_acc = isempty(gaps) ? 1 : minimum(gaps)
 
-    Kx, Ky = method.kernel_size
-    pad_x = Kx ÷ 2
-    Ky_src = 2
-    ky_span = (Ky_src - 1) * R_acc + 1
+    if R_acc == 1
+        # Nothing missing (fully sampled) - fall through to the transform with raw k-space.
+        ksp_recon = copy(raw_ksp)
+    else
+        Kx = method.kernel_size[1]
+        Ky_src = max(2, method.kernel_size[2])
+        xc = Kx ÷ 2                       # 0-based index of the target kx tap
+        jc = (Ky_src - 1) ÷ 2             # source-block row that sits just below the target
+        x_taps = (0:(Kx - 1)) .- xc       # kx source offsets relative to the target column
+        # Source ky rows relative to the acquired line `ky0` just below a target at `ky0 + t`.
+        src_row_offsets(t) = ((0:(Ky_src - 1)) .- jc) .* R_acc
 
-    num_bx = cal_kx - Kx + 1
-    num_by = cal_ky - ky_span + 1
-    num_b = num_bx * num_by
-    n_src_feats = Kx * Ky_src * Nc
-
-    S_mat = zeros(ComplexF32, num_b, n_src_feats)
-    T_mat = zeros(ComplexF32, num_b, Nc)
-
-    b_idx = 1
-    for bx in 1:num_bx, by in 1:num_by
-        src_patch = zeros(ComplexF32, Kx, Ky_src, Nc)
-        for (i_y, y_off) in enumerate(0:R_acc:(ky_span - 1))
-            src_patch[:, i_y, :] = calib[bx:(bx + Kx - 1), by + y_off, :]
-        end
-        S_mat[b_idx, :] = reshape(src_patch, :)
-        T_mat[b_idx, :] = calib[bx + pad_x, by + 1, :]
-        b_idx += 1
-    end
-
-    W_grappa = S_mat \ T_mat
-
-    # Synthesize missing lines
-    ksp_recon = copy(raw_ksp)
-    for ky in 1:Ny
-        if !mask[1, ky] && ky ∉ cal_range_y
-            for kx in 1:Nx
-                src_feat = zeros(ComplexF32, Kx, Ky_src, Nc)
-                for (i_y, y_off) in enumerate((-1, 1))
-                    ky_src = ky + y_off
-                    if 1 <= ky_src <= Ny
-                        for (i_x, x_off) in enumerate((-pad_x):pad_x)
-                            kx_src = mod1(kx + x_off, Nx)
-                            src_feat[i_x, i_y, :] = raw_ksp[kx_src, ky_src, :]
-                        end
-                    end
+        n_src_feats = Kx * Ky_src * Nc
+        # One weight set per missing-line offset t = 1 .. R-1.
+        W_by_offset = Vector{Matrix{T}}(undef, R_acc - 1)
+        for t in 1:(R_acc - 1)
+            rows = src_row_offsets(t)
+            by_lo = 1 - minimum(rows)
+            by_hi = cal_ky - maximum(rows)
+            # target row must also be inside the ACS: by + t <= cal_ky
+            by_hi = min(by_hi, cal_ky - t)
+            by_range = by_lo:by_hi
+            num_b = (cal_kx - Kx + 1) * length(by_range)
+            @argcheck num_b > n_src_feats ÷ Nc "GRAPPA calibration region is too small for kernel_size=$(method.kernel_size) at R=$R_acc"
+            S_mat = zeros(T, num_b, n_src_feats)
+            T_mat = zeros(T, num_b, Nc)
+            b = 1
+            for bx in 1:(cal_kx - Kx + 1), by in by_range
+                patch = zeros(T, Kx, Ky_src, Nc)
+                for (jy, ro) in enumerate(rows)
+                    patch[:, jy, :] = calib[bx:(bx + Kx - 1), by + ro, :]
                 end
-                ksp_recon[kx, ky, :] = reshape(src_feat, 1, :) * W_grappa
+                S_mat[b, :] = reshape(patch, :)
+                T_mat[b, :] = calib[bx + xc, by + t, :]
+                b += 1
+            end
+            W_by_offset[t] = S_mat \ T_mat
+        end
+
+        # Synthesize every missing line from its two surrounding acquired lines.
+        ksp_recon = copy(raw_ksp)
+        for ky in 1:Ny
+            acquired[ky] && continue
+            ky0 = ky
+            while ky0 >= 1 && !acquired[ky0]
+                ky0 -= 1
+            end
+            t = ky - ky0
+            (ky0 < 1 || t < 1 || t > R_acc - 1) && continue
+            rows = ky0 .+ src_row_offsets(t)
+            all(r -> 1 <= r <= Ny, rows) || continue
+            W = W_by_offset[t]
+            for kx in 1:Nx
+                patch = zeros(T, Kx, Ky_src, Nc)
+                for (jy, r) in enumerate(rows), (ix, xo) in enumerate(x_taps)
+                    patch[ix, jy, :] = raw_ksp[mod1(kx + xo, Nx), r, :]
+                end
+                ksp_recon[kx, ky, :] = reshape(patch, 1, :) * W
             end
         end
     end
@@ -109,11 +127,14 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::GRAPPA)
         sqrt.(sum(abs2, coil_imgs; dims = 3))
     end
 
+    # `img_out` still carries the reduced coil axis as a singleton at position 3; drop it
+    # rather than truncating with `reshape`, which would silently discard any trailing
+    # batch/time dimension.
+    img_out = dropdims(img_out; dims = 3)
+
     if acq.kspace_data isa NamedDimsArray
-        img_dims = get_image_dims(acq)
-        out_dims = filter(!=(:coil), img_dims)
-        out_arr = reshape(img_out, ntuple(i -> size(img_out, i), length(out_dims)))
-        return NamedDimsArray{out_dims}(out_arr)
+        out_dims = filter(!=(:coil), get_image_dims(acq))
+        return NamedDimsArray{out_dims}(img_out)
     else
         return img_out
     end

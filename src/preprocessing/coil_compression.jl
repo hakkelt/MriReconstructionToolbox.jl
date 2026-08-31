@@ -16,8 +16,11 @@ struct SVDCompression <: CoilCompressionMethod end
 """
     GeometricCompression <: CoilCompressionMethod
 
-Geometric coil compression (Zhang et al. 2013).
-Aligns the virtual coil subspaces across spatial positions/readout lines to maximize compression efficiency.
+Geometric coil compression (Zhang et al. 2013): aligns the per-readout virtual-coil subspaces
+across `x` so the compressed channels vary smoothly.
+
+!!! warning
+    Not implemented yet — `compress_coils` throws for this method. Use [`SVDCompression`](@ref).
 """
 struct GeometricCompression <: CoilCompressionMethod end
 
@@ -58,6 +61,9 @@ function compress_coils(
         ndims(data) >= 4 ? 4 : 3
     end
     @argcheck !isnothing(c_idx) && 1 <= c_idx <= ndims(data) "Invalid coil dimension"
+
+    method isa SVDCompression ||
+        throw(ArgumentError("compress_coils is only implemented for SVDCompression(); got $(typeof(method))"))
 
     Nc = size(data, c_idx)
     @argcheck 1 <= n_virtual <= Nc "n_virtual ($n_virtual) must be between 1 and coil count ($Nc)"

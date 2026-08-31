@@ -103,10 +103,10 @@ img = reconstruct(acq, IterativeReconstruction(L1Wavelet2D(5e-3)))
 📚 **[Full Documentation](https://hakkelt.github.io/MriReconstructionToolbox.jl/)** - Comprehensive guides and API reference
 
 **Quick Links:**
-- [Getting Started Guide](https://hakkelt.github.io/MriReconstructionToolbox.jl/manual/getting_started/) - First steps with the package
-- [MRI Forward Model](https://hakkelt.github.io/MriReconstructionToolbox.jl/manual/forward_model/) - Understanding the physics
-- [Regularization Options](https://hakkelt.github.io/MriReconstructionToolbox.jl/manual/regularization/) - Available reconstruction methods
-- [Simulation Tools](https://hakkelt.github.io/MriReconstructionToolbox.jl/manual/simulation/) - Creating synthetic data
+- [Reconstruction Methods](https://hakkelt.github.io/MriReconstructionToolbox.jl/high-level/methods/) - The method taxonomy (direct, iterative, parallel imaging)
+- [Reconstruction](https://hakkelt.github.io/MriReconstructionToolbox.jl/high-level/reconstruction/) - The `reconstruct` entry point
+- [Regularization Options](https://hakkelt.github.io/MriReconstructionToolbox.jl/high-level/regularization/) - Available regularizers
+- [Simulation Tools](https://hakkelt.github.io/MriReconstructionToolbox.jl/high-level/simulation/) - Creating synthetic data
 
 ## Design Philosophy
 
