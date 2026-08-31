@@ -52,6 +52,10 @@ export density_compensation, DensityCompensationMethod, PipeMenonDCF, VoronoiDCF
 export prewhiten, estimate_noise_covariance
 export compress_coils, CoilCompressionMethod, SVDCompression, GeometricCompression
 export estimate_sensitivities, SensitivityEstimationMethod, SelfCalibrating, AdaptiveCombine, ESPIRiT
+export correct_gradient_delays, estimate_gradient_delays, GradientDelayMethod, OpposingSpokes, RING
+export partial_fourier_band, PartialFourierFilter, LinearRamp, StepRamp, Homodyne, PhaseConstrained, POCS
+export GRAPPA
+export SPIRiT, SPIRiTConsistency
 export pseudo_replica
 export simulate_acquisition, coil_sensitivities
 export UniformRandomSampling, VariableDensitySampling, PoissonDiskSampling, GaussianDistribution, PolynomialDistribution
@@ -67,6 +71,7 @@ include("acquisition_data/density_compensation.jl")
 include("preprocessing/prewhitening.jl")
 include("preprocessing/coil_compression.jl")
 include("preprocessing/sensitivity_estimation.jl")
+include("preprocessing/gradient_delays.jl")
 
 include("scaling.jl")
 include("utils.jl")
@@ -100,6 +105,9 @@ include("reconstruction/methods/domains.jl")
 include("reconstruction/methods/reconstruction_method.jl")
 include("reconstruction/methods/direct_reconstruction.jl")
 include("reconstruction/methods/iterative_reconstruction.jl")
+include("reconstruction/methods/partial_fourier.jl")
+include("reconstruction/methods/grappa.jl")
+include("reconstruction/methods/spirit.jl")
 include("reconstruction/encoding_for_method.jl")
 include("reconstruction/decomposition.jl")
 include("reconstruction/config.jl")

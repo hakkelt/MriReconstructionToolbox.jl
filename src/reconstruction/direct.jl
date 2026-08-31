@@ -50,7 +50,11 @@ function _direct_reconstruct(𝒜, acq_data, x₀, method::AbstractReconstructio
     end
     if isnothing(x₀)
         @step (direct_recon_only ? "Reconstructing image" : "Getting initial estimate") config begin
-            x₀ = 𝒜' * acq_data.kspace_data
+            if method isa DirectReconstruction || !(method isa AbstractDirectMethod)
+                x₀ = 𝒜' * acq_data.kspace_data
+            else
+                x₀ = _direct_reconstruct(acq_data, method)
+            end
         end
     end
     scale_input = if method isa IterativeReconstruction && method.signal_model !== nothing
