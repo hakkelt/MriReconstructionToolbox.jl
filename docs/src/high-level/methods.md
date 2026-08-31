@@ -77,6 +77,30 @@ build_encoding_operator
 signal_model_operator
 ```
 
+### Partial Fourier Reconstruction
+
+Partial Fourier techniques recover high-resolution images from asymmetrically sampled k-space data by exploiting conjugate phase symmetry.
+
+```@docs
+partial_fourier_band
+PartialFourierFilter
+LinearRamp
+StepRamp
+Homodyne
+PhaseConstrained
+POCS
+```
+
+### Parallel Imaging Methods
+
+In addition to iterative SENSE models (`IterativeReconstruction`), `MriReconstructionToolbox` provides direct k-space autocalibrated parallel imaging:
+
+```@docs
+GRAPPA
+SPIRiT
+SPIRiTConsistency
+```
+
 ## Method Extension Interface
 
 Custom reconstruction methods implement the following interface hooks:

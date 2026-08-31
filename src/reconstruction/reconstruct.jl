@@ -42,7 +42,7 @@ function reconstruct(
     return x
 end
 
-function _reconstruct_dispatch(acq_data, method::DirectReconstruction, x₀, config)
+function _reconstruct_dispatch(acq_data, method::AbstractReconstructionMethod, x₀, config)
     @argcheck isnothing(x₀) || x₀ isa AbstractArray "x₀ must be a plain array unless reconstructing with `Component`s."
     return _reconstruct_dispatch_plain(acq_data, method, x₀, config)
 end

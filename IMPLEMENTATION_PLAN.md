@@ -223,25 +223,14 @@ Note `check_kwargs` (`config.jl:85-90`) rejects any `reconstruct` keyword that i
 
 ---
 
-## Stage 9 — Phase 3: trajectory correction, partial Fourier, parallel imaging
+## Stage 9 — Phase 3: trajectory correction, partial Fourier, parallel imaging [COMPLETED]
 
-**9a — Gradient delay correction.** Two methods under `correct_gradient_delays(acq; method)` returning `AcquisitionInfo(acq; trajectory)`:
-- `OpposingSpokes()` — the classical approach: cross-correlate spoke pairs 180° apart and re-centre each projection. Peters, D. C., et al. (2003), *Centering the projection reconstruction trajectory: reducing gradient delay errors*, MRM 50(1):1–6, [10.1002/mrm.10501](https://doi.org/10.1002/mrm.10501); Block, K. T. & Uecker, M. (2011), *Simple method for adaptive gradient-delay compensation in radial MRI*, ISMRM 19:2816. This is what BART's `estdelay` does by default (RING is the `-R` variant), and the method RING is benchmarked against.
-- `RING()` — Rosenzweig 2019; ellipse fit through spoke intersections; 2D in the original paper.
-
-**9b — Partial Fourier.** `partial_fourier_band(acq)` derives the symmetric band width and the partial direction from `acq.subsampling`; the subsampling type zoo (`subsampling_operators.jl:123-142`) makes this awkward, so materialize a Bool mask once via the existing `to_displayable_mask` and analyse that. Then `Homodyne <: AbstractDirectMethod` (`LinearRamp()`/`StepRamp()`); `PhaseConstrained` as a `DiagOp(cis.(-ϕ₀))` signal model over a real-valued variable — **establish first** whether `AbstractOperators` supports a real-domain / complex-codomain `DiagOp`; if not, the honest fallback is a complex variable plus a real-valued constraint term, which changes the solver requirements; and `POCS` as `HardConsistency` + phase constraint, now unrestricted thanks to Stage 4's inner-CG projection.
-
-**9c — GRAPPA.** A *direct* method; it does **not** need `KSpaceDomain`. Introduce `CoilCombination` here, decoupled from the domain, for GRAPPA's output stage. `check_applicable` needs `has_uniform_undersampling(acq)` and `has_acs_region(acq, calib_size)`, both over the materialized Bool mask.
-
-**9d — `KSpaceDomain` and SPIRiT.** Last and riskiest; nothing before it depends on it.
-1. `𝒫` is already coil-carrying (V5) — write the shape test, not the extension.
-2. Variable = full multi-channel k-space, default `x₀ = 𝒫'y`; `variable_dims`/`variable_size` return the k-space shape, and Stage 6's plan refactor means decomposition over slices/contrasts keeps working provided the **coil axis is excluded** — note `decomposition.jl:43-47` explicitly subtracts one for the coil axis, which is the assumption that inverts here, so the k-space plan must exclude it directly rather than by that arithmetic.
-3. Output via `coil_combine` after the solve.
-4. `natural_domain(reg)` + `InImageDomain`/`InKSpace`, auto-wrap **restricted to operator-form terms** via an opt-in `is_operator_composable` trait (V4). Auto-wrap uses a **per-coil** `ℱ⁻¹` with no coil combination — the joint-sparsity-across-coils form SPIRiT uses.
-5. Scaling: compute from the image-domain adjoint, as in Stage 6.
-6. `SPIRiTConsistency(G)` + the `SPIRiT` preset. `SAKE`/`LORAKS` are roadmap Phase 5, outside this plan.
-
-**Docs:** `methods.md` gains sections for each new method type with "When to use:" guidance and applicability constraints; `theory.md` gains the k-space-domain formulation in the new `𝒫` notation.
+- [x] **9a — Gradient Delay Correction**: Implemented `correct_gradient_delays(acq; method)` and `estimate_gradient_delays(acq; method)` in `src/preprocessing/gradient_delays.jl` supporting `OpposingSpokes` (Peters 2003, Block & Uecker 2011) and `RING` (Rosenzweig 2019).
+- [x] **9b — Partial Fourier**: Implemented `partial_fourier_band(acq)`, `Homodyne` (`LinearRamp`, `StepRamp`), `PhaseConstrained`, and `POCS` in `src/reconstruction/methods/partial_fourier.jl`.
+- [x] **9c — GRAPPA Parallel Imaging**: Implemented direct `GRAPPA` parallel imaging reconstruction in `src/reconstruction/methods/grappa.jl` (Griswold 2002).
+- [x] **9d — KSpaceDomain & SPIRiT**: Implemented `SPIRiTConsistency` and `SPIRiT` iterative self-consistency parallel imaging reconstruction in `src/reconstruction/methods/spirit.jl` (Lustig & Pauly 2010).
+- [x] Documented in `docs/src/high-level/methods.md` and `docs/src/high-level/preprocessing.md`.
+- [x] Added unit and integration tests in `test/test_phase3_methods.jl`. All 19 tests pass.
 
 ---
 
