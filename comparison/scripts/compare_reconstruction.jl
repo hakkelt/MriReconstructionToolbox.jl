@@ -10,7 +10,7 @@ using Random
 using BartIO
 
 include("../src/ComparisonHarness.jl")
-using .ComparisonHarness
+using .ComparisonHarness: check_nrmse, nrmse, run_bart, generate_multicoil_brain
 
 sigpy = pyimport("sigpy")
 sp_mri = pyimport("sigpy.mri")
@@ -196,6 +196,184 @@ sp_mri = pyimport("sigpy.mri")
             bart_cg = ComparisonHarness.run_bart(1, "pics -S -i 10", ComplexF32.(kdata_bart_cart), ComplexF32.(smaps_bart_cart))[:, :, 1]
             check_nrmse(x_mrt, bart_cg, 1e-6; label = "MRT vs BART CG-SENSE")
             check_nrmse(bart_cg, img_mc, 1e-6; label = "BART vs Ground Truth CG-SENSE")
+        end
+    end
+
+    @testset "Sparsity-Based Regularization" begin
+        # 2x Undersampled test setup with center calibration region
+        mask_reg = rand(MersenneTwister(42), Bool, N, N)
+        mask_reg[(N ÷ 2 - 8):(N ÷ 2 + 8), :] .= true
+
+        kdata_reg_us = NamedDimsArray(kspace_mc[mask_reg, :], (:kxy, :coil))
+        acq_reg_us = CartesianAcquisitionInfo(kdata_reg_us; is3D=false, image_size=(N, N), sensitivity_maps=smaps_mc, shifted_image_dims=(:x, :y), subsampling=mask_reg)
+
+        kspace_reg_sp = copy(kspace_mc)
+        kspace_reg_sp[.!mask_reg, :] .= 0
+        kdata_sp_reg = parent(permutedims(kspace_reg_sp, (3, 2, 1)))
+        smaps_sp_reg = parent(permutedims(cmap, (3, 2, 1)))
+
+        kdata_bart_reg = reshape(kspace_reg_sp, N, N, 1, Nc)
+        smaps_bart_reg = reshape(cmap, N, N, 1, Nc)
+
+        @testset "Total Variation (TV)" begin
+            λ_tv = 0.01
+
+            # MRT TV
+            method_tv = IterativeReconstruction(regularization=TotalVariation2D(λ_tv))
+            x_mrt_tv = reconstruct(acq_reg_us, method_tv; maxit=30, tol=1e-5)
+            check_nrmse(x_mrt_tv, img_mc, 0.05; label = "MRT TV vs Ground Truth")
+
+            # BART TV
+            bart_tv = ComparisonHarness.run_bart(1, "pics -S -i 30 -R T:3:0:0.01", ComplexF32.(kdata_bart_reg), ComplexF32.(smaps_bart_reg))[:, :, 1]
+            check_nrmse(bart_tv, img_mc, 0.05; label = "BART TV vs Ground Truth")
+            check_nrmse(x_mrt_tv, bart_tv, 0.05; label = "MRT vs BART TV")
+
+            # MRIReco TV
+            kdata_mr_tv = reshape(kspace_reg_sp, N, N, 1, Nc, 1, 1)
+            acq_mr_tv = AcquisitionData(kdata_mr_tv)
+            smaps_mr_tv = reshape(cmap, N, N, 1, Nc)
+            recoParams_tv = Dict{Symbol, Any}(:reco => "multiCoil", :reconSize => (N, N), :senseMaps => smaps_mr_tv, :iterations => 30, :solver => MRIReco.ADMM, :reg => [MRIReco.TVRegularization(λ_tv; shape=(N, N))])
+            img_mr_tv = MRIReco.reconstruction(acq_mr_tv, recoParams_tv)[:, :, 1, 1, 1]
+            check_nrmse(img_mr_tv, img_mc, 0.05; label = "MRIReco TV vs Ground Truth")
+            check_nrmse(x_mrt_tv, img_mr_tv, 0.05; label = "MRT vs MRIReco TV")
+
+            # SigPy TV
+            sp_tv = sp_mri.app.TotalVariationRecon(kdata_sp_reg, smaps_sp_reg, lamda=Float64(λ_tv), max_iter=30, show_pbar=false).run()
+            sp_tv = permutedims(sp_tv, (2, 1))
+            check_nrmse(sp_tv, img_mc, 0.15; label = "SigPy TV vs Ground Truth")
+            check_nrmse(x_mrt_tv, sp_tv, 0.15; label = "MRT vs SigPy TV")
+        end
+
+        @testset "L1-Wavelet" begin
+            λ_wav = 0.005
+
+            # MRT L1-Wavelet
+            method_wav = IterativeReconstruction(regularization=L1Wavelet2D(λ_wav))
+            x_mrt_wav = reconstruct(acq_reg_us, method_wav; maxit=30, tol=1e-5)
+            check_nrmse(x_mrt_wav, img_mc, 0.05; label = "MRT Wavelet vs Ground Truth")
+
+            # BART L1-Wavelet (ADMM without cycle spinning)
+            bart_wav = ComparisonHarness.run_bart(1, "pics -m -l1 -r 0.005 -n -S -i 30", ComplexF32.(kdata_bart_reg), ComplexF32.(smaps_bart_reg))[:, :, 1]
+            check_nrmse(bart_wav, img_mc, 0.05; label = "BART Wavelet vs Ground Truth")
+            check_nrmse(x_mrt_wav, bart_wav, 0.05; label = "MRT vs BART Wavelet")
+
+            # SigPy L1-Wavelet
+            sp_wav = sp_mri.app.L1WaveletRecon(kdata_sp_reg, smaps_sp_reg, lamda=Float64(λ_wav), max_iter=30, show_pbar=false).run()
+            sp_wav = permutedims(sp_wav, (2, 1))
+            check_nrmse(sp_wav, img_mc, 0.10; label = "SigPy Wavelet vs Ground Truth")
+            check_nrmse(x_mrt_wav, sp_wav, 0.10; label = "MRT vs SigPy Wavelet")
+        end
+
+        @testset "Total Generalized Variation (TGV)" begin
+            λ_tgv = 0.01
+
+            # MRT TGV
+            method_tgv = IterativeReconstruction(regularization=TotalGeneralizedVariation2D(λ_tgv; ratio=2.0))
+            x_mrt_tgv = reconstruct(acq_reg_us, method_tgv; maxit=30, tol=1e-5)
+            check_nrmse(x_mrt_tgv, img_mc, 0.05; label = "MRT TGV vs Ground Truth")
+
+            # BART TGV
+            bart_tgv = ComparisonHarness.run_bart(1, "pics -S -i 30 -R G:3:0:0.01", ComplexF32.(kdata_bart_reg), ComplexF32.(smaps_bart_reg))[:, :, 1]
+            check_nrmse(bart_tgv, img_mc, 0.05; label = "BART TGV vs Ground Truth")
+            check_nrmse(x_mrt_tgv, bart_tgv, 0.05; label = "MRT vs BART TGV")
+        end
+    end
+
+    @testset "Dynamic / Low-Rank Regularization" begin
+        Nd = 64
+        Ncd = 4
+        Td = 8
+        img_dyn, kspace_dyn, cmap_dyn = ComparisonHarness.generate_dynamic_multicoil_brain(N=Nd, num_coils=Ncd, num_frames=Td)
+
+        # 2x Phase encoding undersampling
+        mask_pe = rand(MersenneTwister(42), Bool, Nd)
+        mask_pe[(Nd ÷ 2 - 4):(Nd ÷ 2 + 4)] .= true
+
+        kspace_dyn_us = kspace_dyn[:, mask_pe, :, :]
+        kdata_dyn_us = NamedDimsArray(permutedims(kspace_dyn_us, (1, 2, 4, 3)), (:kx, :ky, :coil, :time))
+        smaps_dyn_named = NamedDimsArray(cmap_dyn, (:x, :y, :coil))
+
+        acq_dyn = CartesianAcquisitionInfo(
+            kdata_dyn_us;
+            is3D=false,
+            image_size=(Nd, Nd),
+            sensitivity_maps=smaps_dyn_named,
+            subsampling=(:, mask_pe),
+            shifted_image_dims=(:x, :y)
+        )
+
+        kdata_bart_dyn = zeros(ComplexF32, Nd, Nd, 1, Ncd, 1, Td)
+        for t = 1:Td
+            kdata_bart_dyn[:, mask_pe, 1, :, 1, t] .= ComplexF32.(kspace_dyn[:, mask_pe, t, :])
+        end
+        smaps_bart_dyn = reshape(ComplexF32.(cmap_dyn), Nd, Nd, 1, Ncd)
+
+        @testset "Global Low-Rank" begin
+            λ_lr = 0.01
+
+            # MRT Low-Rank
+            method_lr = IterativeReconstruction(regularization=LowRank(λ_lr; time_dim=:time))
+            x_mrt_lr = reconstruct(acq_dyn, method_lr; maxit=20, tol=1e-4)
+            check_nrmse(x_mrt_lr, img_dyn, 0.20; label = "MRT Low-Rank vs Ground Truth")
+        end
+
+        @testset "Locally Low-Rank (LLR)" begin
+            λ_llr = 0.01
+
+            # MRT Locally Low-Rank
+            method_llr = IterativeReconstruction(regularization=LocallyLowRank(λ_llr; block_size=(8, 8), time_dim=:time))
+            x_mrt_llr = reconstruct(acq_dyn, method_llr; maxit=20, tol=1e-4)
+            check_nrmse(x_mrt_llr, img_dyn, 0.20; label = "MRT LLR vs Ground Truth")
+
+            # BART Locally Low-Rank
+            bart_llr = ComparisonHarness.run_bart(1, "pics -S -i 20 -b 8 -R L:3:3:0.01", kdata_bart_dyn, smaps_bart_dyn)
+            bart_llr_img = dropdims(bart_llr, dims=(3, 4, 5))
+            check_nrmse(bart_llr_img, img_dyn, 0.20; label = "BART LLR vs Ground Truth")
+            check_nrmse(x_mrt_llr, bart_llr_img, 0.10; label = "MRT vs BART LLR")
+        end
+
+        @testset "Temporal Total Variation (tTV)" begin
+            λ_ttv = 0.01
+
+            # MRT Temporal TV
+            method_ttv = IterativeReconstruction(regularization=TemporalTotalVariation(λ_ttv; time_dim=:time))
+            x_mrt_ttv = reconstruct(acq_dyn, method_ttv; maxit=20, tol=1e-4)
+            check_nrmse(x_mrt_ttv, img_dyn, 0.20; label = "MRT Temporal TV vs Ground Truth")
+
+            # BART Temporal TV (time is dimension index 5)
+            bart_ttv = ComparisonHarness.run_bart(1, "pics -S -i 20 -R T:32:0:0.01", kdata_bart_dyn, smaps_bart_dyn)
+            bart_ttv_img = dropdims(bart_ttv, dims=(3, 4, 5))
+            check_nrmse(bart_ttv_img, img_dyn, 0.20; label = "BART Temporal TV vs Ground Truth")
+            check_nrmse(x_mrt_ttv, bart_ttv_img, 0.10; label = "MRT vs BART Temporal TV")
+        end
+    end
+
+    @testset "K-Space Methods" begin
+        # 2x Undersampling with 24 ACS lines along ky
+        mask_grappa = falses(N, N)
+        mask_grappa[:, 1:2:N] .= true
+        mask_grappa[:, (N ÷ 2 - 12):(N ÷ 2 + 11)] .= true
+
+        kdata_grappa_us = NamedDimsArray(kspace_mc[mask_grappa, :], (:kxy, :coil))
+        acq_grappa = CartesianAcquisitionInfo(
+            kdata_grappa_us;
+            is3D=false,
+            image_size=(N, N),
+            sensitivity_maps=smaps_mc,
+            subsampling=mask_grappa,
+            shifted_image_dims=(:x, :y)
+        )
+
+        @testset "GRAPPA" begin
+            # MRT GRAPPA (RootSumSquares)
+            method_grappa_rss = GRAPPA(kernel_size=(4, 3), calib_size=(24, 24), coil_combination=RootSumSquares())
+            x_mrt_grappa_rss = reconstruct(acq_grappa, method_grappa_rss)
+            check_nrmse(x_mrt_grappa_rss, img_mc, 0.05; label = "MRT GRAPPA (RSS) vs Ground Truth")
+
+            # MRT GRAPPA (AdjointSensitivity)
+            method_grappa_sens = GRAPPA(kernel_size=(4, 3), calib_size=(24, 24), coil_combination=AdjointSensitivity())
+            x_mrt_grappa_sens = reconstruct(acq_grappa, method_grappa_sens)
+            check_nrmse(x_mrt_grappa_sens, img_mc, 0.05; label = "MRT GRAPPA (Sensitivity) vs Ground Truth")
         end
     end
 end
