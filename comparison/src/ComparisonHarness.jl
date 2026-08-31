@@ -19,7 +19,7 @@ export run_bart
 export sigpy, np, sigpy_mri_app
 export setup_matlab_paths
 export MIRT
-export generate_multicoil_brain
+export generate_multicoil_brain, generate_dynamic_multicoil_brain
 export nrmse, check_nrmse
 
 """

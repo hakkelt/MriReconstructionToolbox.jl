@@ -186,6 +186,8 @@ function to_displayable_mask(pattern, dims::NTuple{N, Int}) where {N}
         return mask
     elseif pattern isa Tuple && length(pattern) == 2 && pattern[2] isa AbstractArray{Bool}
         return pattern[2]
+    elseif pattern isa Tuple && length(pattern) == 1 && first(pattern) isa AbstractArray{Bool}
+        return first(pattern)
     elseif pattern isa AbstractArray{Bool}
         return pattern
     else

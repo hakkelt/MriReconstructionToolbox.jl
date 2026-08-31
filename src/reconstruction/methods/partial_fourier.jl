@@ -150,11 +150,16 @@ function _get_full_kspace(acq::CartesianAcquisitionInfo)
     spatial_sz = (img_sz[1], img_sz[2])
     mask = to_displayable_mask(acq.subsampling, spatial_sz)
 
-    trailing_dims = size(raw_ksp)[3:end]
+    trailing_dims = if size(raw_ksp, 1) == count(mask)
+        size(raw_ksp)[2:end]
+    else
+        size(raw_ksp)[3:end]
+    end
     full_ksp = zeros(eltype(raw_ksp), spatial_sz..., trailing_dims...)
 
     if size(raw_ksp, 1) == count(mask)
-        full_ksp[mask, :] = reshape(raw_ksp, count(mask), :)
+        full_ksp_flat = reshape(full_ksp, prod(spatial_sz), :)
+        full_ksp_flat[vec(mask), :] .= reshape(raw_ksp, count(mask), :)
     elseif ndims(raw_ksp) >= 2 && size(raw_ksp, 2) == count(any(mask; dims = 1)) && size(raw_ksp, 1) == spatial_sz[1]
         acq_y = findall(vec(any(mask; dims = 1)))
         full_ksp[:, acq_y, :] .= reshape(raw_ksp, spatial_sz[1], length(acq_y), :)
