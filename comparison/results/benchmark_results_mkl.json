@@ -1,0 +1,202 @@
+{
+    "bart_startup_time_ms": 42.638853999999995,
+    "benchmarks": [
+        {
+            "category": "Base 1C",
+            "framework": "MRT (MKL)",
+            "method": "1-Coil Adjoint",
+            "nrmse_gt": 1.6983030093342677e-7,
+            "nrmse_mrt": 0.0,
+            "time_ms": 0.272986
+        },
+        {
+            "category": "Base 1C",
+            "framework": "SigPy",
+            "method": "1-Coil Adjoint",
+            "nrmse_gt": 1.121792131864313e-7,
+            "nrmse_mrt": 1.3123677161877847e-7,
+            "time_ms": 0.475998
+        },
+        {
+            "category": "Base 1C",
+            "framework": "BART (Net)",
+            "method": "1-Coil Adjoint",
+            "nrmse_gt": 1.626778782792826e-7,
+            "nrmse_mrt": 1.2608327892849047e-7,
+            "time_ms": 9.123341
+        },
+        {
+            "category": "Base MC",
+            "framework": "MRT (MKL)",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 6.338126901705839e-9,
+            "nrmse_mrt": 0.0,
+            "time_ms": 1.88174
+        },
+        {
+            "category": "Base MC",
+            "framework": "SigPy",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 6.3381358353141615e-9,
+            "nrmse_mrt": 1.6843765495775348e-16,
+            "time_ms": 2.722804
+        },
+        {
+            "category": "Base MC",
+            "framework": "BART (Net)",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 9.450447180370247e-8,
+            "nrmse_mrt": 7.77872267555744e-8,
+            "time_ms": 37.388914
+        },
+        {
+            "category": "Non-Cartesian",
+            "framework": "MRT (MKL)",
+            "method": "DCF Adjoint (Gridding)",
+            "nrmse_gt": 0.08516514301300049,
+            "nrmse_mrt": 0.0,
+            "time_ms": 4.430668
+        },
+        {
+            "category": "Non-Cartesian",
+            "framework": "MRIReco",
+            "method": "DCF Adjoint (Gridding)",
+            "nrmse_gt": 0.08543765544891357,
+            "nrmse_mrt": 0.037890076637268066,
+            "time_ms": 92.59994300000001
+        },
+        {
+            "category": "Base MC",
+            "framework": "MRT (MKL)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 6.338148783431377e-9,
+            "nrmse_mrt": 0.0,
+            "time_ms": 284.893326
+        },
+        {
+            "category": "Base MC",
+            "framework": "SigPy",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 6.3381379313313165e-9,
+            "nrmse_mrt": 1.0774435745895748e-14,
+            "time_ms": 69.495929
+        },
+        {
+            "category": "Base MC",
+            "framework": "BART (Net)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 1.399281899239213e-7,
+            "nrmse_mrt": 1.388006131664405e-7,
+            "time_ms": 815.3505279999999
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRT (MKL)",
+            "method": "Total Variation (30 it)",
+            "nrmse_gt": 0.01158813661966297,
+            "nrmse_mrt": 0.0,
+            "time_ms": 35360.378466999995
+        },
+        {
+            "category": "Sparsity",
+            "framework": "BART (Net)",
+            "method": "Total Variation (30 it)",
+            "nrmse_gt": 0.02553848922252655,
+            "nrmse_mrt": 0.01877130844551846,
+            "time_ms": 973.3361890000001
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRT (MKL)",
+            "method": "L1-Wavelet (30 it)",
+            "nrmse_gt": 0.008378128364894665,
+            "nrmse_mrt": 0.0,
+            "time_ms": 303.95894400000003
+        },
+        {
+            "category": "Sparsity",
+            "framework": "BART (Net)",
+            "method": "L1-Wavelet (30 it)",
+            "nrmse_gt": 0.00442860834300518,
+            "nrmse_mrt": 0.006857146758969051,
+            "time_ms": 1823.5054260000002
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRT (MKL)",
+            "method": "TGV (30 it)",
+            "nrmse_gt": 0.009667151983996697,
+            "nrmse_mrt": 0.0,
+            "time_ms": 10657.845909000001
+        },
+        {
+            "category": "Sparsity",
+            "framework": "BART (Net)",
+            "method": "TGV (30 it)",
+            "nrmse_gt": 0.022910863161087036,
+            "nrmse_mrt": 0.01871838331840161,
+            "time_ms": 1068.525543
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRT (MKL)",
+            "method": "Global Low-Rank (20 it)",
+            "nrmse_gt": 0.11749456087069676,
+            "nrmse_mrt": 0.0,
+            "time_ms": 334.257901
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRT (MKL)",
+            "method": "Locally Low-Rank (20 it)",
+            "nrmse_gt": 0.11095574839239111,
+            "nrmse_mrt": 0.0,
+            "time_ms": 234.34001400000002
+        },
+        {
+            "category": "Dynamic",
+            "framework": "BART (Net)",
+            "method": "Locally Low-Rank (20 it)",
+            "nrmse_gt": 0.08111905815108116,
+            "nrmse_mrt": 0.06537030729886316,
+            "time_ms": 740.14928
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRT (MKL)",
+            "method": "Temporal TV (20 it)",
+            "nrmse_gt": 0.08782933900760694,
+            "nrmse_mrt": 0.0,
+            "time_ms": 2499.657931
+        },
+        {
+            "category": "Dynamic",
+            "framework": "BART (Net)",
+            "method": "Temporal TV (20 it)",
+            "nrmse_gt": 0.11447979803171032,
+            "nrmse_mrt": 0.0600768076333117,
+            "time_ms": 639.7939190000001
+        },
+        {
+            "category": "K-Space",
+            "framework": "MRT (MKL)",
+            "method": "GRAPPA (RSS)",
+            "nrmse_gt": 0.021231618555056134,
+            "nrmse_mrt": 0.0,
+            "time_ms": 46.111575
+        },
+        {
+            "category": "K-Space",
+            "framework": "MRT (MKL)",
+            "method": "GRAPPA (Sensitivity)",
+            "nrmse_gt": 0.02436970581031778,
+            "nrmse_mrt": 0.0,
+            "time_ms": 35.989256
+        }
+    ],
+    "blas_vendor": "/home/c_mrrht/.julia/artifacts/27edf95310a71d47422663c3aea849f56efb1360/lib/libmkl_rt.so",
+    "hostname": "x1001c4s3b0n1",
+    "julia_threads": 16,
+    "julia_version": "1.12.7",
+    "use_mkl": true
+}
