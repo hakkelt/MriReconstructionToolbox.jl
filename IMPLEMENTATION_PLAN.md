@@ -165,15 +165,13 @@ Note `check_kwargs` (`config.jl:85-90`) rejects any `reconstruct` keyword that i
 
 ---
 
-## Stage 4 — Solvers: `DouglasRachford`, `HardConsistency`, unregularized iterative LS
+## Stage 4 — Solvers: `DouglasRachford`, `HardConsistency`, unregularized iterative LS [COMPLETED]
 
-- Alias and export `DouglasRachford` (`src/MriReconstructionToolbox.jl:26-30`); add `patch_algorithm_with_default_values(::IterativeAlgorithm{DouglasRachfordIteration}, Lf)` supplying `gamma` when absent (V3), with a comment justifying the value — for a normalized `𝒜`, `gamma = 1`; with two indicators the objective is scale-free and `gamma` sets only the rate. Check up front that a `HardConsistency` method lowers to at most two proximable terms.
-- **`HardConsistency` is general, not restricted.** The projection onto `{𝒜x = y}` is `x − 𝒜'(𝒜𝒜')⁻¹(𝒜x − y)`, and `(𝒜𝒜')⁻¹` does **not** need a closed form — an inner CG solve applies it for any `𝒜`. So implement the prox as: use `diag_AAc(𝒜)` as a fast path when `is_AAc_diagonal(𝒜)` (`src/encoding/named_dims_op.jl:112,119`) — which covers single-coil Cartesian and every `KSpaceDomain` case, where `𝒫𝒫' = I` makes it the trivial "overwrite acquired samples" — and fall back to inner CG otherwise. Multi-coil POCS is therefore supported; the cost is inner iterations per outer prox call, so expose an `inner_maxit`/`inner_tol` on the prox and document the trade-off.
-- `build_model_with_variables` gains a `data_fidelity` argument: `NoFidelity` omits the term; `L2Loss` with empty `regs` yields a bare `ls`, making `IterativeReconstruction(; algorithm = CGNR())` — unregularized iterative least squares, unreachable today — work.
-
-**Docs:** `docs/src/high-level/algorithms.md` gains `DouglasRachford`; `methods.md` documents the three `DataFidelity` modes and the inner-CG cost of `HardConsistency`.
-
-**Verify:** CGNR on a fully sampled single-coil acquisition beats `DirectReconstruction()`; a DR smoke test on `ls + NonNegative`; a `HardConsistency` prox test asserting the fast path and the inner-CG path agree on a case where both apply. Test both `disable_normalop_optimization` settings — `normalop_ls` alone with CG needs checking against `parse_problem`'s least-squares assumption.
+- [x] Alias and export `DouglasRachford` (`src/MriReconstructionToolbox.jl`); add `patch_algorithm_with_default_values(::IterativeAlgorithm{DouglasRachfordIteration}, Lf)` supplying `gamma` when absent. Fixed type parameter matching in `deps/ProximalAlgorithms/src/algorithms/douglas_rachford.jl`.
+- [x] **`HardConsistency`** implemented in `src/reconstruction/hard_consistency.jl` via `HardConsistencyProx`. Uses closed-form `diag_AAc(𝒜)` when `is_AAc_diagonal(𝒜)` is true, and falls back to inner Conjugate Gradient (`_cg_solve_AAc`) otherwise.
+- [x] `build_model_with_variables` and `build_model` updated to take `fidelity::DataFidelity`: `L2Loss` (supports empty `regs` for unregularized iterative least squares like `CGNR`), `HardConsistency`, and `NoFidelity`.
+- [x] Added `DouglasRachford` and `DataFidelity` documentation in `docs/src/high-level/algorithms.md` and `docs/src/high-level/methods.md`.
+- [x] Added unit tests for DouglasRachford parameter patching, HardConsistency fast vs inner-CG agreement, HardConsistency + DouglasRachford reconstruction, and unregularized CGNR with both `disable_normalop_optimization` settings in `test/test_minimizer.jl`. All tests pass.
 
 ---
 

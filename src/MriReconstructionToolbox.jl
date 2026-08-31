@@ -26,6 +26,7 @@ using StatsBase: sample, ProbabilityWeights
 const ISTA = ProximalAlgorithms.ForwardBackward
 const FISTA = ProximalAlgorithms.FastForwardBackward
 const ADMM = ProximalAlgorithms.ADMM
+const DouglasRachford = ProximalAlgorithms.DouglasRachford
 const CG = ProximalAlgorithms.CG
 const CGNR = ProximalAlgorithms.CGNR
 
@@ -40,11 +41,11 @@ export AbstractReconstructionMethod, AbstractIterativeMethod, AbstractDirectMeth
 export DirectReconstruction, IterativeReconstruction, DEFAULT_ALGORITHMS
 export ReconstructionDomain, ImageDomain, KSpaceDomain
 export CoilCombination, AdjointSensitivity, RootSumSquares, NoCoilCombination
-export DataFidelity, L2Loss, HardConsistency, NoFidelity
+export DataFidelity, L2Loss, HardConsistency, NoFidelity, HardConsistencyProx
 export lower, check_applicable, variable_dims, variable_size, output_dims
 export Component, DecomposedImage, components, total
 export BartScaling, FixedScaling, MeasurementBasedScaling, NoScaling
-export ISTA, FISTA, ADMM, CG, CGNR
+export ISTA, FISTA, ADMM, DouglasRachford, CG, CGNR
 export AcquisitionInfo, CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
 export simulate_acquisition, coil_sensitivities
 export UniformRandomSampling, VariableDensitySampling, PoissonDiskSampling, GaussianDistribution, PolynomialDistribution
@@ -90,6 +91,7 @@ include("reconstruction/methods/direct_reconstruction.jl")
 include("reconstruction/methods/iterative_reconstruction.jl")
 include("reconstruction/decomposition.jl")
 include("reconstruction/config.jl")
+include("reconstruction/hard_consistency.jl")
 include("reconstruction/build_model.jl")
 include("reconstruction/progress_utils.jl")
 include("reconstruction/initial_guess.jl")

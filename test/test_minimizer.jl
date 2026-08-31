@@ -155,3 +155,103 @@ end
         @test isapprox(eval_term(t1), eval_term(t2); atol = 1.0e-12)
     end
 end
+
+@testitem "DouglasRachford default parameter patching" tags = [:minimizer] begin
+    using Test
+    using MriReconstructionToolbox
+
+    alg = DouglasRachford(maxit = 100)
+    patched = MriReconstructionToolbox.patch_algorithm_with_default_values(alg, 2.0)
+    @test patched.kwargs[:gamma] == 0.5
+
+    patched_no_lf = MriReconstructionToolbox.patch_algorithm_with_default_values(alg, nothing)
+    @test patched_no_lf.kwargs[:gamma] == 1.0
+
+    explicit = DouglasRachford(gamma = 0.1)
+    patched_explicit = MriReconstructionToolbox.patch_algorithm_with_default_values(explicit, 5.0)
+    @test patched_explicit.kwargs[:gamma] == 0.1
+end
+
+@testitem "HardConsistency projection fast path vs inner-CG" tags = [:minimizer] begin
+    using Test
+    using MriReconstructionToolbox
+    using LinearAlgebra
+
+    nx, ny = 16, 16
+    x = rand(ComplexF32, nx, ny)
+    mask = rand(Bool, nx, ny)
+    mask[1, 1] = true
+    acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny), subsampling = mask)
+    acq_data = simulate_acquisition(x, acq)
+    𝒜 = unname(get_encoding_operator(acq_data))
+    y = acq_data.kspace_data
+
+    @test MriReconstructionToolbox.is_AAc_diagonal(𝒜)
+
+    # Fast diagonal projection
+    x_test = rand(ComplexF32, nx, ny)
+    proj_fast = MriReconstructionToolbox._project_hard_consistency(𝒜, y, x_test, 50, 1.0e-6)
+
+    # Inner-CG projection
+    v_cg = MriReconstructionToolbox._cg_solve_AAc(𝒜, 𝒜 * x_test - y; inner_maxit = 100, inner_tol = 1.0e-6)
+    proj_cg = x_test .- 𝒜' * v_cg
+
+    @test isapprox(proj_fast, proj_cg; rtol = 1.0e-4, atol = 1.0e-5)
+    @test isapprox(𝒜 * proj_fast, y; rtol = 1.0e-4, atol = 1.0e-5)
+end
+
+@testitem "Reconstruction with HardConsistency + DouglasRachford" tags = [:minimizer, :reconstruction] begin
+    using Test
+    using MriReconstructionToolbox
+    using LinearAlgebra
+
+    nx, ny = 16, 16
+    x_true = zeros(ComplexF32, nx, ny)
+    x_true[4:8, 4:8] .= 1.0f0 + 0.5f0im
+    acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny))
+    acq_data = simulate_acquisition(x_true, acq)
+
+    method = IterativeReconstruction(
+        L1Image(1.0e-6);
+        algorithm = DouglasRachford(maxit = 50, tol = 1.0e-5),
+        fidelity = HardConsistency(),
+    )
+    rec = reconstruct(acq_data, method; verbose = false)
+    @test isapprox(rec, x_true; rtol = 1.0e-4, atol = 1.0e-4)
+end
+
+@testitem "Unregularized Iterative Least-Squares with CGNR" tags = [:minimizer, :reconstruction] begin
+    using Test
+    using MriReconstructionToolbox
+    using LinearAlgebra
+
+    nx, ny = 16, 16
+    x_true = rand(ComplexF32, nx, ny)
+    acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny))
+    acq_data = simulate_acquisition(x_true, acq)
+
+    for disable_normalop in (false, true)
+        method = IterativeReconstruction(;
+            algorithm = CGNR(maxit = 20, tol = 1.0e-6),
+            fidelity = L2Loss(),
+            disable_normalop_optimization = disable_normalop,
+        )
+        rec = reconstruct(acq_data, method; verbose = false)
+        @test isapprox(rec, x_true; rtol = 1.0e-4, atol = 1.0e-4)
+    end
+end
+
+@testitem "NoFidelity and error handling" tags = [:minimizer] begin
+    using Test
+    using MriReconstructionToolbox
+
+    nx, ny = 8, 8
+    x = rand(ComplexF32, nx, ny)
+    acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny))
+    acq_data = simulate_acquisition(x, acq)
+    𝒜 = get_encoding_operator(acq_data)
+    y = acq_data.kspace_data
+
+    # NoFidelity with empty regularizations throws ArgumentError
+    @test_throws ArgumentError build_model(𝒜, y, (); fidelity = NoFidelity())
+end

@@ -24,7 +24,7 @@ abstract type AbstractDirectMethod <: AbstractReconstructionMethod end
 
 Default solver tuple dispatched when no specific algorithm is provided.
 """
-const DEFAULT_ALGORITHMS = (CG(), CGNR(), FISTA(), ADMM())
+const DEFAULT_ALGORITHMS = (CG(), CGNR(), FISTA(), ADMM(), DouglasRachford())
 
 """
 	lower(method::AbstractReconstructionMethod)

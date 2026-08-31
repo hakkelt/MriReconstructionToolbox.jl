@@ -38,7 +38,8 @@ operator used to build the model -- `nothing` when the operator was left at its 
 operator is correct and no override is applied.
 """
 function patch_algorithm_with_default_values(
-        algorithm::ProximalAlgorithms.IterativeAlgorithm{T}, Lf::Union{Nothing, Real} = nothing
+        algorithm::ProximalAlgorithms.IterativeAlgorithm{T}, Lf::Union{Nothing, Real} = nothing;
+        eltype_real::Type{<:Real} = Float64,
     ) where {
         T <: Union{
             ProximalAlgorithms.ForwardBackwardIteration,
@@ -53,7 +54,8 @@ function patch_algorithm_with_default_values(
 end
 
 function patch_algorithm_with_default_values(
-        algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.ADMMIteration}, Lf::Union{Nothing, Real} = nothing
+        algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.ADMMIteration}, Lf::Union{Nothing, Real} = nothing;
+        eltype_real::Type{<:Real} = Float64,
     )
     # `cg_maxit` is capped well below ADMM's own default of 100 because the inner CG is warm-started
     # from the previous outer iterate, so a short solve per outer step is enough.
@@ -74,23 +76,46 @@ function patch_algorithm_with_default_values(
     return ProximalAlgorithms.override_parameters(algorithm; cg_maxit = 10)
 end
 
-function patch_algorithm_with_default_values(algorithm::ProximalAlgorithms.IterativeAlgorithm, Lf::Union{Nothing, Real} = nothing)
+function patch_algorithm_with_default_values(
+        algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.DouglasRachfordIteration}, Lf::Union{Nothing, Real} = nothing;
+        eltype_real::Type{<:Real} = Float64,
+    )
+    if :gamma ∉ keys(algorithm.kwargs)
+        # For a normalized operator 𝒜, Lf is 1 so default gamma = 1.0.
+        # When two indicator / constraint terms are present, the problem is scale-free and gamma sets the rate.
+        gamma = Lf !== nothing ? eltype_real(1 / max(Lf, eps(eltype_real))) : eltype_real(1)
+        return ProximalAlgorithms.override_parameters(algorithm; gamma = gamma)
+    else
+        g = algorithm.kwargs[:gamma]
+        if g isa Real && typeof(g) != eltype_real
+            return ProximalAlgorithms.override_parameters(algorithm; gamma = eltype_real(g))
+        end
+    end
     return algorithm
 end
 
-function patch_algorithm_with_default_values(algorithm::Tuple, Lf::Union{Nothing, Real} = nothing)
-    return map(a -> patch_algorithm_with_default_values(a, Lf), algorithm)
+function patch_algorithm_with_default_values(algorithm::ProximalAlgorithms.IterativeAlgorithm, Lf::Union{Nothing, Real} = nothing; eltype_real::Type{<:Real} = Float64)
+    return algorithm
 end
 
-function build_model(𝒜::AbstractOperator, y::AbstractArray, regs::Tuple; threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing, disable_normalop_optimization::Bool = false)
+function patch_algorithm_with_default_values(algorithm::Tuple, Lf::Union{Nothing, Real} = nothing; eltype_real::Type{<:Real} = Float64)
+    return map(a -> patch_algorithm_with_default_values(a, Lf; eltype_real), algorithm)
+end
+
+function build_model(
+        𝒜::AbstractOperator, y::AbstractArray, regs::Tuple;
+        threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing,
+        disable_normalop_optimization::Bool = false,
+        fidelity::DataFidelity = L2Loss(),
+    )
     terms, _, _ = build_model_with_variables(
-        𝒜, y, regs; threaded, x₀, disable_normalop_optimization
+        𝒜, y, regs; threaded, x₀, disable_normalop_optimization, fidelity
     )
     return terms
 end
 
 """
-	build_model_with_variables(𝒜, y, regs; threaded, x₀, disable_normalop_optimization)
+	build_model_with_variables(𝒜, y, regs; threaded, x₀, disable_normalop_optimization, fidelity)
 
 Same as [`build_model`](@ref), but also returns the variables the model was built from:
 `(terms, x, auxiliary_variables)`, where `x` is the image variable and `auxiliary_variables` is a tuple of
@@ -104,6 +129,7 @@ function build_model_with_variables(
         𝒜::AbstractOperator, y::AbstractArray, regs::Tuple;
         threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing,
         disable_normalop_optimization::Bool = false,
+        fidelity::DataFidelity = L2Loss(),
     )
     x₀ = isnothing(x₀) ? 𝒜' * y : copy(x₀)
     regs = bind_dimensions(regs, dims_of(x₀))
@@ -113,25 +139,45 @@ function build_model_with_variables(
     # The regularizations are materialized first because whether any of them introduces an auxiliary
     # variable decides which form the data term may take.
     reg_term_list, auxiliaries = materialize_all(regs, x; threaded)
-    # `normalop_ls` precomputes 𝒜'𝒜 and stores it inside the term, but that operator spans the image
-    # variable alone. Once a regularization adds an auxiliary variable (total generalized variation),
-    # the solver's `x0` spans (image, auxiliary...) while the stored operator still does not, and ADMM
-    # rejects the pair with "A'b must have the same size as x0". The plain `ls` form is assembled
-    # against the full variable tuple by `extract_operators`, so it lifts correctly.
-    use_normalop = !disable_normalop_optimization && isempty(auxiliaries)
-    terms = use_normalop ? (@term normalop_ls(𝒜 * x - y)) : (@term ls(𝒜 * x - y))
-    @assert terms isa StructuredOptimization.Term
-    for reg_terms in reg_term_list
-        terms += reg_terms
+
+    terms = if fidelity isa L2Loss
+        # `normalop_ls` precomputes 𝒜'𝒜 and stores it inside the term, but that operator spans the image
+        # variable alone. Once a regularization adds an auxiliary variable (total generalized variation),
+        # the solver's `x0` spans (image, auxiliary...) while the stored operator still does not, and ADMM
+        # rejects the pair with "A'b must have the same size as x0". The plain `ls` form is assembled
+        # against the full variable tuple by `extract_operators`, so it lifts correctly.
+        use_normalop = !disable_normalop_optimization && isempty(auxiliaries)
+        use_normalop ? (@term normalop_ls(𝒜 * x - y)) : (@term ls(𝒜 * x - y))
+    elseif fidelity isa HardConsistency
+        prox = HardConsistencyProx(𝒜, y, fidelity.inner_maxit, fidelity.inner_tol)
+        StructuredOptimization.Term(1, prox, identity_operator(unname(~x)) * x, "HardConsistency(𝒜x=y)")
+    elseif fidelity isa NoFidelity
+        if isempty(reg_term_list)
+            throw(ArgumentError("No terms in optimization problem: NoFidelity specified with no regularizations."))
+        end
+        nothing
+    else
+        throw(ArgumentError("Unsupported data fidelity: $fidelity"))
+    end
+
+    if terms === nothing
+        terms = first(reg_term_list)
+        for reg_terms in reg_term_list[2:end]
+            terms += reg_terms
+        end
+    else
+        for reg_terms in reg_term_list
+            terms += reg_terms
+        end
     end
     return terms, x, auxiliaries
 end
 
 """
-    build_model(𝒜::AbstractOperator, y::AbstractArray, components::Tuple{Vararg{Component}}; threaded, x₀s)
+    build_model(𝒜::AbstractOperator, y::AbstractArray, components::Tuple{Vararg{Component}}; threaded, x₀s, fidelity)
 
 Builds a multi-variable StructuredOptimization.jl model for image decomposition: one
-`Variable` per component, with data term `‖𝒜*(x₁ + x₂ + …) - y‖²`.
+`Variable` per component, with data fidelity term (default `‖𝒜*(x₁ + x₂ + …) - y‖²`).
 
 The data term applies `𝒜` to the *sum* of the component variables
 (`𝒜 * (x₁ + x₂ + …)`, i.e. `Compose(𝒜, HCAT(Eye, …))`) rather than summing
@@ -149,8 +195,9 @@ operators requires the upstream `HCAT` normal-op fusion.
   [`materialize_with_auxiliaries`](@ref)) — usually empty.
 """
 function build_model(
-        𝒜::AbstractOperator, y::AbstractArray, components::Tuple{Vararg{Component}};
+        𝒜::AbstractOperator, y::AbstractArray, components::Tuple{Component, Vararg{Component}};
         threaded::Bool = true, x₀s,
+        fidelity::DataFidelity = L2Loss(),
     )
     check_components(components)
     components = bind_dimensions(components, dims_of(first(x₀s)))
@@ -162,12 +209,32 @@ function build_model(
     # be written through as well.
     vars = Tuple(Variable(copy(unname(x₀))) for x₀ in x₀s)
     ex = 𝒜 * reduce(+, vars)
-    terms = StructuredOptimization.ls(ex - y)
+
+    terms = if fidelity isa L2Loss
+        StructuredOptimization.ls(ex - y)
+    elseif fidelity isa HardConsistency
+        prox = HardConsistencyProx(𝒜, y, fidelity.inner_maxit, fidelity.inner_tol)
+        StructuredOptimization.Term(1, prox, reduce(+, vars), "HardConsistency(𝒜(x₁+…)=y)")
+    elseif fidelity isa NoFidelity
+        nothing
+    else
+        throw(ArgumentError("Unsupported data fidelity: $fidelity"))
+    end
+
     auxiliaries = ()
+    first_term = terms === nothing
     for (component, x) in zip(components, vars)
         component_terms, component_auxiliaries = materialize_with_auxiliaries(component, x; threaded)
-        terms += component_terms
+        if first_term
+            terms = component_terms
+            first_term = false
+        else
+            terms += component_terms
+        end
         auxiliaries = (auxiliaries..., component_auxiliaries...)
+    end
+    if terms === nothing
+        throw(ArgumentError("No terms in optimization problem: NoFidelity specified with no regularizations."))
     end
     return terms, vars, auxiliaries
 end

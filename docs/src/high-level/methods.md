@@ -54,13 +54,13 @@ IterativeReconstruction(
 
 #### Data Fidelity Terms
 
-- `L2Loss()`: Standard $\ell_2$-norm data fidelity $\|\mathcal{A}x - y\|_2^2$.
-- `HardConsistency()`: Hard data consistency projection indicator $\{x \mid \mathcal{A}x = y\}$.
-- `NoFidelity()`: No data consistency term (e.g. for pure regularization models).
+- `L2Loss()`: Standard $\ell_2$-norm data fidelity $\frac{1}{2}\|\mathcal{A}x - y\|_2^2$. Used by default.
+- `HardConsistency(; inner_maxit = 50, inner_tol = 1e-6)`: Hard data consistency constraint indicator $\{x \mid \mathcal{A}x = y\}$. When $\mathcal{A}\mathcal{A}^*$ is diagonal (single-coil Cartesian, `KSpaceDomain`), the projection is computed directly in closed form. Otherwise, an inner Conjugate Gradient iteration is evaluated. Ideal for pairing with `DouglasRachford()` or POCS-style projections.
+- `NoFidelity()`: Omits the data consistency term completely (useful for unconstrained optimization or custom models).
 
 #### Solver Selection and Configuration
 
-- `algorithm`: Solver algorithm (e.g., `FISTA()`, `ADMM()`, `CG()`, `CGNR()`) or candidate tuple. Defaults to `DEFAULT_ALGORITHMS` (`(CG(), CGNR(), FISTA(), ADMM())`), where the appropriate solver is selected based on model convexity and smoothness.
+- `algorithm`: Solver algorithm (e.g., `FISTA()`, `ADMM()`, `DouglasRachford()`, `CG()`, `CGNR()`) or candidate tuple. Defaults to `DEFAULT_ALGORITHMS` (`(CG(), CGNR(), FISTA(), ADMM(), DouglasRachford())`), where the appropriate solver is selected based on model convexity and smoothness.
 - `exact_opnorm`: Estimate operator norm via Power iteration for exact step size estimation.
 - `disable_operator_normalization`: Disable automatic scaling of $\mathcal{A}$ to unit norm.
 - `disable_normalop_optimization`: Disable normal-operator substitution ($\mathcal{A}^*\mathcal{A}$) in least-squares models.
