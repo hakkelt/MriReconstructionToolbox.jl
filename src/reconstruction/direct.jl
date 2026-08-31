@@ -1,3 +1,15 @@
+function _direct_reconstruct_components(𝒜, acq_data, method::AbstractReconstructionMethod, config; scale_override = nothing)
+    @step "Getting initial estimate" config begin
+        x̂ = 𝒜' * acq_data.kspace_data
+    end
+    scale_input = if method isa IterativeReconstruction && method.signal_model !== nothing
+        get_encoding_operator(acq_data; threaded = config.threaded)' * acq_data.kspace_data
+    else
+        x̂
+    end
+    return x̂, _resolve_scale(acq_data, scale_input, config, scale_override)
+end
+
 function _direct_reconstruct_components(𝒜, acq_data, config; scale_override = nothing)
     @step "Getting initial estimate" config begin
         x̂ = 𝒜' * acq_data.kspace_data
@@ -41,5 +53,10 @@ function _direct_reconstruct(𝒜, acq_data, x₀, method::AbstractReconstructio
             x₀ = 𝒜' * acq_data.kspace_data
         end
     end
-    return x₀, _resolve_scale(acq_data, x₀, config, scale_override)
+    scale_input = if method isa IterativeReconstruction && method.signal_model !== nothing
+        get_encoding_operator(acq_data; threaded = config.threaded)' * acq_data.kspace_data
+    else
+        x₀
+    end
+    return x₀, _resolve_scale(acq_data, scale_input, config, scale_override)
 end

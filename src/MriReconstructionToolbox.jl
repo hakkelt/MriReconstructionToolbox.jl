@@ -44,6 +44,7 @@ export CoilCombination, AdjointSensitivity, RootSumSquares, NoCoilCombination
 export DataFidelity, L2Loss, HardConsistency, NoFidelity, HardConsistencyProx
 export lower, check_applicable, variable_dims, variable_size, output_dims
 export Component, DecomposedImage, components, total
+export TemporalBasis, build_encoding_operator, signal_model_operator
 export BartScaling, FixedScaling, MeasurementBasedScaling, NoScaling
 export ISTA, FISTA, ADMM, DouglasRachford, CG, CGNR
 export AcquisitionInfo, CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
@@ -91,6 +92,7 @@ include("reconstruction/methods/domains.jl")
 include("reconstruction/methods/reconstruction_method.jl")
 include("reconstruction/methods/direct_reconstruction.jl")
 include("reconstruction/methods/iterative_reconstruction.jl")
+include("reconstruction/encoding_for_method.jl")
 include("reconstruction/decomposition.jl")
 include("reconstruction/config.jl")
 include("reconstruction/hard_consistency.jl")

@@ -1,6 +1,6 @@
 struct ProblemDecompositionPlan{N, M, K, L}
-    image_size::NTuple{N, Int}
-    image_batch_dims::NTuple{M, Int}
+    variable_size::NTuple{N, Int}
+    variable_batch_dims::NTuple{M, Int}
     kspace_size::NTuple{K, Int}
     kspace_batch_dims::NTuple{L, Int}
     slices_sensitivity_maps::Bool
@@ -17,46 +17,50 @@ function get_problem_decomposition_plan(acq_data, method::AbstractReconstruction
         return nothing
     end
 
-    # Determine which image dimensions can be used for problem decomposition
+    # Determine which image/variable dimensions can be used for problem decomposition
     image_dims = get_image_dims(acq_data)
-    image_batch_dims = collect(get_nonfourier_image_dims(acq_data))
+    variable_batch_dims = collect(get_nonfourier_image_dims(acq_data))
     if method isa IterativeReconstruction
         for reg in method.regularization
             affected_dims = get_affected_dims(reg, acq_data, image_dims)
-            image_batch_dims = setdiff(image_batch_dims, affected_dims)
+            variable_batch_dims = setdiff(variable_batch_dims, affected_dims)
+        end
+        if method.signal_model !== nothing
+            affected_dims = get_affected_dims(method.signal_model, acq_data, image_dims)
+            variable_batch_dims = setdiff(variable_batch_dims, affected_dims)
         end
     end
-    image_batch_dims = tuple(image_batch_dims...)
+    variable_batch_dims = tuple(variable_batch_dims...)
 
-    if image_batch_dims == () # no batch dimensions, no decomposition
+    if variable_batch_dims == () # no batch dimensions, no decomposition
         return nothing
     end
 
-    image_size = get_image_size(acq_data)
-    if image_batch_dims[1] isa Symbol # convert to indices
-        image_batch_dims = tuple(findall(in(image_batch_dims), collect(image_dims))...)
+    var_size = variable_size(method, acq_data)
+    if variable_batch_dims[1] isa Symbol # convert to indices
+        variable_batch_dims = tuple(findall(in(variable_batch_dims), collect(image_dims))...)
     end
 
     kspace_size = size(acq_data.kspace_data)
 
-    # Calculate how the image batch dimensions map to k-space batch dimensions
+    # Calculate how the variable batch dimensions map to k-space batch dimensions
     kspace_fourier_dims = get_fourier_kspace_dims(acq_data)
     image_fourier_dims = get_fourier_image_dims(acq_data)
     dim_index_offset = length(image_fourier_dims) - length(kspace_fourier_dims)
     if !isnothing(acq_data.sensitivity_maps)
         dim_index_offset -= 1 # account for coil dimension in k-space
     end
-    kspace_batch_dims = tuple((d - dim_index_offset for d in image_batch_dims)...)
+    kspace_batch_dims = tuple((d - dim_index_offset for d in variable_batch_dims)...)
 
     slices_sensitivity_maps = (
         !isnothing(acq_data.sensitivity_maps) &&
             ndims(acq_data.sensitivity_maps) == 4 && # if true, the third dimension of the image must be the slice dimension
-            3 ∈ image_batch_dims
+            3 ∈ variable_batch_dims
     )
 
     return ProblemDecompositionPlan(
-        image_size,
-        image_batch_dims,
+        var_size,
+        variable_batch_dims,
         kspace_size,
         kspace_batch_dims,
         slices_sensitivity_maps,
@@ -70,7 +74,7 @@ end
 
 function execute(f::Function, plan, acq_data, config, executor::ReconstructionExecutor)
     maybe_print_decomposition_info(plan, config)
-    batch_sizes = plan.image_size[collect(plan.image_batch_dims)]
+    batch_sizes = plan.variable_size[collect(plan.variable_batch_dims)]
     results = Array{AbstractArray}(undef, batch_sizes)
     scales = Array{real(eltype(acq_data.kspace_data))}(undef, batch_sizes)
     run_slices!(results, scales, f, plan, acq_data, config, executor)
@@ -105,7 +109,7 @@ function execute_regularized(plan, acq_data, config, method::IterativeReconstruc
         # Planned properly (not `fast_planning`), because this same operator is reused for the
         # iterative solve in phase 2 below -- otherwise phase 2 would plan an equivalent operator
         # again from scratch.
-        𝒜 = get_encoding_operator(local_acq; threaded = false, fast_planning = false)
+        𝒜 = build_encoding_operator(local_acq, method; threaded = false, fast_planning = false)
         warm_start, scale = _direct_reconstruct(𝒜, local_acq, local_x₀, method, local_conf)
         return warm_start, scale, 𝒜
     end
@@ -136,8 +140,8 @@ end
 function execute_regularized_components(plan, acq_data, config, method::IterativeReconstruction, x₀)
     prepare = function (idx, local_acq, local_conf)
         local_x₀ = isnothing(x₀) ? nothing : slice_x₀_components(x₀, plan, idx)
-        𝒜 = get_encoding_operator(local_acq; threaded = false, fast_planning = false)
-        x̂, scale = _direct_reconstruct_components(𝒜, local_acq, local_conf)
+        𝒜 = build_encoding_operator(local_acq, method; threaded = false, fast_planning = false)
+        x̂, scale = _direct_reconstruct_components(𝒜, local_acq, method, local_conf)
         return get_component_x0s(method.regularization, x̂, local_x₀), scale, 𝒜
     end
     solve_slice = function (local_acq, x₀s, ratio, global_scale, local_conf, 𝒜)
@@ -169,7 +173,7 @@ end
 function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Function)
     executor = suggest_executor(plan, config)
     maybe_print_decomposition_info(plan, config)
-    batch_sizes = plan.image_size[collect(plan.image_batch_dims)]
+    batch_sizes = plan.variable_size[collect(plan.variable_batch_dims)]
     slices = collect(get_slices(plan, acq_data))
 
     slice_threaded = executor isa MultiThreadingExecutor ? false : config.threaded
@@ -253,20 +257,20 @@ end
 
 function Base.show(io::IO, plan::ProblemDecompositionPlan)
     print(io, "ProblemDecompositionPlan{")
-    img_size_strs = map_dims_to_strs(plan.image_size, plan.image_batch_dims)
-    print(io, "image_size=(", join(img_size_strs, ", "), "), ")
+    img_size_strs = map_dims_to_strs(plan.variable_size, plan.variable_batch_dims)
+    print(io, "variable_size=(", join(img_size_strs, ", "), "), ")
     ksp_size_strs = map_dims_to_strs(plan.kspace_size, plan.kspace_batch_dims)
     return print(io, "kspace_size=(", join(ksp_size_strs, ", "), ")}")
 end
 
 function Base.length(plan::ProblemDecompositionPlan)
-    return prod(plan.image_size[collect(plan.image_batch_dims)])
+    return prod(plan.variable_size[collect(plan.variable_batch_dims)])
 end
 
 function maybe_print_decomposition_info(plan, config)
     return if config.verbose
-        batch_dims = plan.image_batch_dims
-        batch_size = plan.image_size[collect(batch_dims)]
+        batch_dims = plan.variable_batch_dims
+        batch_size = plan.variable_size[collect(batch_dims)]
         if length(batch_dims) == 1
             msg_part = "dimension $(batch_dims[1]) with size $(batch_size[1])"
         else
@@ -279,8 +283,8 @@ end
 function get_slice_id(plan, idx, slice_idx_widths)
     id_parts = []
     counter = 1
-    for d in eachindex(plan.image_size)
-        if d in plan.image_batch_dims
+    for d in eachindex(plan.variable_size)
+        if d in plan.variable_batch_dims
             idx_str = @sprintf("%*s", slice_idx_widths[counter], string(idx[counter]))
             push!(id_parts, idx_str)
             counter += 1
@@ -329,18 +333,18 @@ function stack_slices_like(::DecomposedImage, results, plan, threaded::Val)
 end
 
 function stack_plain_image_slices(results, plan, ::Val{false})
-    full_image = similar(unname(results[1]), plan.image_size)
+    full_image = similar(unname(results[1]), plan.variable_size)
     for (output_slice, result) in
-        zip(eachslice(full_image; dims = plan.image_batch_dims), results)
+        zip(eachslice(full_image; dims = plan.variable_batch_dims), results)
         output_slice .= unname(result)
     end
     return full_image
 end
 
 function stack_plain_image_slices(results, plan, ::Val{true})
-    full_image = similar(unname(results[1]), plan.image_size)
+    full_image = similar(unname(results[1]), plan.variable_size)
     extended_results = collect(
-        zip(eachslice(full_image; dims = plan.image_batch_dims), results)
+        zip(eachslice(full_image; dims = plan.variable_batch_dims), results)
     )
     @threads for (output_slice, result) in extended_results
         output_slice .= unname(result)
@@ -375,8 +379,8 @@ function execute_single_slice(f::Function, idx, id, local_acq, config; kwargs...
 end
 
 function get_x₀_slice(x₀, plan, idx)
-    slicer = ntuple(length(plan.image_size)) do d
-        i = findfirst(==(d), plan.image_batch_dims)
+    slicer = ntuple(length(plan.variable_size)) do d
+        i = findfirst(==(d), plan.variable_batch_dims)
         isnothing(i) ? Colon() : idx[i]
     end
     return @view unname(x₀)[slicer...]
