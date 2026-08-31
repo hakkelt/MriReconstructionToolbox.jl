@@ -2,8 +2,8 @@ struct NFFTOp{
         T,
         D,
         P <: NFFT.AbstractNFFTPlan{T, D},
-        K <: AbstractMatrix{Complex{T}},
-        DC <: AbstractMatrix{T},
+        K <: AbstractArray{Complex{T}},
+        DC <: AbstractArray{T},
     } <: AbstractOperators.LinearOperator
     plan::P
     ksp_buffer::K
@@ -331,16 +331,6 @@ function _copy_operator_impl(
         op::NFFTOp{T, D, P, K, DC}; storage_type = nothing, threaded = nothing
     ) where {T, D, P, K, DC}
     new_threaded = threaded === nothing ? op.threaded : threaded
-    # The plan is immutable and thread-count-specific: it can be shared only when neither
-    # the storage backend nor the thread count changes. Otherwise the whole operator has to
-    # be replanned, which requires the trajectory back -- this operator does not retain it
-    # as a separate field, but the plan itself does (`plan.k`, flattened to the 2D form
-    # `create_plan` already reshapes every trajectory into), so it can be recovered from
-    # there rather than genuinely refusing the request.
-    if storage_type === nothing && new_threaded == op.threaded
-        # Same constraints: share the (immutable) plan and dcf, give the copy its own scratch.
-        return NFFTOp{T, D, P, K, DC}(op.plan, similar(op.ksp_buffer), op.dcf, op.threaded)
-    end
     image_size = NFFT.size_in(op.plan)
     ksp_shape = size(op.dcf)
     trajectory = reshape(collect(op.plan.k), D, ksp_shape...)
