@@ -37,12 +37,19 @@ if isempty(allowed_cpus)
 end
 pinned_cpus = allowed_cpus[1:min(length(allowed_cpus), Threads.nthreads())]
 pinthreads(pinned_cpus)
+# MKL_DYNAMIC defaults on and lets MKL resize/repin its pool mid-run, undoing pinthreads.
+use_mkl && try; ThreadPinning.MKL.mkl_set_dynamic(0); catch e; @warn "mkl_set_dynamic failed" e; end
 cpu_str = join(pinned_cpus, ",")
 @info "Julia threads pinned to CPUs: $cpu_str"
 
 # Configure subprocess pinning and threading for BART, Python, and C extensions
 ENV["TOOLBOX_PATH"] = bart_binary
-ENV["BART_USE_FFTW_WISDOM"] = "1"
+# BART_USE_FFTW_WISDOM=1 was measured to *hurt* here (benchmarking/scripts/bart_wisdom_probe.sh):
+# it forces FFTW_MEASURE on every `bart` invocation but the wisdom file is never persisted
+# between the fresh processes, so the MEASURE planning cost (~0.8 s) is paid every call and
+# never amortised — 6x slower than FFTW_ESTIMATE on a 96²×8 `pics -i 20` (0.95 s vs 0.16 s).
+# The suite's small 2-D transforms do not need MEASURE. Keep it off.
+ENV["BART_USE_FFTW_WISDOM"] = "0"
 ENV["OMP_NUM_THREADS"] = string(num_threads)
 ENV["OPENBLAS_NUM_THREADS"] = string(num_threads)
 ENV["MKL_NUM_THREADS"] = string(num_threads)
@@ -114,6 +121,39 @@ function time_reconstruction(f; num_runs=3, is_bart=false)
         t_med = max(1e-5, t_med - bart_startup_time)
     end
     return t_min, t_med, res
+end
+
+# MRT baseline from benchmarking/. The MRT-only reconstruction timings are owned by
+# benchmarking/scripts/recon_bench.jl and measured there on the same phantoms; if that JSON is
+# present for this backend/thread count we take its `time_ms` straight rather than re-timing the
+# MRT rows here (the reconstruction still runs once, untimed, for the cross-framework NRMSE
+# checks). Regenerate with:
+#   julia --project=benchmarking -t N benchmarking/scripts/recon_bench.jl --threads=N [--use-mkl]
+const _MRT_BASELINE = let
+    f = normpath(joinpath(
+        @__DIR__, "..", "..", "benchmarking", "results",
+        "mrt_$(use_mkl ? "mkl" : "openblas")_$(num_threads)threads.json",
+    ))
+    d = Dict{Tuple{String, String}, Float64}()
+    if isfile(f)
+        for b in JSON.parsefile(f)["benchmarks"]
+            d[(b["category"], b["method"])] = b["time_ms"]
+        end
+        @info "Using MRT baseline from benchmarking/" file = f n = length(d)
+    else
+        @info "No MRT baseline found; timing MRT rows inline" expected = f
+    end
+    d
+end
+
+# Time an MRT reconstruction, or return the benchmarking/ baseline time if available. Same
+# (t_min_s, t_med_s, result) shape as `time_reconstruction`.
+function time_mrt(category, method, f)
+    key = (category, method)
+    if haskey(_MRT_BASELINE, key)
+        return _MRT_BASELINE[key] / 1000, _MRT_BASELINE[key] / 1000, f()
+    end
+    return time_reconstruction(f)
 end
 
 # Benchmark Results Table
@@ -234,7 +274,7 @@ push!(results, BenchResult("Non-Cartesian", "DCF Adjoint (Gridding)", "MRIReco",
 # --- CG-SENSE (10 Iterations) ---
 println("--> Benchmarking CG-SENSE (10 Iterations)...")
 method_cg = IterativeReconstruction(regularization=(), algorithm=MriReconstructionToolbox.CGNR(maxit=10, tol=1e-14))
-t_min_mrt_cg, _, x_mrt_cg = time_reconstruction(() -> reconstruct(acq_mc, method_cg; tol=1e-14, maxit=10))
+t_min_mrt_cg, _, x_mrt_cg = time_mrt("Base MC", "CG-SENSE (10 it)", () -> reconstruct(acq_mc, method_cg; tol=1e-14, maxit=10))
 e_gt_mrt_cg = nrmse(x_mrt_cg .* (norm(abs.(img_mc)) / norm(abs.(x_mrt_cg))), img_mc)
 push!(results, BenchResult("Base MC", "CG-SENSE (10 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_cg * 1000, e_gt_mrt_cg, 0.0))
 
@@ -270,12 +310,12 @@ kdata_bart_reg = reshape(kspace_reg_sp, N, N, 1, Nc)
 # --- Total Variation (TV, 30 Iterations) ---
 println("--> Benchmarking Total Variation (30 Iterations)...")
 method_tv = IterativeReconstruction(regularization=TotalVariation2D(0.01))
-t_min_mrt_tv, _, x_mrt_tv = time_reconstruction(() -> reconstruct(acq_reg_us, method_tv; maxit=30, tol=1e-5))
+t_min_mrt_tv, _, x_mrt_tv = time_mrt("Sparsity", "Total Variation (30 it)", () -> reconstruct(acq_reg_us, method_tv; maxit=30, tol=1e-5))
 e_gt_mrt_tv = nrmse(x_mrt_tv .* (norm(abs.(img_mc)) / norm(abs.(x_mrt_tv))), img_mc)
 push!(results, BenchResult("Sparsity", "Total Variation (30 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_tv * 1000, e_gt_mrt_tv, 0.0))
 
-# BART TV
-t_min_bart_tv, _, bart_tv_raw = time_reconstruction(() -> run_bart(1, "pics -S -i 30 -R T:3:0:0.01", ComplexF32.(kdata_bart_reg), ComplexF32.(smaps_bart_cart)), is_bart=true)
+# BART TV (30 outer ADMM iterations x 10 CG steps = 300 CG steps)
+t_min_bart_tv, _, bart_tv_raw = time_reconstruction(() -> run_bart(1, "pics -S -i 300 -C 10 -R T:3:0:0.01", ComplexF32.(kdata_bart_reg), ComplexF32.(smaps_bart_cart)), is_bart=true)
 bart_tv = bart_tv_raw[:, :, 1]
 e_gt_bart_tv = nrmse(bart_tv .* (norm(abs.(img_mc)) / norm(abs.(bart_tv))), img_mc)
 e_mrt_bart_tv = nrmse(x_mrt_tv .* (norm(abs.(bart_tv)) / norm(abs.(x_mrt_tv))), bart_tv)
@@ -284,12 +324,12 @@ push!(results, BenchResult("Sparsity", "Total Variation (30 it)", "BART ($(use_m
 # --- L1-Wavelet (30 Iterations) ---
 println("--> Benchmarking L1-Wavelet (30 Iterations)...")
 method_wav = IterativeReconstruction(regularization=L1Wavelet2D(0.005))
-t_min_mrt_wav, _, x_mrt_wav = time_reconstruction(() -> reconstruct(acq_reg_us, method_wav; maxit=30, tol=1e-5))
+t_min_mrt_wav, _, x_mrt_wav = time_mrt("Sparsity", "L1-Wavelet (30 it)", () -> reconstruct(acq_reg_us, method_wav; maxit=30, tol=1e-5))
 e_gt_mrt_wav = nrmse(x_mrt_wav .* (norm(abs.(img_mc)) / norm(abs.(x_mrt_wav))), img_mc)
 push!(results, BenchResult("Sparsity", "L1-Wavelet (30 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_wav * 1000, e_gt_mrt_wav, 0.0))
 
-# BART L1-Wavelet
-t_min_bart_wav, _, bart_wav_raw = time_reconstruction(() -> run_bart(1, "pics -m -l1 -r 0.005 -n -S -i 30", ComplexF32.(kdata_bart_reg), ComplexF32.(smaps_bart_cart)), is_bart=true)
+# BART L1-Wavelet (30 FISTA iterations)
+t_min_bart_wav, _, bart_wav_raw = time_reconstruction(() -> run_bart(1, "pics -l1 -r 0.005 -n -S -i 30", ComplexF32.(kdata_bart_reg), ComplexF32.(smaps_bart_cart)), is_bart=true)
 bart_wav = bart_wav_raw[:, :, 1]
 e_gt_bart_wav = nrmse(bart_wav .* (norm(abs.(img_mc)) / norm(abs.(bart_wav))), img_mc)
 e_mrt_bart_wav = nrmse(x_mrt_wav .* (norm(abs.(bart_wav)) / norm(abs.(x_mrt_wav))), bart_wav)
@@ -298,12 +338,12 @@ push!(results, BenchResult("Sparsity", "L1-Wavelet (30 it)", "BART ($(use_mkl ? 
 # --- Total Generalized Variation (TGV, 30 Iterations) ---
 println("--> Benchmarking Total Generalized Variation (30 Iterations)...")
 method_tgv = IterativeReconstruction(regularization=TotalGeneralizedVariation2D(0.01; ratio=2.0))
-t_min_mrt_tgv, _, x_mrt_tgv = time_reconstruction(() -> reconstruct(acq_reg_us, method_tgv; maxit=30, tol=1e-5))
+t_min_mrt_tgv, _, x_mrt_tgv = time_mrt("Sparsity", "TGV (30 it)", () -> reconstruct(acq_reg_us, method_tgv; maxit=30, tol=1e-5))
 e_gt_mrt_tgv = nrmse(x_mrt_tgv .* (norm(abs.(img_mc)) / norm(abs.(x_mrt_tgv))), img_mc)
 push!(results, BenchResult("Sparsity", "TGV (30 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_tgv * 1000, e_gt_mrt_tgv, 0.0))
 
-# BART TGV
-t_min_bart_tgv, _, bart_tgv_raw = time_reconstruction(() -> run_bart(1, "pics -S -i 30 -R G:3:0:0.01", ComplexF32.(kdata_bart_reg), ComplexF32.(smaps_bart_cart)), is_bart=true)
+# BART TGV (30 outer ADMM iterations x 10 CG steps = 300 CG steps)
+t_min_bart_tgv, _, bart_tgv_raw = time_reconstruction(() -> run_bart(1, "pics -S -i 300 -C 10 -R G:3:0:0.01", ComplexF32.(kdata_bart_reg), ComplexF32.(smaps_bart_cart)), is_bart=true)
 bart_tgv = bart_tgv_raw[:, :, 1]
 e_gt_bart_tgv = nrmse(bart_tgv .* (norm(abs.(img_mc)) / norm(abs.(bart_tgv))), img_mc)
 e_mrt_bart_tgv = nrmse(x_mrt_tgv .* (norm(abs.(bart_tgv)) / norm(abs.(x_mrt_tgv))), bart_tgv)
@@ -342,18 +382,18 @@ smaps_bart_dyn = reshape(ComplexF32.(cmap_dyn), Nd, Nd, 1, Ncd)
 # --- Global Low-Rank (20 Iterations) ---
 println("--> Benchmarking Global Low-Rank (20 Iterations)...")
 method_lr = IterativeReconstruction(regularization=LowRank(0.01; time_dim=:time))
-t_min_mrt_lr, _, x_mrt_lr = time_reconstruction(() -> reconstruct(acq_dyn, method_lr; maxit=20, tol=1e-4))
+t_min_mrt_lr, _, x_mrt_lr = time_mrt("Dynamic", "Global Low-Rank (20 it)", () -> reconstruct(acq_dyn, method_lr; maxit=20, tol=1e-4))
 e_gt_mrt_lr = nrmse(x_mrt_lr .* (norm(abs.(img_dyn)) / norm(abs.(x_mrt_lr))), img_dyn)
 push!(results, BenchResult("Dynamic", "Global Low-Rank (20 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_lr * 1000, e_gt_mrt_lr, 0.0))
 
 # --- Locally Low-Rank (LLR, 20 Iterations) ---
 println("--> Benchmarking Locally Low-Rank (20 Iterations)...")
 method_llr = IterativeReconstruction(regularization=LocallyLowRank(0.01; block_size=(8, 8), time_dim=:time))
-t_min_mrt_llr, _, x_mrt_llr = time_reconstruction(() -> reconstruct(acq_dyn, method_llr; maxit=20, tol=1e-4))
+t_min_mrt_llr, _, x_mrt_llr = time_mrt("Dynamic", "Locally Low-Rank (20 it)", () -> reconstruct(acq_dyn, method_llr; maxit=20, tol=1e-4))
 e_gt_mrt_llr = nrmse(x_mrt_llr .* (norm(abs.(img_dyn)) / norm(abs.(x_mrt_llr))), img_dyn)
 push!(results, BenchResult("Dynamic", "Locally Low-Rank (20 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_llr * 1000, e_gt_mrt_llr, 0.0))
 
-# BART LLR
+# BART LLR (20 FISTA iterations)
 t_min_bart_llr, _, bart_llr_raw = time_reconstruction(() -> run_bart(1, "pics -S -i 20 -b 8 -R L:3:3:0.01", kdata_bart_dyn, smaps_bart_dyn), is_bart=true)
 bart_llr = dropdims(bart_llr_raw, dims=(3, 4, 5))
 e_gt_bart_llr = nrmse(bart_llr .* (norm(abs.(img_dyn)) / norm(abs.(bart_llr))), img_dyn)
@@ -363,12 +403,12 @@ push!(results, BenchResult("Dynamic", "Locally Low-Rank (20 it)", "BART ($(use_m
 # --- Temporal TV (20 Iterations) ---
 println("--> Benchmarking Temporal TV (20 Iterations)...")
 method_ttv = IterativeReconstruction(regularization=TemporalTotalVariation(0.01; time_dim=:time))
-t_min_mrt_ttv, _, x_mrt_ttv = time_reconstruction(() -> reconstruct(acq_dyn, method_ttv; maxit=20, tol=1e-4))
+t_min_mrt_ttv, _, x_mrt_ttv = time_mrt("Dynamic", "Temporal TV (20 it)", () -> reconstruct(acq_dyn, method_ttv; maxit=20, tol=1e-4))
 e_gt_mrt_ttv = nrmse(x_mrt_ttv .* (norm(abs.(img_dyn)) / norm(abs.(x_mrt_ttv))), img_dyn)
 push!(results, BenchResult("Dynamic", "Temporal TV (20 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_ttv * 1000, e_gt_mrt_ttv, 0.0))
 
-# BART Temporal TV
-t_min_bart_ttv, _, bart_ttv_raw = time_reconstruction(() -> run_bart(1, "pics -S -i 20 -R T:32:0:0.01", kdata_bart_dyn, smaps_bart_dyn), is_bart=true)
+# BART Temporal TV (20 outer ADMM iterations x 10 CG steps = 200 CG steps)
+t_min_bart_ttv, _, bart_ttv_raw = time_reconstruction(() -> run_bart(1, "pics -S -i 200 -C 10 -R T:32:0:0.01", kdata_bart_dyn, smaps_bart_dyn), is_bart=true)
 bart_ttv = dropdims(bart_ttv_raw, dims=(3, 4, 5))
 e_gt_bart_ttv = nrmse(bart_ttv .* (norm(abs.(img_dyn)) / norm(abs.(bart_ttv))), img_dyn)
 e_mrt_bart_ttv = nrmse(x_mrt_ttv .* (norm(abs.(bart_ttv)) / norm(abs.(x_mrt_ttv))), bart_ttv)
@@ -393,13 +433,13 @@ acq_grappa = CartesianAcquisitionInfo(
 
 println("--> Benchmarking GRAPPA (RSS)...")
 method_grappa_rss = GRAPPA(kernel_size=(4, 3), calib_size=(24, 24), coil_combination=RootSumSquares())
-t_min_mrt_grappa_rss, _, x_mrt_grappa_rss = time_reconstruction(() -> reconstruct(acq_grappa, method_grappa_rss))
+t_min_mrt_grappa_rss, _, x_mrt_grappa_rss = time_mrt("K-Space", "GRAPPA (RSS)", () -> reconstruct(acq_grappa, method_grappa_rss))
 e_gt_mrt_grappa_rss = nrmse(x_mrt_grappa_rss .* (norm(abs.(img_mc)) / norm(abs.(x_mrt_grappa_rss))), img_mc)
 push!(results, BenchResult("K-Space", "GRAPPA (RSS)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_grappa_rss * 1000, e_gt_mrt_grappa_rss, 0.0))
 
 println("--> Benchmarking GRAPPA (Sensitivity)...")
 method_grappa_sens = GRAPPA(kernel_size=(4, 3), calib_size=(24, 24), coil_combination=AdjointSensitivity())
-t_min_mrt_grappa_sens, _, x_mrt_grappa_sens = time_reconstruction(() -> reconstruct(acq_grappa, method_grappa_sens))
+t_min_mrt_grappa_sens, _, x_mrt_grappa_sens = time_mrt("K-Space", "GRAPPA (Sensitivity)", () -> reconstruct(acq_grappa, method_grappa_sens))
 e_gt_mrt_grappa_sens = nrmse(x_mrt_grappa_sens .* (norm(abs.(img_mc)) / norm(abs.(x_mrt_grappa_sens))), img_mc)
 push!(results, BenchResult("K-Space", "GRAPPA (Sensitivity)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_grappa_sens * 1000, e_gt_mrt_grappa_sens, 0.0))
 

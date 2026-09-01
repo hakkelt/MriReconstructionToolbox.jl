@@ -7,7 +7,9 @@ include("bart_bridge.jl")
 include("sigpy_bridge.jl")
 include("matlab_bridge.jl")
 include("mirt_bridge.jl")
-include("phantoms.jl")
+# Phantom generators live in benchmarking/ (single source of truth: the MRT baseline the
+# comparison suite diffs against is measured there on exactly these phantoms).
+include(joinpath(@__DIR__, "..", "..", "benchmarking", "src", "Phantoms.jl"))
 
 using .BARTBridge
 using .SigPyBridge
