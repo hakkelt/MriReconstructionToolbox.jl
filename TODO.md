@@ -15,6 +15,354 @@ sequenced.
 
 ---
 
+## Performance & Threading Findings (Multi-Toolbox Benchmarks)
+
+Measured on the cluster `test` node (`x1001c4s3b0n1`, dual AMD EPYC 7352, 128x128 8-coil brain datasets). Raw results saved in:
+- `comparison/results/benchmark_openblas_1threads.json`
+- `comparison/results/benchmark_openblas_8threads.json`
+- `comparison/results/benchmark_mkl_1threads.json`
+- `comparison/results/benchmark_mkl_8threads.json`
+
+| Method | Framework | 1T OpenBLAS | 1T Intel MKL | 8T OpenBLAS | 8T Intel MKL | NRMSE (GT) |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **1-Coil Adjoint** | **MRT** / SigPy / BART | **0.10 ms** / 0.63 / 3.89 | **0.10 ms** / 0.46 / 2.95 | **0.32 ms** / 0.62 / 6.15 | **0.32 ms** / 0.48 / 5.61 | `1.70e-07` |
+| **Cartesian MC Adjoint** | **MRT** / SigPy / BART | **1.32 ms** / 2.90 / 10.71 | **1.31 ms** / 2.87 / 9.67 | **1.43 ms** / 2.98 / 19.73 | **1.54 ms** / 3.00 / 19.04 | `6.34e-09` |
+| **DCF Adjoint (Gridding)**| **MRT** / MRIReco | **26.25 ms** / 27.71 | **24.37 ms** / 32.24 | **7.10 ms** / 35.06 | **23.96 ms** / 31.46 | `8.52%` |
+| **CG-SENSE (10 it)** | **MRT** / SigPy / BART | **34.24 ms** / 69.60 / 322.33 | **37.64 ms** / 68.75 / 320.47 | 430.37 ms / **67.21** / 624.66 | 350.71 ms / **101.84** / 628.65 | `6.34e-09` |
+| **Total Variation (30 it)**| **MRT** / BART | **1,086 ms** / 3,835 | **1,108 ms** / 3,800 | 17,090 ms / **2,795** | 27,821 ms / **2,795** | `1.16%` |
+| **L1-Wavelet (30 it)** | **MRT** / BART | **218.9 ms** / 446.1 | **217.5 ms** / 444.0 | **498.2 ms** / 1,332 | **490.2 ms** / 1,318 | `0.838%` |
+| **TGV (30 it)** | **MRT** / BART | **1,634 ms** / 4,901 | **1,707 ms** / 4,877 | **2,584 ms** / 4,455 | 9,671 ms / **4,313** | `0.967%` |
+| **Locally Low-Rank (20 it)**| **MRT** / BART | **214.3 ms** / 281.3 | **217.4 ms** / 296.8 | **194.4 ms** / 476.3 | **169.1 ms** / 483.9 | `11.1%` |
+| **Temporal TV (20 it)** | **MRT** / BART | **924.5 ms** / 2,524 | **929.7 ms** / 2,521 | **1,280 ms** / 1,863 | **1,400 ms** / 1,854 | `8.78%` |
+| **GRAPPA (RSS)** | **MRT** | **15.15 ms** | **17.91 ms** | 46.99 ms | **22.35 ms** | `2.12%` |
+
+### 1. ADMM CG-operator rebuild, and the 54M-allocation figure
+
+- **Not a slowdown driver — re-measured 2026-09-01.** A 30-outer-iteration TV solve on the
+  benchmark problem (128²×8, 2× undersampled) allocates ~267 MiB across **67k–129k** allocations
+  total, and the count and bytes are *the same* with `threaded = true` and `threaded = false`.
+  The "54.38 million allocations / 3.43 GiB" figure is not reproducible here; it must have come
+  from a different (much larger, or component-path) problem or a misread. Whatever it was, it is
+  not what makes 8 threads lose to 1 — see finding 2, which is.
+
+- **Original diagnosis (wrong)**: the entry previously blamed "evaluating operator sums with `+`
+  allocating intermediate heap buffers on every CG step", with the remedy "add
+  `Sum(..., in_place=true)` / pre-allocated evaluation workspaces". That infrastructure already
+  exists (`Sum` carries `bufC`/`bufD`; `Compose` carries `mid`; the CG inner loop in `cg.jl` is
+  pure `mul!`/`axpy!`/`dot`), so the remedy would have been a no-op.
+
+- **`admm.jl` CG-operator handling — fixed 2026-09-01 in the fork.** The old code:
+  ```julia
+  if rho_changed
+      cg_operator = (iter.A' * iter.A) + sum(rho[i] * (iter.B[i]' * iter.B[i]) for i in …)
+  else
+      cg_operator = state.cg_operator      # never written since construction
+  end
+  ```
+  rebuilt the operator on every ρ change but never stored it, so once ρ stabilised CG silently
+  reverted to the initial ρ and solved the wrong system for the rest of the run. A naive
+  write-back throws `MethodError: Cannot convert` — the field is concretely typed and the
+  type-unstable `sum(generator)` rebuild has a different `Sum{…}` type.
+
+  Fix: new `struct ADMMNormalOp` (in `admm.jl`) implementing `AᴴA + ∑ᵢ ρᵢ BᵢᴴBᵢ` as a single
+  `mul!` that holds the fixed `AᴴA` / `BᴴB[i]` operators and reads `ρ` **live** from
+  `iter.penalty_sequence.rho` (every `PenaltySequence` mutates that vector in place, never
+  reassigns). Built once in `ADMMState`, never rebuilt — the `if rho_changed` branch is gone.
+  One x-shaped scratch buffer for the `BᴴB` accumulation. Validated: full MRT reconstruction +
+  regularization + integration + JET suites green; `recon_bench.jl` TV/TGV (adaptive
+  `SpectralRadiusApproximationPenalty`, ρ moving each iteration) converge to the expected NRMSE.
+
+
+### 2. Intra-Slice Threading vs. Batch Decomposition Scaling
+- **Observation**: For single 2D slices ($N \le 256$, $\le 1\text{ MB}$ memory footprint), single-threaded execution (`threaded = false`) is **10x–25x faster** than multi-threading across 8 cores.
+- **Mechanism**:
+  1. A $128\times 128$ slice fits completely in L2 CPU cache ($256\text{ KB}$). Single-threaded execution runs at full cache clock speed with zero memory bus traffic.
+  2. Multi-threading a small 2D array partitions $\approx 16\text{ KB}$ per thread, causing inter-core cache line false sharing and POSIX/Polyester barrier synchronization latency ($100+\ \mu\text{s}$) that dwarfs the arithmetic compute time of individual operations (e.g. $15\ \mu\text{s}$ FFT).
+- **Architecture**: Multi-threading in MRI reconstruction is fundamentally designed for **outer batch/slice decomposition** (`ProblemDecompositionPlan` / `execute_regularized`), where each physical core processes an independent 2D slice serially out of its local L1/L2 cache without thread synchronization. Intra-slice operator multi-threading should be reserved for large 3D/4D volumes ($N \ge 512$ or 3D cubes).
+
+- **Status: partially addressed.** The mechanism above is correct, but the entry recorded no fix,
+  and the supporting machinery is further along than it suggests:
+  - The nesting contract already exists.
+    `deps/AbstractOperators/src/threading_policy.jl` documents `threaded = false` as a hard veto
+    precisely so "a threaded batch/block loop switches its children off with `threaded = false`
+    and must be able to rely on that". Outer batch decomposition + `threaded = false` operators is
+    therefore the *supported* path, not something still to be designed.
+  - Size gating exists, but only for FFTW.
+    `_fftw_num_threads(kind, num_threads, threaded, length(x))` consults
+    `fftw_threading_threshold(kind)`, so `DFT` already declines to thread small transforms.
+    Passing `threaded` straight through in `get_fourier_operator`
+    (`src/encoding/fourier_operators.jl`) instead of the old
+    `num_threads = threaded ? nthreads() : 1` is what lets that heuristic run — keep that change.
+    (The `AGENTS.md` "DFT accepts `num_threads`, not `threaded`" gotcha is stale; `DFT` accepts
+    both, and `num_threads` wins when both are given.)
+- **This is the dominant cause of the 8T regressions. Profiled 2026-09-01.** The benchmark TV
+  solve, `threaded=true` vs `threaded=false`: ~1.4x slower on a `-t 4` login session, 1.24x on
+  the clean `-t 8` `test` node. No *single* threaded layer is the culprit — the pin-the-whole-
+  -solve fix is right because you have to turn all of it off at once:
+
+  | what was varied (128²×8 TV, `-t 4`, threaded reconstruct vs serial) | ratio vs serial |
+  |---|---|
+  | everything threaded (FFT + Polyester + BLAS 4)                      | 1.39x |
+  | BLAS forced to 1, FFT + Polyester still threaded                    | 1.42x  (BLAS ≈ noise here) |
+  | BLAS 1 **and** Polyester disabled, FFT still threaded               | 1.64x  (Polyester was *helping*) |
+  | isolated encoding normal-op `mul!` loop, FFT-threaded vs FFT-serial | 0.87x  (FFT threading ≈ neutral) |
+
+  So: Polyester threading of the gradient/prox stencils is a net *win* (`disable_polyester_threads`
+  over the whole case made it slower, 2.09 s vs 1.81 s). FFT plan threading is roughly neutral at
+  this size. BLAS-1-vs-4 barely moves a 9k-element level-1 CG loop. What remains — the ~40% loss —
+  is the **accumulated fork/join + NestedThreading budget enter/exit + `@spawn` overhead of a few
+  hundred small threaded operations per solve**, where each op's own parallel speedup does not
+  cover its coordination cost. An earlier note here blamed "Polyester workers spinning and
+  contending with FFTW"; the `disable_polyester_threads` test refutes that — retracted.
+
+- **Applied 2026-09-01:**
+  - `src/utils.jl` — `maybe_disable_undecomposed_threading(config, method, acq_data)`: when the
+    reconstruction has no batch dimension to decompose over and the variable is under
+    `SERIAL_BLAS_THRESHOLD_BYTES`, force `threaded = false` for the whole reconstruction. A lone
+    small 2-D problem has nothing to parallelise across and every threaded library underneath it
+    is pure overhead. Large single volumes are untouched.
+  - `src/reconstruction/reconstruct.jl` — both `isnothing(decomposition_plan)` branches (plain
+    and component) call it before `@conditionally_enable_threading`.
+  - `src/reconstruction/solve_core.jl` — the non-`uses_blas3` solve now runs inside
+    `with_restricted_threads()` (BLAS **and** FFTW **and** Polyester → 1) rather than just
+    `with_serial_blas`, when the work item is under the threshold. This also covers the decomposed
+    sequential-executor path, which `maybe_disable_undecomposed_threading` does not reach.
+
+  **Confirmed on the clean `test` node (SLURM, `--exclusive`), OpenBLAS 8T ÷ 1T:** CG-SENSE
+  1.00x (was ~11x worse), TV 0.81x (was ~16x), TGV 0.94x, L1-Wav 0.87x, LR 0.88x, LLR 0.91x,
+  tTV 0.88x. NRMSE unchanged everywhere. MKL matches. The collapses are gone.
+
+- **The ~10-25% that remains at 8T is not the recon math — it is the cost of the `-t 8`
+  process itself running a ~1 s allocation-heavy *serial* job.** The gate makes every FFT /
+  gradient / CG step single-threaded; measured breakdown (gated-serial TV recon, `-t 1` vs `-t 8`):
+  - **GC**: ~10 ms at `-t 1` → ~35-46 ms at `-t 8`, *independent of `--gcthreads`* (tested
+    `--gcthreads=1`, no change). 8 mutator threads = more thread-local arenas/stacks to scan per
+    collection, and the ADMM/prox path allocates ~200-760 MiB per solve. ≈ +2-3%.
+  - **`pinthreads` + exclusive dual-socket node** widens it: on the login node (`taskset`, no
+    pin) `-t 8` gated-serial is only +4% vs `-t 1`; on the SLURM node it is +22%. The 8 pinned
+    Julia threads (+ 8 GC threads) share 8 cores while `jl_effective_threads`-derived BLAS
+    default (32) also targets them between solves; plus NUMA first-touch.
+  - **Scope machinery**: `with_restricted_threads()` + the PolyesterWeave guard wrap every gated
+    solve — budget enter/exit + Polyester disable/restore, cheap at `-t 1`, more coordination at
+    `-t 8`.
+
+- **Still open:**
+  0. Close the residual 8T gap: (a) cut the ADMM/prox per-solve allocation (200+ MiB is high —
+     buffer reuse in the prox scratch, `TODO §5`); (b) for a gated solve, skip the
+     `with_restricted_threads` / Polyester-guard wrapper entirely and run raw serial (the guard
+     only needs to *narrow*, and at `threaded=false` there is nothing to narrow); (c) consider
+     `--gcthreads` guidance in the perf docs (it doesn't help here but a smaller heap might).
+  1. `maybe_disable_undecomposed_threading` gates on total variable bytes, not on FFT-transform
+     size or SVD-block size. A large low-rank problem with tiny per-block SVDs would still be
+     threaded (harmlessly — the outer FFTs benefit); a medium problem near the 16 MiB line is the
+     ambiguous case. The threshold is the same one-node-fitted number as `SERIAL_BLAS_THRESHOLD_BYTES`.
+  2. Per-operator size vetoes in `DSPOperators` / `WaveletOperators` / the sensitivity `DiagOp`
+     are still absent; only FFTW has one. Less urgent now that the whole small solve goes serial,
+     but relevant for the large-volume path where some operators are still below their own
+     threshold.
+  3. The decomposed **sequential-executor** path (few slices, `length(plan) ≤ nthreads()`) still
+     opens `with_full_threads()` around the slice loop via `@conditionally_enable_threading`. The
+     inner `with_restricted_threads` in `solve_core` covers the solve, but the per-slice operator
+     build / adjoint / opnorm still run threaded. Size-gate `slice_threaded` in `run_slices!` /
+     `execute_two_phase` the same way.
+
+### Problem-decomposition threading audit (2026-09-01)
+
+Does decomposition disable threading *within* each slice reconstruction? **Mostly, with one gap.**
+
+| path | `slice_threaded` | correct? |
+|---|---|---|
+| `MultiThreadingExecutor` (`length(plan) > nthreads()`) | `false`, hard-coded (`decomposition.jl:105,193`) | yes — slices run serial, `@budgeted_threads` parallelises the slice loop |
+| `SequentialExecutor` (few slices) | `config.threaded` (true) + `@conditionally_enable_threading` opens all pools | **the gap** — a small few-slice problem threads every library on a small work item |
+| no decomposition (no batch dims) | was `config.threaded`; now gated by `maybe_disable_undecomposed_threading` | fixed for small problems |
+
+The `MultiThreadingExecutor` design is sound. The two other paths were the leak; the
+no-decomposition one (which is what the TV/TGV/L1-Wavelet benchmarks hit — 128²×8, no
+coil/time/slice loop) is now fixed, the sequential-executor one is item 3 above.
+
+### 3. Threaded BLAS on the iterative path (was: "Intel MKL OpenMP Thread Thrashing")
+
+**Resolved.** The entry framed this as an MKL problem; it is not. Measurements below.
+
+#### Benchmark
+
+Synthetic reproducer of the ADMM/CG inner loop: 32 slabs of 128×128×8 `ComplexF32`, each
+solved serially inside a Julia-level `@threads` loop, 300 iterations alternating small BLAS-1
+calls (`dot` / `axpy!` / `norm`, exactly what `cg.jl` does) with non-BLAS work (FFTs,
+broadcasts). 8 Julia threads pinned to 8 cores, FFTW at 1 thread. Best of 3.
+
+| backend  | Julia threads | BLAS threads | `KMP_BLOCKTIME` | wall | cpu/wall |
+|----------|---------------|--------------|-----------------|------|----------|
+| OpenBLAS | 8 | 8 | n/a          | 15.66 s | 7.62 |
+| OpenBLAS | 8 | 1 | n/a          | **2.83 s** | 6.25 |
+| MKL      | 8 | 8 | default      | 16.10 s | 7.59 |
+| MKL      | 8 | 8 | `0`, set pre-launch | 3.77 s | 5.65 |
+| MKL      | 8 | 8 | `0`, set in Julia before `using MKL` | 6.07 s | 3.88 |
+| MKL      | 8 | 8 | `kmp_set_blocktime(0)` at runtime | 16.17 s | 7.62 |
+| MKL      | 8 | 1 | default      | **2.87 s** | 6.60 |
+| MKL      | 1 | 8 | default      | 21.18 s | 7.57 |
+| OpenBLAS | 1 | 8 | n/a          | 22.52 s | 7.45 |
+
+#### What the numbers say
+
+1. **Not MKL-specific.** OpenBLAS at 8 BLAS threads (15.66 s) is as bad as MKL (16.10 s), and
+   at 1 BLAS thread the two are within noise (2.83 s / 2.87 s). The original table's "MKL is
+   slower than OpenBLAS at 8T" is a second-order difference on top of a much larger effect
+   that both backends share.
+2. **Not oversubscription.** With a *single* Julia thread and no nesting at all, 8 BLAS threads
+   still costs 21.18 s against ~2.8 s serial. Threaded BLAS is the wrong tool for level-1 calls
+   at *this* size: the fork/join barrier per `dot` / `axpy!` / `norm` dwarfs the arithmetic.
+   This is the same mechanism as finding 2, one layer down — **and, like finding 2, it is a
+   size effect, not an absolute.** See the size sweep below.
+3. **`KMP_BLOCKTIME` is real but secondary.** It is worth 16.1 s → 3.8 s for MKL at 8 BLAS
+   threads, but serial BLAS (2.9 s) beats it, and once BLAS is serial the blocktime setting no
+   longer matters.
+4. **The blocktime knob only works before `libiomp5` loads.** It reads the variable once, at
+   load, and never again. Setting it pre-launch: 3.77 s. Setting it from Julia before
+   `using MKL`: 6.07 s. Setting it after MKL is loaded, or calling
+   `ccall((:kmp_set_blocktime, "libiomp5.so"), Cvoid, (Cint,), 0)` — which resolves and
+   returns cleanly — has **no effect at all**: 16.17 s. (`libmkl_rt` does not export the symbol.)
+
+#### Size sweep: where "serial BLAS wins" stops being true
+
+The table above is one problem size. Sweeping it (MKL, 8 Julia threads on 8 cores, `ComplexF32`;
+"wide" = enough slabs to saturate the cores, "narrow" = a single slab):
+
+| work item        | batch  | BLAS=1  | BLAS=8  |                    |
+|------------------|--------|---------|---------|--------------------|
+| 128²×8  (1 MiB)  | wide   |  2.73 s | 14.91 s | serial 5.5x        |
+| 256²×8  (4 MiB)  | wide   | 14.80 s | 64.76 s | serial 4.4x        |
+| 512²×8  (16 MiB) | wide   | 21.29 s | 26.35 s | serial 1.24x       |
+| 128²×8  (1 MiB)  | narrow |  0.51 s |  0.71 s | serial 1.4x        |
+| 256²×8  (4 MiB)  | narrow |  6.81 s |  7.02 s | serial 1.03x       |
+| 512²×8  (16 MiB) | narrow | 21.21 s | 19.78 s | **threaded 1.07x** |
+| 512²×32 (64 MiB) | narrow | 43.94 s | 38.35 s | **threaded 1.15x** |
+
+And over a BLAS-3 (SVD) workload, of the kind the locally-low-rank / multi-scale low-rank prox
+steps run — where the inversion is far sharper:
+
+| block     | batch  | BLAS=1  | BLAS=8  |                    |
+|-----------|--------|---------|---------|--------------------|
+| 256×64    | wide   |  2.95 s |  3.98 s | serial 1.35x       |
+| 1024×256  | wide   |  7.45 s | 25.28 s | serial 3.4x        |
+| 2048×512  | narrow |  4.87 s |  2.20 s | **threaded 2.2x**  |
+| 4096×1024 | narrow | 18.51 s |  5.22 s | **threaded 3.5x**  |
+
+Reading:
+
+- **With batch width, serial BLAS wins at every size tested**, BLAS-1 and BLAS-3 alike. The
+  outer loop is already using the machine; BLAS's barriers are pure overhead. The margin
+  narrows with size (5.5x → 1.24x) but never inverts.
+- **Without batch width, serial BLAS runs one core out of eight** — `cpu/wall = 0.99` on those
+  rows — and past roughly 16 MiB per item that idle capacity is worth more than the barriers
+  cost. For BLAS-3 it is worth a great deal more.
+- So the governing variable is *bytes per work item*, gated by whether the batch already
+  saturates the cores. An unconditional serial-BLAS scope would be a 3.5x regression on a large
+  single-volume low-rank reconstruction, which is a real workload here.
+
+#### Why the previously applied fix did nothing
+
+- `ext/MriReconstructionToolboxMKLExt.jl` **never loaded**: the `[weakdeps]` entry in
+  `Project.toml` carried the UUID `33e6dc65-8f57-5167-9d61-e5704d37f427`, which is not MKL.jl
+  (`33e6dc65-8f57-5167-99aa-e5a354878fb2`). Fixed.
+- Even once loaded, its `ENV["KMP_BLOCKTIME"] = "0"` could not work: an extension *of MKL* runs
+  after MKL, hence after `libiomp5`, is loaded. Per (4), that is too late.
+- Its `mkl_set_dynamic(0)` `ccall` had the right ABI (lowercase MKL symbols take the argument by
+  pointer) but **zero measured effect** on throughput — 3000³ gemm 0.242 s vs 0.236 s, 16 MiB
+  axpy 0.506 s vs 0.554 s, both noise. Removed.
+- The root cause — MRT's own thread budget on the iterative path — was not addressed at all.
+
+#### Applied
+
+- `Project.toml` — corrected the MKL weakdep UUID (was `…9d61-e5704d37f427`, not MKL.jl) and the
+  compat (`MKL = "0.6, 0.7"` was unsatisfiable against NestedThreading's 0.9.1 → `"0.6 - 0.9"`),
+  so the extension finally loads. Verified.
+- `src/utils.jl` — `with_serial_blas(f)` / `with_serial_blas(f, x)` (pin BLAS to one thread,
+  size-gated on `SERIAL_BLAS_THRESHOLD_BYTES`), and `maybe_disable_undecomposed_threading` (see
+  finding 2 — force `threaded = false` for a small problem with no batch dimension).
+- `src/reconstruction/solve_core.jl` — the non-`uses_blas3` solve runs inside
+  `with_restricted_threads()` (BLAS + FFTW + Polyester → 1) when the work item is small, else
+  `with_serial_blas`. Backend-agnostic, no environment setup.
+- `src/reconstruction/reconstruct.jl` — both no-decomposition branches call
+  `maybe_disable_undecomposed_threading` before opening thread pools.
+- `src/regularization/*` — `uses_blas3` trait (`LowRank` / `LocallyLowRank` / `MultiScaleLowRank`
+  → `true`) so their SVD-bound solves keep threaded BLAS.
+- `ext/MriReconstructionToolboxMKLExt.jl` — reduced to a single `@warn` (`maxlog = 1`) when MKL
+  is loaded without `KMP_BLOCKTIME=0`. It cannot fix the variable (libiomp5 reads it once, at
+  load, before any Julia runs), so telling the user is all it can do.
+- `src/MriReconstructionToolbox.jl` — the `__init__` that tried `get!(ENV, "KMP_BLOCKTIME", "0")`
+  was **removed**: assigning `ENV` from `__init__` is still after `libiomp5` loads in the
+  `using MKL; using MriReconstructionToolbox` order, so it never won the race. The doc page and
+  the extension warning carry this instead.
+- `@conditionally_enable_threading` left as-is (the `exclude = (:blas, :mkl)` it wants is not
+  expressible — see the NestedThreading item below); the inner scopes cover it.
+- `benchmarking/` — new folder: MRT-only perf harness (`recon_bench.jl`, `threading_sweep.jl`,
+  `probe.jl`, `run_slurm.sh`) moved out of `/scratch`. `comparison/scripts/run_benchmarks.jl`
+  reads `benchmarking/results/mrt_<backend>_<n>threads.json` as the MRT baseline column when
+  present. `phantoms.jl` moved to `benchmarking/src/Phantoms.jl` (single source of truth).
+
+Note that `LinearAlgebra.__init__` derives its default BLAS budget from `jl_effective_threads()`
+— under SLURM this comes out exactly `--cpus-per-task`; under a bare `taskset` window on the
+login node it is `n_allowed ÷ 2`. Never from `-t`. That is why this had to be an explicit scope
+rather than something `threaded = false` could imply.
+
+#### Upstream: `NestedThreading.exclude` is a silent no-op for counted pools
+
+Found while trying to express the fix in the existing API. `exclude` is consulted **only** in
+`NestedThreading._run_guarded`, which iterates `GUARDED_POOLS`. Counted pools are applied by
+`_enter!` → `_apply!`, neither of which takes an `exclude` argument. Of the registered pools,
+`:blas`, `:mkl`, `:fftw` and `:nfft` are all *counted*; `:polyester` is the only *guarded* one.
+So `exclude` can only ever name `:polyester` — which is the single use in the package
+(`@budgeted_batch`) and why this has gone unnoticed. Unknown names are accepted without error.
+
+Measured, `-t 8`, after `BLAS.set_num_threads(2)`:
+
+```
+outside                                   = 2
+with_full_threads()                       = 8
+with_full_threads(exclude=(:blas,:mkl))   = 8   # silently ignored
+with_restricted_threads(exclude=(:blas,)) = 1   # silently ignored
+with_full_threads(exclude=(:nonsense,))         # accepted, no error
+```
+
+Two things worth upstreaming to `NestedThreading`:
+
+1. **Bug**: either honour `exclude` in `_apply!` for counted pools, or validate the names and
+   throw on one that cannot be excluded. Silently accepting a knob that does nothing is the
+   worst of the three.
+2. **Missing API**: an allowlist — `with_thread_budget(f, n; only = (:blas, :mkl))` — so
+   "restrict exactly these pools, leave the rest alone" is expressible. A denylist cannot say
+   it without enumerating every other pool, which then breaks whenever a new one registers.
+   `with_serial_blas` in `src/utils.jl` is exactly `with_restricted_threads(only = (:blas, :mkl))`
+   and is general enough to belong there rather than here: any library doing Julia-level
+   parallelism over small work items with BLAS-1 inside (Krylov solvers, ODE solvers, proximal
+   algorithms) hits the same wall, especially since `LinearAlgebra`'s default budget follows CPU
+   affinity rather than `-t`. NestedThreading already documents that trap in
+   `_with_blas_threading`'s notes but offers no primitive to act on it selectively.
+
+#### Not done
+
+- The benchmark above is the synthetic reproducer, not the real recon. Re-run
+  `comparison/scripts/run_benchmarks.jl` at 8 threads on both backends and refresh the table at
+  the top of this section; the 8T columns for TV/TGV/CG-SENSE are the ones expected to move.
+- `SERIAL_BLAS_THRESHOLD_BYTES` is one number fitted to one node (dual EPYC 7352, 8 cores
+  visible, MKL). The crossover is a memory-bandwidth-per-core property, so it will move on
+  other hardware and with core count. It is also measured on the synthetic reproducer, not on
+  a real solve. Treat 16 MiB as a starting point, not a constant — and note the sweep only
+  brackets it between 4 MiB (serial still wins) and 16 MiB (threaded wins by 7%), so the true
+  crossover is somewhere in that octave.
+- The gate keys on the *work item*, not on batch width, because `_iterative_reconstruct_core`
+  does not know how many slabs are in flight. For the multi-threaded executor that is already
+  handled — `@budgeted_threads` gives each task `capacity ÷ ntasks` — so the gate only really
+  decides the sequential-executor case, where batch width is 1 by construction. If the two ever
+  disagree (a wide batch of large slabs), the budget wins, which is the conservative direction.
+- Core partitioning between backends (as in `radial_recon/notebooks/profile.jl`,
+  `openblas_pinthreads(cpuids[end÷2+1:end])`) is **not** needed here and was not adopted: MKL.jl
+  replaces OpenBLAS through libblastrampoline rather than running alongside it, so there is only
+  ever one pool to size.
+
+---
+
 ## Out of Scope
 
 ### 5. Per-iteration allocation in the new prox implementations
