@@ -112,9 +112,8 @@ function get_fourier_operator(
         fast_planning::Bool = false,
     )
     flags = fast_planning ? FFTW.ESTIMATE : FFTW.MEASURE
-    num_threads = threaded ? nthreads() : 1
     ksp_dims = is3D ? (1, 2, 3) : (1, 2)
-    ℱ = DFT(ksp, ksp_dims; normalization = FFTWOperators.BACKWARD, flags, num_threads)
+    ℱ = DFT(ksp, ksp_dims; normalization = FFTWOperators.BACKWARD, flags, threaded)
     shifted_kspace_dims = _normalize_shifted_dims(
         shifted_kspace_dims, is3D, ksp, "shifted_kspace_dims", (:kx, :ky, :kz)
     )

@@ -111,3 +111,6 @@ scale_regularization(reg::RankLimit, factor::Real) = reg
 
 bind_dimensions(reg::LowRank, image_dims) = LowRank(reg.λ; time_dim = get_time_dim(reg.time_dim, image_dims))
 bind_dimensions(reg::RankLimit, image_dims) = RankLimit(reg.max_rank; time_dim = get_time_dim(reg.time_dim, image_dims))
+
+# Prox is an SVD soft-threshold: level-3 BLAS, worth threading. See `uses_blas3`.
+uses_blas3(::LowRank) = true
