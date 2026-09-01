@@ -3,3 +3,4 @@ docs/build
 Manifest.toml
 .serena/
 *slurm*
+benchmarking/results/*.json

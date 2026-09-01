@@ -1,0 +1,15 @@
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
+GeometricMedicalPhantoms = "c297bd51-60f5-42e7-80e4-f985777cb71a"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MKL = "33e6dc65-8f57-5167-99aa-e5a354878fb2"
+MriReconstructionToolbox = "5999b5f3-4ffc-4695-817d-461c6e99e3c0"
+NamedDims = "356022a1-0364-5f58-8944-0da4b18d706f"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+ThreadPinning = "811555cd-349b-4f26-b7bc-1f208b848042"
+
+[sources]
+MriReconstructionToolbox = {path = ".."}
