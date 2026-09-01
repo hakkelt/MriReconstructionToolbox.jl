@@ -221,21 +221,52 @@ function get_cg_state(iter)
 	end
 end
 
-function get_cg_operator(iter)
-	# Build the CG operator for the x update
-	# If A is not provided, we assume a simple identity operator
-	# cg_operator = A'*A + sum(rho[i] * (B[i]' * B[i]) for i in eachindex(g))
-	rho = iter.penalty_sequence.rho
-	cg_operator = isnothing(iter.A) ? nothing : iter.A' * iter.A
-	for i in eachindex(iter.g)
-		new_op = rho[i] * (iter.B[i]' * iter.B[i])
-		if isnothing(cg_operator)
-			cg_operator = new_op
-		else
-			cg_operator += new_op
-		end
+"""
+	ADMMNormalOp(AᴴA, BᴴB, rho, tmp, sz)
+
+The x-update system operator `AᴴA + ∑ᵢ ρᵢ BᵢᴴBᵢ`, built once and reused for the whole solve.
+
+`AᴴA` (`nothing` when `A` is not given) and each `BᴴB[i] = Bᵢ'Bᵢ` are fixed operators; the
+penalty weights `ρᵢ` are read *live* from `rho`, which aliases `iter.penalty_sequence.rho`
+(every `PenaltySequence` mutates that vector in place, never reassigns it). So an adaptive
+penalty sequence changes `ρ` with no operator rebuild and nothing to write back — which is what
+the previous `if rho_changed … rebuild …` branch got wrong (it never stored the rebuilt
+operator, so once `ρ` stabilised CG silently reverted to the initial `ρ`).
+
+`tmp` is one x-shaped scratch buffer for accumulating the `BᵢᴴBᵢ` contributions.
+"""
+struct ADMMNormalOp{TAHA, TBHB <: Tuple, TR, TT}
+	AᴴA::TAHA
+	BᴴB::TBHB
+	rho::TR
+	tmp::TT
+	sz::Tuple{Int, Int}
+end
+
+function LinearAlgebra.mul!(y, op::ADMMNormalOp, x)
+	if isnothing(op.AᴴA)
+		fill!(y, zero(eltype(y)))
+	else
+		mul!(y, op.AᴴA, x)
 	end
-	return cg_operator
+	for i in eachindex(op.BᴴB)
+		mul!(op.tmp, op.BᴴB[i], x)
+		@. y += op.rho[i] * op.tmp
+	end
+	return y
+end
+
+Base.size(op::ADMMNormalOp) = op.sz
+Base.size(op::ADMMNormalOp, i::Integer) = op.sz[i]
+Base.eltype(op::ADMMNormalOp) = eltype(op.tmp)
+Base.:*(op::ADMMNormalOp, x) = mul!(similar(op.tmp), op, x)
+
+function get_cg_operator(iter)
+	# x-update system: AᴴA + ∑ᵢ ρᵢ BᵢᴴBᵢ. Built once; ρ is followed live. See `ADMMNormalOp`.
+	AᴴA = isnothing(iter.A) ? nothing : iter.A' * iter.A
+	BᴴB = ntuple(i -> iter.B[i]' * iter.B[i], length(iter.g))
+	n = length(iter.x0)
+	return ADMMNormalOp(AᴴA, BᴴB, iter.penalty_sequence.rho, similar(iter.x0), (n, n))
 end
 
 function ADMMState(iter::ADMMIteration{R,Tx}) where {R,Tx}
@@ -326,8 +357,10 @@ formulas.
 The function returns the updated state, allowing the ADMM algorithm to proceed iteratively until convergence.
 """
 function Base.iterate(iter::ADMMIteration, state=ADMMState(iter))
-	# Get current rho values
-	rho, rho_changed = get_next_rho!(iter.penalty_sequence, iter, state)
+	# Get current rho values. `rho` aliases `iter.penalty_sequence.rho` and is mutated in place,
+	# so `state.cg_operator` (an `ADMMNormalOp` holding that same vector) always sees the current
+	# weights — nothing to rebuild.
+	rho, _ = get_next_rho!(iter.penalty_sequence, iter, state)
 
 	# Swap z and z_old at start of iteration
 	state.z, state.z_old = state.z_old, state.z
@@ -349,18 +382,11 @@ function Base.iterate(iter::ADMMIteration, state=ADMMState(iter))
 		rhs .+= rho[i] .* state.tempˣ[i]
 	end
 
-	# The CG operator is defined as:
-	# AᴴA + ∑ᵢ ρᵢ BᵢᴴBᵢ
-	# For adaptive penalty sequences, we need to reconstruct the operator with new rho values
-	if rho_changed
-		new_terms = sum(rho[i] * (iter.B[i]' * iter.B[i]) for i in eachindex(iter.g))
-		cg_operator = isnothing(iter.A) ? new_terms : (iter.A' * iter.A) + new_terms
-	else
-		cg_operator = state.cg_operator
-	end
+	# The CG operator AᴴA + ∑ᵢ ρᵢ BᵢᴴBᵢ follows ρ live (see `ADMMNormalOp`), so it is built once
+	# in `ADMMState` and never rebuilt here, even under an adaptive penalty sequence.
 	cg_solver = CG(;
 		x0=state.x,
-		A=cg_operator,
+		A=state.cg_operator,
 		b=rhs,
 		P=iter.P,
 		P_is_inverse=iter.P_is_inverse,
