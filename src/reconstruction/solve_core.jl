@@ -18,12 +18,16 @@ function _iterative_reconstruct_core(
             x₀_or_x₀s = _scale_x0(x₀_or_x₀s, scale)
         end
     end
-    if !method.disable_operator_normalization
+    should_norm = _should_normalize_operator(method)
+    if should_norm
         @step "Normalizing encoding operator" config begin
             𝒜 = normalize_op(𝒜, method.exact_opnorm)
         end
     end
-    @step "Building optimization model" config begin
+    # `@printing_step`, not `@step`: `@step`'s verbose path runs its body inside `@spawn`, so the
+    # `model` / `vars` bindings would live only in that task's closure — the solve closures below
+    # capture them, and neither inference (JET) nor a reader can then see they are defined.
+    @printing_step "Building optimization model" config begin
         model, vars, _auxiliaries = build(𝒜, acq_data.kspace_data; x₀ = x₀_or_x₀s)
     end
     @printing_step "Reconstructing image" config begin
@@ -43,12 +47,29 @@ function _iterative_reconstruct_core(
         # Lipschitz constant is n (not 1) when 𝒜 is normalized to unit norm, since
         # ‖[𝒜 … 𝒜]‖ = √n‖𝒜‖. When 𝒜 was left at its natural norm (disabled normalization), this
         # estimate no longer holds; let the algorithm derive its own instead of overriding it.
-        Lf = method.disable_operator_normalization ? nothing : _n_vars(vars)
+        Lf = should_norm ? _n_vars(vars) : nothing
         R_type = real(eltype(_first_x0(x₀_or_x₀s)))
         algorithm = patch_algorithm_with_default_values(method.algorithm, Lf; eltype_real = R_type)
         verbose = freq != -1
         try
-            solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
+            # For a small single-slab solve, threading every operator is a ~1.4x net loss: no one
+            # layer dominates (FFT-plan threading is ≈neutral at 128², a threaded BLAS-1 CG loop
+            # is ≈noise, Polyester on the gradient stencils actually helps a little) — it is the
+            # accumulated fork/join + budget-enter/exit + `@spawn` overhead of a few hundred small
+            # threaded ops per solve that adds up. So narrow *every* pool for the duration. A
+            # low-rank prox is the exception: its level-3 SVDs thread 3.2x-3.9x, so those solves
+            # keep the threaded budget. See `uses_blas3` / `with_serial_blas`.
+            if uses_blas3(method.regularization)
+                solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
+            elseif _work_item_bytes(_first_x0(x₀_or_x₀s)) < SERIAL_BLAS_THRESHOLD_BYTES
+                with_restricted_threads() do
+                    solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
+                end
+            else
+                with_serial_blas(_first_x0(x₀_or_x₀s)) do
+                    solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
+                end
+            end
         catch e
             if e isa ErrorException && occursin("cannot parse this problem for solver", e.msg)
                 reg_types = map(typeof, ensure_tuple(method.regularization))
@@ -101,4 +122,19 @@ function get_reasonable_freq(maxit)
     reasonable_freqs = [1, 5, 10, 20, 50, 100]
     freq_i = findfirst(x -> x >= maxit ÷ 20, reasonable_freqs)
     return isnothing(freq_i) ? 100 : reasonable_freqs[freq_i]
+end
+
+_is_krylov_solver(::ProximalAlgorithms.IterativeAlgorithm{<:Union{ProximalAlgorithms.CGIteration, ProximalAlgorithms.CGNRIteration}}) = true
+_is_krylov_solver(::Union{Type{<:ProximalAlgorithms.CGIteration}, Type{<:ProximalAlgorithms.CGNRIteration}}) = true
+_is_krylov_solver(algs::Tuple) = all(_is_krylov_solver, algs)
+_is_krylov_solver(::Any) = false
+
+function _should_normalize_operator(method::IterativeReconstruction)
+    if !isnothing(method.disable_operator_normalization)
+        return !method.disable_operator_normalization
+    end
+    # Smart auto-detection:
+    # Pure unregularized CG / CGNR solves do not need operator normalization because Krylov subspaces are scale invariant.
+    is_pure_cg = isempty(method.regularization) && _is_krylov_solver(method.algorithm)
+    return !is_pure_cg
 end

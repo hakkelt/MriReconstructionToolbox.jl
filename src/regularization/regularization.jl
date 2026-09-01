@@ -193,3 +193,32 @@ or `nothing` for inferred dimensions) resolved to 1-based integer dimension indi
 """
 bind_dimensions(reg::Regularization, image_dims) = reg
 bind_dimensions(regs::Tuple, image_dims) = map(r -> bind_dimensions(r, image_dims), regs)
+
+"""
+	uses_blas3(reg) -> Bool
+
+Whether a regularizer's prox spends its time in level-3 BLAS / LAPACK — in practice, whether it takes an SVD.
+The default is `false`; the low-rank family overrides it.
+
+This matters because levels 1 and 3 respond to a threaded BLAS in opposite directions, and by very different
+margins. Measured on `x1001c4s3b0n1` under SLURM, MKL, a single work item (so no batch width competing for the
+cores), across four allocations, serial → threaded:
+
+| allocation | `-t` | level-1, 16 MiB item | level-3, 4096×1024 SVD |
+|------------|------|----------------------|------------------------|
+| 8          |  8   | 13.14 s → 12.64 s    | 8.14 s → 2.55 s        |
+| 16         |  8   | 13.25 s → 12.62 s    | 8.55 s → 2.38 s        |
+| 16         | 16   | 13.80 s → 12.58 s    | 8.46 s → 2.36 s        |
+| 32         |  8   | 12.97 s → 13.05 s    | 8.49 s → 2.19 s        |
+
+Level 1 is memory-bandwidth-bound: threading it buys at most 10%, and at 32 cores nothing at all. Level 3 is
+compute-bound: threading it is worth 3.2x–3.9x, and the margin *grows* with the allocation. A byte count cannot
+tell the two apart — an SVD block is built by stacking patches, so a modest image can still produce a large and
+very much threading-worthy matrix.
+
+`_iterative_reconstruct_core` therefore skips [`with_serial_blas`](@ref)'s size gate entirely when any active
+regularizer answers `true` here: giving up 10% on level 1 to keep 3.9x on level 3 is the right trade in every
+configuration measured.
+"""
+uses_blas3(::Regularization) = false
+uses_blas3(regs::Tuple) = any(uses_blas3, regs)

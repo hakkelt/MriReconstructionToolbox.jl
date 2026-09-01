@@ -11,7 +11,7 @@ data fidelity, and signal modeling options.
 - `signal_model::M`: Signal model mapping the optimization variable to the image (default `nothing`);
   e.g. `TemporalBasis` for subspace reconstruction or `KSpaceToImage` for a k-space-domain solve.
 - `exact_opnorm::Bool`: Use exact operator norm for step size estimation (default `false`).
-- `disable_operator_normalization::Bool`: Skip operator normalization (default `false`).
+- `disable_operator_normalization::Union{Nothing, Bool}`: Skip operator normalization (default `nothing` for auto-detection: skips for pure unregularized CG/CGNR, runs for proximal algorithms).
 - `disable_normalop_optimization::Bool`: Disable normal operator optimization (default `false`).
 """
 struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M} <: AbstractIterativeMethod
@@ -20,7 +20,7 @@ struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M} <: AbstractI
     fidelity::F
     signal_model::M
     exact_opnorm::Bool
-    disable_operator_normalization::Bool
+    disable_operator_normalization::Union{Nothing, Bool}
     disable_normalop_optimization::Bool
 
     function IterativeReconstruction(
@@ -29,7 +29,7 @@ struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M} <: AbstractI
             fidelity::F,
             signal_model::M,
             exact_opnorm::Bool,
-            disable_operator_normalization::Bool,
+            disable_operator_normalization::Union{Nothing, Bool},
             disable_normalop_optimization::Bool,
         ) where {F <: DataFidelity, M}
         _validate_regularization(regularization)
@@ -61,7 +61,7 @@ function IterativeReconstruction(;
         fidelity::DataFidelity = L2Loss(),
         signal_model = nothing,
         exact_opnorm::Bool = false,
-        disable_operator_normalization::Bool = false,
+        disable_operator_normalization::Union{Nothing, Bool} = nothing,
         disable_normalop_optimization::Bool = false,
     )
     regs_tuple = ensure_tuple(regularization)
@@ -84,12 +84,12 @@ function IterativeReconstruction(
         fidelity::DataFidelity = L2Loss(),
         signal_model = nothing,
         exact_opnorm::Bool = false,
-        disable_operator_normalization::Bool = false,
+        disable_operator_normalization::Union{Nothing, Bool} = nothing,
         disable_normalop_optimization::Bool = false,
     )
-    regs_tuple = (reg, more_regs...)
-    return IterativeReconstruction(
-        regs_tuple,
+    regs = (reg, more_regs...)
+    return IterativeReconstruction(;
+        regularization = regs,
         algorithm,
         fidelity,
         signal_model,

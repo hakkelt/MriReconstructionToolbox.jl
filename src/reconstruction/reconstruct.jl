@@ -60,6 +60,7 @@ end
 function _reconstruct_dispatch_plain(acq_data, method::AbstractReconstructionMethod, x₀, config)
     decomposition_plan = get_problem_decomposition_plan(acq_data, method, config)
     x = if isnothing(decomposition_plan)
+        config = maybe_disable_undecomposed_threading(config, method, acq_data)
         reconstruction_result = nothing
         @conditionally_enable_threading config.threaded begin
             reconstruction_result = _reconstruct(acq_data, method, x₀, config)
@@ -138,6 +139,7 @@ function _reconstruct_dispatch_components(acq_data, method::IterativeReconstruct
     decomposition_plan = get_problem_decomposition_plan(acq_data, method, config)
     components = method.regularization
     img = if isnothing(decomposition_plan)
+        config = maybe_disable_undecomposed_threading(config, method, acq_data)
         # The decomposition branch below validates x₀ against the plan's image size; this branch has
         # no plan, so it validates against the acquisition's own image size. Both must check, or a
         # mistyped component name is only caught when the problem happens to be decomposed.

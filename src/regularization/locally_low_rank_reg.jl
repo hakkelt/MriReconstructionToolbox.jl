@@ -255,3 +255,6 @@ function materialize(reg::LocallyLowRank, x::Variable{T}; threaded::Bool) where 
     repr = @sprintf "%g ⋅ ∑_b ‖𝓧_b(%s)‖_*" real(T)(reg.λ) get_name(x)
     return StructuredOptimization.Term(1, f, op * x, repr)
 end
+
+# Prox takes a per-block SVD: level-3 BLAS, worth threading. See `uses_blas3`.
+uses_blas3(::LocallyLowRank) = true
