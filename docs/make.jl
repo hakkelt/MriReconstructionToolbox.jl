@@ -24,6 +24,7 @@ makedocs(;
             "Problem Decomposition" => "high-level/decomposition.md",
             "Image Decomposition" => "high-level/image_decomposition.md",
             "Noise & Analysis" => "high-level/analysis.md",
+            "Performance & Threading" => "high-level/performance.md",
         ],
         "Low-Level Interface" => [
             "MRI Operators" => "low-level/operators.md",
