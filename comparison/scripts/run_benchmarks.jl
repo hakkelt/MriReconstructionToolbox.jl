@@ -70,7 +70,7 @@ using PyCall
 using MRIReco
 
 include("../src/ComparisonHarness.jl")
-using .ComparisonHarness: check_nrmse, nrmse, run_bart, generate_multicoil_brain, generate_dynamic_multicoil_brain
+using .ComparisonHarness: check_nrmse, nrmse, run_bart, generate_multicoil_brain, generate_dynamic_multicoil_brain, load_real_case
 
 sigpy = pyimport("sigpy")
 sp_mri = pyimport("sigpy.mri")
@@ -442,6 +442,51 @@ method_grappa_sens = GRAPPA(kernel_size=(4, 3), calib_size=(24, 24), coil_combin
 t_min_mrt_grappa_sens, _, x_mrt_grappa_sens = time_mrt("K-Space", "GRAPPA (Sensitivity)", () -> reconstruct(acq_grappa, method_grappa_sens))
 e_gt_mrt_grappa_sens = nrmse(x_mrt_grappa_sens .* (norm(abs.(img_mc)) / norm(abs.(x_mrt_grappa_sens))), img_mc)
 push!(results, BenchResult("K-Space", "GRAPPA (Sensitivity)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_grappa_sens * 1000, e_gt_mrt_grappa_sens, 0.0))
+
+# -------------------------------------------------------------
+# 5. Real Scanner Data (opt-in — ENV["MRT_BENCH_REAL_DATA"] = "1")
+# -------------------------------------------------------------
+# Real fully-sampled Cartesian k-space via MRITestData.jl (default: M4Raw, 0.3 T brain,
+# 4-channel, ~12 MB, downloaded + cached on first run). Same CG-SENSE recipe as the synthetic
+# "Base MC" rows, on real data with ESPIRiT maps. A failure is logged and the section skipped.
+if get(ENV, "MRT_BENCH_REAL_DATA", "0") == "1"
+    try
+        println("--> Benchmarking Real Data CG-SENSE (10 Iterations)...")
+        rc = load_real_case()
+        Nr, Nry = rc.image_size
+        Ncr = size(rc.smaps, 3)
+        @info "real-data comparison case" label=rc.label size=rc.image_size coils=Ncr
+        img_real = rc.reference
+        ksp_real = parent(rc.kspace)                       # (kx, ky, coil) ComplexF64
+        cmap_real = parent(rc.smaps)                       # (x, y, coil)
+
+        acq_real = CartesianAcquisitionInfo(rc.kspace; is3D=false, sensitivity_maps=rc.smaps, shifted_image_dims=(:x, :y))
+        method_cg_real = IterativeReconstruction(regularization=(), algorithm=MriReconstructionToolbox.CGNR(maxit=10, tol=1e-14))
+        t_min_mrt_rcg, _, x_mrt_rcg = time_reconstruction(() -> reconstruct(acq_real, method_cg_real; tol=1e-14, maxit=10, verbose=false))
+        e_gt_mrt_rcg = nrmse(x_mrt_rcg .* (norm(abs.(img_real)) / norm(abs.(x_mrt_rcg))), img_real)
+        push!(results, BenchResult("Real Data", "CG-SENSE (10 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_rcg * 1000, e_gt_mrt_rcg, 0.0))
+
+        # SigPy CG-SENSE on the same k-space / maps
+        kdata_sp_real = parent(permutedims(rc.kspace, (3, 2, 1)))
+        smaps_sp_real = parent(permutedims(rc.smaps, (3, 2, 1)))
+        t_min_sp_rcg, _, sp_rcg_raw = time_reconstruction(() -> sp_mri.app.SenseRecon(kdata_sp_real, smaps_sp_real, max_iter=10, show_pbar=false).run())
+        sp_rcg = permutedims(sp_rcg_raw, (2, 1))
+        e_gt_sp_rcg = nrmse(sp_rcg .* (norm(abs.(img_real)) / norm(abs.(sp_rcg))), img_real)
+        e_mrt_sp_rcg = nrmse(x_mrt_rcg .* (norm(abs.(sp_rcg)) / norm(abs.(x_mrt_rcg))), sp_rcg)
+        push!(results, BenchResult("Real Data", "CG-SENSE (10 it)", "SigPy", num_threads, t_min_sp_rcg * 1000, e_gt_sp_rcg, e_mrt_sp_rcg))
+
+        # BART CG-SENSE
+        kdata_bart_real = reshape(ComplexF32.(ksp_real), Nr, Nry, 1, Ncr)
+        smaps_bart_real = reshape(ComplexF32.(cmap_real), Nr, Nry, 1, Ncr)
+        t_min_bart_rcg, _, bart_rcg_raw = time_reconstruction(() -> run_bart(1, "pics -S -i 10", kdata_bart_real, smaps_bart_real), is_bart=true)
+        bart_rcg = bart_rcg_raw[:, :, 1]
+        e_gt_bart_rcg = nrmse(bart_rcg .* (norm(abs.(img_real)) / norm(abs.(bart_rcg))), img_real)
+        e_mrt_bart_rcg = nrmse(x_mrt_rcg .* (norm(abs.(bart_rcg)) / norm(abs.(x_mrt_rcg))), bart_rcg)
+        push!(results, BenchResult("Real Data", "CG-SENSE (10 it)", "BART ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_bart_rcg * 1000, e_gt_bart_rcg, e_mrt_bart_rcg))
+    catch e
+        @warn "MRT_BENCH_REAL_DATA set but the real-data section failed; skipping it" exception=(e, catch_backtrace())
+    end
+end
 
 # -------------------------------------------------------------
 # Display Benchmark Results Table

@@ -5,6 +5,7 @@ GeometricMedicalPhantoms = "c297bd51-60f5-42e7-80e4-f985777cb71a"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MKL = "33e6dc65-8f57-5167-99aa-e5a354878fb2"
+MRITestData = "b3f1a2c4-5d6e-4a7b-9c8d-0e1f2a3b4c5d"
 MriReconstructionToolbox = "5999b5f3-4ffc-4695-817d-461c6e99e3c0"
 NamedDims = "356022a1-0364-5f58-8944-0da4b18d706f"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
@@ -13,3 +14,5 @@ ThreadPinning = "811555cd-349b-4f26-b7bc-1f208b848042"
 
 [sources]
 MriReconstructionToolbox = {path = ".."}
+# Not yet registered in the General registry.
+MRITestData = {url = "https://github.com/hakkelt/MRITestData.jl"}

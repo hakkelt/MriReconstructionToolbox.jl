@@ -25,6 +25,31 @@ julia --project=benchmarking -t 8 benchmarking/scripts/threading_sweep.jl mkl 8 
 julia --project=benchmarking -t 8 benchmarking/scripts/threading_sweep.jl mkl 8 svd
 ```
 
+## Real scanner data
+
+`src/RealData.jl` (shared with `comparison/`) pulls real fully-sampled Cartesian k-space via
+[`MRITestData.jl`](https://github.com/hakkelt/MRITestData.jl) — not yet registered, wired in as a
+`[sources]` url. `load_real_case()` downloads (cached on first use) the smallest matching dataset,
+assembles its middle slice into `(:kx, :ky, :coil)` k-space, and returns ESPIRiT sensitivity maps
+plus an RSS reference — the same shape `generate_multicoil_brain` produces.
+
+Opt in with an environment variable; `recon_bench.jl` / `benchmark/benchmarks.jl` /
+`comparison/scripts/run_benchmarks.jl` then append a **Real Data** block (CG-SENSE + undersampled
+TV / L1-wavelet):
+
+```sh
+MRT_BENCH_REAL_DATA=1 julia --project=benchmarking -t 8 benchmarking/scripts/recon_bench.jl --threads=8
+```
+
+| variable | default | meaning |
+|---|---|---|
+| `MRT_BENCH_REAL_DATA` | `0` | `1` enables the real-data rows |
+| `MRT_BENCH_REAL_SOURCE` | `M4RAW` | `M4RAW` (0.3 T brain, 4ch, ~12 MB) · `MRIDATA` (mridata.org knee/brain, ~1 GB) · `FASTMRI` (needs the data-use form) |
+| `MRT_BENCH_REAL_FILTER` | — | keep only entries whose id contains this (e.g. `T2`, `knee`) |
+
+Each provider's own licence and citation terms apply — see
+<https://hakkelt.github.io/MRITestData.jl/stable/legal/>.
+
 ## Results
 
 `results/*.json` is **gitignored** — it is a local measurement, hardware- and load-dependent,
