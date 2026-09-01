@@ -50,6 +50,7 @@ FFTW = "1.10"
 FFTWOperators = "0.1"
 FastBroadcast = "0.3"
 LinearAlgebra = "1"
+MKL = "0.6 - 0.9"
 NFFTOperators = "0.1"
 NamedDims = "1.2"
 NestedThreading = "0.1"
@@ -65,3 +66,9 @@ StatsBase = "0.34"
 StructuredOptimization = "0.5"
 WaveletOperators = "0.1"
 julia = "1.10"
+
+[weakdeps]
+MKL = "33e6dc65-8f57-5167-99aa-e5a354878fb2"
+
+[extensions]
+MriReconstructionToolboxMKLExt = "MKL"
