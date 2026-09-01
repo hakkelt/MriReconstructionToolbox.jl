@@ -95,3 +95,31 @@ SUITE["prox"]["TotalVariation_op"] = @benchmarkable $op_tv * $x_2d
 SUITE["prox"]["Wavelet_op"] = @benchmarkable $op_wavelet * $x_2d
 SUITE["prox"]["LowRank_op"] = @benchmarkable MriReconstructionToolbox.get_operator($reg_lr, $x_3d) * $x_3d
 SUITE["prox"]["TemporalFourier_op"] = @benchmarkable MriReconstructionToolbox.get_operator($reg_tf, $x_3d) * $x_3d
+
+# -----------------------------------------------------------------------------
+# Group 4: real scanner data (opt-in — ENV["MRT_BENCH_REAL_DATA"] = "1")
+# -----------------------------------------------------------------------------
+# Real Cartesian k-space via MRITestData.jl (RealData.jl is shared with benchmarking/). The
+# dataset is downloaded and cached on first use; a failure is logged and the group skipped.
+if get(ENV, "MRT_BENCH_REAL_DATA", "0") == "1"
+    include(joinpath(@__DIR__, "..", "benchmarking", "src", "RealData.jl"))
+    using .RealData: load_real_case
+    try
+        real_case = load_real_case()
+        acq_real = CartesianAcquisitionInfo(
+            real_case.kspace; is3D = false, sensitivity_maps = real_case.smaps, shifted_image_dims = (:x, :y),
+        )
+        method_cg = IterativeReconstruction(
+            regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 1.0e-14),
+        )
+        SUITE["real_data"] = BenchmarkGroup()
+        SUITE["real_data"]["CG_SENSE"] = @benchmarkable reconstruct(
+            $acq_real, $method_cg; maxit = 10, tol = 1.0e-14, verbose = false,
+        )
+        SUITE["real_data"]["FISTA_wavelet"] = @benchmarkable reconstruct(
+            $acq_real, $method_fista; verbose = false,
+        )
+    catch e
+        @warn "MRT_BENCH_REAL_DATA set but real-data benchmark setup failed" exception = (e, catch_backtrace())
+    end
+end

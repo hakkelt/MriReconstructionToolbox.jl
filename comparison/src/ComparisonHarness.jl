@@ -10,18 +10,22 @@ include("mirt_bridge.jl")
 # Phantom generators live in benchmarking/ (single source of truth: the MRT baseline the
 # comparison suite diffs against is measured there on exactly these phantoms).
 include(joinpath(@__DIR__, "..", "..", "benchmarking", "src", "Phantoms.jl"))
+# Real scanner k-space via MRITestData.jl — shared with benchmarking/ (single source of truth).
+include(joinpath(@__DIR__, "..", "..", "benchmarking", "src", "RealData.jl"))
 
 using .BARTBridge
 using .SigPyBridge
 using .MATLABBridge
 using .MIRTBridge
 using .Phantoms
+using .RealData
 
 export run_bart
 export sigpy, np, sigpy_mri_app
 export setup_matlab_paths
 export MIRT
 export generate_multicoil_brain, generate_dynamic_multicoil_brain
+export load_real_case, real_data_available, real_data_source
 export nrmse, check_nrmse
 
 """

@@ -4,7 +4,9 @@ version = "0.1.0"
 [deps]
 AbstractOperators = "d9c5613a-d543-52d8-9afd-8f241a8c3f1c"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 GeometricMedicalPhantoms = "c297bd51-60f5-42e7-80e4-f985777cb71a"
+MRITestData = "b3f1a2c4-5d6e-4a7b-9c8d-0e1f2a3b4c5d"
 MriReconstructionToolbox = "5999b5f3-4ffc-4695-817d-461c6e99e3c0"
 NamedDims = "356022a1-0364-5f58-8944-0da4b18d706f"
 ProximalAlgorithms = "140ffc9f-1907-541a-a177-7475e0a401e9"
@@ -15,12 +17,15 @@ Wavelets = "29a6e085-ba6d-5f35-a997-948ac2efa89a"
 
 [sources]
 AbstractOperators = {path = "../deps/AbstractOperators"}
+# Not yet registered in the General registry.
+MRITestData = {url = "https://github.com/hakkelt/MRITestData.jl"}
 ProximalAlgorithms = {path = "../deps/ProximalAlgorithms"}
 ProximalOperators = {path = "../deps/ProximalOperators"}
 StructuredOptimization = {path = "../deps/StructuredOptimization"}
 
 [compat]
 BenchmarkTools = "1"
+FFTW = "1"
 GeometricMedicalPhantoms = "1"
 Random = "1"
 Wavelets = "0.10"

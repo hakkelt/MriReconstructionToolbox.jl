@@ -13,6 +13,8 @@ using MriReconstructionToolbox
 
 include(joinpath(@__DIR__, "Phantoms.jl"))
 using .Phantoms
+include(joinpath(@__DIR__, "RealData.jl"))
+using .RealData
 
 export build_cases, run_cases
 
@@ -24,8 +26,11 @@ aligned_nrmse(est, ref) = nrmse(est .* (norm(abs.(ref)) / norm(abs.(est))), ref)
 
 Return a `Vector{NamedTuple}` of `(category, method, run, reference)` where `run()` performs one
 reconstruction and `reference` is the ground-truth image for the NRMSE check.
+
+Set `ENV["MRT_BENCH_REAL_DATA"] = "1"` to append a "Real Data" block driven by real scanner
+k-space from `MRITestData.jl` (see `RealData.jl`); it downloads a small dataset on first use.
 """
-function build_cases(; N = 128, Nc = 8, Nd = 64, Ncd = 4, Td = 8)
+function build_cases(; N = 128, Nc = 8, Nd = 64, Ncd = 4, Td = 8, real_data = get(ENV, "MRT_BENCH_REAL_DATA", "0") == "1")
     cases = NamedTuple[]
 
     img_mc, kspace_mc, cmap = generate_multicoil_brain(N = N, num_coils = Nc)
@@ -124,6 +129,72 @@ function build_cases(; N = 128, Nc = 8, Nd = 64, Ncd = 4, Td = 8)
         )
     end
 
+    real_data && append_real_cases!(cases)
+
+    return cases
+end
+
+"""
+    append_real_cases!(cases) -> cases
+
+Append CG-SENSE / TV / L1-wavelet cases backed by real scanner k-space (`RealData.load_real_case`)
+to `cases`. The full k-space gives the CG-SENSE row and the RSS reference; a 2× phase-encode mask
+(central 17 lines kept) gives the undersampled sparsity rows. Iteration counts match the synthetic
+`Base MC` / `Sparsity` rows so the two are directly comparable. A download failure is caught and
+logged rather than aborting the suite.
+"""
+function append_real_cases!(cases)
+    local case
+    try
+        case = load_real_case()
+    catch e
+        @warn "MRT_BENCH_REAL_DATA set but load_real_case failed; skipping real-data rows" exception = (e, catch_backtrace())
+        return cases
+    end
+    nkx, nky = case.image_size
+    smaps = case.smaps
+    ref = case.reference
+    @info "real-data case" label = case.label size = case.image_size coils = size(smaps, 3)
+
+    acq_full = CartesianAcquisitionInfo(
+        case.kspace; is3D = false, sensitivity_maps = smaps, shifted_image_dims = (:x, :y)
+    )
+    push!(
+        cases,
+        (
+            category = "Real Data", method = "CG-SENSE (10 it)", reference = ref,
+            run = () -> reconstruct(
+                acq_full,
+                IterativeReconstruction(
+                    regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 1.0e-14)
+                );
+                tol = 1.0e-14, maxit = 10, verbose = false,
+            ),
+        ),
+    )
+
+    mask = falses(nkx, nky)
+    mask[:, 1:2:nky] .= true
+    mask[:, (nky ÷ 2 - 8):(nky ÷ 2 + 8)] .= true
+    kdata_us = NamedDimsArray(unname(case.kspace)[mask, :], (:kxy, :coil))
+    acq_us = CartesianAcquisitionInfo(
+        kdata_us; is3D = false, image_size = (nkx, nky), sensitivity_maps = smaps,
+        shifted_image_dims = (:x, :y), subsampling = mask,
+    )
+    for (name, reg) in (
+            ("Total Variation (30 it)", TotalVariation2D(0.01)),
+            ("L1-Wavelet (30 it)", L1Wavelet2D(0.005)),
+        )
+        push!(
+            cases,
+            (
+                category = "Real Data", method = name, reference = ref,
+                run = () -> reconstruct(
+                    acq_us, IterativeReconstruction(regularization = reg); maxit = 30, tol = 1.0e-5, verbose = false,
+                ),
+            ),
+        )
+    end
     return cases
 end
 
