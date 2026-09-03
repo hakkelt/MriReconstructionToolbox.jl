@@ -8,8 +8,8 @@ between image space and k-space (frequency domain) representations in MRI data.
 """
     get_fourier_operator(ksp, [is3D], [shifted_kspace_dims], [shifted_image_dims]; threaded=true, fast_planning=false)
     get_fourier_operator(info::CartesianAcquisitionInfo; threaded=true, fast_planning=false)
-    get_fourier_operator(info::NonCartesianAcquisitionInfo; threaded=true)
-    get_fourier_operator(ksp, image_size, trajectory; dcf=nothing, threaded=true)
+    get_fourier_operator(info::NonCartesianAcquisitionInfo; threaded=true, m=nothing, sigma=nothing, precompute=nothing)
+    get_fourier_operator(ksp, image_size, trajectory; dcf=nothing, threaded=true, m=nothing, sigma=nothing, precompute=nothing)
 
 Create the Fourier encoding operator for MRI data.
 
@@ -38,6 +38,11 @@ arguments.
 - `image_size::Tuple`: Cartesian image grid size used for the NFFT domain
 - `trajectory`: Sampling trajectory; its leading dimension stores coordinates
 - `dcf`: Optional density compensation factors matching the trajectory sample layout
+- `m`, `sigma`, `precompute`: Optional NFFT gridding operating point (kernel half-width,
+  oversampling factor, `NFFT.PrecomputeFlags`), forwarded to `NFFTOp`/NFFT.jl. Left at
+  `nothing` (the default), nothing is forwarded and NFFT.jl's own defaults apply, unchanged
+  from before this keyword existed. See "Non-Cartesian accuracy / speed trade-off" in
+  `docs/src/high-level/performance.md` for the accuracy/speed numbers this trades off.
 
 # Returns
 - A Fourier encoding operator backed by `DFT` for Cartesian data or `NFFTOp`
@@ -130,14 +135,20 @@ function get_fourier_operator(
     return ℱ
 end
 
-function get_fourier_operator(info::NonCartesianAcquisitionInfo; threaded::Bool = true)
+function get_fourier_operator(
+        info::NonCartesianAcquisitionInfo;
+        threaded::Bool = true,
+        m::Union{Nothing, Integer} = nothing,
+        sigma::Union{Nothing, Real} = nothing,
+        precompute = nothing,
+    )
     @argcheck !isnothing(info.kspace_data) "The provided NonCartesianAcquisitionInfo does not contain k-space data, which is required to build the NFFT operator."
     return get_fourier_operator(
         info.kspace_data,
         info.image_size,
         info.trajectory;
         dcf = info.dcf,
-        threaded,
+        threaded, m, sigma, precompute,
     )
 end
 
@@ -147,6 +158,9 @@ function get_fourier_operator(
         trajectory::NamedDimsArray;
         dcf = nothing,
         threaded::Bool = true,
+        m::Union{Nothing, Integer} = nothing,
+        sigma::Union{Nothing, Real} = nothing,
+        precompute = nothing,
     )
     fourier_dims = ndims(trajectory) - 1
     ksp_dimnames = dimnames(ksp)
@@ -159,29 +173,58 @@ function get_fourier_operator(
         (:x, :y, ksp_dimnames[(fourier_dims + 1):end]...)
     end
     raw_dcf = dcf isa NamedDimsArray ? parent(dcf) : dcf
-    𝒩 = get_fourier_operator(parent(ksp), image_size, parent(trajectory); dcf = raw_dcf, threaded)
+    𝒩 = get_fourier_operator(
+        parent(ksp), image_size, parent(trajectory); dcf = raw_dcf, threaded, m, sigma, precompute
+    )
     return NamedDimsOp{image_dimnames, ksp_dimnames}(𝒩)
 end
 
+"""
+    get_fourier_operator(ksp::AbstractArray, image_size::Tuple, trajectory::AbstractArray;
+                          dcf=nothing, threaded=true, m=nothing, sigma=nothing, precompute=nothing)
+
+Non-Cartesian (NFFT-backed) Fourier operator. `m`, `sigma` (`σ`) and `precompute` expose the
+gridding operating point NFFT.jl otherwise picks on its own: `m` is the interpolation kernel's
+half-width, `sigma` its oversampling factor, `precompute` the `NFFT.PrecomputeFlags` gridding
+strategy. Leaving them at `nothing` (the default) forwards nothing extra to `NFFTOp`/`NFFT.jl`,
+so existing behaviour is unchanged; a lower-accuracy point trades forward/adjoint accuracy for
+speed (`docs/src/high-level/performance.md`, "Non-Cartesian accuracy / speed trade-off" — the
+default here is NFFT.jl's own high-accuracy point, not the one that section recommends).
+"""
 function get_fourier_operator(
         ksp::AbstractArray,
         image_size::Tuple,
         trajectory::AbstractArray;
         dcf = nothing,
         threaded::Bool = true,
+        m::Union{Nothing, Integer} = nothing,
+        sigma::Union{Nothing, Real} = nothing,
+        precompute = nothing,
     )
     fourier_dims = ndims(trajectory) - 1
     batch_dims = size(ksp)[(fourier_dims + 1):end]
     inner_threaded = threaded && isempty(batch_dims)
+    nfft_kwargs = _nfft_operating_point_kwargs(m, sigma, precompute)
     𝒩 = if isnothing(dcf)
-        NFFTOp(image_size, trajectory; threaded = inner_threaded)
+        NFFTOp(image_size, trajectory; threaded = inner_threaded, nfft_kwargs...)
     else
-        NFFTOp(image_size, trajectory, dcf; threaded = inner_threaded)
+        NFFTOp(image_size, trajectory, dcf; threaded = inner_threaded, nfft_kwargs...)
     end
     if isempty(batch_dims)
         return 𝒩
     end
     return BatchOp(𝒩, batch_dims; threaded)
+end
+
+# Only forward what was actually asked for, so leaving `m`/`sigma`/`precompute` at `nothing`
+# reaches `NFFTOp`/`NFFT.jl` exactly as before this keyword existed -- their own defaults,
+# untouched.
+function _nfft_operating_point_kwargs(m, sigma, precompute)
+    kwargs = NamedTuple()
+    isnothing(m) || (kwargs = (; kwargs..., m))
+    isnothing(sigma) || (kwargs = (; kwargs..., σ = sigma))
+    isnothing(precompute) || (kwargs = (; kwargs..., precompute))
+    return kwargs
 end
 
 """

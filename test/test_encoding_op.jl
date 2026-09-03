@@ -101,6 +101,56 @@ end
     end
 end
 
+@testitem "NFFT operating point (S6)" tags = [:encoding, :operators, :nfft] begin
+    using Test
+    using MriReconstructionToolbox
+    using NFFTOperators: NFFTOp
+    import NFFTOperators
+    using LinearAlgebra, Random
+
+    Random.seed!(0)
+    image_size = (32, 32)
+    n_samples = 300
+    traj = rand(2, n_samples) .- 0.5
+    ksp = rand(ComplexF64, n_samples)
+    x = rand(ComplexF64, image_size)
+
+    @testset "defaults are unchanged" begin
+        op_no_kwargs = get_fourier_operator(ksp, image_size, traj)
+        op_explicit_nothing = get_fourier_operator(
+            ksp, image_size, traj; m = nothing, sigma = nothing, precompute = nothing
+        )
+        @test op_no_kwargs * x ≈ op_explicit_nothing * x
+    end
+
+    @testset "operating point is actually forwarded" begin
+        op_default = get_fourier_operator(ksp, image_size, traj)
+        # MRIReco's operating point (`TODO.md` §8): far cheaper, deliberately less accurate.
+        op_low_acc = get_fourier_operator(
+            ksp, image_size, traj; m = 3, sigma = 1.25, precompute = NFFTOperators.NFFT.TENSOR
+        )
+        @test op_default.plan.params.m != op_low_acc.plan.params.m
+        @test op_default.plan.params.σ != op_low_acc.plan.params.σ
+
+        # Not identical (different gridding kernel/oversampling), but not a different
+        # transform either -- both approximate the same NDFT, so a coarser grid still lands
+        # close to the fine one on a small, well-conditioned trajectory like this one.
+        y_default = op_default * x
+        y_low_acc = op_low_acc * x
+        @test y_default ≈ y_low_acc rtol = 1.0e-2
+    end
+
+    @testset "get_encoding_operator forwards the same keywords" begin
+        info = NonCartesianAcquisitionInfo(
+            ksp; trajectory = traj, image_size,
+        )
+        𝒜_default = get_encoding_operator(info)
+        𝒜_low_acc = get_encoding_operator(info; m = 3, sigma = 1.25, precompute = NFFTOperators.NFFT.TENSOR)
+        @test 𝒜_default.plan.params.m != 𝒜_low_acc.plan.params.m
+        @test (𝒜_default * x) ≈ (𝒜_low_acc * x) rtol = 1.0e-2
+    end
+end
+
 @testitem "Sensitivity Map Operator" tags = [:encoding, :operators, :sensitivity_maps] begin
     using Test
     using MriReconstructionToolbox
