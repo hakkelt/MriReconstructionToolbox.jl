@@ -63,3 +63,38 @@ end
     @test !can_be_combined(S, F, S)   # a DFT middle is not diagonal
     @test combine(S, PhP, S) === PhP
 end
+
+@testitem "Triple combination keeps operator and buffer counts consistent" tags = [:fftw, :CombinationRules, :Compose] begin
+    using FFTWOperators
+    using AbstractOperators
+    using AbstractOperators: get_operators, get_normal_op
+    using LinearAlgebra: norm
+
+    # `get_normal_op(::Compose)` mirrors the forward buffers, so the two halves share buffer
+    # *objects*; removing a triple then makes two aliased buffers adjacent and the constructor
+    # allocates a replacement. That path indexed the already-shortened buffer tuple with the
+    # pre-combination index and dropped one buffer too many — and a `Compose{N, M}` with
+    # `M != N - 1` is not caught anywhere: `mul!` is generated over `M` and silently skips the
+    # operators past `buf[M]`, so `AᴴA` quietly lost its outermost factor.
+    sz = (8, 8)
+    mask = rand(Bool, sz)
+    mask[1, 1] = true
+    D = DiagOp(rand(ComplexF64, sz))
+    F = DFT(ComplexF64, sz)
+    S = SignAlternation(ComplexF64, sz, (1, 2))
+    P = GetIndex(ComplexF64, sz, (mask,))
+
+    A = P * S * F * D
+    for AHA in (A' * A, get_normal_op(A))
+        ops = AHA isa Compose ? get_operators(AHA) : (AHA,)
+        @test !any(op -> op isa SignAlternation, ops)
+        if AHA isa Compose
+            @test length(AHA.buf) == length(ops) - 1
+            # buffers may be shared on purpose (the two halves mirror each other), but two
+            # *adjacent* ones aliasing would have one stage overwrite its own input
+            @test all(AHA.buf[i] !== AHA.buf[i + 1] for i in 1:(length(AHA.buf) - 1))
+        end
+        x = randn(ComplexF64, sz)
+        @test norm(AHA * x - A' * (A * x)) <= 1.0e-9 * norm(A' * (A * x))
+    end
+end
