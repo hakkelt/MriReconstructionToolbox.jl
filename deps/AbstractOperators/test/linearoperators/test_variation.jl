@@ -178,6 +178,34 @@ end
     end
 end
 
+@testitem "Variation: threaded adjoint matches the serial one exactly" tags = [
+        :linearoperator, :Variation,
+    ] setup = [TestUtils] begin
+    using Random, LinearAlgebra, AbstractOperators
+
+    # The threaded adjoint parallelises over slabs of the dimension being differentiated. Each
+    # slab used to deposit one of its terms into the *neighbouring* slab, so two threads holding
+    # adjacent slabs raced on the same elements and lost updates — measured wrong, not merely
+    # non-deterministic: relative errors up to 2.3e-1 against the serial result. The two must
+    # agree bitwise, and must keep agreeing over repeats, since whether the race fires at all
+    # depends on how Polyester happens to chunk the loop on the day.
+    Random.seed!(0)
+    for sz in ((100, 50), (256, 256), (64, 64, 16), (8, 2), (2, 8, 3))
+        Vs = Variation(Float64, sz; threaded = false)
+        Vt = Variation(Float64, sz; threaded = true)
+        x = randn(sz...)
+        b = zeros(prod(sz), length(sz))
+        mul!(b, Vs, x)
+        ref = zeros(sz...)
+        mul!(ref, Vs', b)
+        for _ in 1:50
+            z = zeros(sz...)
+            mul!(z, Vt', b)
+            @test z == ref
+        end
+    end
+end
+
 @testitem "Variation: adjoint allocates nothing" tags = [
     :linearoperator, :Variation,
 ] setup = [TestUtils] begin
