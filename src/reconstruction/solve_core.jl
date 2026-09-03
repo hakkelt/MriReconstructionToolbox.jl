@@ -62,7 +62,7 @@ function _iterative_reconstruct_core(
             if uses_blas3(method.regularization)
                 solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
             elseif _work_item_bytes(_first_x0(x₀_or_x₀s)) < SERIAL_BLAS_THRESHOLD_BYTES
-                with_restricted_threads() do
+                with_restricted_threads_if_needed() do
                     solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
                 end
             else
