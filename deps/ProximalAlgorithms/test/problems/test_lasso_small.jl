@@ -299,6 +299,13 @@ using ProximalAlgorithms:
             @test norm(x_admm - x_star, Inf) <= 1e-3
             @test it_admm ≤ 500
             @test x0 == x0_backup
+
+            # A caller that already holds `AᴴA` may hand it over instead of having ADMM
+            # build a second one; the iterates must be identical.
+            solver_aha = ProximalAlgorithms.ADMM(tol = 1e-5, maxit=500, penalty_sequence = ps)
+            x_aha, it_aha = solver_aha(; x0, A, b, g, AHA = A' * A)
+            @test x_aha ≈ x_admm
+            @test it_aha == it_admm
         end
     end
 

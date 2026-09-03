@@ -84,6 +84,7 @@ import ProximalAlgorithms:
             nothing,     # A  
             nothing,     # b
             nothing,     # AHb
+            nothing,     # AHA
             g,          # g
             B,          # B
             nothing,     # P
