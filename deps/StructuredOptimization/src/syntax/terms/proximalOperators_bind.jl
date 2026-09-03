@@ -81,10 +81,11 @@ f (\\mathbf{L} * \\mathbf{x}) = \\frac{1}{2} \\| \\mathbf{L} * \\mathbf{x} \\|^2
 ```
 (shorthand of `1/2*norm(x)^2`).
 
-The only difference with `ls` comes when gradient! is called. In this case, the
-gradient is computed as usual, but the squared norm of the gradient (i.e. the
-squared norm of `Lᴴ * L * x`) is returned instead of the squared norm of `L * x`.
-This is much faster to compute, if `Lᴴ * L` has a fast implementation.
+The only difference with `ls` comes when gradient! is called: the gradient is evaluated
+through the normal operator `Lᴴ * L` in a single pass, which is much faster if `Lᴴ * L`
+has an optimized implementation. The returned function value is the same one `ls` would
+return — it is recovered from the gradient with two inner products, without a second
+application of `L` (see `SqrNormL2WithNormalOp`).
 """
 
 normalop_ls(::Variable) = error("normalop_ls does not work with Variables alone. Use ls instead.")
