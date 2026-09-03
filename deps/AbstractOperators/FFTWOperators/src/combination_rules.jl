@@ -208,3 +208,22 @@ end
 function combine(T1::DiagOp, T2::SignAlternation)
     return DiagOp(domain_type(T1), size(T1, 2), T2 * diag(T1))
 end
+
+# SignAlternation ∘ (any square diagonal) ∘ SignAlternation
+#
+# A `SignAlternation` is a real ±1 diagonal and is its own inverse, and diagonals commute,
+# so `± M ± = M M±± = M` exactly, for any square diagonal `M` carrying the same `dirs`.
+#
+# This is what un-fuses the encoding operator's normal operator: with
+# `𝒜 = 𝒫 ∘ ± ∘ ℱ ∘ 𝒮`, `𝒜ᴴ𝒜` folds `𝒫ᴴ𝒫` into a single diagonal mask and leaves
+# `(…, ℱ, ±, 𝒫ᴴ𝒫, ±, ℱᴴ, …)` — a `±` pair the pairwise cancellation cannot see because
+# the mask sits between them. Every normal-operator application would otherwise pay two
+# full sign passes it does not owe.
+#
+# `L.dirs == R.dirs` is the guard that matters: two alternations over different dimension
+# sets do not cancel (their product is the alternation over the symmetric difference).
+function can_be_combined(L::SignAlternation, M::AbstractOperator, R::SignAlternation)
+    return L.dirs == R.dirs && L.dim_in == R.dim_in &&
+        is_linear(M) && is_diagonal(M) && size(M, 1) == size(M, 2)
+end
+combine(::SignAlternation, M::AbstractOperator, ::SignAlternation) = M
