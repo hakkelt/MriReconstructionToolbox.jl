@@ -139,6 +139,27 @@ using LinearAlgebra, FFTW
 @show get(ENV, "KMP_BLOCKTIME", "unset")
 ```
 
+## Non-Cartesian accuracy / speed trade-off
+
+`get_fourier_operator`/`get_encoding_operator` take `m`, `sigma` and `precompute` keywords that
+forward straight to `NFFTOp`/NFFT.jl, exposing the gridding operating point instead of leaving
+it fixed. Left at `nothing` (the default), nothing is passed on and behaviour is unchanged —
+MRT has always taken NFFT.jl's own defaults (`m = 5`, `σ = 2.0`, `NFFT.POLYNOMIAL`).
+
+That default is far more accurate than MRIReco's operating point (`m = 3`, `σ = 1.25`,
+`NFFT.TENSOR`) for accuracy the reconstruction does not use: measured per coil, 4.28 ms vs
+1.00 ms for a forward error of 1.6e-7 vs 5.7e-5, while the reconstructed image's NRMSE is 0.085
+either way. At MRIReco's operating point MRT reconstructs in 8.35 ms against MRIReco's 47.1 ms
+for the same accuracy — MRT is faster at every point on this curve, but a caller who wants the
+faster end of *MRT's own* curve now has a way to ask for it:
+
+```julia
+𝒜 = get_encoding_operator(info; m = 3, sigma = 1.25, precompute = NFFT.TENSOR)
+```
+
+Changing MRT's own defaults is a separate, measured decision (`IMPLEMENTATION_PLAN.md`, `C9`):
+it would move every non-Cartesian result in the test suite and needs its own tolerances.
+
 ## Notes for developers
 
 - `SERIAL_BLAS_THRESHOLD_BYTES` (16 MiB) is the size above which MRT stops forcing serial BLAS.
@@ -149,6 +170,10 @@ using LinearAlgebra, FFTW
   the inside instead.
 - `with_full_threads` raises thread counts to capacity, overriding a lower count you set
   deliberately. Don't wrap one around hand-tuned settings.
+- `--gcthreads` does not help the residual `-t 8` cost (GC growing from ~10 ms to ~35-46 ms per
+  solve on an allocation-heavy serial solve): measured at `--gcthreads=1`, no change. The lever
+  for that residual is allocation, not GC thread count — see the per-iteration prox-buffer work
+  tracked as `IMPLEMENTATION_PLAN.md`'s `C7`.
 
 ## API
 

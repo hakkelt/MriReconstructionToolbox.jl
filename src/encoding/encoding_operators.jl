@@ -32,6 +32,9 @@ Create the main MRI encoding operator for data acquisition modeling.
 # Common keyword arguments
 - `threaded::Bool=true`: Whether to use multi-threading for operator construction and FFTs.
 - `fast_planning::Bool=false`: Whether to use fast FFTW planning (reduces setup time, may affect performance).
+- `m`, `sigma`, `precompute`: Non-Cartesian only. NFFT gridding operating point, forwarded to
+  `get_fourier_operator`/`NFFTOp`; `nothing` (the default) leaves NFFT.jl's own defaults in
+  place. See "Non-Cartesian accuracy / speed trade-off" in `docs/src/high-level/performance.md`.
 
 # Returns
 - Encoding operator modeling the full MRI acquisition process, including Fourier transform, sensitivity map encoding, and subsampling (if present).
@@ -51,9 +54,16 @@ function get_encoding_operator(info::CartesianAcquisitionInfo; threaded::Bool = 
     return _compose_with_sensitivity(ℱ, info; threaded)
 end
 
-function get_encoding_operator(info::NonCartesianAcquisitionInfo; threaded::Bool = true, fast_planning::Bool = false)
+function get_encoding_operator(
+        info::NonCartesianAcquisitionInfo;
+        threaded::Bool = true,
+        fast_planning::Bool = false,
+        m::Union{Nothing, Integer} = nothing,
+        sigma::Union{Nothing, Real} = nothing,
+        precompute = nothing,
+    )
     @argcheck !isnothing(info.kspace_data) "The provided NonCartesianAcquisitionInfo does not contain k-space data, which is required to build the encoding operator."
-    ℱ = get_fourier_operator(info; threaded)
+    ℱ = get_fourier_operator(info; threaded, m, sigma, precompute)
     return _compose_with_sensitivity(ℱ, info; threaded)
 end
 
