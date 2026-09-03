@@ -38,7 +38,7 @@ phantom_ms = repeat(reshape(phantom_2d, nx, ny, 1), 1, 1, num_slices)
 acq_ms_ksp = simulate_acquisition(phantom_ms, acq_ms_base)
 
 # -----------------------------------------------------------------------------
-# Group 1: operator (𝒜*x, 𝒜'*y, normalize_op)
+# Group 1: operator (𝒜*x, 𝒜'*y, ‖𝒜‖)
 # -----------------------------------------------------------------------------
 SUITE["operator"] = BenchmarkGroup()
 op_enc = get_encoding_operator(acq_2d_ksp)
@@ -47,7 +47,10 @@ y_in = op_enc * x_in
 
 SUITE["operator"]["forward"] = @benchmarkable $op_enc * $x_in
 SUITE["operator"]["adjoint"] = @benchmarkable $(op_enc') * $y_in
-SUITE["operator"]["normalize_op"] = @benchmarkable MriReconstructionToolbox.normalize_op($op_enc)
+# The step-size estimate every proximal solve pays once, up front. `𝒜` itself is no
+# longer rescaled by it -- see "Operator norm, step size and λ" in the docs.
+SUITE["operator"]["estimate_opnorm"] =
+    @benchmarkable MriReconstructionToolbox.AbstractOperators.estimate_opnorm($op_enc)
 
 # -----------------------------------------------------------------------------
 # Group 2: reconstruct

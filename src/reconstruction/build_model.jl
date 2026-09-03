@@ -81,7 +81,7 @@ function patch_algorithm_with_default_values(
         eltype_real::Type{<:Real} = Float64,
     )
     if :gamma ∉ keys(algorithm.kwargs)
-        # For a normalized operator 𝒜, Lf is 1 so default gamma = 1.0.
+        # `Lf = n‖𝒜‖²` for the data term, so the default step is `1/Lf`.
         # When two indicator / constraint terms are present, the problem is scale-free and gamma sets the rate.
         gamma = Lf !== nothing ? eltype_real(1 / max(Lf, eps(eltype_real))) : eltype_real(1)
         return ProximalAlgorithms.override_parameters(algorithm; gamma = gamma)

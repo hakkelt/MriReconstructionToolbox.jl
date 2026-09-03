@@ -264,6 +264,21 @@ item names its prerequisite and what must be settled before the edit.
 
 ### C1 — `SqrNormL2WithNormalOp` reports the wrong function value (correctness)
 
+**Done** (2026-09-03, `c36c3b8`). Fixed as described below: `Aᴴd` (the normal operator's
+displacement, which `get_normal_op(::AffineAdd)` already carries) and `‖d‖²/2` are computed
+once at construction, and `gradient!` returns
+`½Re⟨x, y⟩ + λ/2(Re⟨x, Aᴴd⟩ + ‖d‖²)` — one extra `dot` when `L` is affine, none at all when
+it is purely linear (`Aᴴd` is `nothing` there, so the correction is skipped rather than
+paying a dot against zeros). The array-λ methods were **removed** rather than fixed: a
+weighted `½Σλ_k|y_k|²` has gradient `Aᴴ(λ⊙Ax)`, which a normal operator cannot express, and
+what the code computed was `λ⊙(AᴴA x)` with `λ` indexed over the *domain* — not the gradient
+of any such `f`. Nothing in this repository constructed one. Test added over
+λ ∈ {1, 0.75} × {real, complex} × {linear, affine}, against the closed form and against a
+finite-difference gradient.
+
+The `g_z` half of this entry (below) is **not done** — measure it before acting.
+
+
 `deps/StructuredOptimization/src/calculus/sqrNormL2WithNormalOp.jl:68-88`. Both `gradient!`
 methods compute `y = λ·AᴴA·x` and then return `λ/2 · Σ|y_k|²` — that is `‖∇f(x)‖²/2`, not
 `f(x) = ½‖A x − b‖²`. `ProximalCore.value_and_gradient!` contracts that `gradient!` returns the
@@ -292,6 +307,51 @@ list change; `parse.jl:458` reads `.A`/`.lambda` only, so nothing downstream mov
   from `adaptive || verbose || tol > 0`.
 
 ### C2 — Cancel the sign-alternation pair inside `𝒜ᴴ𝒜` (§9, second cause)
+
+**Done** (2026-09-03, `1f5c343`, plus the `Compose` fix `ec75b5c` it exposed). The rule went in
+as written, with `L.dim_in == R.dim_in` added to the guard. Two corrections to the analysis
+below, both found by probing the real operator rather than trusting the sketch:
+
+- The `±` sits on the **k-space** side, not between `𝒮` and `ℱ`: the actual chain is
+  `𝒜 = 𝒫 ∘ ± ∘ ℱ ∘ 𝒮 ∘ broadcast`. That is what makes the rule fire at all — had the `±`
+  been where this entry originally said, the pair in `𝒜ᴴ𝒜` would have been separated by
+  `ℱ, 𝒫ᴴ𝒫, ℱᴴ` (three operators, and not diagonal), and `± C ± = C` would have been *false*:
+  conjugating a convolution by a modulation shifts its kernel. The rule as stated is only
+  correct for a diagonal middle operator, which is exactly what the real chain has.
+- `is_diagonal(::SignAlternation)` is still `false`, which is wrong (it is a ±1 diagonal), but
+  fixing it also changes `_is_dft_op`'s `all(is_diagonal, ...)` test and hence which shifts
+  `fftshift_op` converts. Left alone deliberately; noted here as a separate, unscheduled item.
+
+Measured on the real chain: `get_normal_op(𝒜)` goes from 9 operators to 7, both
+`SignAlternation`s gone. `recon_bench` rows, 1 thread, min of 3, C2 reverted vs applied with
+`C1`/`C3` present in both:
+
+| row | without C2 | with C2 | |
+|---|---|---|---|
+| CG-SENSE (10 it) | 94.66 ms | 46.05 ms | **2.06x** |
+| Global Low-Rank (20 it) | 247.48 ms | 173.99 ms | 1.42x |
+| Temporal TV (20 it) | 877.07 ms | 724.52 ms | 1.21x |
+| Locally Low-Rank (20 it) | 250.38 ms | 224.06 ms | 1.12x |
+| Total Variation (30 it) | 1490.84 ms | 1365.77 ms | 1.09x |
+| L1-Wavelet (30 it) | 293.67 ms | 285.87 ms | 1.03x |
+| TGV (30 it) | 2256.61 ms | 2239.83 ms | 1.01x |
+
+The win tracks how much of a solve is normal-operator applications, which is why CG-SENSE
+gains most and TGV least. NRMSE agrees to five significant figures on every row but is not
+bit-identical: multiplying by ±1 *is* exact, but removing the pair changes buffer aliasing and
+therefore the alignment-dependent FFTW code path.
+
+**The `Compose` bug this exposed** (`ec75b5c`, its own commit): the constructor's
+buffer-reallocation branch — the one that replaces a buffer when the removal makes two aliased
+buffers adjacent — re-sliced the *already shortened* buffer tuple with `next_i`, the
+pre-removal index. Right for a pairwise combination, off by one for a triple, producing a
+`Compose{N, M}` with `M != N - 1`. Nothing rejected it: the entry check runs before the
+combination loop, and `mul!` is `@generated` over `M`, so it applies `A[1:M]` then `A[N]` and
+silently **skips** everything between — on the MRT operator, `𝒜ᴴ𝒜` losing its
+sensitivity-map factor. Now spliced at the right index, and the constructor re-checks the
+invariant after the loop. The existing `ShiftOp`/`SignAlternation`/`DFT` triples could reach
+the same branch; nothing had.
+
 
 The Cartesian encoding operator is `𝒜 = 𝒫 ∘ (ℱ ∘ ±) ∘ 𝒮` (`get_fourier_operator`
 wraps the `DFT` with `ifftshift_op`, which becomes a `SignAlternation` on the other side when the
@@ -330,6 +390,29 @@ application order, which for this rule is symmetric anyway.
   so the attribution is real.
 
 ### C3 — `𝒜ᴴ𝒜` is built twice for every ADMM solve
+
+**Done** (2026-09-03, `274b625`), as sketched: `LeastSquaresTerm` gained an optional `AHA`
+symbol so only algorithms that actually form the normal operator ask for one (ADMM does; the
+CG family does not and is unchanged), `ADMMIteration` gained an `AHA` field used by
+`get_cg_operator`, and `prepare` emits `remove_displacement(f.AᴴA)` — point 3's question
+answered: ADMM wants the linear part, since it carries `b` separately, and that is the same
+`remove_displacement` already applied to `op` two lines up. Skipped when `lambda != 1`, as
+the entry proposed.
+
+**The measured saving is much smaller than §7 claims.** On the benchmark TV problem
+(128²×8, 2× undersampled), one-outer-iteration solve, min of 3:
+
+| | allocations | wall |
+|---|---|---|
+| without C3 | 78.18 MiB | 144.53 ms |
+| with C3 | 74.19 MiB | 136.91 ms |
+
+— ~4 MiB and ~7.6 ms, not the "57 MiB for a single-iteration solve" in `TODO.md`. Over 30
+iterations it is 245.05 → 241.13 MiB and the wall time is indistinguishable (1378 vs 1381 ms,
+inside run-to-run noise). So this is a setup-cost item, and it matters to `C5` (which reuses
+the same plumbing from the other end) rather than to steady-state throughput. The 57 MiB
+figure should be treated as retracted unless someone reproduces it on a different problem.
+
 
 `SqrNormL2WithNormalOp` eagerly builds `AᴴA = A' * A` in its constructor
 (`sqrNormL2WithNormalOp.jl:40`), then `parse.jl:458-461` hands ADMM only `f.A`, and
@@ -383,6 +466,58 @@ separate them.
 
 ### C5.1 — Measure the decomposition (no code change)
 
+**Done** (2026-09-03). Measured on the L1-wavelet benchmark problem (128²×8, 2× undersampled),
+1 thread, *after* `S2`/`C2`, so against the baseline that actually ships:
+
+| | |
+|---|---|
+| (a) power iterations run | **20 of 20** — the `tol = 1e-3` exit never fires |
+| (b) `AHA = A' * A` inside `powerit` | **0.41 ms** |
+| one `AᴴA` application | 4.09 ms (× 20 = 81.8 ms) |
+| (c) the `1/L * A` `Scale` wrapper | **+4.3%** per application |
+| (d) `normalize_op` total | **72.40 ms** = 24.7% of the 293 ms solve |
+
+§7's 137 ms is now 72 ms, because `S2` and `C2` made each of the 20 applications cheaper.
+
+**(b) is not the lever**: 0.41 ms of 72 ms. The first branch of `C5.2` — "do not build the
+normal operator twice" — is therefore **dropped**, and `C3`'s own measurement says the same
+thing from the other end (~4 MiB, ~7.6 ms of setup). The cost is (a): twenty applications that
+never converge.
+
+**Why they never converge, and what that means for raising `tol`.** The trajectory (relative
+error against a 60-iteration reference, three start vectors):
+
+| k | 1 | 2 | 3 | 5 | 8 | 12 | 20 | 40 |
+|---|---|---|---|---|---|---|---|---|
+| 2× undersampled | 2.4e-1 | 1.0e-1 | 7.0e-2 | 4.2e-2 | 2.4e-2 | 1.4e-2 | 6.4e-3 – 7.1e-3 | 1.3e-3 – 1.7e-3 |
+| fully sampled | 7.0e-2 | 4.6e-2 | 3.3e-2 | 2.0e-2 | 1.2e-2 | 7.2e-3 | 3.7e-3 – 4.0e-3 | 0.9e-3 – 1.1e-3 |
+
+The top of the spectrum is close to degenerate, so convergence is linear and slow: at
+`maxit = 20` the estimate is still 0.4–0.7% **below** the true norm, and the iterates approach
+it from below always. The `tol = 1e-3` rule would first fire at iteration 22 (undersampled) or
+16 (fully sampled) — i.e. `maxit` binds first, which is why (a) reads 20 of 20.
+
+**And this is why "just raise `tol`" is not a free speedup.** MRT's convention makes `L` part
+of the *problem*, not a preconditioner: it solves `½‖(𝒜/L)x − y‖² + R(x)`, and the equivalent
+unnormalized form is `½‖𝒜x − Ly‖² + L²R(x)` — still `L`-dependent. A smaller `L` (fewer
+iterations ⇒ larger under-estimate) both weakens the effective regularization by `L²` and
+makes `Lf = n` an *under*-estimate of the true Lipschitz constant, which is the direction that
+makes FISTA diverge. Cutting to 5 iterations would save ~54 ms of a 293 ms solve (18%) at the
+price of a ~1% shift in `L` and hence ~2% in the effective `λ`. That is a recalibration of
+every tuned `λ` in the tests, benchmarks and accuracy race — a deliberate decision with its own
+re-baselining, not something to slip in under a performance item. **Left at 20 iterations.**
+
+**What the measurement did find** (`c8f9a41`): `powerit` drew its start vector from the
+**global RNG**, and since the iteration does not converge, that vector leaks into the *result*.
+Measured: `estimate_opnorm` on one MRT encoding operator varied 6.5e-4 relative across six
+calls in one session, and two otherwise identical `reconstruct` calls differed by 7.9e-4
+relative. MRT reconstructions were not reproducible. `powerit`/`estimate_opnorm` now take an
+`rng` keyword defaulting to a fresh fixed-seed generator, so the estimate is a deterministic
+function of the operator and neither depends on nor consumes the global RNG. Verified: repeated
+reconstructions are now bitwise identical. This also removes a confound from every measurement
+in this file — the NRMSE wobble in the last digits of the `C2` table above is this.
+
+
 `normalize_op` (`src/utils.jl:7-15`) → `estimate_opnorm` (`properties.jl:444`) → `powerit`
 (`:452`). Instrument one L1-wavelet solve and record, separately:
 (a) how many power iterations actually run before the `tol = 1e-3` early exit fires — §7 asserts
@@ -394,6 +529,11 @@ buffers, thrown away on return);
 Everything below is conditional on what (a)–(c) say. Do not implement C5.2/C5.3 before this.
 
 ### C5.2 — Do not build the normal operator twice, and do not throw it away
+
+**Dropped** (2026-09-03), on `C5.1`'s numbers: (b) is 0.41 ms of a 72 ms `normalize_op`, so
+plumbing the normal operator into `estimate_opnorm` buys nothing measurable. The iteration
+count *is* the cost, and raising `tol` to cut it changes the solved problem — see `C5.1`.
+
 
 If (b) is significant: give `estimate_opnorm`/`powerit` an optional `normal_op` keyword, build
 `𝒜ᴴ𝒜` once in `_iterative_reconstruct_core` (`src/reconstruction/solve_core.jl:21-25`), pass it to
@@ -409,6 +549,61 @@ makes it slow, so the safe direction is a deliberate over-estimate (`λ · (1 + 
 should be written down where the tolerance is set.
 
 ### C5.3 — Do not normalize when only `Lf` is wanted — carefully
+
+**Done** (2026-09-03), and this entry's framing was wrong in a way worth recording, because the
+error was hiding a bug.
+
+The entry says dropping the normalization "gives `½‖𝒜x − y‖² + R(x)`, which is a *different
+problem* — the regularization is weaker by `L²`". The direction is right, the exponent is not,
+and the important half was missed. Substituting `x = Lv` in what MRT actually solved gives
+
+```
+½‖(𝒜/L)x − y‖² + R(x)  =  L²·[ ½‖𝒜v − y‖² + L·λ‖Ψv‖₁ ]      (degree-1 homogeneous R)
+```
+
+so the effective weight was `λ·L`, not `λ·L²` — **and the returned image was `L` times the data's
+own units**. Measured, as `λ → 0`: `‖x‖/‖x_true‖ = 1.5214` against `L = 1.5214`, for both TV and
+L1-wavelet. Every benchmark uses amplitude-aligned NRMSE, which is why nobody saw it. Verified the
+identity directly: the shipped result agreed with `L ×` (unnormalized solve at `λ·L`) to 7.6e-5.
+
+So the choice was not "exact reformulation vs. skip" but "which of two conventions", and one of
+them was returning images in arbitrary units. Taken: **`𝒜` is no longer rescaled at all.**
+`_iterative_reconstruct_core` estimates `L = ‖𝒜‖` purely as a step size and passes `Lf = n·L²`;
+the problem solved is `½‖𝒜x − y‖² + R(x)`. No `scale_regularization` guard is needed — that was
+only required to keep the *old* λ convention while dropping the wrapper, and the old convention is
+what we are leaving behind.
+
+- The amplitude bug is fixed: the default path now reproduces the
+  `disable_operator_normalization = true` path exactly (ratio 1.0000 on every row tested).
+- `λ` no longer carries an `‖𝒜‖` factor. That factor was not benign: `L` is insensitive to matrix
+  size (1.5248/1.5250/1.5253 at 64²/128²/256²) and to undersampling (1.5179–1.5253), but scales
+  **linearly with the sensitivity maps' own scaling** (×3 ⇒ `L` ×3, exactly) and varies with coil
+  count (1.5250 at 8 coils vs 1.0872 at 4). The same `λ` regularized ~40% harder with 8 coils
+  than 4.
+- Migration, documented in `docs/src/high-level/methods.md` ("Operator norm, step size and λ") and
+  in `IterativeReconstruction`'s docstring: a `λ` tuned against the old behaviour reproduces it as
+  `λ·L`.
+
+Measured (1 thread, min of 3), against the `C1`/`C2`/`C3` baseline — more than `C5.1`'s +4.3%,
+because the `Scale` wrapper is gone from every application *and* the solve path changes:
+
+| row | before | after |
+|---|---|---|
+| Total Variation (30 it) | 1365.77 ms | 1178.08 ms (−13.7%) |
+| Locally Low-Rank (20 it) | 224.06 ms | 199.24 ms (−11.1%) |
+| L1-Wavelet (30 it) | 285.87 ms | 262.10 ms (−8.3%) |
+| TGV (30 it) | 2239.83 ms | 2083.52 ms (−7.0%) |
+| CG-SENSE (10 it) | 46.05 ms | 43.58 ms |
+
+**NRMSE moves on the regularized rows** (TV 0.0116 → 0.0076, L1-wavelet 0.0084 → 0.0058, TGV
+0.0097 → 0.0062) and this is *not* an accuracy improvement to claim: those benchmark `λ` now act
+`L ≈ 1.52×` weaker. The tables must be re-baselined against the new convention in `C9`, and the
+"NRMSE is the gate" ground rule does not apply to this one commit — it is a deliberate change of
+what problem is being solved, which is the exception that rule allows for.
+
+`normalize_op` (`src/utils.jl`) had no other caller and is removed; the `benchmark/benchmarks.jl`
+entry that timed it now times `estimate_opnorm`, which is the cost that actually remains.
+
 
 §7's framing ("FISTA only needs the number `Lf = ‖A‖²`, not a normalized operator") is right about
 FISTA and **wrong about the objective**: MRT solves `½‖(𝒜/L)x − y‖² + R(x)`, and dropping the
@@ -430,6 +625,18 @@ right answer and this entry becomes a documented non-goal.
 Accuracy race must be identical, not merely close — a changed `Lf` changes the iterate path.
 Report before/after wall time for the L1-wavelet row (target: beat MRIReco's 91 ms/20 it or state
 why not) and the TV row.
+
+**Outcome**: the accuracy race cannot be identical here and is not meant to be — `C5.3` changes
+the convention `λ` is expressed in, so the regularized rows move by construction (see its table).
+That is the exception the ground rule allows, and `C9` re-baselines the tables. What *is* now
+checkable is run-to-run identity: before the `powerit` fix the race could not reproduce itself
+across two runs of the same code, because `L` was drawn from the global RNG.
+
+L1-wavelet: 285.87 → 262.10 ms/30 it. Still short of MRIReco's 91 ms/20 it, and the reason is
+recorded above — `estimate_opnorm` is 72 ms of it, the twenty power iterations are what that
+buys, and cutting them changes `L`, which is now purely a step size but still one that a
+too-small value makes divergent. Raising `tol` is therefore a safe *over*-estimate away
+(`λ·(1+tol)`), and is the remaining lever if this row needs to come down.
 
 ---
 
@@ -576,11 +783,11 @@ fixes; the 8T columns for TV/TGV/CG-SENSE are stale by construction. After Phase
 | `S5` `Array{AbstractArray}` | 1 | — | idiom already used two functions away; ride along |
 | `S6` NFFT knobs | 1 | — | additive keywords, defaults unmoved |
 | `S7` `--gcthreads` note | 1 | — | documentation of an existing negative result |
-| `C1` `SqrNormL2WithNormalOp` value | 2 | Phase 1 | correctness; changes a struct's fields and contract |
-| `C2` cancel the `±` pair | 2 | `S2` | operator-algebra rule; fires on every diagonal middle op |
-| `C3` `𝒜ᴴ𝒜` built twice | 2 | `C1` | plumbs a value across `StructuredOptimization` → `ProximalAlgorithms` |
+| `C1` `SqrNormL2WithNormalOp` value | 2 | Phase 1 | **done** `c36c3b8` (the `g_z` half is still open) |
+| `C2` cancel the `±` pair | 2 | `S2` | **done** `1f5c343` (+ `ec75b5c`); CG-SENSE 2.06x, LR 1.42x |
+| `C3` `𝒜ᴴ𝒜` built twice | 2 | `C1` | **done** `274b625`; ~4 MiB/solve, not the claimed 57 MiB |
 | `C4` ADMM dead work | 2 | `C3` | needs a flag threaded from MRT's defaults; measure first, may be dropped |
-| `C5` operator norm | 2 | `C3` | measurement first; `C5.3` needs a λ-semantics decision |
+| `C5` operator norm | 2 | `C3` | **done**; `C5.2` dropped, `C5.3` taken (λ convention changed), `powerit` made deterministic |
 | `C6` threading residuals | 2 | Phase 1 | `C6.3` is a re-fit campaign; only valid once per-solve cost is final |
 | `C7` prox buffers | 2 | `C6.4` | needs the thread-ownership contract written down first |
 | `C8` upstream `NestedThreading` | 2 | — | a PR against a package we do not vendor; nothing may depend on it |

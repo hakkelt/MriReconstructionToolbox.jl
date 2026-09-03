@@ -10,8 +10,17 @@ data fidelity, and signal modeling options.
 - `fidelity::F`: Data fidelity term (default `L2Loss()`).
 - `signal_model::M`: Signal model mapping the optimization variable to the image (default `nothing`);
   e.g. `TemporalBasis` for subspace reconstruction or `KSpaceToImage` for a k-space-domain solve.
-- `exact_opnorm::Bool`: Use exact operator norm for step size estimation (default `false`).
-- `disable_operator_normalization::Union{Nothing, Bool}`: Skip operator normalization (default `nothing` for auto-detection: skips for pure unregularized CG/CGNR, runs for proximal algorithms).
+- `exact_opnorm::Bool`: Compute `‖𝒜‖` with a fully converged power iteration rather than the
+  20-iteration estimate, which converges from below and so under-estimates slightly (default `false`).
+- `disable_operator_normalization::Union{Nothing, Bool}`: Skip the `‖𝒜‖` estimate and let the
+  algorithm derive its own step size (default `nothing` for auto-detection: skipped for pure
+  unregularized CG/CGNR, which is scale invariant, run for proximal algorithms). The name predates
+  the change that stopped `‖𝒜‖` being used to rescale `𝒜`; it is a step-size switch only.
+
+`𝒜` is left at its natural norm and `Lf = n‖𝒜‖²` is passed to the algorithm instead, so the problem
+solved is `½‖𝒜x - y‖² + R(x)`: `λ` weights the regularizer in the data's own units and the result
+comes back in them. See "Operator norm, step size and λ" in `docs/src/high-level/methods.md` for
+what changed and how to migrate a `λ` tuned against the previous behaviour.
 - `disable_normalop_optimization::Bool`: Disable normal operator optimization (default `false`).
 """
 struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M} <: AbstractIterativeMethod

@@ -66,9 +66,47 @@ The `signal_model` keyword sets how the optimization variable maps to the image:
 #### Solver Selection and Configuration
 
 - `algorithm`: Solver algorithm (e.g., `FISTA()`, `ADMM()`, `DouglasRachford()`, `CG()`, `CGNR()`) or candidate tuple. Defaults to `DEFAULT_ALGORITHMS` (`(CG(), CGNR(), FISTA(), ADMM(), DouglasRachford())`), where the appropriate solver is selected based on model convexity and smoothness.
-- `exact_opnorm`: Estimate operator norm via Power iteration for exact step size estimation.
-- `disable_operator_normalization`: Disable automatic scaling of $\mathcal{A}$ to unit norm.
+- `exact_opnorm`: Compute $\|\mathcal{A}\|$ with a fully converged power iteration instead of the
+  20-iteration estimate. The estimate converges from below, so it is a slight *under*-estimate.
+- `disable_operator_normalization`: Skip the $\|\mathcal{A}\|$ estimate and let the algorithm derive
+  its own step size. (The name predates the change described below — it no longer rescales
+  $\mathcal{A}$, because nothing does.)
 - `disable_normalop_optimization`: Disable normal-operator substitution ($\mathcal{A}^*\mathcal{A}$) in least-squares models.
+
+#### Operator norm, step size and λ
+
+A proximal algorithm needs the Lipschitz constant of $\nabla f$, not an operator of unit norm, so
+MRT estimates $L = \|\mathcal{A}\|$ and passes $L_f = n L^2$ as the step-size hint ($n$ = number of
+optimization variables sharing $\mathcal{A}$; the data term is
+$\tfrac12\|\mathcal{A}(x_1 + \dots + x_n) - y\|^2$, whose gradient has Lipschitz constant
+$\|[\mathcal{A} \dots \mathcal{A}]\|^2 = n\|\mathcal{A}\|^2$). The problem solved is
+
+```math
+\tfrac{1}{2}\|\mathcal{A}x - y\|_2^2 + \mathcal{R}(x)
+```
+
+so `λ` weights the regularizer against the data term directly, in the data's own units, and the
+reconstructed image comes back in those units too.
+
+!!! warning "Changed behaviour: λ and the reconstructed amplitude"
+    MRT previously rescaled the operator to unit norm and solved
+    $\tfrac12\|(\mathcal{A}/L)x - y\|^2 + \mathcal{R}(x)$ instead. Substituting $x = Lv$ shows what
+    that did: it is $L^2\left[\tfrac12\|\mathcal{A}v - y\|^2 + L\,\lambda\|\Psi v\|_1\right]$ for a
+    degree-one homogeneous regularizer. So the weight actually applied was $\lambda L$, not
+    $\lambda$, **and the returned image was $L$ times larger than the data's units** — exactly $L$
+    as $\lambda \to 0$ (measured: $\|x\|/\|x_\text{true}\| = 1.5214$ against $L = 1.5214$). Every
+    benchmark used amplitude-aligned NRMSE, which hid it.
+
+    Two consequences when upgrading:
+
+    - Reconstructed images are no longer scaled by $\|\mathcal{A}\|$. If you were dividing it out,
+      stop.
+    - A `λ` tuned against the old behaviour reproduces it as `λ * L`, with
+      $L = $ `AbstractOperators.estimate_opnorm(𝒜)`. $L$ is insensitive to matrix size and
+      undersampling factor but scales linearly with the sensitivity maps' own scaling and varies
+      with coil count (measured on a 128² brain phantom: $L = 1.5250$ with 8 coils, $1.0872$ with
+      4). That coupling is what the change removes: `λ` no longer depends on how the coil
+      sensitivities happen to be normalized.
 
 #### Signal Models (`ℳ`)
 

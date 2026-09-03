@@ -2,7 +2,7 @@
 	_iterative_reconstruct_core(𝒜, acq_data, x₀_or_x₀s, scale, method, config; build)
 
 Shared driver behind the single-variable and `Component` iterative reconstructions: k-space/warm-start
-scaling, the `disable_operator_normalization` guard, model building (via `build`), solver setup and
+scaling, the operator-norm step-size estimate, model building (via `build`), solver setup and
 solve, solution extraction, and inverse scaling. `build(𝒜, y; x₀)` must return `(model, vars,
 auxiliaries)` as `build_model_with_variables`/`build_model` do; `vars` is either a single `Variable`
 (single-variable path) or a `Tuple` of them (component path), and every step below that differs by
@@ -18,12 +18,13 @@ function _iterative_reconstruct_core(
             x₀_or_x₀s = _scale_x0(x₀_or_x₀s, scale)
         end
     end
-    should_norm = _should_normalize_operator(method)
-    if should_norm
-        @step "Normalizing encoding operator" config begin
-            𝒜 = normalize_op(𝒜, method.exact_opnorm)
-        end
-    end
+    # `‖𝒜‖` is wanted only as a step size: a proximal algorithm needs `Lf`, not a unit-norm
+    # operator. Scaling `𝒜` by `1/L` instead did three things at once — supplied the step size,
+    # multiplied the effective regularization weight by `L`, and returned the image `L` times too
+    # large — and only the first was intended. See `docs/src/high-level/methods.md`, "Operator
+    # norm, step size and λ".
+    should_estimate_L = _should_estimate_operator_norm(method)
+    L = should_estimate_L ? _operator_norm_for_stepsize(𝒜, method, config) : nothing
     # `@printing_step`, not `@step`: `@step`'s verbose path runs its body inside `@spawn`, so the
     # `model` / `vars` bindings would live only in that task's closure — the solve closures below
     # capture them, and neither inference (JET) nor a reader can then see they are defined.
@@ -43,12 +44,12 @@ function _iterative_reconstruct_core(
         display =
             (it, alg, iter, state) ->
         ProximalAlgorithms.default_display(it, alg, iter, state, config.printfunc)
-        # For n variables sharing the same operator 𝒜, the data term is ‖𝒜*(x₁+…+xₙ) - y‖²; its
-        # Lipschitz constant is n (not 1) when 𝒜 is normalized to unit norm, since
-        # ‖[𝒜 … 𝒜]‖ = √n‖𝒜‖. When 𝒜 was left at its natural norm (disabled normalization), this
-        # estimate no longer holds; let the algorithm derive its own instead of overriding it.
-        Lf = should_norm ? _n_vars(vars) : nothing
+        # For n variables sharing the same operator 𝒜, the data term is ‖𝒜*(x₁+…+xₙ) - y‖², whose
+        # gradient has Lipschitz constant ‖[𝒜 … 𝒜]‖² = n‖𝒜‖², since ‖[𝒜 … 𝒜]‖ = √n‖𝒜‖. When the
+        # norm was not estimated (`disable_operator_normalization`), let the algorithm derive its
+        # own step size instead of overriding it.
         R_type = real(eltype(_first_x0(x₀_or_x₀s)))
+        Lf = should_estimate_L ? R_type(_n_vars(vars) * L^2) : nothing
         algorithm = patch_algorithm_with_default_values(method.algorithm, Lf; eltype_real = R_type)
         verbose = freq != -1
         try
@@ -129,12 +130,34 @@ _is_krylov_solver(::Union{Type{<:ProximalAlgorithms.CGIteration}, Type{<:Proxima
 _is_krylov_solver(algs::Tuple) = all(_is_krylov_solver, algs)
 _is_krylov_solver(::Any) = false
 
-function _should_normalize_operator(method::IterativeReconstruction)
+"""
+    _should_estimate_operator_norm(method) -> Bool
+
+Whether `‖𝒜‖` is worth computing for this method, i.e. whether the algorithm takes an `Lf`
+step-size hint at all. A pure unregularized CG/CGNR solve does not: Krylov subspaces are scale
+invariant, so it derives everything it needs itself.
+
+Reads `method.disable_operator_normalization`, whose name predates the change that stopped this
+rescaling the operator — it now suppresses the `Lf` estimate and nothing else.
+"""
+function _should_estimate_operator_norm(method::IterativeReconstruction)
     if !isnothing(method.disable_operator_normalization)
         return !method.disable_operator_normalization
     end
-    # Smart auto-detection:
-    # Pure unregularized CG / CGNR solves do not need operator normalization because Krylov subspaces are scale invariant.
     is_pure_cg = isempty(method.regularization) && _is_krylov_solver(method.algorithm)
     return !is_pure_cg
+end
+
+# `‖𝒜‖`, for use as `Lf = n‖𝒜‖²`. `estimate_opnorm`'s power iteration converges from below, so
+# this is a slight under-estimate of the true norm; `AbstractOperators.powerit`'s docstring
+# records that, and `exact_opnorm = true` swaps in the converged `opnorm` for callers who mind.
+function _operator_norm_for_stepsize(𝒜, method::IterativeReconstruction, config)
+    local L
+    # `@printing_step`, not `@step`: the latter runs its body in a `@spawn`, so `L` would be
+    # bound only inside that task's closure.
+    @printing_step "Estimating the operator norm" config begin
+        L = method.exact_opnorm ? LinearAlgebra.opnorm(𝒜) : AbstractOperators.estimate_opnorm(𝒜)
+    end
+    @argcheck L != 0 "Cannot reconstruct with an encoding operator of zero norm"
+    return L
 end
