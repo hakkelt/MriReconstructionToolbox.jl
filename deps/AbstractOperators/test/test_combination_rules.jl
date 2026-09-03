@@ -772,3 +772,41 @@ end
     @test can_be_combined(square_eye, scaling)
     @test combine(square_eye, scaling) === scaling
 end
+
+@testitem "estimate_opnorm is deterministic" tags = [:misc, :calculus] begin
+    using AbstractOperators
+    using AbstractOperators: estimate_opnorm, powerit
+    using LinearAlgebra: opnorm
+    using Random
+
+    # The power iteration starts from a fixed-seed vector, not from the global RNG.  It
+    # regularly exhausts `maxit` without meeting `tol` (a near-degenerate top of the spectrum
+    # converges linearly and slowly), so the start vector leaks into the *result*, not merely
+    # into how many iterations it takes — and anything normalized by that number then differs
+    # from run to run.
+    M = randn(MersenneTwister(3), 40, 25)
+    L = MatrixOp(M)
+
+    vals = [estimate_opnorm(L) for _ in 1:5]
+    @test all(==(vals[1]), vals)
+    pvals = [powerit(L) for _ in 1:3]
+    @test all(==(pvals[1]), pvals)
+
+    # ... and it neither depends on nor consumes the global RNG
+    Random.seed!(1)
+    a = estimate_opnorm(L)
+    r1 = rand()
+    Random.seed!(1)
+    b = estimate_opnorm(L)
+    r2 = rand()
+    @test a == b
+    @test r1 == r2
+
+    # an explicit `rng` still overrides the default, and the estimate stays close to the truth
+    exact = opnorm(M)
+    @test isapprox(estimate_opnorm(L; rng = MersenneTwister(7)), exact, rtol = 0.05)
+
+    # the iterates approach ‖A‖ from below, so a truncated run under-estimates it
+    @test estimate_opnorm(L) <= exact * (1 + 1.0e-8)
+    @test isapprox(powerit(L; maxit = 500, tol = 1.0e-12), exact, rtol = 1.0e-6)
+end
