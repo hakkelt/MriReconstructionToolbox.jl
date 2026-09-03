@@ -19,9 +19,8 @@ WaveletOperators = "f3582904-6f60-4bbd-985d-55eab799bc9d"
 AbstractOperators = {path = "../../AbstractOperators"}
 DSPOperators = {path = "../../AbstractOperators/DSPOperators"}
 FFTWOperators = {path = "../../AbstractOperators/FFTWOperators"}
-ProximalAlgorithms = {path = "../../ProximalAlgorithms.jl"}
-ProximalCore = {path = "../../ProximalCore.jl"}
-ProximalOperators = {path = "../../ProximalOperators.jl"}
+ProximalAlgorithms = {path = "../../ProximalAlgorithms"}
+ProximalOperators = {path = "../../ProximalOperators"}
 StructuredOptimization = {path = ".."}
 WaveletOperators = {path = "../../AbstractOperators/WaveletOperators"}
 
