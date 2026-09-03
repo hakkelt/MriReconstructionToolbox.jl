@@ -75,6 +75,16 @@ Measured on the cluster `test` node (`x1001c4s3b0n1`, dual AMD EPYC 7352, 128x12
   regularization + integration + JET suites green; `recon_bench.jl` TV/TGV (adaptive
   `SpectralRadiusApproximationPenalty`, ρ moving each iteration) converge to the expected NRMSE.
 
+- **`AᴴA` was still built twice per ADMM solve — resolved** (`IMPLEMENTATION_PLAN.md` `C3`,
+  2026-09-03). `SqrNormL2WithNormalOp` builds `AᴴA` eagerly in its constructor, `parse.jl` handed
+  ADMM only `f.A`, and `get_cg_operator` built `iter.A' * iter.A` again. The cached one is now
+  threaded through, under a new optional `AHA` key on the `LeastSquaresTerm` assumption (only
+  algorithms that actually form the normal operator ask for it) and a matching `AHA` field on
+  `ADMMIteration`. **Measured saving is ~4 MiB, not the 57 MiB this file claimed**: the TV
+  benchmark solve goes 78.18 → 74.19 MiB and 144.53 → 136.91 ms at one outer iteration, and
+  245.05 → 241.13 MiB at 30, where the wall time is indistinguishable. Treat the 57 MiB figure as
+  retracted.
+
 
 ### 2. Intra-Slice Threading vs. Batch Decomposition Scaling
 - **Observation**: For single 2D slices ($N \le 256$, $\le 1\text{ MB}$ memory footprint), single-threaded execution (`threaded = false`) is **10x–25x faster** than multi-threading across 8 cores.
@@ -399,6 +409,43 @@ evaluating `f_x`/`g_z` every iteration, an extra `A` application nothing consume
 Net: MRIReco is 2x faster on L1-wavelet, and it is real (unlike the ADMM opnorm case already fixed
 2026-09-02 — see Performance & Threading Findings above).
 
+**Measured and mostly retracted** (`IMPLEMENTATION_PLAN.md` `C5.1`, 2026-09-03). On the shipping
+baseline (after `S2`/`C2`) `normalize_op` is 72.40 ms of a 293 ms L1-wavelet solve, not 137 of
+322. Decomposed: building `AᴴA` inside `powerit` is **0.41 ms** — so "do not build it twice" buys
+nothing — and the `1/L * A` `Scale` wrapper costs **+4.3%** per application. The cost is the 20
+power iterations themselves, and all 20 do run: the top of the spectrum is near-degenerate, the
+`tol = 1e-3` rule would first fire at iteration 22, and at 20 iterations the estimate is still
+0.4-0.7% *below* the true norm.
+
+**"FISTA only needs `Lf`, not a normalized operator" was right, and MRT now does exactly that**
+(`IMPLEMENTATION_PLAN.md` `C5.3`, 2026-09-03). `𝒜` is no longer rescaled: `L = ‖𝒜‖` is estimated
+purely as a step size and passed as `Lf = n·L²`, so the problem solved is `½‖𝒜x − y‖² + R(x)`.
+Measured: TV 1365.77 → 1178.08 ms, LLR 224.06 → 199.24 ms, L1-wavelet 285.87 → 262.10 ms, TGV
+2239.83 → 2083.52 ms.
+
+Chasing that also found what the old convention was doing. Substituting `x = Lv` in
+`½‖(𝒜/L)x − y‖² + R(x)` gives `L²·[½‖𝒜v − y‖² + L·λ‖Ψv‖₁]`, so the weight actually applied was
+`λ·L`, **and the returned image was `L` times the data's own units** — exactly `L` as `λ → 0`
+(measured `‖x‖/‖x_true‖ = 1.5214` against `L = 1.5214`, TV and L1-wavelet alike). Amplitude-aligned
+NRMSE hid it in every benchmark. `L` scales linearly with the sensitivity maps' own scaling (×3 ⇒
+`L`×3) and varies with coil count (1.5250 at 8 coils, 1.0872 at 4), so the same `λ` regularized
+~40% harder with 8 coils than 4. Both are gone. **Migration: a `λ` tuned before this reproduces
+its old behaviour as `λ·L`**, and the regularized benchmark rows move by construction (TV
+0.0116 → 0.0076, L1-wavelet 0.0084 → 0.0058, TGV 0.0097 → 0.0062) — that is the convention change,
+not an accuracy win, and `C9` re-baselines the tables.
+
+The 72 ms itself stays: cutting the 20 power iterations still makes `L` smaller, and a too-small
+`Lf` is the direction that diverges. `C5.2` dropped.
+
+The measurement did find a real defect: `powerit` drew its start vector from the **global RNG**,
+and since the iteration does not converge that vector leaks into the result — `estimate_opnorm`
+varied 6.5e-4 relative across six calls, and two identical `reconstruct` calls differed by 7.9e-4.
+**Fixed**: `powerit`/`estimate_opnorm` take an `rng` defaulting to a fixed-seed generator, so a
+reconstruction is now bitwise reproducible.
+
+The `g_z` half of this entry — `prox!` returning the regularizer's value on every iteration when
+nothing consumes it — is still open (`IMPLEMENTATION_PLAN.md` `C1`, second half).
+
 ### 8. Non-Cartesian gridding — not a speed gap, an accuracy mismatch
 
 MRT takes NFFT.jl's defaults (m=5, σ=2.0, POLYNOMIAL); MRIReco hardcodes m=3, σ=1.25, TENSOR. Per
@@ -427,9 +474,19 @@ Two causes, both in `FFTWOperators`:
 - the k-space shift pair inside `𝒜ᴴ𝒜` is never cancelled. Sign alternation commutes exactly with
   the (diagonal) sampling mask, but `get_normal_op(::Compose)` only folds the outermost factor, and
   `Compose`'s constructor only cancels directly-adjacent `Aᴴ A` — so a pair separated by the mask
-  survives uncancelled. Not yet resolved — tracked as `IMPLEMENTATION_PLAN.md` `C2`.
+  survives uncancelled.
+  **Resolved** (`IMPLEMENTATION_PLAN.md` `C2`, 2026-09-03): a triple
+  `can_be_combined`/`combine` rule in `FFTWOperators` rewrites `± M ±` to `M` for any square
+  diagonal `M` carrying the same `dirs`. On the real MRT chain `get_normal_op(𝒜)` drops from
+  9 operators to 7. Measured (1 thread, min of 3, rule reverted vs applied): CG-SENSE
+  94.66 → 46.05 ms (**2.06x**), global low-rank 247.48 → 173.99 ms (1.42x), temporal TV
+  877.07 → 724.52 ms (1.21x), LLR 250.38 → 224.06 ms (1.12x), TV 1490.84 → 1365.77 ms (1.09x),
+  L1-wavelet 293.67 → 285.87 ms (1.03x), TGV 2256.61 → 2239.83 ms (1.01x). It also exposed a
+  latent `Compose` bug that silently dropped an operator from `𝒜ᴴ𝒜` — see
+  `IMPLEMENTATION_PLAN.md` `C2` and commit `ec75b5c`.
 
-Fixing both would take the dynamic low-rank solve from 890 ms to ≈550 ms, past MRIReco's 632 ms.
+The combined "890 ms → ≈550 ms" estimate for the dynamic low-rank solve is superseded by the
+per-row numbers above; the benchmark tables are regenerated once, in `C9`.
 
 ### Smaller MRT-internal gaps found during the same profiling pass
 
