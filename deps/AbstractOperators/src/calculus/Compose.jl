@@ -79,10 +79,13 @@ struct Compose{N, M, L <: Tuple, T <: Tuple} <: AbstractOperator
                 buf = (buf[1:(i - 1)]..., buf[next_i:end]...)
                 if i > 1 && length(buf) >= i
                     if buf[i - 1] === buf[i] # check for re-used buffers that might have become adjacent
+                        # `buf` is already the shortened tuple here, so the buffer to replace
+                        # is at position `i` in *it* — `next_i` indexes the pre-combination
+                        # tuple and drops one buffer too many for a triple combination.
                         buf = (
                             buf[1:(i - 1)]...,
                             allocate_in_codomain(new_op),
-                            buf[next_i:end]...,
+                            buf[(i + 1):end]...,
                         )
                     end
                     i -= 1 # maybe the previous operator can be combined with the new one
@@ -93,6 +96,16 @@ struct Compose{N, M, L <: Tuple, T <: Tuple} <: AbstractOperator
         end
         if length(A) == 1
             return A[1]
+        end
+        # The invariant is only checked on entry above, but the combination loop can break it
+        # too, and a `Compose{N, M}` with `M != N - 1` is not merely malformed: `mul!` is
+        # generated over `M` and would silently *skip* operators past `buf[M]`. Fail loudly.
+        if length(A) - 1 != length(buf)
+            throw(
+                DimensionMismatch(
+                    "combining operators produced $(length(A)) operators and $(length(buf)) buffers",
+                ),
+            )
         end
         return new{length(A), length(buf), typeof(A), typeof(buf)}(
             A, buf
