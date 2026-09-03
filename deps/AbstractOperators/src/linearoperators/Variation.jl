@@ -293,24 +293,41 @@ end
     return
 end
 
+# One slab of dimension `d`, writing **only its own** `batch_length` elements of `y` and
+# gathering the three terms of `_variation_adjoint_term` from `bcol` instead.
+#
+# It used to scatter: each slab added its own contribution and then reached into the
+# neighbouring slab (`slice_start ± batch_length`) to deposit the term that slab owed. That is
+# correct serially, but `_variation_adjoint_dim!`'s threaded method runs the `k` loop under
+# `@batch`, so two threads holding adjacent `k` did concurrent read-modify-write on the same
+# elements and lost updates. Measured before this change, threaded vs serial on the same input:
+# different in 500/500 runs, with relative errors up to 2.3e-1 on `(100, 50)` and 1.8e-1 on
+# `(64, 64, 16)` — wrong results, not merely non-reproducible ones.
+#
+# Gathering keeps the write set of every `k` disjoint, which is what makes the `@batch` legal.
+# `j` is the 0-based index along dimension `d`, so the terms are: `-b_1` at `j == 0` and `+b_j`
+# otherwise (this slab); `+b_1` at `j == 1` (the mirrored boundary); and `-b_{j+1}` whenever a
+# next slab exists. The per-slab branches are loop-invariant and hoist out of the `@simd` runs.
 @inline function _variation_adjoint_slab!(y, bcol, batch_length::Int, k::Int, n::Int)
     slice_start = k * batch_length + 1
     slice_end = (k + 1) * batch_length
-    if k % n == 0
-        # Local index j == 1: `-b_1` (this slab) and, since `n >= 2` always holds, `+b_1` folds
-        # straight into the j == 2 slab that immediately follows.
+    j = k % n
+    if j == 0
         @inbounds @simd for i in slice_start:slice_end
             y[i] -= bcol[i]
         end
-        @inbounds @simd for i in (slice_start + batch_length):(slice_end + batch_length)
-            y[i] += bcol[i - batch_length]
-        end
     else
-        # Local index j in 2:n: `+b_j` (this slab) and `-b_j` folds into the j - 1 slab.
         @inbounds @simd for i in slice_start:slice_end
             y[i] += bcol[i]
         end
-        @inbounds @simd for i in (slice_start - batch_length):(slice_end - batch_length)
+    end
+    if j == 1
+        @inbounds @simd for i in slice_start:slice_end
+            y[i] += bcol[i - batch_length]
+        end
+    end
+    if j != n - 1
+        @inbounds @simd for i in slice_start:slice_end
             y[i] -= bcol[i + batch_length]
         end
     end
