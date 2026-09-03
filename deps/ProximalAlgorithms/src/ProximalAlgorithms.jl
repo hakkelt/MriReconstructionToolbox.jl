@@ -259,6 +259,7 @@ include("algorithms/cg.jl")
 include("algorithms/admm.jl")
 include("algorithms/forward_backward.jl")
 include("algorithms/fast_forward_backward.jl")
+include("algorithms/pogm.jl")
 include("algorithms/zerofpr.jl")
 include("algorithms/panoc.jl")
 include("algorithms/douglas_rachford.jl")
@@ -281,6 +282,7 @@ get_algorithms() = [
     CG(),
     CGNR(),
     FastForwardBackward(),
+    POGM(),
     ZeroFPR(),
     PANOCplus(),
     DavisYin(),
