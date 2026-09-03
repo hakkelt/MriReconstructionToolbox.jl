@@ -16,6 +16,8 @@ import AbstractOperators:
     supports_threading,
     is_threaded,
     has_fast_opnorm,
+    has_optimized_normalop,
+    get_normal_op,
     _normalize_array_type,
     _array_wrapper_type,
     _copy_operator_impl
@@ -122,21 +124,33 @@ codomain_type(::WaveletOp{T}) where {T} = T
 domain_array_type(::WaveletOp{T, N, W, S}) where {T, N, W, S} = S
 codomain_array_type(::WaveletOp{T, N, W, S}) where {T, N, W, S} = S
 
-is_AcA_diagonal(L::WaveletOp) = true
-is_AAc_diagonal(L::WaveletOp) = true
+# `WᴴW = I` only holds for an orthogonal wavelet family (`wavelet(...)` constructs an
+# `OrthoFilter`); a biorthogonal family (e.g. CDF) constructs a lifting-scheme `GLS`, whose
+# forward/inverse pair is not self-adjoint, so every trait below that assumes the identity must
+# be guarded on this.
+_is_orthogonal(L::WaveletOp) = L.wavelet isa Wavelets.WT.OrthoFilter
+
+is_AcA_diagonal(L::WaveletOp) = _is_orthogonal(L)
+is_AAc_diagonal(L::WaveletOp) = _is_orthogonal(L)
 is_invertible(L::WaveletOp) = true
 is_full_row_rank(L::WaveletOp) = true
 is_full_column_rank(L::WaveletOp) = true
 
-diag_AcA(::WaveletOp{T}) where {T} = real(T(1))
-diag_AAc(::WaveletOp{T}) where {T} = real(T(1))
+diag_AcA(L::WaveletOp{T}) where {T} = _is_orthogonal(L) ? real(T(1)) : throw(ArgumentError("diag_AcA is only defined for orthogonal wavelets"))
+diag_AAc(L::WaveletOp{T}) where {T} = _is_orthogonal(L) ? real(T(1)) : throw(ArgumentError("diag_AAc is only defined for orthogonal wavelets"))
 
 AbstractOperators.is_thread_safe(::WaveletOp) = true
 
-has_fast_opnorm(::WaveletOp) = true
-has_fast_opnorm(::AdjointOperator{<:WaveletOp}) = true
-opnorm(::WaveletOp{T}) where {T} = one(T)
-opnorm(L::AdjointOperator{<:WaveletOp}) = one(eltype(domain_type(L.A)))
+has_fast_opnorm(L::WaveletOp) = _is_orthogonal(L)
+has_fast_opnorm(L::AdjointOperator{<:WaveletOp}) = _is_orthogonal(L.A)
+opnorm(L::WaveletOp{T}) where {T} = _is_orthogonal(L) ? one(T) : throw(ArgumentError("opnorm has no fast path for a biorthogonal wavelet; use estimate_opnorm"))
+opnorm(L::AdjointOperator{<:WaveletOp}) = _is_orthogonal(L.A) ? one(eltype(domain_type(L.A))) : throw(ArgumentError("opnorm has no fast path for a biorthogonal wavelet; use estimate_opnorm"))
+
+has_optimized_normalop(L::WaveletOp) = _is_orthogonal(L)
+function get_normal_op(L::WaveletOp)
+    _is_orthogonal(L) || throw(ArgumentError("get_normal_op is only optimized for orthogonal wavelets"))
+    return Eye(domain_type(L), size(L, 2); array_type = domain_array_type(L))
+end
 
 # Utils
 

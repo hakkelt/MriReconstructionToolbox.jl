@@ -37,6 +37,31 @@ end
     end
 end
 
+@testitem "WaveletOp: normal operator is the identity for orthogonal families" tags = [:wavelet, :WaveletOp] setup = [TestUtils] begin
+    using Wavelets, LinearAlgebra, Random, AbstractOperators, WaveletOperators
+    Random.seed!(1)
+
+    n = 8
+    op = WaveletOp(Float64, wavelet(WT.db4), (n,))
+
+    @test AbstractOperators.has_optimized_normalop(op)
+    Wop = AbstractOperators.get_normal_op(op)
+    @test Wop isa Eye
+
+    x = randn(n)
+    @test norm(op' * (op * x) .- x) <= 1.0e-12
+    @test norm(Wop * x .- x) <= 1.0e-12
+
+    # A biorthogonal family (lifting-scheme CDF) is not self-adjoint: the identity trait must
+    # not fire for it.
+    bop = WaveletOp(Float64, wavelet(WT.cdf97, WT.Lifting), (n,))
+    @test !AbstractOperators.has_optimized_normalop(bop)
+    @test !AbstractOperators.is_AcA_diagonal(bop)
+    @test !AbstractOperators.is_AAc_diagonal(bop)
+    @test_throws ArgumentError AbstractOperators.get_normal_op(bop)
+    @test_throws ArgumentError AbstractOperators.diag_AcA(bop)
+end
+
 @testitem "WaveletOp: copy_operator" tags = [:wavelet, :WaveletOp] setup = [TestUtils] begin
     using Wavelets, LinearAlgebra, Random, AbstractOperators, WaveletOperators
     Random.seed!(6)

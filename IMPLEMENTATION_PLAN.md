@@ -1,4 +1,4 @@
-# MRT: TODO remainder, `ReconstructionMethod` refactor, and roadmap Phases 1–3
+# MRT implementation plan — the open `TODO.md` items
 
 > **This document is the living implementation plan. Update it as part of each stage's commit**: tick off
 > completed work, record measured numbers and decisions actually taken, and revise later stages when
@@ -9,365 +9,579 @@
 > use:" list and a runnable `@example` where the page's house style calls for it), the `pages` vector
 > in `docs/make.jl` for new pages, and `README.md` where the public surface changes. Documentation is
 > not a follow-up stage.
+>
+> The `ReconstructionMethod` refactor and roadmap Phases 1–3 (the
+> `comprehensive_literature_review_mri_toolboxes.md` §5 design, formerly Stages 0–10 of this file)
+> are **complete** — the last of it landed in `2b1ffd8` — and have been removed from this file.
+> Their record is the git history.
 
 ## Context
 
-Two documents drive this work.
+`TODO.md` at `fec37ad` carries three groups of *open* work: the residual threading items under
+"Performance & Threading Findings" (finding 2 "Still open" 0–3, finding 3 "Not done"), the
+cross-toolkit gaps §7–§9 plus the five "smaller MRT-internal gaps", and the deliberately-parked
+§5 (per-iteration prox allocations) and the `Array{AbstractArray}` residual. Everything else in
+that file is already applied and is kept there only as a record.
 
-`TODO.md` records a code-quality review, but it is **largely stale**. Commit `d9964eb` — the commit that *added* the file — says in its own message: *"Implements TODO.md items 1, 2, 3, 4, 7, 8, 9 (items 5 and 6 left open)"*. Verified at HEAD: `_iterative_reconstruct_core` is the shared driver (`src/reconstruction/reconstruct.jl:337`), `Lf` comes from the built variables (`:370`), `execute_two_phase` caches the encoding operator across phases (`src/reconstruction/decomposition.jl:147`), `prelim` is concretely typed (`:164-167`), the entry point dispatches on tuple shape (`:78-96`), `hard_threshold_reg.jl` uses `Val`-dispatch, and `test/test_snippets.jl` exists. Item 5 is **out of scope** by decision. So only item 6 and a few residuals survive.
+Most of the work lands in the vendored forks under `deps/` — `AbstractOperators` (+
+`FFTWOperators`, `WaveletOperators`), `StructuredOptimization`, `ProximalAlgorithms`. Those are
+ours to change, but each is a separate package with its own test suite: a change there is not
+done until that package's own tests are green *and* the MRT suite is green.
 
-`comprehensive_literature_review_mri_toolboxes.md` (§5) specifies an architectural redesign of `reconstruct`. The current signature is expressive only for image-domain proximal minimization; GRAPPA, POCS, homodyne, SPIRiT and direct gridding cannot be expressed. §5 replaces it with an explicit `method::AbstractReconstructionMethod` separating the three things the current API conflates: the **forward/signal model**, the **objective**, and the **solver**.
+## The two phases
 
-### Decisions taken
+**Phase 1 — simple (`S1`–`S7`).** One function or one file each, no contract change, no design
+decision to take first, no measurement campaign, nothing upstream to coordinate. Each is
+independently committable and independently revertible, and none blocks another. Two of them
+(`S2`, `S3`) are among the largest measured per-iteration wins in the whole plan — "simple" here
+means *bounded*, not *unimportant*.
 
-- **Clean break.** The 3-positional `reconstruct` signature is deleted outright. No adapter, no `depwarn`, no "this was removed" error. Nothing in code, comments, docstrings or docs may reference the old form — the package has no users yet.
-- **Scope: through roadmap Phase 3.** TODO item 5 (per-iteration prox allocations) and package distribution/registration are **out of scope**.
-- Design-doc decisions fixed: singleton *types* on every dispatch axis; a separate `signal_model` field; named methods are types implementing `lower`; k-space regularizers auto-wrap via a `natural_domain` trait with `InImageDomain`/`InKSpace` escape hatches.
+**Phase 2 — complex (`C1`–`C9`).** Everything that changes a type's contract, plumbs a value
+across package boundaries, needs a measurement before the right answer is known, needs a decision
+recorded before code can be written, or lands upstream in a package we do not vendor. These carry
+real risk of being wrong in a way tests do not catch, so each states what must be measured or
+decided *before* the edit.
 
-### Verified findings
+Phase 1 first, in full: it removes ~all of the §9 arithmetic cost, so Phase 2's measurements are
+taken against the cheaper baseline that will actually ship — measuring `C5`'s setup cost against
+a solve that still pays the un-fused sign passes would fit the wrong constant.
 
-**V1 — The `:jet` tests are not broken.** `TestItemRunner.run_tests(".")` filtered to `:jet` passes **48/48**, and `JET.test_package(MriReconstructionToolbox; target_modules=(MriReconstructionToolbox,))` standalone reports "No errors detected". The failure appears only with the bare `@run_package_tests` in `test/runtests.jl`, which resolves the discovery root to the *parent* directory and picks up sibling repos plus a stale `/project/c_mrrecon/MriReconstructionToolbox.worktrees/` tree. A harness and housekeeping bug, not a code-quality one; `AGENTS.md`'s "JET broken on Julia 1.12 HPC" entry is wrong.
+## Ground rules
 
-**V2 — `GeometricMedicalPhantoms` is registered in General** (UUID `c297bd51-60f5-42e7-80e4-f985777cb71a`), so `test/Project.toml`'s `path = "../../GeometricMedicalPhantoms"` source can go — which also unblocks a test CI workflow.
-
-**V3 — `DouglasRachford` needs more than an alias.** `deps/ProximalAlgorithms/src/algorithms/douglas_rachford.jl:35` declares `gamma::R` with **no default**, so every call fails without one; its assumptions (`:122-125`) are exactly two proximable terms. `patch_algorithm_with_default_values` needs a `DouglasRachfordIteration` method, and the term count needs an up-front check. No upstream work though — `StructuredOptimization.parse_problem` (`deps/StructuredOptimization/src/solvers/build_solve.jl:24-48`) is generic, driven by `get_assumptions`.
-
-**V4 — Auto-wrapping image regularizers under `KSpaceDomain` cannot be universal.** `materialize` returns an opaque `Term`; the only composable seam is `get_operator`, which several terms lack in usable form (`PlugAndPlay` has a custom prox, `TotalGeneralizedVariation2D` has auxiliaries, `MultiScaleLowRank` is a `ProximalAverage`, `RankLimit`/`HardThreshold` are prox-of-`x` forms). §5.5's "any image prior auto-wraps" is false. Restrict auto-wrap to an opt-in trait `is_operator_composable(reg)` (true for the wavelet/TV/L1/LLR family), erroring informatively otherwise and naming `InKSpace(reg)`.
-
-**V5 — `𝒫` (the sampling operator) already carries the coil axis.** `_get_subsampling_operator` (`src/encoding/subsampling_operators.jl:245-269`) treats every dimension past the spatial ones as `batch_dims` and wraps `GetIndex` in a `BatchOp`. §5.3's "extend it to carry the coil dimension" is a no-op — write the shape test, not the extension.
-
-**V6 — `Base.:*` on `NamedDimsOp` does not check inner names** (`named_dims_op.jl:134-141`), while `combine` does (`:92-99`). Composing a `signal_model` with `*` silently produces a correctly-shaped operator with wrong domain names. Every composition site needs an explicit name assertion.
-
-**V7 — No `AcquisitionInfo` field additions are needed through Phase 3**, provided pre-processing returns auxiliary data (noise covariance, compression matrix) alongside the new `AcquisitionInfo` rather than storing it. Fix the copy constructors anyway (Stage 0): the Cartesian one (`cartesian_acquisition_info.jl:118-129`) is reflective but **positional**, and the NonCartesian one (`noncartesian_acquisition_info.jl:97-117`) is a hand-written 7-argument call that `continue`s on `:is3D`.
-
-**V8 — `NFFTOp` applies `dcf` only in the adjoint** (`deps/AbstractOperators/NFFTOperators/src/NFFTOp.jl:199` vs the forward at `:183`). **This is an upstream concern and out of scope here**: fixing it properly requires upstream changes to keep the NFFT normal-operator (Toeplitz) optimization performant, and the mathematical correctness of the NFFT adjoint belongs in `NFFTOperators`' own test suite, not MRT's. File it upstream; do not test it from MRT.
-
-**V9 — The decomposition plan refactor is a near-pure rename.** Of the 14 `plan.image_size`/`plan.image_batch_dims` use sites (`decomposition.jl:71,150,234,241,246-247,260-261,310,312,319,321,356-357` and `reconstruct.jl:107,184`), essentially all are **variable-space**, not image-space: batch sizing, `x₀` validation, `x₀` slicing, per-slice result allocation (`similar(..., plan.image_size)` allocates the *solved variable*), and display. The only genuinely image-space consumer is the final output after coil combination or signal-model inversion, which happens outside the plan. So renaming to `variable_size`/`variable_batch_dims` — adding a distinct `image_size` field only where the output shape actually differs — is mechanical, and there is no need to disable decomposition for shape-changing signal models (Stage 6).
-
-### Notation change (code, comments, docstrings and docs)
-
-`Γ` for the subsampling operator is awkward, and the design doc's `𝒟` for k-space data consistency is confusing next to `𝒜`. **Use `𝒫`** — mnemonic for both *pattern* and *projection onto the acquired samples* — and drop `𝒟`, because the k-space data-consistency operator *is* the sampling operator:
-
-| symbol | meaning |
-| --- | --- |
-| `𝒜` | full encoding operator, `𝒜 = 𝒫 ∘ ℱ ∘ 𝒮` |
-| `𝒫` | sampling / data-consistency operator (**was `Γ`**; also replaces the design doc's `𝒟`) |
-| `ℱ` | Fourier / NFFT |
-| `𝒮` | sensitivity maps |
-| `𝒲` | wavelet (unchanged) |
-| `ℳ` | signal model (new) |
-
-Image-domain fidelity is `½‖𝒜x − y‖²`; k-space-domain fidelity is `½‖𝒫k − y‖²`. Rename mechanically in `src/encoding/subsampling_operators.jl`, `src/encoding/encoding_operators.jl`, `docs/src/theory.md`, `docs/src/low-level/operators.md`, and §5 of the design document.
-
-### Naming: POCS is not iterative homodyne
-
-`POCS` and `IterativeHomodyne` in the design doc are different algorithms with near-identical table rows, and "iterative homodyne" is not a literature term — homodyne is by definition the non-iterative filter. Three distinct, correctly-named methods:
-
-| type | what it is |
-| --- | --- |
-| `Homodyne` | non-iterative asymmetric ramp filter + phase demodulation + real part (Noll 1991) |
-| `POCS` | alternating projection: hard data consistency ∧ phase constraint, no λ (Haacke 1991) |
-| `PhaseConstrained` | regularized least squares over a real image under an estimated phase, via `signal_model` (**renamed from `IterativeHomodyne`**) |
+- **Measure before and after, on the same node.** Every performance claim below comes
+  with a `benchmarking/scripts/recon_bench.jl` number recorded in this file. The claims inherited
+  from `TODO.md` are hypotheses until re-measured — that file already contains one retracted
+  diagnosis (the "54M allocations") and one refuted mechanism ("Polyester spinning"), both of
+  which survived for weeks because nobody re-ran them.
+- **NRMSE is the gate.** Every optimization below must leave the accuracy race
+  (`comparison/scripts/run_accuracy_race.jl`) bit-comparable or better; a change that moves NRMSE
+  is a bug, not a speedup, unless the entry says otherwise.
+- **One commit per numbered item**, `<type>(<scope>): …` per `AGENTS.md`, and `TODO.md` is edited
+  in that same commit: the item moves out of "open" into the applied record, with the measured
+  number. An item is not done while `TODO.md` still advertises it as open.
+- Run tests through the `julia_*` MCP session, filtered by tag; full suite before each commit.
+- **Phase order is a rule, not a preference.** No `C` item starts before every `S` item it names
+  is merged; where an item lists no dependency, it still waits for Phase 1 to finish so its
+  measurements are taken against the shipping baseline.
 
 ---
 
-## Stage 0 — Housekeeping, test harness, package hygiene [COMPLETED]
+# Phase 1 — Simple
 
-**Goal:** a green, honest baseline before anything structural moves.
+Bounded, single-site changes. Any order; all seven can be in flight at once. Each gets its own
+commit and its own `TODO.md` edit.
 
-- [x] **Move this plan** to the project root as `IMPLEMENTATION_PLAN.md` and commit it.
-- [x] **Rewrite `TODO.md`.** Move items 1, 2, 3, 4, 7, 8, 9 into "Already applied" crediting `d9964eb`. Record item 5 as out of scope. Keep item 6 (Stage 1) and the residuals: `results = Array{AbstractArray}` (`decomposition.jl:72`, `:179`); two local `prox_of` copies returning bare `y` (`test/test_reg_low_rank.jl:215-223`, `:281-286`) that re-declare the `const SO`/`const PC` already in `ProxOf` (`test/test_snippets.jl:9-10`); `using Wavelets` repeated per item in `test_reg_shared.jl` (`:4`, `:34`, `:60`, `:87`). Note the `disable_normalop_optimization` divergence in the component path is **intentional and documented** at `build_model.jl:141-144`, not a defect.
-- [x] **Fold the two `prox_of` copies** into `ProxOf` (call sites take `first(...)`); add `using Wavelets` to `RegTestSetup` or a new snippet.
-- [x] **Fix the `:jet` harness (V1).** Pin the discovery root in `test/runtests.jl` (`TestItemRunner.run_tests(pkgdir(MriReconstructionToolbox))`). Remove the stale worktree tree (`git worktree prune`). Delete the false JET entry from `AGENTS.md`'s Known Issues and refresh its stale `test/` listing (it names `test_regularizations.jl` and `test_temporal_lowrank_reg.jl`, gone; omits `test_snippets.jl` and every `test_reg_*.jl`).
-- [x] **Registered `GeometricMedicalPhantoms` (V2)**, via `Pkg` APIs only — never hand-edit `Manifest.toml`. Set `ENV["JULIA_PKG_SERVER_REGISTRY_PREFERENCE"] = "eager"` first so the recent registration resolves; `Pkg.rm` the path source, `Pkg.add`, `Pkg.compat`.
-- [x] **Add a test CI workflow** (`.github/workflows/CI.yml`), unblocked by V2: `setup-julia` + `cache` + `Pkg.test()`.
-- [x] **Keyword-based copy constructors (V7).** One shared helper building a `NamedTuple` of overrides and calling the keyword constructor, skipping derived fields via a `_derived_fields(::Type)` trait (`(:is3D,)` for NonCartesian).
-- [x] **Notation rename `Γ → 𝒫`** across `src/encoding/`, `docs/src/theory.md`, `docs/src/low-level/operators.md`.
+### S1 — `WaveletOp` normal operator is the identity but is not declared as one
 
-**Docs:** `theory.md` and `low-level/operators.md` updated for the notation; `AGENTS.md` corrected.
+**Done** (2026-09-03). Guarded on `L.wavelet isa Wavelets.WT.OrthoFilter` (orthogonal
+families only, e.g. `wavelet(WT.db4)`); a biorthogonal/lifting-scheme wavelet (e.g.
+`wavelet(WT.cdf97, WT.Lifting)`) now reports `false` on `has_optimized_normalop`,
+`is_AcA_diagonal`/`is_AAc_diagonal`, `has_fast_opnorm`, and throws from `diag_AcA`/`diag_AAc`/
+`opnorm` instead of silently claiming the identity. Verified `norm(W'*(W*x) - x) <= 1e-12` and
+`get_normal_op(op) isa Eye` for the orthogonal case.
 
-**Verify:** `julia --project=test -e 'using TestItemRunner; TestItemRunner.run_tests(".")'` fully green **including `:jet`**. New `@testitem` (`:acquisition`): for each concrete type, `AcquisitionInfo(acq; f = new)` round-trips each field individually and leaves the rest `===`. [All 1046 test items passing, Documenter make.jl passing].
+
+`deps/AbstractOperators/WaveletOperators/src/WaveletOperators.jl:125-131` declares
+`is_AcA_diagonal = true` and `diag_AcA = 1`, but not `has_optimized_normalop`, so neither the
+`Compose` constructor nor ADMM's `get_cg_operator` can use it: an orthogonal wavelet transform's
+`WᴴW` runs a real `dwt!`/`idwt!` pair per inner CG iteration for a mathematical identity.
+
+Add `has_optimized_normalop(::WaveletOp) = true` and
+`get_normal_op(L::WaveletOp) = Eye(domain_type(L), size(L, 2); array_type = domain_array_type(L))`
+— exactly what `FFTWOperators` does for its shift operators (`Shift.jl:412-415`). **Guard it on
+orthogonality**: only for wavelet families where `diag_AcA == 1` holds; if `WaveletOp` can be
+constructed with a biorthogonal filter, the trait must be `false` there. Check the type's fields
+first and, if the distinction is not currently representable, make it representable rather than
+declaring a false identity.
+
+- Test: `norm(W'*(W*x) - x)` at machine precision for the supported families, and a
+  `get_cg_operator` shape test showing the wavelet pair is gone.
+
+### S2 — `_alternate_sign!` inner loop (§9, first cause)
+
+**Done** (2026-09-03). Rewritten in `deps/AbstractOperators/FFTWOperators/src/Shift.jl`: the
+parity contribution from every dimension but the first is hoisted into a per-column value
+computed once, and the true per-element alternation (dimension 1) is a branch-free `@simd`
+multiply by a precomputed `±1` pattern; the threaded branch parallelises the outer (column) loop
+only, never the inner `@simd` run. Measured on `ComplexF32` with `benchmarking`-style timing:
+128²×8 old=406µs new=152µs (**2.68x**); 64²×4×8 old=555µs new=201µs (**2.76x**) — both above the
+1.6-1.9x estimate in `TODO.md` §9. Property-tested against the naive per-element formula over
+every non-empty subset of `1:ndims` for mixed even/odd extents including an axis of length 2,
+self-inverse round-trip, both threaded and serial.
+
+
+`deps/AbstractOperators/FFTWOperators/src/Shift.jl:302-378`. Both the in-place and out-of-place
+kernels loop over `CartesianIndices` and recompute `sum(iseven(I[d]) ? 1 : 0 for d in dirs)` per
+element. Measured 43% of a 20-iteration dynamic low-rank solve; a hoisted, `@simd` rewrite
+measured C4–1.9x on the kernel alone.
+
+Rewrite: when `dirs` covers a contiguous leading run of dimensions the parity is periodic in the
+linear index, so walk the array as slabs — the parity of the outer dimensions is loop-invariant
+per slab and the innermost dimension alternates every element, which vectorizes. General shape:
+outer loop over `CartesianIndices(sz[maximum(dirs)+1:end])`, per-slab base parity computed once,
+inner `@simd` over the leading contiguous block. Keep the existing `@batch` variant as the
+threaded branch over the *outer* loop only (never over the innermost run).
+
+- Correctness net: the existing doctests plus a property test asserting the new kernel matches
+  `FFTW.fftshift` semantics for every `dirs` subset of a 3-D array with mixed even/odd extents,
+  and `alternate_sign!(alternate_sign!(x, dirs), dirs) == x`.
+- Measure with `benchmarking/scripts/probe.jl` on 128²×8 and 64²×4×8 `ComplexF32`.
+
+### S3 — `Variation` adjoint is 12x slower than its forward
+
+**Done** (2026-09-03). Rewritten in the forward's own flat/strided idiom
+(`_variation_adjoint_dim1!` for dimension 1, mirroring the forward's own whole-array-shift
+trick with two corrective passes; `_variation_adjoint_dim!`/`_variation_adjoint_slab!` for
+dimensions `2:N`, mirroring the forward's `batch_length`/`k`-slab loop exactly, just
+accumulating instead of assigning). Matches the old scalar `_variation_adjoint_term` exactly
+across shapes including axis-of-length-2 boundaries (kept as the test reference), passes the
+dot-test and the existing dense-transpose test, and is zero-allocating (`@allocated == 0`,
+both threaded and serial). Measured on a 128² adjoint: old=247µs, new=24-27µs (**9-10x**);
+forward itself (4.6-6.2µs) is untouched.
+
+
+`deps/AbstractOperators/src/linearoperators/Variation.jl:195-215`. The forward is slab-wise
+broadcasts (`@..`/`@views`, `mul!` at `:112-146`); the adjoint is a scalar loop that recomputes
+`(cnt-1) ÷ stride % size(y,d)` per element per dimension (`_variation_adjoint_at!`,
+`:186-200`). Measured 244 µs vs 21 µs on the benchmark image.
+
+Rewrite the adjoint in the forward's own idiom: accumulate `y` dimension by dimension with
+slab-shaped `@views` broadcasts, reproducing the three separable terms documented in
+`_variation_adjoint_term`'s docstring (interior `+b_j − b_{j+1}`, first-row `−b_1`, the mirrored
+`j == 2` term). Keep `_variation_adjoint_term` as the reference and use it in the test.
+
+- Test: dot-test `⟨Ax, y⟩ == ⟨x, Aᴴy⟩` over 1-D/2-D/3-D including an axis of length exactly 2
+  (the boundary case the current docstring records as a fixed `BoundsError`), and an exact
+  elementwise comparison against the current scalar implementation, kept in the test file.
+- This is TV/TGV/tTV-path work: re-measure those three rows of the accuracy race.
+
+### S4 — Skip the restricting wrapper when there is nothing to restrict (item 0b)
+
+**Done** (2026-09-03). Added `with_restricted_threads_if_needed` (`src/utils.jl`), mirroring
+`with_serial_blas`'s own early-out: `LinearAlgebra.BLAS.get_num_threads() == 1` is checked before
+entering the scope (every counted pool is always set to the same applied budget by
+`NestedThreading._apply!`, so BLAS-is-serial is a valid proxy for the whole scope being a
+no-op), and `solve_core.jl`'s gated branch now calls it instead of `with_restricted_threads`
+directly. Verified interactively: skips the scope (no state change) when BLAS is already
+serial, and still restricts-and-restores correctly otherwise.
+
+
+`solve_core.jl:60-64` wraps a gated solve in `with_restricted_threads()`, which enters and exits
+every counted pool plus the Polyester guard. When the enclosing scope is already serial (the
+decomposed `MultiThreadingExecutor` path, or a `-t 1` process) the scope only re-sets what is
+already set. Add the cheap early-out — compare the current budget with the target and run `f()`
+directly when they match. `with_serial_blas` already does exactly this ("skips the save/restore
+when BLAS is already serial", `src/utils.jl` docstring); mirror it.
+
+### S5 — `results = Array{AbstractArray}` (residual observation)
+
+**Done** (2026-09-03), landed with its own commit rather than folded into other
+`decomposition.jl` work (both `execute` and `execute_two_phase`'s second `results` array had the
+same defect, so both were worth doing together). Both sites now run the first slice/index
+outside the loop to learn the concrete result type, mirroring `execute_two_phase`'s existing
+`prelim` idiom, and allocate `results` concretely from it. Verified: decomposed reconstruction
+(`DirectReconstruction` and a regularized `TotalVariation2D` solve, both multi-slice) still
+matches a single-slice reconstruction of the same data exactly.
+
+
+`src/reconstruction/decomposition.jl:72,179`. `execute_two_phase` already solves the same problem
+for `prelim` by running the first item outside the loop to learn the concrete type
+(`decomposition.jl:164-171`); apply that idiom to `results` in `execute`, or type it from
+`plan.output_size` + `eltype(acq_data.kspace_data)`, which are both known before the loop. Noise
+relative to a slice solve, so it goes in only as a tidy-up alongside other `decomposition.jl` work
+— do not open a commit for it alone.
 
 ---
 
-## Stage 1 — Benchmark baseline, and resolve TODO 6 [COMPLETED]
+### S6 — Expose the NFFT operating point (§8)
 
-**Goal:** measure before optimizing; there is no benchmark infrastructure today.
+**Done** (2026-09-03), API only — defaults unmoved (that is `C9`). `get_fourier_operator`
+(the `(ksp, image_size, trajectory)` method, its `NamedDimsArray` wrapper, and the
+`NonCartesianAcquisitionInfo` method) and `get_encoding_operator(::NonCartesianAcquisitionInfo)`
+now take `m`, `sigma`, `precompute` keywords, all defaulting to `nothing` and only forwarded to
+`NFFTOp` when set, so the un-parameterized call is provably unchanged. Verified interactively:
+default-vs-`nothing`-explicit produces an identical operator; a custom `(m=3, sigma=1.25,
+precompute=NFFT.TENSOR)` point actually changes `op.plan.params`; `get_encoding_operator`
+forwards the same keywords through to the same `NFFTOp`. Docs: "Non-Cartesian accuracy / speed
+trade-off" section added to `docs/src/high-level/performance.md`; test added
+(`test/test_encoding_op.jl`, tag `:nfft`).
 
-- [x] New `benchmark/Project.toml` + `benchmark/benchmarks.jl` exporting `SUITE::BenchmarkGroup` (PkgBenchmark/AirspeedVelocity convention, so `benchpkg`/`benchpkgtable` work unmodified). Groups: `operator` (`𝒜*x`, `𝒜'*y`, `normalize_op`) as a denominator; `reconstruct` (2D CS 64×64×8 coils, 3× undersampled, FISTA `maxit=20`; plus the multi-slice decomposition path); `prox` for the main regularizers, reported as `allocs`/`memory`.
-- [x] **TODO 6** (`_extract_solution` = `copy(~x_var)`, `reconstruct.jl:402-403`). Measured memory delta is 32 KB out of 15.5 MB (0.21%), well below the 2% threshold. Item 6 closed as won't-fix with invariant comment at site.
-- [x] Reduced `SUITE` smoke-test added to `test/test_quality.jl` (`@testitem "Benchmark suite smoke test" tags = [:quality]`).
 
-**Verify:** `julia --project=benchmark benchmark/benchmarks.jl` produces a baseline; reduced `SUITE` smoke-runs in `:quality` testitem. All formatted with Runic.
+Not a speed gap: MRT takes NFFT.jl's defaults (`m = 5`, `σ = 2.0`, `POLYNOMIAL`) where MRIReco
+hardcodes (`m = 3`, `σ = 1.25`, `TENSOR`) — 360x more forward accuracy (1.6e-7 vs 5.7e-5) for
+4.28 ms vs 1.00 ms per coil, accuracy the reconstruction does not use (NRMSE 0.085 either way).
+At MRIReco's operating point MRT is 8.35 ms against MRIReco's 47.1 ms. The defect is that MRT's
+API gives the caller no way to choose.
+
+- Add keyword pass-through in `get_fourier_operator(ksp, image_size, trajectory; …)`
+  (`src/encoding/fourier_operators.jl:166-184`) — `m`, `σ` (`sigma`), `precompute` — forwarded to
+  `NFFTOp`/`BatchOp`, with MRT's current values as defaults so nothing moves silently.
+- Plumb them from `NonCartesianAcquisitionInfo` (a `nfft_options` field, or a keyword on
+  `get_encoding_operator`/`build_encoding_operator`) so a caller reconstructing from an
+  `AcquisitionInfo` can set them without hand-building operators.
+- **Do not change the defaults here** — that is what keeps this a Phase 1 item. Changing them is a
+  separate, measured decision belonging to `C9`:
+  run the gridding row of the accuracy race across the (m, σ, precompute) grid and pick the point
+  where NRMSE stops moving. If a lower-accuracy default is chosen, it changes every non-Cartesian
+  result in the test suite and needs its own commit with the tolerances updated.
+- Docs: a "Non-Cartesian accuracy / speed trade-off" section in
+  `docs/src/high-level/reconstruction.md` (or `performance.md`) with the measured table, and
+  docstring updates on both `get_fourier_operator` methods.
+- Tests (`:nfft`): the operator built at the low-accuracy point still passes the adjoint dot-test
+  and reconstructs the phantom within a stated, looser tolerance.
 
 ---
 
-## Stage 2 — File split (pure move, zero logic change) [COMPLETED]
+### S7 — Write down what `--gcthreads` does not do (finding 2, item 0c)
 
-`src/reconstruction/reconstruct.jl` is 409 lines against `AGENTS.md`'s ~500-line guidance and will roughly triple. Cut it so the diff is reviewable with `git diff -M`:
+**Done** (2026-09-03). One paragraph added to `docs/src/high-level/performance.md`'s
+"Notes for developers" section, alongside the S6 write-up.
 
-| file | contents |
-| --- | --- |
-| `reconstruct.jl` | public entry point + `_reconstruct_dispatch*` |
-| `solve_core.jl` | `_iterative_reconstruct_core` + shape helpers + `get_reasonable_freq` (`:327-409`) |
-| `direct.jl` | `_direct_reconstruct`, `_direct_reconstruct_components`, `_resolve_scale` |
-| `initial_guess.jl` | `check_x₀_components_size`, `get_component_x0s` |
-| `methods/` | new, populated by Stage 3 |
 
-Include order in `MriReconstructionToolbox.jl`: `initial_guess.jl`, `direct.jl`, `solve_core.jl`, `reconstruct.jl`.
+`TODO.md` records that the residual 8T cost includes GC growing from ~10 ms to ~35–46 ms per
+solve, and that this is **independent of `--gcthreads`** (tested at `--gcthreads=1`, no change).
+That is a negative result worth one paragraph in `docs/src/high-level/performance.md`, precisely
+because the next person to look at an allocation-heavy serial solve on a `-t 8` process will
+reach for that flag first. Documentation only, no code, no measurement — the measurement is
+already in `TODO.md`.
 
-**Verify:** suite unchanged; pure file split verified.
+### Verification for Phase 1
+
+Per item: the fork's own test suite → `julia_run_testitems` filtered to
+`:regularization, :reconstruction, :encoding, :operators, :nfft` → full MRT suite → accuracy race
+(`comparison/scripts/run_accuracy_race.jl`) with NRMSE unchanged → `recon_bench.jl` numbers into
+`TODO.md`. Runic over `src/` and `test/` in every touched package.
+
+`S5` and `S7` are exempt from the accuracy race (neither touches arithmetic); everything else is
+not.
 
 ---
 
-## Stage 3 — Method types, and the API break in one commit [COMPLETED]
+# Phase 2 — Complex
 
-> Landed across commits `93c9e69` (file split) and `19f39f6` (`AbstractReconstructionMethod` +
-> unified `reconstruct` API). Note: `19f39f6` did not update this file at the time — recorded here
-> retroactively.
+Contract changes, cross-package plumbing, measurement-driven decisions and upstream work. Each
+item names its prerequisite and what must be settled before the edit.
 
-New under `src/reconstruction/methods/`: `reconstruction_method.jl`, `domains.jl`, `iterative_reconstruction.jl`, `direct_reconstruction.jl`.
+### C1 — `SqrNormL2WithNormalOp` reports the wrong function value (correctness)
+
+`deps/StructuredOptimization/src/calculus/sqrNormL2WithNormalOp.jl:68-88`. Both `gradient!`
+methods compute `y = λ·AᴴA·x` and then return `λ/2 · Σ|y_k|²` — that is `‖∇f(x)‖²/2`, not
+`f(x) = ½‖A x − b‖²`. `ProximalCore.value_and_gradient!` contracts that `gradient!` returns the
+value, so `FastForwardBackwardState.f_x` (`fast_forward_backward.jl:132`) and everything reading
+it is wrong. It is silent today only because MRT runs FISTA with `adaptive = false` and
+`tol = 0`, so `f_x` reaches nothing but the verbose display; turn on backtracking and the
+line-search test compares garbage.
+
+Fix, and it costs nothing: with `A = AffineAdd(𝒜, −b)`, `AᴴA` is likewise an `AffineAdd` whose
+displacement is `−Aᴴb`, so `y = λ(𝒜ᴴ𝒜x − 𝒜ᴴb)` is already in hand and
+`f(x) = ½⟨x, 𝒜ᴴ𝒜x⟩ − Re⟨x, 𝒜ᴴb⟩ + ½‖b‖²` needs one `dot(x, y)`, one `dot(x, 𝒜ᴴb)` and a
+constant. Store `½‖b‖²` in the struct at construction (it is a fixed scalar) and keep `𝒜ᴴb`
+— `AffineAdd` already holds it. New field, so the constructor and the `{T,SC,L,L2}` parameter
+list change; `parse.jl:458` reads `.A`/`.lambda` only, so nothing downstream moves.
+
+- Test (`deps/StructuredOptimization/test/`): for a random small `A`, `b`, assert
+  `value_and_gradient!` agrees with `f(x)` evaluated through the callable form and with a
+  finite-difference gradient. That test would have caught this.
+- Then re-check the §7 claim "`FastForwardBackwardIteration` evaluates an extra `A` application
+  nothing consumes": as written it is **wrong for `f`** — `gradient!` goes through `AᴴA` and
+  computes value and gradient in one pass. What *is* real is `g_z`: `prox!` returns the
+  regularizer's value on every iteration (`fast_forward_backward.jl:134`), an extra full pass
+  over `z` (plus, for a wavelet term, an extra transform) that only the display consumes when
+  `tol = 0` and `adaptive = false`. Measure it before acting; if it is above ~2% of the solve,
+  add a `ProximalCore.prox!`-without-value path selected by an `iter.needs_g_value` flag set
+  from `adaptive || verbose || tol > 0`.
+
+### C2 — Cancel the sign-alternation pair inside `𝒜ᴴ𝒜` (§9, second cause)
+
+The Cartesian encoding operator is `𝒜 = 𝒫 ∘ (ℱ ∘ ±) ∘ 𝒮` (`get_fourier_operator`
+wraps the `DFT` with `ifftshift_op`, which becomes a `SignAlternation` on the other side when the
+shifted extents are even — `Shift.jl:487-535`). `get_normal_op(::Compose)`
+(`deps/AbstractOperators/src/calculus/Compose.jl:225-235`) folds only the outermost factor,
+giving `(𝒮, ±, ℱ, 𝒫ᴴ𝒫, ℱᴴ, ±, 𝒮ᴴ)`; the `Compose` constructor's cancellation loop
+(`Compose.jl:37-90`) only looks at *adjacent* pairs, so the `± … ±` pair separated by the
+diagonal mask survives and every normal-op application pays two full sign passes it does not owe.
+
+`𝒫ᴴ𝒫` is `NormalGetIndex`, and `is_diagonal(::NormalGetIndex) = true`
+(`GetIndex.jl:201`). A sign alternation is a real ±1 diagonal, and diagonals commute, so
+`± M ± = M` exactly whenever `M` is diagonal and both alternations carry the same `dirs`.
+
+The constructor already has the hook: `can_be_combined(L, M, R)` / `combine(L, M, R)`
+(`properties.jl:345,379`, dispatched at `Compose.jl:54`). Add to `FFTWOperators`:
 
 ```julia
-abstract type AbstractReconstructionMethod end
-abstract type AbstractIterativeMethod <: AbstractReconstructionMethod end
-abstract type AbstractDirectMethod    <: AbstractReconstructionMethod end
-
-lower(m::AbstractReconstructionMethod) = m
-check_applicable(::AbstractReconstructionMethod, ::AcquisitionInfo) = nothing
-variable_dims(method, acq)   # dim names/indices of the optimization variable
-variable_size(method, acq)   # its size
-output_dims(method, acq)     # names of the returned image
+can_be_combined(L::SignAlternation, M::AbstractOperator, R::SignAlternation) =
+    L.dirs == R.dirs && is_linear(M) && is_diagonal(M) && size(M, 1) == size(M, 2)
+combine(::SignAlternation, M::AbstractOperator, ::SignAlternation) = M
 ```
 
-plus `ImageDomain`, `KSpaceDomain{C}`, `CoilCombination` (`AdjointSensitivity`/`RootSumSquares`/`NoCoilCombination`), `DataFidelity` (`L2Loss`/`HardConsistency`/`NoFidelity`), `DirectReconstruction`, `IterativeReconstruction{R,A,D,F,M}`, `const DEFAULT_ALGORITHMS`.
+with the same pair for `FFTShift`/`IFFTShift` (`P M P⁻¹` is a *permuted* diagonal, **not** `M` —
+so those get no rule; only `SignAlternation` is self-inverse *and* commuting). Note the argument
+order convention: `can_be_combined(A[i+2], A[i+1], A[i])`, i.e. `(last, middle, first)` in
+application order, which for this rule is symmetric anyway.
 
-The `variable_*`/`output_dims` trio is what makes Stages 6 and 9 small: without it, `reconstruct.jl:161`/`:246` (`dimnames(𝒜, 2)`), `:125` (`get_image_dims`), and the decomposition plan are four independent hardcodings of "the variable is the image". All three are trivial today.
+- Risk: the rule fires on any diagonal middle operator, including a `DiagOp` of sensitivity
+  weights, which is also correct. The guard that matters is `L.dirs == R.dirs`; assert it in a
+  test with mismatched `dirs` that must *not* combine.
+- Tests (`deps/AbstractOperators/FFTWOperators/test/`): build `𝒫 ∘ ℱ ∘ ± ∘ 𝒮` for a real MRT-shaped
+  problem, take `get_normal_op`, assert (a) the resulting `Compose` contains no `SignAlternation`,
+  (b) `AᴴA * x` matches `A' * (A * x)` to `eps`-level, (c) an operator count regression test so a
+  future `Compose` change cannot silently un-fuse it.
+- Expected, from §9: dynamic low-rank 890 ms → ≈550 ms together with S2. Verify both separately
+  so the attribution is real.
 
-**Constructor hazard.** A varargs form `IterativeReconstruction(regs::Union{Regularization,Component}...)` generates a method with signature `Tuple{Type{IterativeReconstruction}}` identical to the one the keyword form's default argument generates, silently overwriting it. Require a first argument in the varargs form. Define the algorithm default once as `DEFAULT_ALGORITHMS`.
+### C3 — `𝒜ᴴ𝒜` is built twice for every ADMM solve
 
-**Config audit** (requested). Three fields are meaningless outside iterative reconstruction and are silently ignored by the direct path — move them onto `IterativeReconstruction`:
+`SqrNormL2WithNormalOp` eagerly builds `AᴴA = A' * A` in its constructor
+(`sqrNormL2WithNormalOp.jl:40`), then `parse.jl:458-461` hands ADMM only `f.A`, and
+`admm.jl:265` builds `iter.A' * iter.A` all over again — two independent `Compose` chains, each
+with its own k-space-sized buffers (57 MiB for a single-iteration solve).
 
-| field | verdict |
-| --- | --- |
-| `exact_opnorm` | → `IterativeReconstruction` (only used by `normalize_op`) |
-| `disable_operator_normalization` | → `IterativeReconstruction` |
-| `disable_normalop_optimization` | → `IterativeReconstruction` (a model-assembly choice) |
-| `normalization` | stays — `_resolve_scale` uses it on the direct path too |
-| `tol`, `maxit`, `freq` | stay — most-tweaked knobs; document that direct methods ignore them |
-| `disable_inverse_scale_output`, `disable_problem_decomposition`, `decomposition_executor`, `verbose`, `threaded`, `printfunc` | stay — execution policy, both paths |
+Thread the existing one through:
 
-Note `check_kwargs` (`config.jl:85-90`) rejects any `reconstruct` keyword that is not a `Config` field, so anything moved off `Config` is reachable only through the method.
+1. `prepare(term, ::LeastSquaresTerm, …)` (`parse.jl:450-477`) additionally returns the
+   precomputed normal operator under a new assumption key (e.g. `assumption.AHA`), populated only
+   when `f isa SqrNormL2WithNormalOp` and `lambda == 1` (a `lambda != 1` rescales `op`, so the
+   cached `AᴴA` no longer matches — either skip the cache there or scale it, and scaling a
+   `Compose` is not free; skip is fine, `lambda == 1` is the MRT path).
+2. `ADMMIteration` gains an optional `AHA` field defaulting to `nothing`;
+   `get_cg_operator` (`admm.jl:262-269`) uses it when present instead of recomputing.
+3. `remove_displacement`/`displacement` handling must stay consistent: the cached `AᴴA` carries
+   the `AffineAdd` displacement, ADMM wants the linear part plus `AHb` separately. Verify which
+   form `admm.jl` actually needs and cache that one, not the other.
 
-**The break.** `reconstruct(acq, method::AbstractReconstructionMethod = DirectReconstruction(); x₀, kwargs...)` becomes the only signature: `lower` → `check_applicable` → `check_x₀_shape` → dispatch. Migrate all ~128 non-bare call sites (~29 bare `reconstruct(acq)` calls unchanged) across `test/test_reconstruction_integration.jl` (39), `docs/src/high-level/regularization.md` (26), `algorithms.md` (20), `reconstruction.md` (19), `decomposition.md` (13), `test/test_image_decomposition.jl` (8), `image_decomposition.md` (7), `README.md` (5), `test/test_reg_reconstruction.jl` (5), `nameddims.md` (5), `simulation.md` (2), `test_quality.jl`, `test_reg_total_generalized_variation.jl`, `acquisition_info.md`, `index.md`. Watch the ~6 sites shaped `reconstruct(data, reg, verbose=false)` — the third slot is a keyword, not the algorithm.
+- Test: allocation regression test on a one-iteration ADMM solve (`@allocated` under a fixed
+  problem), plus an existing-solution equivalence test.
 
-**Load-bearing detail:** the `regularization == ()` → direct-adjoint short-circuit appears three times (`reconstruct.jl:109`, `:137` `fast_planning`, `:145`) and must become `method isa AbstractDirectMethod`, with `fast_planning = method isa DirectReconstruction`. `_direct_reconstruct`'s "x₀ ignored" warning (`:311-318`) must key off the method too. The mixed-regularization `ArgumentError` (`:93-95`) moves into `IterativeReconstruction`'s constructor.
+### C4 — ADMM per-iteration dead work
 
-**Docs:** new `docs/src/high-level/methods.md` (taxonomy, `lower`, `check_applicable`, the domain/fidelity/coil-combination types) added to the `pages` vector in `docs/make.jl:12-32`; every migrated page's prose updated so no page describes the old calling convention; `README.md` examples rewritten and its dead `manual/` quick links fixed. Do **not** regenerate the committed `docs/build/` here — one dedicated commit at the end of the phase.
+`admm.jl:376,403` and `:418-428`.
 
-**Verify:** full suite green; `julia --project=docs docs/make.jl` clean; Aqua ambiguity check.
+- Both `Threads.@threads for i in eachindex(iter.g)` loops are one-trip with a single
+  regularizer, and pay a fork/join each. Replace with a plain loop when `length(iter.g) == 1`
+  — cheapest form is a `@budgeted_threads`-style helper or simply
+  `if length(iter.g) == 1 … else Threads.@threads … end`; keep both branches calling one shared
+  body function so they cannot drift.
+- The six residual norms and the extra `Bᴴ` application per outer iteration are dead under a
+  `FixedPenalty` with `tol = 0` — nothing reads `rᵏ_norm`, `sᵏ_norm`, `ϵᵖʳⁱ`, `ϵᵈᵘᵃ`. They are
+  *not* dead under an adaptive penalty (`get_next_rho!` consumes them) or a nonzero `tol`
+  (`default_stopping_criterion`) or a verbose run. Gate on a flag computed once in `ADMMState`:
+  `needs_residuals = !(iter.penalty_sequence isa FixedPenalty) || tol > 0 || verbose`. The
+  `tol`/`verbose` values live in the stopping criterion closure, not the iteration, so this needs
+  a small plumbing change — pass `needs_residuals` into `ADMMIteration` from
+  `patch_algorithm_with_default_values` (`src/reconstruction/build_model.jl:57-78`), which already
+  knows MRT's ADMM defaults.
+- Measure first: on the benchmark TV solve this is ~7 vector passes out of ~10 normal-op
+  applications per outer iteration, so the ceiling is a few percent, not a factor. If it measures
+  under 2%, record that and drop the item rather than adding a flag.
 
----
+## C5 — Setup cost: the operator norm (§7)
 
-## Stage 4 — Solvers: `DouglasRachford`, `HardConsistency`, unregularized iterative LS [COMPLETED]
+§7 measures ~137 ms of a 322 ms L1-wavelet solve in `normalize_op`, against MRIReco's ~7 ms for
+the same information. `mrt-perf-opportunities` in project memory records the same 144 ms as
+"MRT's whole setup gap". Three separate costs are tangled there and the first step is to
+separate them.
 
-- [x] Alias and export `DouglasRachford` (`src/MriReconstructionToolbox.jl`); add `patch_algorithm_with_default_values(::IterativeAlgorithm{DouglasRachfordIteration}, Lf)` supplying `gamma` when absent. Fixed type parameter matching in `deps/ProximalAlgorithms/src/algorithms/douglas_rachford.jl`.
-- [x] **`HardConsistency`** implemented in `src/reconstruction/hard_consistency.jl` via `HardConsistencyProx`. Uses closed-form `diag_AAc(𝒜)` when `is_AAc_diagonal(𝒜)` is true, and falls back to inner Conjugate Gradient (`_cg_solve_AAc`) otherwise.
-- [x] `build_model_with_variables` and `build_model` updated to take `fidelity::DataFidelity`: `L2Loss` (supports empty `regs` for unregularized iterative least squares like `CGNR`), `HardConsistency`, and `NoFidelity`.
-- [x] Added `DouglasRachford` and `DataFidelity` documentation in `docs/src/high-level/algorithms.md` and `docs/src/high-level/methods.md`.
-- [x] Added unit tests for DouglasRachford parameter patching, HardConsistency fast vs inner-CG agreement, HardConsistency + DouglasRachford reconstruction, and unregularized CGNR with both `disable_normalop_optimization` settings in `test/test_minimizer.jl`. All tests pass.
+### C5.1 — Measure the decomposition (no code change)
 
----
+`normalize_op` (`src/utils.jl:7-15`) → `estimate_opnorm` (`properties.jl:444`) → `powerit`
+(`:452`). Instrument one L1-wavelet solve and record, separately:
+(a) how many power iterations actually run before the `tol = 1e-3` early exit fires — §7 asserts
+all 20, and the loop *does* have an early exit, so either the assertion or the exit is wrong;
+(b) the cost of `AHA = A' * A` inside `powerit` (a full `Compose` build with k-space-sized
+buffers, thrown away on return);
+(c) the cost of the `1/L * A` `Scale` wrapper per application for the rest of the solve.
 
-## Stage 5 — Density compensation [COMPLETED]
+Everything below is conditional on what (a)–(c) say. Do not implement C5.2/C5.3 before this.
 
-- [x] Implemented `density_compensation(acq; method = PipeMenonDCF() | VoronoiDCF())` in `src/acquisition_data/density_compensation.jl` returning updated `NonCartesianAcquisitionInfo` with `dcf`.
-- [x] `PipeMenonDCF` delegates to `NFFTTools.sdc` using NFFT operators.
-- [x] `VoronoiDCF` computes exact 2D Voronoi polygon cell areas via geometric clipping.
-- [x] Cartesian acquisitions reject density compensation with an informative `ArgumentError`.
-- [x] Preserves `NamedDimsArray` dimension names when trajectory is named.
-- [x] Documented in `docs/src/high-level/acquisition_info.md`.
-- [x] Unit and quality tests added in `test/test_density_compensation.jl` verifying radial phantom direct reconstruction improvements. All tests pass.
+### C5.2 — Do not build the normal operator twice, and do not throw it away
 
----
+If (b) is significant: give `estimate_opnorm`/`powerit` an optional `normal_op` keyword, build
+`𝒜ᴴ𝒜` once in `_iterative_reconstruct_core` (`src/reconstruction/solve_core.jl:21-25`), pass it to
+the estimate, and hand the same object to the model builder so `SqrNormL2WithNormalOp` does not
+rebuild it (this is the same plumbing as C3, from the other end — do C3 first and reuse it).
+Note `get_normal_op(::Scale)` already forwards to the inner operator (`Scale.jl:128-131`), so the
+normalized operator's normal op *is* the unnormalized one up to a real scalar; that identity is
+what makes the reuse legal.
 
-## Stage 6 — The `signal_model` slot (`ℳ`) [COMPLETED]
+If (a) says the iteration count is the cost: raise `tol` from `1e-3` toward MRIReco's operating
+point only if the accuracy race is unmoved — `Lf` too small makes FISTA diverge, too large only
+makes it slow, so the safe direction is a deliberate over-estimate (`λ · (1 + tol)`), and that
+should be written down where the tolerance is set.
 
-- [x] Composition implemented in the reconstruction layer via `build_encoding_operator(acq, method; threaded, fast_planning)` in `src/reconstruction/encoding_for_method.jl`.
-- [x] Routed all four operator construction sites through `build_encoding_operator` (`reconstruct.jl` single and component paths, `decomposition.jl` two-phase paths).
-- [x] Output dimension resolution updated to `output_dims(method, acq)`.
-- [x] Scaling resolved from image-side adjoint `𝒜'y` while warm start derives from `ℳ'(𝒜'y)`.
-- [x] Refactored `ProblemDecompositionPlan` (`image_size`/`image_batch_dims` renamed to `variable_size`/`variable_batch_dims`), subtracting `get_affected_dims(signal_model, ...)` to prevent splitting coupled temporal dimensions.
-- [x] Implemented `TemporalBasis` subspace signal model with matrix expansion along time axis.
-- [x] Documented in `docs/src/high-level/methods.md`.
-- [x] Unit and regression tests added in `test/test_signal_model.jl` verifying identity basis, permutation basis, NamedDims preservation, and decomposition integration. All tests pass.
+### C5.3 — Do not normalize when only `Lf` is wanted — carefully
 
----
+§7's framing ("FISTA only needs the number `Lf = ‖A‖²`, not a normalized operator") is right about
+FISTA and **wrong about the objective**: MRT solves `½‖(𝒜/L)x − y‖² + R(x)`, and dropping the
+normalization gives `½‖𝒜x − y‖² + R(x)`, which is a *different problem* — the regularization is
+weaker by `L²`. Every calibrated `λ` in the tests, the benchmarks and the accuracy race is tied to
+the normalized convention. So this is only safe as an exactly-equivalent reformulation:
+solve with unnormalized `𝒜`, `b' = L·y` and `Lf = L²`, and scale each regularization term by `L²`
+— which needs `scale_regularization` on every term in the problem, and that method exists only for
+homogeneous terms (`AGENTS.md`, "Adding a regularizer").
 
-## Stage 7 — Phase 1 pre-processing [COMPLETED]
+Decision to take before writing code: either (i) restrict the unnormalized path to problems whose
+regularizers all implement `scale_regularization`, falling back to today's path otherwise — a
+correctness-preserving optimization with a trait guard; or (ii) skip C5.3 entirely and take only
+C5.2's win. Recommend deciding *after* C5.1: if C5.2 alone closes most of the 137 ms, (ii) is the
+right answer and this entry becomes a documented non-goal.
 
-- [x] Implemented `estimate_noise_covariance(noise_data; coil_dim)` and `prewhiten(acq, Ψ; coil_dim)` in `src/preprocessing/prewhitening.jl`, applying $L^{-1}$ whitening to both `kspace_data` and `sensitivity_maps`.
-- [x] Implemented `compress_coils(acq, n_virtual; method)` with `SVDCompression` and `GeometricCompression` in `src/preprocessing/coil_compression.jl`, returning `(acq_compressed, compression_matrix)`.
-- [x] Implemented sensitivity map estimation in `src/preprocessing/sensitivity_estimation.jl`:
-  - `SelfCalibrating(; calib_size = 24)`: Smooth low-frequency ACS calibration normalized by RSS (McKenzie et al. 2002).
-  - `AdaptiveCombine(; kernel_size = 5)`: Local covariance eigenanalysis (Walsh et al. 2000).
-  - `ESPIRiT(; calib_size = 24, kernel_size = 6)`: Calibration subspace null-space eigenanalysis (Uecker et al. 2014).
-- [x] Created `docs/src/high-level/preprocessing.md` and added to `docs/make.jl`.
-- [x] Added comprehensive unit and integration tests in `test/test_preprocessing.jl` verifying noise covariance estimation, whitening, SVD coil compression, and sensitivity map accuracy. All 28 tests pass.
+### Verification for C5
 
----
-
-## Stage 8 — Phase 2: subspace reconstruction and pseudo-replica g-factor [COMPLETED]
-
-- [x] Evaluated `TemporalBasis(Φ; time_dim)` with exponential decay subspace basis on dynamic multi-echo/T2 series, accurately recovering image frames with error <5%.
-- [x] Implemented `pseudo_replica(acq, method; replicas = 64, noise_std = 1.0, rng, kwargs...)` in `src/analysis/pseudo_replica.jl`.
-- [x] Enforced `FixedScaling` / `NoScaling` requirement to preserve noise variance across replicas.
-- [x] Created `docs/src/high-level/analysis.md` and added to `docs/make.jl`.
-- [x] Added unit tests in `test/test_analysis.jl` verifying theoretical g-factor $g \approx 1.0$ on fully-sampled Cartesian acquisitions, argument validation, and subspace recovery. All tests pass.
-
----
-
-## Stage 9 — Phase 3: trajectory correction, partial Fourier, parallel imaging [COMPLETED]
-
-- [x] **9a — Gradient Delay Correction**: Implemented `correct_gradient_delays(acq; method)` and `estimate_gradient_delays(acq; method)` in `src/preprocessing/gradient_delays.jl` supporting `OpposingSpokes` (Peters 2003, Block & Uecker 2011) and `RING` (Rosenzweig 2019).
-- [x] **9b — Partial Fourier**: Implemented `partial_fourier_band(acq)`, `Homodyne` (`LinearRamp`, `StepRamp`), `PhaseConstrained`, and `POCS` in `src/reconstruction/methods/partial_fourier.jl`.
-- [x] **9c — GRAPPA Parallel Imaging**: Implemented direct `GRAPPA` parallel imaging reconstruction in `src/reconstruction/methods/grappa.jl` (Griswold 2002).
-- [x] **9d — KSpaceDomain & SPIRiT**: Implemented `SPIRiTConsistency` and `SPIRiT` iterative self-consistency parallel imaging reconstruction in `src/reconstruction/methods/spirit.jl` (Lustig & Pauly 2010).
-- [x] Documented in `docs/src/high-level/methods.md` and `docs/src/high-level/preprocessing.md`.
-- [x] Added unit and integration tests in `test/test_phase3_methods.jl`.
-
-### 9 — post-review corrections (code review of `9547c3f..`)
-
-- **9a**: `estimate_gradient_delays` combined multi-coil k-space over the *spoke* axis instead of
-  the coil axis — fixed. `RING` was a silent alias of `OpposingSpokes`; it now throws
-  `ArgumentError` (not implemented) rather than returning a different algorithm than requested.
-- **9b**: `PhaseConstrained` was exported/documented with **no `_direct_reconstruct` method**
-  (`MethodError`). Now implemented as a direct method: phase from the symmetric centre, real-image
-  phase-constrained least squares solved by CG. `Homodyne`/`POCS` output rewrap dropped trailing
-  batch/time dims (`reshape` truncation) and hard-coded the coil axis at position 3 — fixed via
-  `_pf_coil_dim` / `_pf_finalize`.
-- **9c**: GRAPPA crashed with the documented default even kernel `(4, 3)` (`BoundsError`) and, for
-  `R > 2`, fitted missing k-space from zero-filled lines. Reworked: stride `R` detected from the
-  mask, source lines spaced `R` apart, one kernel fitted per missing-line offset `t = 1..R-1`.
-  Verified for `R = 2, 3, 4`.
-- **9d**: `SPIRiTConsistency` was exported/documented but implemented **no `materialize`**
-  (generic `ArgumentError` fallback). It operates on a k-space variable and needs
-  `domain = KSpaceDomain()` dispatch, which is **still not wired** (see below); `materialize` now
-  throws a specific, actionable error pointing at the direct `SPIRiT()` method. `SPIRiT` itself
-  hard-coded `ComplexF32`, producing an abstract `Complex` eltype (and an FFT `MethodError`) when
-  fed `ComplexF64` data — fixed.
-
-**Still outstanding after this pass** — carried into Stage 10 below.
+Accuracy race must be identical, not merely close — a changed `Lf` changes the iterate path.
+Report before/after wall time for the L1-wavelet row (target: beat MRIReco's 91 ms/20 it or state
+why not) and the TV row.
 
 ---
 
-## Stage 10 — Post-review follow-up (the review findings not fixed in Stage 9)
+## C6 — The threading residuals (finding 2 items 0–3, finding 3 "Not done")
 
-Four items surfaced by the `9547c3f..` review need more than a localized fix. Decisions taken
-with the maintainer are recorded inline. Order: Part 4 (§5 doc reconciliation, done in the
-Stage-9-fix commit) → Part 2 → Part 3 → Part 4-code → Part 1.
+The collapses are fixed; what is left is a 10–25% residual at `-t 8` and three known gaps in
+where the gate applies.
 
-### 10.1 — `KSpaceDomain` dispatch + a real `SPIRiTConsistency` (finding #10, design V4)
+### C6.1 — Size-gate the sequential executor (finding 2, item 3 — the real gap)
 
-`IterativeReconstruction.domain` is stored and copied but nothing dispatches on it —
-`KSpaceDomain()` silently runs an image-domain solve — and `SPIRiTConsistency` has no working
-`materialize`. Scope is restricted to what SPIRiT needs (V4: no universal auto-wrap).
+`run_slices!` (`src/reconstruction/decomposition.jl:99-112`) and `execute_two_phase` (`:172-186`)
+both set `slice_threaded = executor isa MultiThreadingExecutor ? false : config.threaded`. For the
+`SequentialExecutor` (few slices, `length(plan) ≤ nthreads()`) that leaves `true`, and
+`@conditionally_enable_threading` then opens every pool around a small per-slice work item. The
+inner `with_restricted_threads` in `solve_core.jl` covers the *solve*, but the per-slice operator
+build, the adjoint and the opnorm still run threaded.
 
-- **`build_encoding_operator`** (`src/reconstruction/encoding_for_method.jl`) branches on
-  `method.domain`: `ImageDomain()` → today's `𝒜 = 𝒫∘ℱ∘𝒮`; `KSpaceDomain(cc)` → `𝒜 = 𝒫` only
-  (variable is multi-channel k-space; requires a coil axis and no `sensitivity_maps`).
-- `variable_dims` / `variable_size` / `output_dims` methods for
-  `IterativeReconstruction{…,KSpaceDomain}` (variable = full k-space grid incl. coil; output =
-  coil-combined image).
-- **Output transform** in `_reconstruct` (`src/reconstruction/reconstruct.jl:118-135`): when
-  `domain isa KSpaceDomain`, apply `ifftshift`→`ifft`→coil-combine via a shared helper
-  `_kspace_to_image(k, cc, sens)` factored from `methods/spirit.jl:131-140`.
-- **`SPIRiTConsistency` as a real term** (`src/reconstruction/methods/spirit.jl`):
-  `get_operator` → the linear `(I − G)` on the k-space variable, `G` a small custom
-  `AbstractOperator` subtype built from `reg.kernel` (the FFT-padded coil-mixing convolution
-  already assembled at `spirit.jl:104-115`), modelled on `deps/AbstractOperators/…/DiagOp`;
-  `materialize` → `(reg.λ/2)·SqrNormL2 ∘ get_operator`; `get_affected_dims` → all image dims
-  (added); `scale_regularization` scales `λ`; `bind_dimensions` identity fallback.
-- **Opt-in iterative SPIRiT (decided: yes).** Add `SPIRiT(...; iterative::Bool = false)`.
-  `false` → today's direct fixed-point method, unchanged. `true` → a `lower(method, acq)`
-  overload (new; called from `reconstruct.jl:37`) calibrates the kernel from the ACS
-  (`_calibrate_spirit_kernel(acq, method)` factored from `spirit.jl:61-102`) and returns
-  `IterativeReconstruction(SPIRiTConsistency(kernel; λ = method.λ);
-  domain = KSpaceDomain(method.coil_combination), fidelity = HardConsistency(),
-  algorithm = DouglasRachford())`.
-- Reuse `HardConsistencyProx` / `is_AAc_diagonal` (`src/reconstruction/hard_consistency.jl`) —
-  already special-case `KSpaceDomain` with a closed-form projection when `𝒜 = 𝒫`.
-- Tests (`test/test_phase3_methods.jl`): `KSpaceDomain` unregularized LS on fully-sampled data
-  reproduces per-coil `ifft` to machine precision; `IterativeReconstruction(SPIRiTConsistency(k);
-  domain = KSpaceDomain(), fidelity = HardConsistency())` on R=2 data recovers the phantom
-  within the direct-`SPIRiT` tolerance; adjoint dot-test on `(I − G)`.
-- Files: `encoding_for_method.jl`, `reconstruct.jl`, `methods/reconstruction_method.jl`,
-  `methods/spirit.jl`, `methods/domains.jl` (docstring), `src/MriReconstructionToolbox.jl`.
+Fix: reuse the existing predicate rather than inventing a second one. Extract from
+`maybe_disable_undecomposed_threading` (`src/utils.jl:188`) a small
+`_should_thread_work_item(config, bytes)` and call it in both places to compute `slice_threaded`,
+using `plan.variable_size`/element type for the per-slice byte count (the plan knows the slice
+shape; nothing needs to be measured at run time).
 
-### 10.2 — Better diagnostic on a single-solver parse failure (revised V3)
+- Test (`:reconstruction`): a 2-slice 128² problem takes the sequential executor and reconstructs
+  identically with `threaded = true` and `threaded = false`; assert on the *result*, and assert
+  the chosen `slice_threaded` through a small internal accessor rather than by timing.
 
-The original V3 "DR needs an up-front two-proximable-terms check" is **rejected**: it should not
-be DR-special (FISTA etc. have their own assumptions), and a naive term count can wrongly reject
-a problem whose terms `ProximalOperators` merges at a higher level. Instead: wrap the lone
-`solve(model, algorithm; …)` call in `_iterative_reconstruct_core`
-(`src/reconstruction/solve_core.jl:50`) in `try/catch` and rethrow
-`StructuredOptimization`'s generic `"cannot parse this problem for solver …"` as an
-`ArgumentError` that names the chosen algorithm, the `fidelity` type and the regularizer types.
-No behaviour change (the candidate-tuple path already falls through). Message-only.
-Test in `test/test_minimizer.jl`.
+### C6.2 — Per-operator size vetoes beyond FFTW (item 2)
 
-### 10.3 — Direct FFT methods honour `shifted_kspace_dims` / `shifted_image_dims`
+Only FFTW consults a threshold (`_fftw_num_threads` / `fftw_threading_threshold`). Add the same
+shape of veto to `DSPOperators` (the `Variation`/`FiniteDiff` `@batch` loops), `WaveletOperators`,
+and the sensitivity `DiagOp`: a per-operator `threading_threshold(::T)` consulted where `threaded`
+is read, so a large-volume solve can still thread the outer FFTs while a small stencil stays
+serial. Less urgent now that whole small solves go serial — schedule after C6.1/S4 and only if
+the large-volume benchmark (below) shows it.
 
-`methods/{partial_fourier,grappa,spirit}.jl` hard-code `ifftshift`/`fftshift`, correct only for
-the default DC-centred convention; an acquisition built with a non-default shift is silently
-half-FOV-wrong (the encoding-operator path already handles this via `get_fourier_operator`).
-New shared helper (`src/reconstruction/methods/direct_fft.jl`, included in
-`MriReconstructionToolbox.jl`): `_direct_ifft(acq, k; dims)` / `_direct_fft(acq, x; dims)` that
-apply the shift only on axes **not** in the corresponding `shifted_*` set (reuse
-`_normalize_shifted_dims`, `fourier_operators.jl:93-98`). Replace the inline calls in the three
-method files. Test: same phantom built two ways (default vs pre-`ifftshift`ed +
-`shifted_kspace_dims`) gives the same `Homodyne` / `GRAPPA` image.
+### C6.3 — Re-fit `SERIAL_BLAS_THRESHOLD_BYTES` on a real solve (finding 3, "Not done")
 
-### 10.4 — Real `GeometricCompression` and `RING` (contracts change — decided)
+Today's 16 MiB is one number fitted on one node, on the *synthetic* reproducer, and the sweep only
+brackets the crossover between 4 MiB and 16 MiB. Re-fit it against `recon_bench.jl` on real
+solves at 128², 256², 512² and 512²×32, both backends, on the SLURM `test` node with
+`--exclusive`. Two outcomes are acceptable: a better single number with the bracket recorded, or
+the finding that the crossover is far enough inside the octave that the constant should become a
+documented tunable (`ENV`- or `Config`-settable) rather than a `const`. Document whichever, in
+`docs/src/high-level/performance.md`.
 
-Both currently `throw`. Implement for real; the return contracts change.
+Also from the same list: the gate keys on the work item, not on batch width, because
+`_iterative_reconstruct_core` cannot see how many slabs are in flight. Leave it — the budget wins
+in the disagreeing case and that is the conservative direction — but write the reasoning into the
+`with_serial_blas` docstring where a reader will find it.
 
-- **`GeometricCompression`** (`src/preprocessing/coil_compression.jl`, Zhang 2013): per-`x`
-  SVD compression with bases aligned across `x` by a Procrustes rotation
-  (`R = U·Vt` from `svd(prevVᴴ·curV)`). `compress_coils` returns `C` of shape
-  `(n_virtual, n_coils, Nx)`; `compress_coils_with_matrix` gains a 3-D-`C` method (apply
-  `C[:,:,ix]` slice-wise, sensitivity maps too); `SVDCompression` keeps the 2-D `C`. Update
-  docstring + `preprocessing.md`.
-- **`RING`** (`src/preprocessing/gradient_delays.jl`, Rosenzweig 2019): fit the anisotropic
-  `2×2` delay tensor from per-spoke sub-sample shifts (reuse the parabolic peak-fit in
-  `_estimate_delays_core(::OpposingSpokes)`) against
-  `δ_s = Sxx·cos²θ + Syy·sin²θ + 2·Sxy·cosθ·sinθ`. `estimate_gradient_delays(...; method = RING())`
-  returns `(dx, dy, dxy)` (NamedTuple); `OpposingSpokes` still returns `(dx, dy)`.
-  `_apply_gradient_delays` gains a NamedTuple method. Drop the `@test_throws RING` guard.
+### C6.4 — The residual 8T cost (item 0a, 0c)
 
-### Verification for Stage 10
+`TODO.md` attributes the remaining 10–25% to the `-t 8` process itself: GC over 8 thread-local
+arenas (~10 ms → ~35–46 ms per solve, independent of `--gcthreads`) against an ADMM/prox path
+allocating 200–760 MiB per solve. So the lever is allocation, not threads: item 0a is `C7`'s
+prox-buffer work, and this entry exists to record that dependency. 0c (`--gcthreads` guidance) is
+documentation only — one paragraph in `performance.md` saying it was tested and does not help,
+which is worth writing precisely because the next person will try it.
 
-Per part: Runic (`--project=@runic --inplace src/ test/`) → filtered suite for the touched tags
-→ before each commit the full `run_tests(pkgdir(MriReconstructionToolbox); filter = ti ->
-!(:jet in ti.tags))` and `julia --project=docs docs/make.jl`. One commit per part.
+### Verification for C6
+
+`benchmarking/scripts/threading_sweep.jl` at `-t 1` and `-t 8`, OpenBLAS and MKL, on the
+`--exclusive` `test` node; the 8T ÷ 1T ratios in `TODO.md` (CG-SENSE 1.00, TV 0.81, TGV 0.94,
+L1-Wav 0.87, LR 0.88, LLR 0.91, tTV 0.88) are the baseline to beat, and none may regress.
 
 ---
 
-## Verification, throughout
+### C7 — Per-iteration prox allocation (TODO §5)
 
-Every stage leaves the suite green:
+Parked "because the natural remedy (buffers owned by the term) needs a decision about thread
+ownership first — terms are materialized per slice, but nothing currently documents whether a
+materialized term may be entered from more than one thread." `C6.4` makes this the lever for
+the residual 8T cost, so take the decision instead of re-parking it:
 
-```
-julia --project=test -e 'using TestItemRunner; TestItemRunner.run_tests(".")'
-```
+**Proposed contract: a materialized term is owned by exactly one task for the duration of a
+solve.** That is already true of every path in the package — `execute_single_slice` materializes
+per slice, `MultiThreadingExecutor` gives each slice to one task, the sequential executor runs
+slices one at a time — and it is the contract the buffers need. Write it into
+`src/regularization/regularization.jl`'s module docstring as part of the `Regularization`
+contract, add it to `docs/src/high-level/regularization.md` and to the "Adding a regularizer"
+section of `AGENTS.md`, and make `materialize`'s docstring say a term may hold scratch.
 
-**including `:jet`** after Stage 0 — the path argument matters (V1). Tag-filtered re-runs of `:reconstruction`, `:regularization`, `:components`, `:nfft` for the stages that touch them. Per `AGENTS.md`: files under ~500 lines, Runic formatting (`--project=@runic --inplace src/ test/`) before every commit, a docstring for every exported symbol surfaced from a `@docs` block on the right `docs/src/` page. `julia --project=docs docs/make.jl` must build clean at the end of every stage that changes docs. Use the persistent `julia-repl` MCP session rather than spawning `julia` per call. Dependency changes go through `Pkg` APIs only.
+Then add the buffers, one file at a time, each with an `@allocated` regression test:
+`multi_scale_low_rank_reg.jl:43,45,53`, `locally_low_rank_reg.jl:76,121,138-142`,
+`plug_and_play_reg.jl:40,54-55`. Order by measured allocation share on the LLR benchmark row, and
+stop when the remaining files are under a few percent — the goal is the 200+ MiB per solve, not
+zero allocation.
 
-## Design-document updates to make alongside the code
+### C8 — `NestedThreading.exclude` is a silent no-op for counted pools
 
-§5 of `comprehensive_literature_review_mri_toolboxes.md` — **reconciled** in the Stage-9-fix
-commit: `𝒫` notation, `IterativeHomodyne` → `PhaseConstrained`, `DouglasRachford` in
-`DEFAULT_ALGORITHMS`, `HardConsistency` general via inner CG, the restricted auto-wrap rule (V4),
-`is_operator_composable` status note, V5 wording, SAKE/LORAKS/PRUNO and `PhaseDemodulation` marked
-not implemented, density-compensation status corrected. Sensitivity-estimation (McKenzie/Walsh/
-Uecker) and opposing-spokes (Peters/Block-Uecker/Rosenzweig) references were already present.
+`exclude` is consulted only in `_run_guarded`, which walks `GUARDED_POOLS`; counted pools go
+through `_enter!`/`_apply!`, which take no `exclude`. Of the registered pools `:blas`, `:mkl`,
+`:fftw`, `:nfft` are counted and `:polyester` is the only guarded one — so `exclude` can only ever
+name `:polyester`, and unknown names are accepted without error. Two changes, upstream:
+
+1. **Bug**: honour `exclude` in `_apply!` for counted pools, *or* validate the names and throw on
+   one that cannot be excluded. Silently accepting a knob that does nothing is the worst option.
+2. **Missing API**: an allowlist — `with_thread_budget(f, n; only = (:blas, :mkl))` — so "restrict
+   exactly these pools, leave the rest alone" is expressible. A denylist cannot say it without
+   enumerating every other pool, which breaks whenever a new pool registers.
+
+`with_serial_blas` (`src/utils.jl`) is exactly `with_restricted_threads(only = (:blas, :mkl))` and
+belongs upstream once the API exists: any library doing Julia-level parallelism over small work
+items with BLAS-1 inside (Krylov, ODE, proximal solvers) hits the same wall, and
+`LinearAlgebra`'s default budget follows CPU affinity rather than `-t`, which NestedThreading
+already documents in `_with_blas_threading` without offering a primitive to act on.
+
+Once landed: `@conditionally_enable_threading` (`src/utils.jl`) uses the allowlist and its long
+warning block shrinks to a cross-reference; `with_serial_blas` becomes a thin forwarder or goes
+away. NestedThreading is not under `deps/` — this is a real upstream PR against the package, so
+it is sequenced last and nothing else in this plan may depend on it.
+
+### C9 — Refresh the benchmark tables
+
+The multi-toolbox table at the top of `TODO.md`'s performance section predates the threading
+fixes; the 8T columns for TV/TGV/CG-SENSE are stale by construction. After Phases 1 and 2:
+
+- Re-run `comparison/scripts/run_benchmarks.jl` at 1 and 8 threads, OpenBLAS and MKL, on the
+  `--exclusive` `test` node, refreshing `comparison/results/benchmark_{openblas,mkl}_{1,8}threads.json`
+  and `benchmarking/results/mrt_<backend>_<n>threads.json`.
+- Re-run `comparison/scripts/run_accuracy_race.jl` and refresh the time-to-NRMSE table.
+- Rewrite `TODO.md` around the new numbers: the applied record stays, the "still open" lists
+  shrink to what is actually still open, and each entry that this plan closed is moved with its
+  measured before/after.
+- Update `docs/src/high-level/performance.md` with the same numbers, and drop the stale
+  `AGENTS.md` gotcha "`DFT` accepts `num_threads`, not `threaded`" — `TODO.md` already records
+  that `DFT` accepts both and `num_threads` wins, and `_axis_dft_op`
+  (`src/encoding/fourier_operators.jl:196-201`) still passes the old form and should pass
+  `threaded` so the FFTW size heuristic can run there too.
+
+---
+
+---
+
+## Sequencing summary
+
+| item | phase | depends on | why here |
+|---|---|---|---|
+| `S1` `WaveletOp` normal op | 1 | — | one trait + one method, guarded by an orthogonality check |
+| `S2` `_alternate_sign!` kernel | 1 | — | one function, property-testable; largest single §9 win |
+| `S3` `Variation` adjoint | 1 | — | one function, dot-testable against the existing scalar code |
+| `S4` skip the no-op thread scope | 1 | — | mirrors `with_serial_blas`'s existing early-out |
+| `S5` `Array{AbstractArray}` | 1 | — | idiom already used two functions away; ride along |
+| `S6` NFFT knobs | 1 | — | additive keywords, defaults unmoved |
+| `S7` `--gcthreads` note | 1 | — | documentation of an existing negative result |
+| `C1` `SqrNormL2WithNormalOp` value | 2 | Phase 1 | correctness; changes a struct's fields and contract |
+| `C2` cancel the `±` pair | 2 | `S2` | operator-algebra rule; fires on every diagonal middle op |
+| `C3` `𝒜ᴴ𝒜` built twice | 2 | `C1` | plumbs a value across `StructuredOptimization` → `ProximalAlgorithms` |
+| `C4` ADMM dead work | 2 | `C3` | needs a flag threaded from MRT's defaults; measure first, may be dropped |
+| `C5` operator norm | 2 | `C3` | measurement first; `C5.3` needs a λ-semantics decision |
+| `C6` threading residuals | 2 | Phase 1 | `C6.3` is a re-fit campaign; only valid once per-solve cost is final |
+| `C7` prox buffers | 2 | `C6.4` | needs the thread-ownership contract written down first |
+| `C8` upstream `NestedThreading` | 2 | — | a PR against a package we do not vendor; nothing may depend on it |
+| `C9` refresh the record | 2 | all | the tables are regenerated once, at the end |
