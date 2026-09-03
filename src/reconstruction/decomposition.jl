@@ -91,20 +91,32 @@ end
 function execute(f::Function, plan, acq_data, config, executor::ReconstructionExecutor)
     maybe_print_decomposition_info(plan, config)
     batch_sizes = plan.variable_size[collect(plan.variable_batch_dims)]
-    results = Array{AbstractArray}(undef, batch_sizes)
-    scales = Array{real(eltype(acq_data.kspace_data))}(undef, batch_sizes)
-    run_slices!(results, scales, f, plan, acq_data, config, executor)
-    maybe_rescale_results!(results, scales, config)
-    return stack_image_slices(results, plan, Val(config.threaded))
-end
-
-function run_slices!(results, scales, f, plan, acq_data, config, executor::ReconstructionExecutor)
     slices = collect(get_slices(plan, acq_data))
     # A multi-threading executor already occupies the threads with whole slices, so the work inside a
     # slice runs sequentially there.
     slice_threaded = executor isa MultiThreadingExecutor ? false : config.threaded
+    scales = Array{real(eltype(acq_data.kspace_data))}(undef, batch_sizes)
+
+    # A slice's result type isn't known until `f` actually runs (it depends on the acquisition
+    # and warm-start array types), so -- mirroring `execute_two_phase`'s own `prelim` idiom --
+    # the first slice runs outside the (possibly threaded) loop to learn it, and `results` is
+    # then allocated concretely instead of as `Array{AbstractArray}`.
+    first_idx, first_id, first_local_acq = slices[1]
+    first_r, first_s = execute_single_slice(
+        f, first_idx, first_id, first_local_acq, config; threaded = slice_threaded
+    )
+    results = Array{typeof(first_r)}(undef, batch_sizes)
+    results[first_idx] = first_r
+    scales[first_idx] = first_s
+
+    run_slices!(results, scales, f, @view(slices[2:end]), config, executor; threaded = slice_threaded)
+    maybe_rescale_results!(results, scales, config)
+    return stack_image_slices(results, plan, Val(config.threaded))
+end
+
+function run_slices!(results, scales, f, slices, config, executor::ReconstructionExecutor; threaded)
     for_each_item!(slices, config, executor) do (idx, id, local_acq)
-        r, s = execute_single_slice(f, idx, id, local_acq, config; threaded = slice_threaded)
+        r, s = execute_single_slice(f, idx, id, local_acq, config; threaded)
         results[idx] = r
         scales[idx] = s
     end
@@ -216,9 +228,17 @@ function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Fun
         @sprintf("Using shared scaling factor across slices: %g", global_scale)
     )
 
-    results = Array{AbstractArray}(undef, batch_sizes)
     indices = vec(collect(CartesianIndices(batch_sizes)))
-    for_each_item!(indices, config, executor) do idx
+    first_result_idx = indices[1]
+    first_res_id, first_res_acq, first_res_warm_start, first_res_scale, first_res_𝒜 = prelim[first_result_idx]
+    first_res_ratio = safe_scale_ratio(first_res_scale, global_scale)
+    first_result = solve(
+        first_res_acq, first_res_warm_start, first_res_ratio, global_scale,
+        slice_config(first_res_id), first_res_𝒜,
+    )
+    results = Array{typeof(first_result)}(undef, batch_sizes)
+    results[first_result_idx] = first_result
+    for_each_item!(@view(indices[2:end]), config, executor) do idx
         id, local_acq, warm_start, scale, 𝒜 = prelim[idx]
         ratio = safe_scale_ratio(scale, global_scale)
         results[idx] = solve(local_acq, warm_start, ratio, global_scale, slice_config(id), 𝒜)
