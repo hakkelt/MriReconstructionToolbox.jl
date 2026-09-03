@@ -363,6 +363,81 @@ Two things worth upstreaming to `NestedThreading`:
 
 ---
 
+## Cross-Toolkit Comparison Findings (MRT vs BART / SigPy / MRIReco, 2026-09-02/03)
+
+Time-to-common-NRMSE-target race, 128²×8 (dynamic rows 64²×4×8), R≈1.8, 30 dB, single-threaded,
+per-toolbox calibrated λ, all conventions aligned (`run_accuracy_race.jl`):
+
+| method (target) | MRT | BART | SigPy | MRIReco |
+|---|---|---|---|---|
+| TV ≤ 0.005 | 419 ms (12 it) | 418 (`-i 40`) | 665 (8) | **295** (8) |
+| L1-wavelet ≤ 0.010 | 181 (20) | 344 (20) | 321 (20) | **91** (20) |
+| TGV ≤ 0.005 | **1071** (20) | 1181 (`-i 80`) | — | — |
+| global low-rank ≤ 0.090 | 531 (12) | 1828 (`-i 150`) | — | **379** (12) |
+| locally low-rank ≤ 0.055 | 1362 (30) | 1886 (`-i 150`) | — | **646** (20) |
+| temporal TV ≤ 0.090 | **149** (3) | 1030 (`-i 80`) | — | — |
+
+MRT beats BART and SigPy on every row, and wins CG-SENSE, the adjoint rows, and non-Cartesian
+gridding at matched accuracy outright. MRIReco wins the four rows above, each with a named cause:
+
+### 7. FISTA pays a full `normalize_op` instead of just `Lf`
+
+MRT runs all 20 power iterations plus a separate normalization pass for L1-wavelet (~137 ms of a
+322 ms solve). MRIReco's `power_iterations` early-exits at `rtol = 1e-3` for ~7 ms, because FISTA
+only needs the number `Lf = ‖A‖²`, not a normalized operator. Per-iteration MRT is also 11.1 vs
+9.0 ms despite less wavelet work (3 levels vs full depth) — suspect `FastForwardBackwardIteration`
+evaluating `f_x`/`g_z` every iteration, an extra `A` application nothing consumes when `tol = 0`.
+Net: MRIReco is 2x faster on L1-wavelet, and it is real (unlike the ADMM opnorm case already fixed
+2026-09-02 — see Performance & Threading Findings above).
+
+### 8. Non-Cartesian gridding — not a speed gap, an accuracy mismatch
+
+MRT takes NFFT.jl's defaults (m=5, σ=2.0, POLYNOMIAL); MRIReco hardcodes m=3, σ=1.25, TENSOR. Per
+coil that is 4.28 ms vs 1.00 ms for an NFFT ~360x more accurate (forward error 1.6e-7 vs 5.7e-5) —
+accuracy the recon never uses (NRMSE 0.085 either way). At MRIReco's operating point MRT is 8.35 ms
+vs MRIReco's 47.1 ms — MRT wins 5.6x at matched accuracy. MRT's API does not currently expose the
+NFFT plan options (m, σ, precomputation kind) to let a caller choose the operating point.
+
+### 9. `fftshift` emulation (`_alternate_sign!`) dominates the dynamic low-rank / LLR solve
+
+**43%** of a 20-iteration dynamic low-rank solve, against FFTW's own 18% and the SVD prox's 2.5%.
+Two causes, both in `FFTWOperators`:
+- the inner loop recomputes per-element index parity every call; a hoisted + `@simd` rewrite
+  measured 1.6-1.9x faster.
+- the k-space shift pair inside `𝒜ᴴ𝒜` is never cancelled. Sign alternation commutes exactly with
+  the (diagonal) sampling mask, but `get_normal_op(::Compose)` only folds the outermost factor, and
+  `Compose`'s constructor only cancels directly-adjacent `Aᴴ A` — so a pair separated by the mask
+  survives uncancelled.
+
+Fixing both would take the dynamic low-rank solve from 890 ms to ≈550 ms, past MRIReco's 632 ms.
+
+### Smaller MRT-internal gaps found during the same profiling pass
+
+- `Variation` adjoint is 244 us against 21 us forward — 12x asymmetry in
+  `_variation_adjoint_term`'s scalar loop.
+- `WaveletOp` declares `is_AcA_diagonal = true, diag_AcA = 1` but not `has_optimized_normalop`, so
+  ADMM's `get_cg_operator` runs a real `dwt!`/`idwt!` pair per inner CG iteration for what is
+  mathematically the identity.
+- `A'A` is built twice for ADMM — once eagerly by `normalop_ls` inside `SqrNormL2WithNormalOp`,
+  again by `admm.jl:266` `get_cg_operator` — each with its own full set of k-space-sized `Compose`
+  buffers (57 MiB allocated for a single-iteration solve).
+- ADMM computes 6 vector norms and one extra `B'` application unconditionally per outer iteration
+  (`admm.jl:418-428`); dead work under `FixedPenalty` with `tol = 0`.
+- `Threads.@threads` over `eachindex(iter.g)` twice per outer iteration (`admm.jl:376, 403`) is a
+  one-trip loop with a single regularizer.
+
+What is already good (do not "optimize"): one `A`+`A'` costs 3.50 ms against a 2.95 ms floor for
+two batched 128x128x8 in-place FFTs (MRIReco's fused `AHA` is 3.34 ms — on par). `NamedDimsOp` is
+free (compile-time symbol-tuple compare, unwrapped before solve). 10 normal-op applications per
+ADMM outer iteration vs 11 for BART/MRIReco/SigPy.
+
+Full comparison-methodology pitfalls (BART `-i`/`-w 1`/`-e` flags, MRIReco's `-t 1` BLAS-pin bug,
+TV/wavelet convention mismatches per toolbox, λ-must-match-inner-CG-exactness trap, and the
+subsampling-mask-must-be-passed trap) are not repeated here — see project memory
+`toolbox-comparison-pitfalls.md` for the source-level detail.
+
+---
+
 ## Out of Scope
 
 ### 5. Per-iteration allocation in the new prox implementations
