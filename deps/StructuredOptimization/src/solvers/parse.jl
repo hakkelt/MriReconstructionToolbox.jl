@@ -455,11 +455,17 @@ function prepare(term::Term, assumption::ProximalAlgorithms.LeastSquaresTerm, va
     end
     # The term is `‖L*x + d‖²` (e.g. `ls(A*x - y)` has displacement `d = -y`), while the assumption
     # expects the least-squares term in the form `‖L*x - b‖²`, hence the negated displacement.
+    AHA = nothing
     if f isa SqrNormL2WithNormalOp
         lambda = term.lambda * f.lambda
         op = term.f.A
         b = -displacement(op)
         op = remove_displacement(op)
+        # `f` already holds `AᴴA` (built eagerly in its constructor). Hand it to algorithms
+        # that ask for it — otherwise ADMM builds a second, independent `Compose` chain with
+        # its own operator-sized buffers. Only when `lambda == 1`: a different `lambda`
+        # rescales `op` below, and the cached `AᴴA` would no longer match it.
+        AHA = remove_displacement(f.AᴴA)
     else
         lambda = term.lambda
         op = extract_operators(variables, term)
@@ -471,11 +477,16 @@ function prepare(term::Term, assumption::ProximalAlgorithms.LeastSquaresTerm, va
     if lambda != 1
         op = lambda * op
         b = lambda * b
+        AHA = nothing
     end
-    return (
+    prepared = (
         assumption.operator.first => op,
         assumption.b => b,
     )
+    if assumption.AHA === nothing || AHA === nothing
+        return prepared
+    end
+    return (prepared..., assumption.AHA => AHA)
 end
 
 function print_diagnostics(term::Term, assumption::ProximalAlgorithms.LeastSquaresTerm, variables::NTuple{N, Variable}) where N
