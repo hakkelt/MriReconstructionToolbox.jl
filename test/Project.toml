@@ -8,6 +8,7 @@ JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MriReconstructionToolbox = "5999b5f3-4ffc-4695-817d-461c6e99e3c0"
 NamedDims = "356022a1-0364-5f58-8944-0da4b18d706f"
+NFFTOperators = "35a93202-2abf-4a13-bc94-0aee2f861ee0"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 TestItemRunner = "f8b46487-2199-4994-9208-9a1283c18c0a"
@@ -16,6 +17,7 @@ Wavelets = "29a6e085-ba6d-5f35-a997-948ac2efa89a"
 
 [sources]
 AbstractOperators = {path = "../deps/AbstractOperators"}
+NFFTOperators = {path = "../deps/AbstractOperators/NFFTOperators"}
 
 [compat]
 Aqua = "0.8"
