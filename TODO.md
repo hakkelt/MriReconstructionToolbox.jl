@@ -10,6 +10,9 @@ sequenced.
 ## Residual observations
 
 - `results = Array{AbstractArray}` in `src/reconstruction/decomposition.jl:72, 179` (type instability in slice container; noise relative to slice solve).
+  **Resolved** (`IMPLEMENTATION_PLAN.md` `S5`, 2026-09-03): both sites now run the first slice
+  outside the loop to learn the concrete result type, mirroring `execute_two_phase`'s existing
+  `prelim` idiom, and allocate `results` concretely from it.
 - The `disable_normalop_optimization` divergence in the component path is **intentional and documented** at `build_model.jl:141-144` (plain `ls` is always used as fast normal-operator path for a sum of shared operators requires upstream `HCAT` normal-op fusion), not a defect.
 - `two local prox_of copies` in `test/test_reg_low_rank.jl` and repeated `using Wavelets` in `test/test_reg_shared.jl` folded into `test_snippets.jl` in Stage 0.
 
@@ -150,8 +153,14 @@ Measured on the cluster `test` node (`x1001c4s3b0n1`, dual AMD EPYC 7352, 128x12
   0. Close the residual 8T gap: (a) cut the ADMM/prox per-solve allocation (200+ MiB is high —
      buffer reuse in the prox scratch, `TODO §5`); (b) for a gated solve, skip the
      `with_restricted_threads` / Polyester-guard wrapper entirely and run raw serial (the guard
-     only needs to *narrow*, and at `threaded=false` there is nothing to narrow); (c) consider
-     `--gcthreads` guidance in the perf docs (it doesn't help here but a smaller heap might).
+     only needs to *narrow*, and at `threaded=false` there is nothing to narrow) —
+     **resolved** (`IMPLEMENTATION_PLAN.md` `S4`, 2026-09-03): `solve_core.jl`'s gated branch now
+     calls `with_restricted_threads_if_needed` (`src/utils.jl`), which checks
+     `BLAS.get_num_threads() == 1` — the same signal `with_serial_blas` already uses — and skips
+     entering the scope entirely when the caller is already serial; (c) consider
+     `--gcthreads` guidance in the perf docs (it doesn't help here but a smaller heap might) —
+     **resolved** (`IMPLEMENTATION_PLAN.md` `S7`, 2026-09-03): documented as a tested negative
+     result in `docs/src/high-level/performance.md`.
   1. `maybe_disable_undecomposed_threading` gates on total variable bytes, not on FFT-transform
      size or SVD-block size. A large low-rank problem with tiny per-block SVDs would still be
      threaded (harmlessly — the outer FFTs benefit); a medium problem near the 16 MiB line is the
@@ -398,16 +407,27 @@ accuracy the recon never uses (NRMSE 0.085 either way). At MRIReco's operating p
 vs MRIReco's 47.1 ms — MRT wins 5.6x at matched accuracy. MRT's API does not currently expose the
 NFFT plan options (m, σ, precomputation kind) to let a caller choose the operating point.
 
+**Resolved** (`IMPLEMENTATION_PLAN.md` `S6`, 2026-09-03): `get_fourier_operator`/
+`get_encoding_operator` now take `m`, `sigma`, `precompute` keywords forwarded to `NFFTOp`, left
+at `nothing` by default so nothing changes unless a caller asks. MRT's own defaults are
+unchanged — that is a separate, measured decision (`C9`). See "Non-Cartesian accuracy / speed
+trade-off" in `docs/src/high-level/performance.md`.
+
 ### 9. `fftshift` emulation (`_alternate_sign!`) dominates the dynamic low-rank / LLR solve
 
 **43%** of a 20-iteration dynamic low-rank solve, against FFTW's own 18% and the SVD prox's 2.5%.
 Two causes, both in `FFTWOperators`:
 - the inner loop recomputes per-element index parity every call; a hoisted + `@simd` rewrite
   measured 1.6-1.9x faster.
+  **Resolved** (`IMPLEMENTATION_PLAN.md` `S2`, 2026-09-03): `_alternate_sign!` in
+  `FFTWOperators/src/Shift.jl` now hoists the parity of every dimension but the first into a
+  per-column value computed once, and vectorizes the true per-element alternation (dim 1) with
+  `@simd`; the threaded branch parallelises the outer (column) loop only. Measured 2.68x
+  (128²×8) and 2.76x (64²×4×8) `ComplexF32`, both above the 1.6-1.9x estimate above.
 - the k-space shift pair inside `𝒜ᴴ𝒜` is never cancelled. Sign alternation commutes exactly with
   the (diagonal) sampling mask, but `get_normal_op(::Compose)` only folds the outermost factor, and
   `Compose`'s constructor only cancels directly-adjacent `Aᴴ A` — so a pair separated by the mask
-  survives uncancelled.
+  survives uncancelled. Not yet resolved — tracked as `IMPLEMENTATION_PLAN.md` `C2`.
 
 Fixing both would take the dynamic low-rank solve from 890 ms to ≈550 ms, past MRIReco's 632 ms.
 
@@ -415,9 +435,18 @@ Fixing both would take the dynamic low-rank solve from 890 ms to ≈550 ms, past
 
 - `Variation` adjoint is 244 us against 21 us forward — 12x asymmetry in
   `_variation_adjoint_term`'s scalar loop.
+  **Resolved** (`IMPLEMENTATION_PLAN.md` `S3`, 2026-09-03): the adjoint is rewritten in the
+  forward's own flat/strided idiom (`_variation_adjoint_dim1!`/`_variation_adjoint_dim!` in
+  `Variation.jl`), zero-allocating and matching the old scalar implementation exactly (dot-test,
+  dense-transpose test, and an axis-of-length-2 edge case all still pass). Measured 9-10x on a
+  128² adjoint (was ~12x asymmetry vs forward; forward itself is unaffected).
 - `WaveletOp` declares `is_AcA_diagonal = true, diag_AcA = 1` but not `has_optimized_normalop`, so
   ADMM's `get_cg_operator` runs a real `dwt!`/`idwt!` pair per inner CG iteration for what is
   mathematically the identity.
+  **Resolved** (`IMPLEMENTATION_PLAN.md` `S1`, 2026-09-03): `has_optimized_normalop`/
+  `get_normal_op` added, both guarded on `L.wavelet isa Wavelets.WT.OrthoFilter` — the identity
+  only holds for orthogonal families; a biorthogonal (lifting-scheme) wavelet now correctly
+  reports `false` on every diagonal-identity trait instead of the previous unconditional `true`.
 - `A'A` is built twice for ADMM — once eagerly by `normalop_ls` inside `SqrNormL2WithNormalOp`,
   again by `admm.jl:266` `get_cg_operator` — each with its own full set of k-space-sized `Compose`
   buffers (57 MiB allocated for a single-iteration solve).
