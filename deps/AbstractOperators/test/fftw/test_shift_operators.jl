@@ -116,6 +116,48 @@ end
     @test y2 == [1.0 -3.0; -2.0 4.0]
 end
 
+@testitem "alternate_sign!: hoisted kernel matches the naive per-element formula" tags = [:fftw, :SignAlternation] setup = [TestUtils] begin
+    using LinearAlgebra, Random, FFTWOperators
+    Random.seed!(3)
+
+    # Reference: the naive per-element formula the kernel was rewritten from.
+    function _ref_alternate_sign!(x::AbstractArray, dirs::NTuple)
+        for I in CartesianIndices(x)
+            flips = sum(iseven(I[d]) ? 1 : 0 for d in dirs)
+            if isodd(flips)
+                x[I] = -x[I]
+            end
+        end
+        return x
+    end
+
+    # Every non-empty subset of `1:N`, sorted ascending (the shape `alternate_sign!` requires).
+    function _dirs_subsets(N::Int)
+        return [Tuple(d for d in 1:N if (mask >> (d - 1)) & 1 == 1) for mask in 1:(2^N - 1)]
+    end
+
+    # Mixed even/odd extents, including an axis of length exactly 2.
+    sizes = [(4, 3, 2), (2, 5, 4), (6, 2, 3), (8,), (2, 2), (2, 3, 2)]
+    for sz in sizes, threaded in (true, false)
+        x = randn(ComplexF64, sz)
+        N = length(sz)
+        for dirs in _dirs_subsets(N)
+            expected = _ref_alternate_sign!(copy(x), dirs)
+
+            y = copy(x)
+            alternate_sign!(y, dirs...; threaded)
+            @test y ≈ expected
+
+            yo = similar(x)
+            alternate_sign!(yo, x, dirs...; threaded)
+            @test yo ≈ expected
+
+            # Self-inverse.
+            @test alternate_sign!(copy(y), dirs...; threaded) ≈ x
+        end
+    end
+end
+
 @testitem "fftshift/ifftshift wrappers" tags = [:fftw, :FFTShift] setup = [TestUtils] begin
     using FFTW, LinearAlgebra, Random, FFTWOperators, AbstractOperators
     # Even length
