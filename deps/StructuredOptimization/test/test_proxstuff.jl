@@ -54,6 +54,8 @@ f_nop = StructuredOptimization.SqrNormL2WithNormalOp(L)
 yv = zero(xv)
 fy = gradient!(yv, f_nop, xv)
 @test norm(yv - L_mat' * (L_mat * xv)) < 1e-10
+# `gradient!` returns the function value, as `ProximalCore.value_and_gradient!` requires
+@test abs(fy - 0.5 * norm(L_mat * xv)^2) < 1e-10
 @test StructuredOptimization.is_convex(typeof(f_nop))
 @test StructuredOptimization.is_smooth(typeof(f_nop))
 @test StructuredOptimization.is_generalized_quadratic(typeof(f_nop))
@@ -62,5 +64,45 @@ fy = gradient!(yv, f_nop, xv)
 let A = randn(5, 4)
     op = MatrixOp(A)
     @test_throws ErrorException StructuredOptimization.SqrNormL2WithNormalOp(op, -1.0)
+    # only real scalar weights are supported: an array λ would be a codomain weight,
+    # which the normal operator `AᴴA` cannot apply.
+    @test_throws ErrorException StructuredOptimization.SqrNormL2WithNormalOp(op, rand(5))
+end
+
+# sqrNormL2WithNormalOp.jl — `gradient!` returns f(x), including the affine case.
+# Previously it returned `λ/2‖∇f(x)‖²`, which is what `FastForwardBackwardState.f_x`
+# reads; the affine case additionally exercises the displacement corrections.
+@testset "SqrNormL2WithNormalOp value, λ=$lambda, T=$T, affine=$affine" for
+        lambda in (1, 0.75), T in (Float64, ComplexF64), affine in (false, true)
+    A = randn(T, 7, 4)
+    bvec = randn(T, 7)
+    xv = randn(T, 4)
+    op = affine ? AffineAdd(MatrixOp(A), bvec, false) : MatrixOp(A)
+    f = StructuredOptimization.SqrNormL2WithNormalOp(op, lambda)
+
+    resid = affine ? A * xv - bvec : A * xv
+    fval = lambda / 2 * norm(resid)^2
+    grad = lambda * (A' * resid)
+
+    # the callable and `gradient!` must agree with each other and with the closed form
+    @test abs(f(xv) - fval) < 1.0e-10
+    yv = zero(xv)
+    @test abs(gradient!(yv, f, xv) - fval) < 1.0e-10
+    @test norm(yv - grad) < 1.0e-10
+
+    # finite differences on the real parametrization (the gradient is the Wirtinger
+    # gradient w.r.t. conj(x), so a real perturbation probes 2*Re⟨grad, δ⟩ correctly)
+    h = 1.0e-6
+    for k in eachindex(xv)
+        δ = zero(xv)
+        δ[k] = h
+        fd = (f(xv + δ) - f(xv - δ)) / (2h)
+        @test abs(fd - real(grad[k])) < 1.0e-5 * max(1, abs(grad[k]))
+        if T <: Complex
+            δ[k] = h * im
+            fd_im = (f(xv + δ) - f(xv - δ)) / (2h)
+            @test abs(fd_im - imag(grad[k])) < 1.0e-5 * max(1, abs(grad[k]))
+        end
+    end
 end
 
