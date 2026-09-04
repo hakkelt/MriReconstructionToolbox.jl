@@ -10,7 +10,8 @@ using MriReconstructionToolbox
 #
 # Available tags: :encoding, :regularization, :minimizer,
 #                 :reconstruction, :integration, :nfft,
-#                 :quality, :jet, :acquisition, :simulation,
-#                 :components
+#                 :quality, :aqua, :jet, :acquisition, :simulation,
+#                 :components, :operators, :preprocessing,
+#                 :acquisition_info, :analysis, :fourier, :sensitivity_maps
 
 TestItemRunner.run_tests(pkgdir(MriReconstructionToolbox))

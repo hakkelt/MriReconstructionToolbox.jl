@@ -47,7 +47,7 @@
     @test dimnames(acq_white.sensitivity_maps) == (:x, :y, :coil)
 end
 
-@testitem "Coil compression with SVDCompression" tags = [:acquisition, :encoding] begin
+@testitem "Coil compression with SVDCompression" tags = [:acquisition, :encoding] setup = [SyntheticCoils] begin
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
@@ -58,15 +58,7 @@ end
     Nx, Ny = 16, 16
     img = NamedDimsArray{(:x, :y)}(randn(ComplexF32, Nx, Ny))
 
-    sens = NamedDimsArray{(:x, :y, :coil)}(zeros(ComplexF32, Nx, Ny, Nc))
-    X = [(x - Nx / 2) / Nx for x in 1:Nx, y in 1:Ny]
-    Y = [(y - Ny / 2) / Ny for x in 1:Nx, y in 1:Ny]
-    for c in 1:Nc
-        angle = (c - 1) * 2π / Nc
-        sens[:, :, c] = exp.(-((X .- cos(angle) / 2) .^ 2 .+ (Y .- sin(angle) / 2) .^ 2)) .* cis.(0.5f0 .* (X .* cos(angle) .+ Y .* sin(angle)))
-    end
-    rss = sqrt.(sum(abs2.(unname(sens)), dims = 3))
-    sens ./= (rss .+ 1.0f-8)
+    sens = NamedDimsArray{(:x, :y, :coil)}(synthetic_sensitivities(ComplexF32, Nx, Ny, Nc))
 
     acq = CartesianAcquisitionInfo(
         NamedDimsArray{(:kx, :ky, :coil)}(zeros(ComplexF32, Nx, Ny, Nc));
@@ -96,7 +88,7 @@ end
     @test isapprox(rec_geom, rec_orig; rtol = 0.05)
 end
 
-@testitem "Sensitivity map estimation: SelfCalibrating, AdaptiveCombine, ESPIRiT" tags = [:acquisition, :encoding, :simulation] begin
+@testitem "Sensitivity map estimation: SelfCalibrating, AdaptiveCombine, ESPIRiT" tags = [:acquisition, :encoding, :simulation] setup = [SyntheticCoils] begin
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
@@ -106,15 +98,7 @@ end
     img = NamedDimsArray{(:x, :y)}(zeros(ComplexF32, Nx, Ny))
     img[8:24, 8:24] .= 1.0f0
 
-    sens_true = NamedDimsArray{(:x, :y, :coil)}(zeros(ComplexF32, Nx, Ny, Nc))
-    X = [(x - Nx / 2) / Nx for x in 1:Nx, y in 1:Ny]
-    Y = [(y - Ny / 2) / Ny for x in 1:Nx, y in 1:Ny]
-    for c in 1:Nc
-        angle = (c - 1) * 2π / Nc
-        sens_true[:, :, c] = exp.(-((X .- cos(angle) / 2) .^ 2 .+ (Y .- sin(angle) / 2) .^ 2)) .* cis.(0.5f0 .* (X .* cos(angle) .+ Y .* sin(angle)))
-    end
-    rss_true = sqrt.(sum(abs2.(unname(sens_true)), dims = 3))
-    sens_true ./= (rss_true .+ 1.0f-8)
+    sens_true = NamedDimsArray{(:x, :y, :coil)}(synthetic_sensitivities(ComplexF32, Nx, Ny, Nc))
 
     acq = CartesianAcquisitionInfo(
         NamedDimsArray{(:kx, :ky, :coil)}(zeros(ComplexF32, Nx, Ny, Nc));
