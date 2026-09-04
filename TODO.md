@@ -160,7 +160,12 @@ Measured on the cluster `test` node (`x1001c4s3b0n1`, dual AMD EPYC 7352, 128x12
     `-t 8`.
 
 - **Still open:**
-  0. Close the residual 8T gap: (a) cut the ADMM/prox per-solve allocation (200+ MiB is high —
+  0. Close the residual 8T gap (re-measured 2026-09-04 on the `--exclusive` `test` node, after
+     `C6`: 1T/8T is CG-SENSE 0.96, TV 0.70, L1-Wav 0.79, TGV 0.92, LR 0.88, LLR 0.89, tTV 0.82.
+     Lower than the figures below, but every row is *faster* than before at both thread counts —
+     the ratio moved because `C1`/`C2`/`C5` improved the serial path more than the 8-thread one.
+     At these sizes the gate already runs every one of these solves serially, so what remains is
+     the `-t 8` process itself, i.e. item (a)): (a) cut the ADMM/prox per-solve allocation (200+ MiB is high —
      buffer reuse in the prox scratch, `TODO §5`); (b) for a gated solve, skip the
      `with_restricted_threads` / Polyester-guard wrapper entirely and run raw serial (the guard
      only needs to *narrow*, and at `threaded=false` there is nothing to narrow) —

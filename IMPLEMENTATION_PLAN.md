@@ -864,9 +864,35 @@ which is worth writing precisely because the next person will try it.
 
 ### Verification for C6
 
-`benchmarking/scripts/threading_sweep.jl` at `-t 1` and `-t 8`, OpenBLAS and MKL, on the
-`--exclusive` `test` node; the 8T ÷ 1T ratios in `TODO.md` (CG-SENSE 1.00, TV 0.81, TGV 0.94,
-L1-Wav 0.87, LR 0.88, LLR 0.91, tTV 0.88) are the baseline to beat, and none may regress.
+`recon_bench.jl` on the `--exclusive` `test` node (`x1001c4s3b0n1`), OpenBLAS, `-t 1` and
+`-t 8`, after all of `C6`:
+
+| row | 1T | 8T | 1T/8T now | 1T/8T in `TODO.md` |
+|---|---|---|---|---|
+| CG-SENSE (10 it) | 36.5 ms | 37.9 ms | 0.96 | 1.00 |
+| Total Variation (30 it) | 773.7 ms | 1099.3 ms | 0.70 | 0.81 |
+| L1-Wavelet (30 it) | 184.8 ms | 232.8 ms | 0.79 | 0.87 |
+| TGV (30 it) | 1380.3 ms | 1502.6 ms | 0.92 | 0.94 |
+| Global Low-Rank (20 it) | 147.3 ms | 168.0 ms | 0.88 | 0.88 |
+| Locally Low-Rank (20 it) | 172.1 ms | 192.5 ms | 0.89 | 0.91 |
+| Temporal TV (20 it) | 680.8 ms | 828.5 ms | 0.82 | 0.88 |
+
+**The ratios are lower and that is not a regression to fix — the two columns are not
+comparable.** The `TODO.md` figures predate `C1`/`C2`/`C5`, which cut the *absolute* times by
+much more at `-t 1` than at `-t 8` (TV: 1086 ms → 774 ms at 1T against 17,090 ms → 1099 ms at
+8T; every row is faster than its old value at both thread counts). A ratio of "how much of the
+1T time the 8T process spends" gets worse whenever the serial path improves faster, which is
+exactly what happened.
+
+What the ratios do still say is the thing `C6.4` records: at these problem sizes every solve is
+*already serial by the gate* at both thread counts, so the residual 10-30% is the `-t 8`
+process itself — GC over eight thread-local arenas against an allocation-heavy prox path — and
+the lever for it is allocation (`C7`), not threading. `C6` closed the three places where the
+gate did not apply; it could not close that.
+
+NRMSE is identical on every row to the values recorded for the `C5.3` convention (TV 0.00759,
+L1-wavelet 0.0058, TGV 0.00624, LR 0.11746, LLR 0.11135, tTV 0.08766, GRAPPA 0.02123/0.02437),
+and `C9` re-baselines the published tables.
 
 ---
 
