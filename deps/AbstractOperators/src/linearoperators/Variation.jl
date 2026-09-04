@@ -371,9 +371,16 @@ size(L::Variation{T, N}) where {T, N} = ((prod(L.dim_in), N), L.dim_in)
 fun_name(L::Variation) = "Ʋ"
 
 is_threaded(::Variation{T, N, Th, S}) where {T, N, Th, S} = Th
-# PROVENANCE: measured per-operator, benchmark/operator_thresholds.jl.
-# Crossover of this operator's real `mul!` (forward + adjoint): Float64 2^10, Float32 2^10.
-# Lower than FiniteDiff despite both being "arithmetic" because Variation makes one strided
-# pass per dimension, so each element carries several times more work.
-threading_threshold(::Type{<:Variation}) = 2^10
+# PROVENANCE: re-measured per-operator, benchmark/operator_thresholds.jl, 2026-09-04, on an
+# exclusive cluster node (EPYC 7763, 8 Julia threads, BLAS serial), after the adjoint was
+# rewritten in the forward's strided idiom -- that rewrite made the serial adjoint ~10x faster
+# and moved this crossover by seven powers of two.
+# Crossover of the real `mul!` (forward + adjoint): square shape Float64 2^15, Float32 2^17;
+# the old (n/4, 4) sliver shape Float64 2^16, Float32 2^17. Both shapes are swept, and the
+# threshold is the conservative one across shapes and element types.
+# The old value, 2^10, was measured before that rewrite and is a large pessimisation now:
+# threading at n = 2^10 costs 5.4x (1.36 us serial vs 8.03 us threaded, Float32) and is still
+# a loss at every size up to 2^16 (0.59-0.94x) -- which covers exactly the 128²-256² image
+# sizes a TV term is normally applied to.
+threading_threshold(::Type{<:Variation}) = 2^17
 supports_threading(::Variation) = true

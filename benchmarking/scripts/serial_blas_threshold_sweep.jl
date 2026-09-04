@@ -154,23 +154,36 @@ for c in cases
     )
 end
 
-# The crossover bracket: the largest item where serial still wins, and the smallest where
-# threaded does. A threshold anywhere inside that bracket is consistent with the data.
+# The crossover bracket. `ratio = serial / threaded`, so > 1 means threading won. Differences
+# inside ±3% are called a tie rather than a winner: on this node a whole-solve A/B at that
+# margin is not separable from run-to-run noise, and treating one as a data point is how a
+# threshold gets fitted to nothing. The bracket is therefore the largest item where serial
+# *clearly* won and the smallest larger one where threading clearly won.
+const TIE = 0.03
+
 sorted = sort(results; by = r -> r.bytes)
-lo = findlast(r -> r.serial_ms <= r.threaded_ms, sorted)
-hi = findfirst(r -> r.threaded_ms < r.serial_ms, sorted)
+serial_wins = [r for r in sorted if r.ratio < 1 - TIE]
+threaded_wins = [r for r in sorted if r.ratio > 1 + TIE]
 println()
-if lo === nothing
-    println("threaded wins at every size measured -- the threshold should go to 0")
-elseif hi === nothing
+for r in sorted
+    verdict = r.ratio < 1 - TIE ? "serial" : r.ratio > 1 + TIE ? "threaded" : "tie"
+    @printf("  %-14s %8.2f MiB  %.2fx  %s\n", r.label, mib(r.bytes), r.ratio, verdict)
+end
+println()
+if isempty(threaded_wins)
     println(
-        "serial wins at every size measured -- the threshold should go above ",
+        "no size measured favours threading -- the threshold should go above ",
         @sprintf("%.1f MiB", mib(sorted[end].bytes))
     )
+elseif isempty(serial_wins)
+    println("no size measured favours serial -- the threshold should go to 0")
 else
+    lo = maximum(r -> r.bytes, serial_wins)
+    above = filter(r -> r.bytes > lo, threaded_wins)
+    hi = isempty(above) ? minimum(r -> r.bytes, threaded_wins) : minimum(r -> r.bytes, above)
     @printf(
-        "crossover bracket: serial still wins at %.1f MiB (%s), threaded wins from %.1f MiB (%s)\n",
-        mib(sorted[lo].bytes), sorted[lo].label, mib(sorted[hi].bytes), sorted[hi].label
+        "crossover bracket: serial still wins at %.1f MiB, threading wins from %.1f MiB\n",
+        mib(lo), mib(hi)
     )
     @printf("current threshold: %.1f MiB\n", mib(MRT.SERIAL_BLAS_THRESHOLD_BYTES))
 end

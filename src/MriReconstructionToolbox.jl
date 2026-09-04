@@ -125,4 +125,9 @@ include("simulation/subsampling.jl")
 include("simulation/sensitivities.jl")
 include("simulation/simulate_acquisition.jl")
 
+function __init__()
+    _init_serial_blas_threshold!()
+    return nothing
+end
+
 end # module MriReconstructionToolbox

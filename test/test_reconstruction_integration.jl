@@ -569,10 +569,10 @@ end
     @test plan !== nothing
 
     # Two slices on an 8-thread process take the sequential executor, and one 128² slice is far
-    # below `SERIAL_BLAS_THRESHOLD_BYTES`, so the work inside a slice must stay serial even
+    # below `serial_blas_threshold_bytes()`, so the work inside a slice must stay serial even
     # though `config.threaded` is on.
     @test MRT.slice_bytes(plan, acq) == nx * ny * sizeof(ComplexF32)
-    @test MRT.slice_bytes(plan, acq) < MRT.SERIAL_BLAS_THRESHOLD_BYTES
+    @test MRT.slice_bytes(plan, acq) < MRT.serial_blas_threshold_bytes()
     @test MRT.slice_threading(plan, acq, config, MRT.SequentialExecutor()) == false
     @test MRT.slice_threading(plan, acq, config, MRT.MultiThreadingExecutor()) == false
 
@@ -582,7 +582,7 @@ end
     big = MRT.ProblemDecompositionPlan(
         big_size, (3,), (2048, 2048, nc, nslices), (4,), false, big_size
     )
-    @test MRT.slice_bytes(big, acq) >= MRT.SERIAL_BLAS_THRESHOLD_BYTES
+    @test MRT.slice_bytes(big, acq) >= MRT.serial_blas_threshold_bytes()
     @test MRT.slice_threading(big, acq, config, MRT.SequentialExecutor()) == true
     @test MRT.slice_threading(big, acq, config, MRT.MultiThreadingExecutor()) == false
     @test MRT.slice_threading(
@@ -594,4 +594,28 @@ end
     img_serial = reconstruct(acq, method; maxit = 5, verbose = false, threaded = false)
     @test size(img_threaded) == (nx, ny, nslices)
     @test img_threaded == img_serial
+end
+
+@testitem "Serial-BLAS threshold is settable" tags = [:reconstruction] begin
+    const MRT = MriReconstructionToolbox
+
+    @test MRT.serial_blas_threshold_bytes() == MRT.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
+    config = Config(; threaded = true)
+    @test MRT._should_thread_work_item(config, MRT.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES)
+    @test !MRT._should_thread_work_item(config, 4 * 2^20)
+
+    try
+        MRT.set_serial_blas_threshold_bytes!(2^20)
+        @test MRT.serial_blas_threshold_bytes() == 2^20
+        # The gate follows the new value, which is the whole point of it being settable.
+        @test MRT._should_thread_work_item(config, 4 * 2^20)
+        @test !MRT._should_thread_work_item(config, 2^19)
+        # `threaded = false` still vetoes, at any size.
+        @test !MRT._should_thread_work_item(Config(config; threaded = false), 2^30)
+    finally
+        MRT.set_serial_blas_threshold_bytes!(MRT.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES)
+    end
+    @test MRT.serial_blas_threshold_bytes() == MRT.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
+
+    @test_throws Exception MRT.set_serial_blas_threshold_bytes!(-1)
 end

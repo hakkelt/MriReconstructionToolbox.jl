@@ -81,11 +81,22 @@ function _build_diagop(::Type{T}, n) where {T}
     return (DiagOp(d; threaded = false), DiagOp(d; threaded = true), x, similar(x))
 end
 
-# Variation needs >= 2 dims. The trailing dimension of 4 originally worked around a
-# BoundsError in the adjoint for length-2 dimensions; that bug is fixed, but the shape is
-# kept so the recorded `threading_threshold(::Type{<:Variation})` stays comparable to the
-# run it was transcribed from.
+# Variation needs >= 2 dims, and its cost is shape-sensitive: it makes one strided pass per
+# dimension, so a (n/4, 4) sliver and a square image of the same element count do not share a
+# crossover. The shape here is square, because that is what the operator is actually used on
+# (a TV term over an image). The older sliver shape is kept alongside it so the two are
+# comparable -- the recorded threshold was transcribed from a sliver run, before the adjoint
+# was rewritten in the forward's strided idiom.
 function _build_variation(::Type{T}, n) where {T}
+    m = max(2, isqrt(n))
+    x = randn(T, m, m)
+    return (
+        Variation(T, (m, m); threaded = false),
+        Variation(T, (m, m); threaded = true), x, zeros(T, m * m, 2),
+    )
+end
+
+function _build_variation_sliver(::Type{T}, n) where {T}
     m = max(4, n ÷ 4)
     x = randn(T, m, 4)
     return (
@@ -119,6 +130,7 @@ const CASES = Case[
     Case("FiniteDiff", _build_finitediff, true),
     Case("DiagOp", _build_diagop, true),
     Case("Variation", _build_variation, true),
+    Case("VariationSliver", _build_variation_sliver, true),
     Case("Scale", _build_scale, true),
 ]
 
