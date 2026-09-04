@@ -450,7 +450,7 @@ Two independent reasons to say no:
   - A [`MultiThreadingExecutor`](@ref) already occupies every thread with whole slices, so the
     work inside a slice must run sequentially.
   - A [`SequentialExecutor`](@ref) runs slices one at a time, but a slice is by construction
-    smaller than the whole problem, and below [`SERIAL_BLAS_THRESHOLD_BYTES`](@ref) threading a
+    smaller than the whole problem, and below [`serial_blas_threshold_bytes`](@ref) threading a
     work item that small is a net loss — the same predicate
     `maybe_disable_undecomposed_threading` applies to an undecomposed problem, here applied per
     slice. Without this the outer scope is serial only around the *solve*

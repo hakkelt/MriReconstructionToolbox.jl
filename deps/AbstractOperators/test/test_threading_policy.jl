@@ -110,6 +110,14 @@ end
     @test threading_threshold(FiniteDiff) == 2^16
     @test threading_threshold(DiagOp) == 2^17
     @test threading_threshold(Scale) == 2^22
+
+    # Variation is re-measured after its adjoint rewrite; below this it is a real
+    # pessimisation (5.4x at 2^10), not merely a wash. See its PROVENANCE comment.
+    @test threading_threshold(Variation) == 2^17
+    @test is_threaded(Variation(Float32, (128, 128); threaded = true)) == false
+    if Threads.nthreads() > 1
+        @test is_threaded(Variation(Float32, (512, 512); threaded = true)) == true
+    end
     @test threading_threshold(Sin) < threading_threshold(FiniteDiff) < threading_threshold(Scale)
 end
 

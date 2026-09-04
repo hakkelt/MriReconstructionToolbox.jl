@@ -176,9 +176,15 @@ Measured on the cluster `test` node (`x1001c4s3b0n1`, dual AMD EPYC 7352, 128x12
      threaded (harmlessly — the outer FFTs benefit); a medium problem near the 16 MiB line is the
      ambiguous case. The threshold is the same one-node-fitted number as `SERIAL_BLAS_THRESHOLD_BYTES`.
   2. Per-operator size vetoes in `DSPOperators` / `WaveletOperators` / the sensitivity `DiagOp`
-     are still absent; only FFTW has one. Less urgent now that the whole small solve goes serial,
-     but relevant for the large-volume path where some operators are still below their own
-     threshold.
+     are still absent; only FFTW has one — **wrong when written, and resolved otherwise**
+     (`IMPLEMENTATION_PLAN.md` `C6.2`, 2026-09-04). `AbstractOperators/src/threading_policy.jl`
+     already has per-operator `threading_threshold` methods (`Variation`, `FiniteDiff`,
+     `DiagOp`, `Scale`, the elementwise operators), consulted through `_resolve_threaded`, where
+     `threaded = true` is a permission the size policy can override. `WaveletOperators` has no
+     Julia-level threading to veto. What *was* wrong: `Variation`'s threshold was fitted before
+     `S3` rewrote its adjoint, and at the old `2^10` threading that operator cost up to 5.9x and
+     lost at every size up to `2^16`. Re-measured on the `--exclusive` node with the package's
+     own `benchmark/operator_thresholds.jl` and raised to `2^17`.
   3. The decomposed **sequential-executor** path (few slices, `length(plan) ≤ nthreads()`) still
      opens `with_full_threads()` around the slice loop via `@conditionally_enable_threading`. The
      inner `with_restricted_threads` in `solve_core` covers the solve, but the per-slice operator
@@ -379,13 +385,20 @@ Two things worth upstreaming to `NestedThreading`:
   `comparison/scripts/run_benchmarks.jl` at 8 threads on both backends and refresh the table at
   the top of this section; the 8T columns for TV/TGV/CG-SENSE are the ones expected to move.
 - `SERIAL_BLAS_THRESHOLD_BYTES` is one number fitted to one node (dual EPYC 7352, 8 cores
-  visible, MKL). The crossover is a memory-bandwidth-per-core property, so it will move on
-  other hardware and with core count. It is also measured on the synthetic reproducer, not on
-  a real solve. Treat 16 MiB as a starting point, not a constant — and note the sweep only
-  brackets it between 4 MiB (serial still wins) and 16 MiB (threaded wins by 7%), so the true
-  crossover is somewhere in that octave.
+  visible, MKL), on the synthetic reproducer rather than a real solve — **resolved**
+  (`IMPLEMENTATION_PLAN.md` `C6.3`, 2026-09-04). Re-fitted on real TV/temporal-TV solves on the
+  `--exclusive` `test` node with `benchmarking/scripts/serial_blas_threshold_sweep.jl`, both
+  backends, 8 threads. Two results: below 4 MiB the threaded and serial paths are within ±2% on
+  both backends (so the exact value does not matter there at all), and between 4 and 16 MiB the
+  backends disagree in *direction* — an 8 MiB solve is 0.76-0.88x serial-favouring on OpenBLAS
+  and 1.08-1.38x threading-favouring on MKL. No single constant is right for both, so the
+  constant became a tunable: `DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES` (16 MiB, safe on both) plus
+  `serial_blas_threshold_bytes()`, `set_serial_blas_threshold_bytes!` and the
+  `MRT_SERIAL_BLAS_THRESHOLD_BYTES` environment variable. Full table in
+  `set_serial_blas_threshold_bytes!`'s docstring and in `docs/src/high-level/performance.md`.
 - The gate keys on the *work item*, not on batch width, because `_iterative_reconstruct_core`
-  does not know how many slabs are in flight. For the multi-threaded executor that is already
+  does not know how many slabs are in flight. (The reasoning below is now written into
+  `with_serial_blas`'s docstring, per `C6.3`.) For the multi-threaded executor that is already
   handled — `@budgeted_threads` gives each task `capacity ÷ ntasks` — so the gate only really
   decides the sequential-executor case, where batch width is 1 by construction. If the two ever
   disagree (a wide batch of large slabs), the budget wins, which is the conservative direction.

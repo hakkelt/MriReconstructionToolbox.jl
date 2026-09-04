@@ -730,6 +730,53 @@ shape; nothing needs to be measured at run time).
 
 ### C6.2 — Per-operator size vetoes beyond FFTW (item 2)
 
+**Done** (2026-09-04) — and the entry's premise was stale in both directions.
+
+The machinery it asks for already exists in the vendored `AbstractOperators`:
+`src/threading_policy.jl` defines `threading_threshold(::Type{Op})` per operator, consulted
+through `_resolve_threaded`, whose contract is that `threaded = true` is a **permission**, not a
+command — the size policy still has the final say, and `is_threaded(L)` reports what the
+operator will actually do. `Variation` (`2^10`), `FiniteDiff` (`2^16`), `DiagOp` (`2^17`),
+`Scale` (`2^22`) and the elementwise operators all carry measured values. `WaveletOperators`
+needs none: it has no Julia-level threading at all (`is_threaded(::WaveletOp) = false`, the work
+is inside `Wavelets.jl`), so there is nothing to veto there.
+
+What was actually wrong is that **`Variation`'s threshold was fitted before `S3`**, which
+rewrote its adjoint in the forward's strided idiom and made the serial adjoint ~10x faster —
+moving the crossover by seven powers of two. Re-measured with the package's own
+`benchmark/operator_thresholds.jl` on the `--exclusive` `test` node (EPYC 7763, 8 threads, BLAS
+serial), `serial / threaded` for the forward+adjoint pair:
+
+| n | 2^10 | 2^12 | 2^14 | 2^15 | 2^16 | 2^17 | 2^19 | 2^22 |
+|---|---|---|---|---|---|---|---|---|
+| square, Float32 | 0.17x | 0.36x | 0.59x | 0.92x | 0.94x | **1.30x** | 1.50x | 2.47x |
+| sliver, Float32 | 0.09x | 0.21x | 0.47x | 0.68x | 0.81x | **1.16x** | 1.36x | 1.95x |
+
+So at the old `2^10` threading this operator cost up to **5.9x**, and it was a loss at every
+size up to `2^16` — which covers the 128²-256² images a TV term is normally applied to.
+`threading_threshold(::Type{<:Variation})` is now `2^17` (conservative across both shapes and
+both element types, per the script's own rule), with the provenance comment rewritten and a
+test in `deps/AbstractOperators/test/test_threading_policy.jl`.
+
+Two further notes from the same run:
+
+- `operator_thresholds.jl`'s `_build_variation` swept only an `(n/4, 4)` sliver. `Variation`
+  makes one strided pass per dimension, so its cost is shape-sensitive and the shape it is
+  actually used on is a square image; the script now sweeps both (`Variation`,
+  `VariationSliver`). The two agree here, which is itself worth knowing.
+- The script's suggested `threading_threshold(::Type{<:DiagOp}) = 2^15` was **not** taken. Its
+  `crossover` rule takes the smallest size where threaded wins and keeps winning, which at
+  `2^15` is a 1.00-1.01x tie; the real jump is 6.5x at `2^17`, exactly where the current value
+  sits. `FiniteDiff`'s `2^16` was likewise confirmed unchanged.
+
+Effect on MRT itself: **none measurable**, and for a reason worth recording — a 128²-256²
+solve is already forced serial as a whole by `maybe_disable_undecomposed_threading`/`C6.1`, so
+`Variation` never sees `threaded = true` at those sizes through MRT's own path (measured: TV
+30 it, `-t 8`, four interleaved rounds, 1744-1793 ms before vs 1750-1771 ms after). The fix
+matters for direct users of the operator and for any MRT path that reaches a mid-size
+`Variation` with threading permitted — and it removes a 5.9x trap from the library.
+
+
 Only FFTW consults a threshold (`_fftw_num_threads` / `fftw_threading_threshold`). Add the same
 shape of veto to `DSPOperators` (the `Variation`/`FiniteDiff` `@batch` loops), `WaveletOperators`,
 and the sensitivity `DiagOp`: a per-operator `threading_threshold(::T)` consulted where `threaded`
@@ -738,6 +785,53 @@ serial. Less urgent now that whole small solves go serial — schedule after C6.
 the large-volume benchmark (below) shows it.
 
 ### C6.3 — Re-fit `SERIAL_BLAS_THRESHOLD_BYTES` on a real solve (finding 3, "Not done")
+
+**Done** (2026-09-04). Outcome: **the second one the entry allows** — the crossover is not a
+single number, so the constant became a documented tunable and the shipped default stayed at
+16 MiB.
+
+Re-fitted with a new script, `benchmarking/scripts/serial_blas_threshold_sweep.jl`, on the
+`--exclusive` `test` node (`x1001c4s3b0n1`), 8 threads, TV and temporal-TV solves at
+10 iterations, A/B interleaved, min-of-2-of-2. No constant has to be redefined to run the A/B:
+the threshold has exactly two effects and both are all-or-nothing per solve (below it,
+`maybe_disable_undecomposed_threading`/`slice_threading` force `threaded = false`; above it,
+`solve_core.jl` takes the `with_serial_blas` branch, which then also declines to narrow because
+the item is over the same threshold), so `threaded = true` vs `false` *is* the A/B.
+
+`serial / threaded` wall time — above 1 means threading won:
+
+| case | item | OpenBLAS | MKL |
+|---|---|---|---|
+| TV 128² | 0.12 MiB | 1.00x | 1.01x |
+| TV 256² | 0.50 MiB | 1.02x | 1.02x |
+| TV 512² | 2 MiB | 1.02x | 1.00x |
+| tTV 128²×16 | 2 MiB | 1.01x | 1.01x |
+| tTV 128²×32 | 4 MiB | 1.00x | 1.00x |
+| tTV 256²×16 | 8 MiB | **0.76x** | **1.08x** |
+| TV 1024² | 8 MiB | **0.88x** | **1.38x** |
+| tTV 256²×32 | 16 MiB | 1.13x | 1.35x |
+| tTV 512²×32 | 64 MiB | 1.66x | 1.67x |
+
+Two findings, neither of which a single re-fitted number could carry:
+
+1. **Below 4 MiB the choice does not matter at all** on either backend (within ±2%, i.e. inside
+   this node's noise). The whole "small solves must be serial" result that motivated the
+   constant is a *wide-batch* effect — many slabs in flight, which is the decomposed path — and
+   `C6.1` is what applies it there. For a single small solve the gate is nearly free either way.
+2. **Between 4 and 16 MiB the backends disagree in direction.** Threading an 8 MiB solve is a
+   1.3x *loss* on OpenBLAS and a 1.4x *win* on MKL, on the same node, same problem. That is
+   larger than the octave the entry hoped to bracket, and no single constant is right for both.
+
+So: `SERIAL_BLAS_THRESHOLD_BYTES` is now `DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES` (unchanged at
+16 MiB, the value that is safe on both backends) plus `serial_blas_threshold_bytes()`,
+`set_serial_blas_threshold_bytes!` and the `MRT_SERIAL_BLAS_THRESHOLD_BYTES` environment
+variable, read in `__init__`. Documented in `docs/src/high-level/performance.md` and in
+`set_serial_blas_threshold_bytes!`'s own docstring, which carries the table above; tested in
+`test/test_reconstruction_integration.jl`.
+
+The batch-width half of the entry landed with `C6.1`: the reasoning is now in
+`with_serial_blas`'s docstring.
+
 
 Today's 16 MiB is one number fitted on one node, on the *synthetic* reproducer, and the sweep only
 brackets the crossover between 4 MiB and 16 MiB. Re-fit it against `recon_bench.jl` on real
@@ -753,6 +847,13 @@ in the disagreeing case and that is the conservative direction — but write the
 `with_serial_blas` docstring where a reader will find it.
 
 ### C6.4 — The residual 8T cost (item 0a, 0c)
+
+**Closed as a record** (2026-09-04), no code of its own — which is what the entry says it is.
+0c landed with `S7` (the `--gcthreads` paragraph is in `docs/src/high-level/performance.md`);
+0a is `C7`'s prox-buffer work and is tracked there. This entry's remaining content is the
+dependency itself: the residual 8T cost is an *allocation* problem, so it is closed by `C7`
+and not by anything in `C6`.
+
 
 `TODO.md` attributes the remaining 10–25% to the `-t 8` process itself: GC over 8 thread-local
 arenas (~10 ms → ~35–46 ms per solve, independent of `--gcthreads`) against an ADMM/prox path
@@ -852,7 +953,7 @@ fixes; the 8T columns for TV/TGV/CG-SENSE are stale by construction. After Phase
 | `C3` `𝒜ᴴ𝒜` built twice | 2 | `C1` | **done** `274b625`; ~4 MiB/solve, not the claimed 57 MiB |
 | `C4` ADMM dead work | 2 | `C3` | **dropped** (2026-09-04); measured at 0.25% of a solve, no code change |
 | `C5` operator norm | 2 | `C3` | **done**; `C5.2` dropped, `C5.3` taken (λ convention changed), `powerit` made deterministic |
-| `C6` threading residuals | 2 | Phase 1 | `C6.3` is a re-fit campaign; only valid once per-solve cost is final |
+| `C6` threading residuals | 2 | Phase 1 | **done** (2026-09-04): `C6.1` gates the slice (~10%), `C6.2` re-fits `Variation`'s threshold (2^10 -> 2^17), `C6.3` makes the BLAS threshold a tunable, `C6.4` closes into `C7` |
 | `C7` prox buffers | 2 | `C6.4` | needs the thread-ownership contract written down first |
 | `C8` upstream `NestedThreading` | 2 | — | a PR against a package we do not vendor; nothing may depend on it |
 | `C9` refresh the record | 2 | all | the tables are regenerated once, at the end |

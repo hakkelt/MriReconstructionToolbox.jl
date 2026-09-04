@@ -55,12 +55,77 @@ macro conditionally_enable_threading(threaded, expr)
 end
 
 """
-    SERIAL_BLAS_THRESHOLD_BYTES
+    DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
 
-Per-work-item size below which a threaded BLAS costs more than it returns, used by
-[`with_serial_blas`](@ref). See there for the measurements this comes from.
+MRT's shipped value for [`serial_blas_threshold_bytes`](@ref): 16 MiB. See
+[`with_serial_blas`](@ref) for the measurements it comes from, and
+[`set_serial_blas_threshold_bytes!`](@ref) for why it is settable at all.
 """
-const SERIAL_BLAS_THRESHOLD_BYTES = 16 * 2^20
+const DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES = 16 * 2^20
+
+const _SERIAL_BLAS_THRESHOLD_BYTES = Ref(DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES)
+
+"""
+    serial_blas_threshold_bytes() -> Int
+
+Per-work-item size below which a threaded BLAS — and, with it, threading the solve at all —
+costs more than it returns. Consulted by [`with_serial_blas`](@ref),
+`maybe_disable_undecomposed_threading` and `slice_threading`.
+
+Defaults to [`DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES`](@ref), overridable per process with
+[`set_serial_blas_threshold_bytes!`](@ref) or the `MRT_SERIAL_BLAS_THRESHOLD_BYTES`
+environment variable.
+"""
+serial_blas_threshold_bytes() = _SERIAL_BLAS_THRESHOLD_BYTES[]
+
+"""
+    set_serial_blas_threshold_bytes!(bytes::Integer) -> Int
+
+Set [`serial_blas_threshold_bytes`](@ref) for this process. Pass
+[`DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES`](@ref) to restore the shipped value.
+
+# Why this is a knob and not a constant
+
+Re-fitted on real solves on an exclusive cluster node (`IMPLEMENTATION_PLAN.md` `C6.3`), the
+crossover turned out to depend on the BLAS backend by more than the octave a single number
+could bracket. `serial / threaded` wall time for a whole solve, 8 threads, one node:
+
+| item  | OpenBLAS | MKL   |
+|-------|----------|-------|
+| ≤4 MiB| 1.00-1.02x | 1.00-1.02x |
+| 8 MiB | 0.76x, 0.88x | 1.08x, 1.38x |
+| 16 MiB| 1.13x    | 1.35x |
+| 64 MiB| 1.66x    | —     |
+
+Below 4 MiB the two paths are indistinguishable, so the exact value does not matter there.
+Between 4 and 16 MiB they disagree in *direction*: threading an 8 MiB solve is a 1.3x loss on
+OpenBLAS and a 1.4x win on MKL. The shipped 16 MiB is the value that is safe on both — it
+gives up some MKL throughput between 4 and 16 MiB rather than risking an OpenBLAS
+pessimisation — and a site that knows its backend and hardware can move it:
+
+```julia
+ENV["MRT_SERIAL_BLAS_THRESHOLD_BYTES"] = 4 * 2^20   # before `using MriReconstructionToolbox`
+MriReconstructionToolbox.set_serial_blas_threshold_bytes!(4 * 2^20)   # or at any time
+```
+"""
+function set_serial_blas_threshold_bytes!(bytes::Integer)
+    @argcheck bytes >= 0 "the threshold is a byte count"
+    return _SERIAL_BLAS_THRESHOLD_BYTES[] = Int(bytes)
+end
+
+# Read once at load, so a job script can set the threshold without touching the caller's code.
+# A malformed value is a warning, not an error: it must not take down a reconstruction.
+function _init_serial_blas_threshold!()
+    raw = get(ENV, "MRT_SERIAL_BLAS_THRESHOLD_BYTES", nothing)
+    raw === nothing && return nothing
+    parsed = tryparse(Int, strip(raw))
+    if parsed === nothing || parsed < 0
+        @warn "ignoring malformed MRT_SERIAL_BLAS_THRESHOLD_BYTES" value = raw
+        return nothing
+    end
+    set_serial_blas_threshold_bytes!(parsed)
+    return nothing
+end
 
 """
     with_serial_blas(f)
@@ -70,7 +135,7 @@ Run `f()` with BLAS pinned to a single thread, restoring the previous budget aft
 on exception). Returns `f()`'s value, and skips the save/restore when BLAS is already serial.
 
 The two-argument form applies that only when `x` — the work item the call is about, e.g. the
-solver's image variable — is smaller than [`SERIAL_BLAS_THRESHOLD_BYTES`](@ref), and otherwise
+solver's image variable — is smaller than [`serial_blas_threshold_bytes`](@ref), and otherwise
 runs `f()` untouched. **Prefer it.** The size gate is not a refinement; it is the difference
 between a 20x win and a 3.9x loss.
 
@@ -171,7 +236,7 @@ function with_serial_blas(f::F) where {F}
 end
 
 function with_serial_blas(f::F, x) where {F}
-    return _work_item_bytes(x) < SERIAL_BLAS_THRESHOLD_BYTES ? with_serial_blas(f) : f()
+    return _work_item_bytes(x) < serial_blas_threshold_bytes() ? with_serial_blas(f) : f()
 end
 
 """
@@ -201,18 +266,18 @@ Whether a work item of `bytes` bytes is worth threading, given `config`. The sin
 behind both [`maybe_disable_undecomposed_threading`](@ref) (an undecomposed whole-problem
 variable) and `decomposition.jl`'s per-slice `slice_threaded` (one slice of a decomposed
 problem): `config.threaded` must be on *and* the item must be at least
-[`SERIAL_BLAS_THRESHOLD_BYTES`](@ref). See `with_serial_blas`'s docstring for the measurements
+[`serial_blas_threshold_bytes`](@ref). See `with_serial_blas`'s docstring for the measurements
 the threshold comes from.
 """
 _should_thread_work_item(config, bytes) =
-    config.threaded && bytes >= SERIAL_BLAS_THRESHOLD_BYTES
+    config.threaded && bytes >= serial_blas_threshold_bytes()
 
 """
     maybe_disable_undecomposed_threading(config, method, acq_data) -> Config
 
 When a reconstruction has no batch dimensions to decompose over, `config.threaded` would
 otherwise open every thread pool (BLAS, FFTW, NFFT, Polyester) to full capacity for a single
-problem. Below [`SERIAL_BLAS_THRESHOLD_BYTES`](@ref) per variable that is a net loss: no single
+problem. Below [`serial_blas_threshold_bytes`](@ref) per variable that is a net loss: no single
 layer dominates (an FFT plan threads a transform too small to benefit, the CG inner loop is
 BLAS-1, Polyester on the gradient stencils actually helps a little), but the accumulated
 fork/join and budget enter/exit overhead of a few hundred small threaded ops per solve adds up

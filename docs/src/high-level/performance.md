@@ -167,9 +167,14 @@ it would move every non-Cartesian result in the test suite and needs its own tol
 
 ## Notes for developers
 
-- `SERIAL_BLAS_THRESHOLD_BYTES` (16 MiB) is the size above which MRT stops forcing serial BLAS.
-  It was fitted on one machine and is only known to within a factor of a few; it will move on
-  different hardware.
+- `serial_blas_threshold_bytes()` (16 MiB by default) is the size above which MRT stops forcing
+  serial BLAS — and, since it also gates whether a solve threads at all, the size above which a
+  small problem is allowed to use more than one thread. Re-fitted on real solves on an exclusive
+  node, the crossover depends on the BLAS backend: below 4 MiB the threaded and serial paths are
+  within 2% of each other on both, but at 8 MiB threading is a 1.3x *loss* on OpenBLAS and a
+  1.4x *win* on MKL. 16 MiB is the value that is safe on both. Move it with
+  `MriReconstructionToolbox.set_serial_blas_threshold_bytes!` or the
+  `MRT_SERIAL_BLAS_THRESHOLD_BYTES` environment variable if you know your backend and hardware.
 - `NestedThreading`'s `exclude` keyword only affects Polyester. Passing `:blas`, `:mkl`, `:fftw`
   or `:nfft` is accepted silently and does nothing, which is why MRT narrows the BLAS budget from
   the inside instead.
@@ -184,6 +189,8 @@ it would move every non-Cartesian result in the test suite and needs its own tol
 
 ```@docs
 MriReconstructionToolbox.with_serial_blas
-MriReconstructionToolbox.SERIAL_BLAS_THRESHOLD_BYTES
+MriReconstructionToolbox.serial_blas_threshold_bytes
+MriReconstructionToolbox.set_serial_blas_threshold_bytes!
+MriReconstructionToolbox.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
 MriReconstructionToolbox.uses_blas3
 ```
