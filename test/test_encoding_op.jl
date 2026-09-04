@@ -5,10 +5,9 @@
     using NamedDims
 
     @testset "Fourier Operator" begin
+        ksp = rand(ComplexF32, 64, 64)
+        wrapped_ksp = NamedDimsArray{(:kx, :ky)}(ksp)
         @testset "simple 2D" for threaded in (true, false), fast_planning in (true, false)
-            ksp = rand(ComplexF32, 64, 64)
-            wrapped_ksp = NamedDimsArray{(:kx, :ky)}(ksp)
-
             ℱ = get_fourier_operator(ksp, false; threaded, fast_planning)
             img = ℱ' * ksp
             @test img ≈ ifft(fftshift(ksp))
@@ -20,10 +19,9 @@
             @test dimnames(img) == (:x, :y)
         end
 
+        ksp = rand(ComplexF32, 64, 64, 64)
+        wrapped_ksp = NamedDimsArray{(:kx, :ky, :kz)}(ksp)
         @testset "simple 3D" for threaded in (true, false), fast_planning in (true, false)
-            ksp = rand(ComplexF32, 64, 64, 64)
-            wrapped_ksp = NamedDimsArray{(:kx, :ky, :kz)}(ksp)
-
             ℱ = get_fourier_operator(ksp, true; threaded, fast_planning)
             img = ℱ' * ksp
             @test img ≈ ifft(fftshift(ksp))
@@ -35,10 +33,9 @@
             @test dimnames(img) == (:x, :y, :z)
         end
 
+        ksp = rand(ComplexF32, 64, 64, 8)
+        wrapped_ksp = NamedDimsArray{(:kx, :ky, :z)}(ksp)
         @testset "multiplanar" for threaded in (true, false), fast_planning in (true, false)
-            ksp = rand(ComplexF32, 64, 64, 8)
-            wrapped_ksp = NamedDimsArray{(:kx, :ky, :z)}(ksp)
-
             ℱ = get_fourier_operator(ksp, false; threaded, fast_planning)
             img = ℱ' * ksp
             @test img ≈ ifft(fftshift(ksp, (1, 2)), (1, 2))
@@ -59,9 +56,9 @@ end
     using NamedDims
 
     @testset "AcquisitionInfo API" begin
+        ksp = rand(ComplexF32, 32, 32)
+        info = MriReconstructionToolbox.AcquisitionInfo(ksp; is3D = false)
         @testset "2D Array fully-sampled" for threaded in (true, false), fast_planning in (true, false)
-            ksp = rand(ComplexF32, 32, 32)
-            info = MriReconstructionToolbox.AcquisitionInfo(ksp; is3D = false)
             ℱ = get_fourier_operator(info; threaded, fast_planning)
             img = ℱ' * ksp
             @test img ≈ ifft(fftshift(ksp))
@@ -70,12 +67,12 @@ end
             @test 𝒜 * img ≈ ksp
         end
 
+        ksp = rand(ComplexF32, 32, 32, 4)
+        smaps = rand(ComplexF32, 32, 32, 4)
+        wrapped_ksp = NamedDimsArray{(:kx, :ky, :coil)}(ksp)
+        wrapped_smaps = NamedDimsArray{(:x, :y, :coil)}(smaps)
+        info = MriReconstructionToolbox.AcquisitionInfo(wrapped_ksp; sensitivity_maps = wrapped_smaps)
         @testset "2D NamedDims with smaps" for threaded in (true, false), fast_planning in (true, false)
-            ksp = rand(ComplexF32, 32, 32, 4)
-            smaps = rand(ComplexF32, 32, 32, 4)
-            wrapped_ksp = NamedDimsArray{(:kx, :ky, :coil)}(ksp)
-            wrapped_smaps = NamedDimsArray{(:x, :y, :coil)}(smaps)
-            info = MriReconstructionToolbox.AcquisitionInfo(wrapped_ksp; sensitivity_maps = wrapped_smaps)
             𝒜 = get_encoding_operator(info; threaded, fast_planning)
             img = 𝒜' * wrapped_ksp
             @test unname(img) ≈ unname(dropdims(sum(conj.(wrapped_smaps) .* ifft(fftshift(ksp, (1, 2)), (1, 2)), dims = :coil), dims = :coil))
@@ -85,11 +82,11 @@ end
             @test dimnames(ksp2) == (:kx, :ky, :coil)
         end
 
+        full_ksp = rand(ComplexF32, 32, 32)
+        mask = rand(Bool, 32, 32)
+        subs_ksp = full_ksp[mask]
+        info = MriReconstructionToolbox.AcquisitionInfo(subs_ksp; image_size = (32, 32), subsampling = mask)
         @testset "2D Array subsampled mask" for threaded in (true, false), fast_planning in (true, false)
-            full_ksp = rand(ComplexF32, 32, 32)
-            mask = rand(Bool, 32, 32)
-            subs_ksp = full_ksp[mask]
-            info = MriReconstructionToolbox.AcquisitionInfo(subs_ksp; image_size = (32, 32), subsampling = mask)
             𝒜 = get_encoding_operator(info; threaded, fast_planning)
             img = 𝒜' * subs_ksp
             masked_ksp = similar(full_ksp)

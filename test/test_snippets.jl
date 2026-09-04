@@ -65,6 +65,11 @@ end
     end
 end
 
+@testsnippet WaveletHelpers begin
+    # The inverse must recover the original signal, whether or not the forward pass padded it.
+    check_wavelet_roundtrip(op, x, result) = (Test.@test op' * result ≈ x rtol = 1.0e-10)
+end
+
 @testsnippet ModelEval begin
     function eval_term(terms)
         vars = StructuredOptimization.extract_variables(terms)
