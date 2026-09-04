@@ -646,3 +646,39 @@ end
         @test result.kspace_data isa NamedDimsArray
     end
 end
+
+@testitem "Fourier operator helpers match raw FFT (even and odd sizes)" tags = [:reconstruction, :encoding] begin
+    using Test
+    using MriReconstructionToolbox
+    using NamedDims
+    using FFTW
+    const MRT = MriReconstructionToolbox
+
+    for (Nx, Ny, Nc) in ((32, 32, 3), (31, 33, 3))
+        k = randn(ComplexF64, Nx, Ny, Nc)
+        x = randn(ComplexF64, Nx, Ny, Nc)
+        even = iseven(Nx) && iseven(Ny)
+
+        # _cartesian_fourier_op must be a consistent forward/adjoint pair, and on even sizes match
+        # the pre-refactor `_direct_fft` / `_direct_ifft` bit for bit.
+        acq = CartesianAcquisitionInfo(
+            NamedDimsArray{(:kx, :ky, :coil)}(k); is3D = false, image_size = (Nx, Ny),
+        )
+        ℱ = MRT._cartesian_fourier_op(acq, k)
+        @test ℱ' * (ℱ * x) ≈ x
+        if even
+            @test ℱ' * k ≈ ifft(ifftshift(k, (1, 2)), (1, 2))
+            @test ℱ * x ≈ fftshift(fft(x, (1, 2)), (1, 2))
+        end
+
+        # _axis_dft_op: readout-only, k-space-side shift — exact on even and odd
+        ro = MRT._axis_dft_op(k, (1,); kspace_shift = true)
+        @test ro' * k ≈ ifft(ifftshift(k, 1), 1)
+        @test ro * x ≈ fftshift(fft(x, 1), 1)
+
+        # _axis_dft_op: no shift — exact on even and odd
+        plain = MRT._axis_dft_op(x, (1, 2))
+        @test plain * x ≈ fft(x, (1, 2))
+        @test plain' * k ≈ ifft(k, (1, 2))
+    end
+end

@@ -124,7 +124,7 @@ end
     using BenchmarkTools
     using MriReconstructionToolbox
 
-    benchmark_file = joinpath(pkgdir(MriReconstructionToolbox), "benchmark", "benchmarks.jl")
+    benchmark_file = joinpath(pkgdir(MriReconstructionToolbox), "benchmark", "ci", "benchmarks.jl")
     @test isfile(benchmark_file)
     include(benchmark_file)
     @test haskey(SUITE, "operator")
