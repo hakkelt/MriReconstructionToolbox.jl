@@ -4,3 +4,7 @@ Manifest.toml
 .serena/
 *slurm*
 benchmarking/results/*.json
+
+# per-section/per-group benchmark fragments (merged into benchmark_<backend>_<n>threads.json)
+comparison/results/*__*.json
+benchmarking/results/*__*.json
