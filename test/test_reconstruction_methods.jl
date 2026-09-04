@@ -51,7 +51,7 @@
     @test isapprox(abs.(unname(rec_pocs))[mask_obj], mag[mask_obj]; rtol = 0.08)
 end
 
-@testitem "Parallel imaging: GRAPPA and SPIRiT" tags = [:reconstruction, :acquisition, :encoding] begin
+@testitem "Parallel imaging: GRAPPA and SPIRiT" tags = [:reconstruction, :acquisition, :encoding] setup = [SyntheticCoils] begin
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
@@ -62,15 +62,7 @@ end
     img = zeros(Float32, Nx, Ny)
     img[8:24, 8:24] .= 1.0f0
 
-    sens_true = zeros(ComplexF32, Nx, Ny, Nc)
-    X = [(x - Nx / 2) / Nx for x in 1:Nx, y in 1:Ny]
-    Y = [(y - Ny / 2) / Ny for x in 1:Nx, y in 1:Ny]
-    for c in 1:Nc
-        angle = (c - 1) * 2π / Nc
-        sens_true[:, :, c] = exp.(-((X .- cos(angle) / 2) .^ 2 .+ (Y .- sin(angle) / 2) .^ 2)) .* cis.(0.5f0 .* (X .* cos(angle) .+ Y .* sin(angle)))
-    end
-    rss = sqrt.(sum(abs2, sens_true; dims = 3))
-    sens_true ./= (rss .+ 1.0f-8)
+    sens_true = synthetic_sensitivities(ComplexF32, Nx, Ny, Nc)
 
     # Full k-space
     ksp_full = zeros(ComplexF32, Nx, Ny, Nc)
@@ -112,7 +104,7 @@ end
     @test norm(abs.(unname(rec_spirit))[mask_obj] .- img[mask_obj]) / norm(img[mask_obj]) < 0.18
 end
 
-@testitem "Partial Fourier: PhaseConstrained recovers a phased phantom" tags = [:reconstruction, :acquisition] begin
+@testitem "Partial Fourier: PhaseConstrained recovers a phased phantom" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
@@ -125,14 +117,7 @@ end
     img[18:24, 18:24] .= 0.4
     img .*= cis.(0.4 .* [x / Nx + y / Ny for x in 1:Nx, y in 1:Ny])
 
-    sens = zeros(ComplexF64, Nx, Ny, Nc)
-    X = [(x - Nx / 2) / Nx for x in 1:Nx, y in 1:Ny]
-    Y = [(y - Ny / 2) / Ny for x in 1:Nx, y in 1:Ny]
-    for c in 1:Nc
-        a = (c - 1) * 2π / Nc
-        sens[:, :, c] = exp.(-((X .- cos(a) / 2) .^ 2 .+ (Y .- sin(a) / 2) .^ 2)) .* cis.(0.5 .* (X .* cos(a) .+ Y .* sin(a)))
-    end
-    sens ./= sqrt.(sum(abs2, sens; dims = 3)) .+ 1.0e-8
+    sens = synthetic_sensitivities(ComplexF64, Nx, Ny, Nc)
 
     full = zeros(ComplexF64, Nx, Ny, Nc)
     for c in 1:Nc
@@ -155,7 +140,7 @@ end
     @test isapprox(abs.(unname(rec))[obj], abs.(img)[obj]; rtol = 0.05)
 end
 
-@testitem "GRAPPA: arbitrary undersampling factor and default even kernel" tags = [:reconstruction, :acquisition, :encoding] begin
+@testitem "GRAPPA: arbitrary undersampling factor and default even kernel" tags = [:reconstruction, :acquisition, :encoding] setup = [SyntheticCoils] begin
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
@@ -167,14 +152,7 @@ end
     img[10:30, 10:30] .= 1.0
     img[15:20, 22:26] .= 0.5
 
-    sens = zeros(ComplexF64, Nx, Ny, Nc)
-    X = [(x - Nx / 2) / Nx for x in 1:Nx, y in 1:Ny]
-    Y = [(y - Ny / 2) / Ny for x in 1:Nx, y in 1:Ny]
-    for c in 1:Nc
-        a = (c - 1) * 2π / Nc
-        sens[:, :, c] = exp.(-((X .- cos(a) / 2) .^ 2 .+ (Y .- sin(a) / 2) .^ 2)) .* cis.(0.6 .* (X .* cos(a) .+ Y .* sin(a)))
-    end
-    sens ./= sqrt.(sum(abs2, sens; dims = 3)) .+ 1.0e-8
+    sens = synthetic_sensitivities(ComplexF64, Nx, Ny, Nc; phase_scale = 0.6)
 
     full = zeros(ComplexF64, Nx, Ny, Nc)
     for c in 1:Nc
@@ -295,7 +273,7 @@ end
     @test isapprox(abs.(unname(rec_kspace)), abs.(img); atol = 1.0e-5)
 end
 
-@testitem "Iterative SPIRiT reconstruction (lowering)" tags = [:reconstruction, :acquisition] begin
+@testitem "Iterative SPIRiT reconstruction (lowering)" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
     using Test
     using MriReconstructionToolbox
     using NamedDims
@@ -306,15 +284,7 @@ end
     img = zeros(Float32, Nx, Ny)
     img[8:24, 8:24] .= 1.0f0
 
-    sens_true = zeros(ComplexF32, Nx, Ny, Nc)
-    X = [(x - Nx / 2) / Nx for x in 1:Nx, y in 1:Ny]
-    Y = [(y - Ny / 2) / Ny for x in 1:Nx, y in 1:Ny]
-    for c in 1:Nc
-        angle = (c - 1) * 2π / Nc
-        sens_true[:, :, c] = exp.(-((X .- cos(angle) / 2) .^ 2 .+ (Y .- sin(angle) / 2) .^ 2)) .* cis.(0.5f0 .* (X .* cos(angle) .+ Y .* sin(angle)))
-    end
-    rss = sqrt.(sum(abs2, sens_true; dims = 3))
-    sens_true ./= (rss .+ 1.0f-8)
+    sens_true = synthetic_sensitivities(ComplexF32, Nx, Ny, Nc)
 
     ksp_full = zeros(ComplexF32, Nx, Ny, Nc)
     for c in 1:Nc

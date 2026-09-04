@@ -1,6 +1,6 @@
 using TestItems
 
-@testitem "TotalVariation2D Regularization" tags = [:regularization] setup = [RegTestSetup] begin
+@testitem "TotalVariation2D Regularization" tags = [:regularization] setup = [RegTestSetup, FiniteDiff] begin
     @testset "get_operator - 2D input" for threaded in [false, true]
         x = rand(10, 10)
         reg = TotalVariation2D(0.1)
@@ -10,23 +10,7 @@ using TestItems
         # Test operator application
         result = op * x
         @test length(result) == 2 * length(x)  # Gradient has 2 components
-        # Compare to manual finite differences (forward at boundary, backward elsewhere)
-        manual = similar(result)
-        for i in axes(x, 1), j in axes(x, 2)
-            # x-direction (dim 1)
-            if i == first(axes(x, 1))
-                manual[i, j, 1] = x[i + 1, j] - x[i, j]
-            else
-                manual[i, j, 1] = x[i, j] - x[i - 1, j]
-            end
-            # y-direction (dim 2)
-            if j == first(axes(x, 2))
-                manual[i, j, 2] = x[i, j + 1] - x[i, j]
-            else
-                manual[i, j, 2] = x[i, j] - x[i, j - 1]
-            end
-        end
-        @test result == manual
+        @test result == manual_gradient(x, 2)
     end
 
     @testset "get_operator - 3D input (batched)" for threaded in [false, true]
@@ -38,23 +22,7 @@ using TestItems
         # Test operator application
         result = op * x
         @test length(result) == 2 * length(x)  # Gradient has 2 components per slice
-        # Manual batched finite differences on each slice
-        manual = similar(result)
-        for k in axes(x, 3)
-            for i in axes(x, 1), j in axes(x, 2)
-                if i == first(axes(x, 1))
-                    manual[i, j, k, 1] = x[i + 1, j, k] - x[i, j, k]
-                else
-                    manual[i, j, k, 1] = x[i, j, k] - x[i - 1, j, k]
-                end
-                if j == first(axes(x, 2))
-                    manual[i, j, k, 2] = x[i, j + 1, k] - x[i, j, k]
-                else
-                    manual[i, j, k, 2] = x[i, j, k] - x[i, j - 1, k]
-                end
-            end
-        end
-        @test result == manual
+        @test result == manual_gradient(x, 2)
     end
 
     @testset "get_operator - dimension check" for threaded in [false, true]
@@ -97,7 +65,7 @@ using TestItems
     end
 end
 
-@testitem "TotalVariation3D Regularization" tags = [:regularization] setup = [RegTestSetup] begin
+@testitem "TotalVariation3D Regularization" tags = [:regularization] setup = [RegTestSetup, FiniteDiff] begin
     @testset "get_operator - 3D input" for threaded in [false, true]
         x = rand(8, 8, 8)
         reg = TotalVariation3D(0.1)
@@ -107,29 +75,7 @@ end
         # Test operator application
         result = op * x
         @test length(result) == 3 * length(x)  # Gradient has 3 components
-        # Compare to manual finite differences
-        manual = similar(result)
-        for i in axes(x, 1), j in axes(x, 2), k in axes(x, 3)
-            # dim 1
-            if i == first(axes(x, 1))
-                manual[i, j, k, 1] = x[i + 1, j, k] - x[i, j, k]
-            else
-                manual[i, j, k, 1] = x[i, j, k] - x[i - 1, j, k]
-            end
-            # dim 2
-            if j == first(axes(x, 2))
-                manual[i, j, k, 2] = x[i, j + 1, k] - x[i, j, k]
-            else
-                manual[i, j, k, 2] = x[i, j, k] - x[i, j - 1, k]
-            end
-            # dim 3
-            if k == first(axes(x, 3))
-                manual[i, j, k, 3] = x[i, j, k + 1] - x[i, j, k]
-            else
-                manual[i, j, k, 3] = x[i, j, k] - x[i, j, k - 1]
-            end
-        end
-        @test result == manual
+        @test result == manual_gradient(x, 3)
     end
 
     @testset "get_operator - 4D input (batched)" for threaded in [false, true]
@@ -141,31 +87,7 @@ end
         # Test operator application
         result = op * x
         @test length(result) == 3 * length(x)  # Gradient has 3 components per volume
-        # Manual batched finite differences on each volume
-        manual = similar(result)
-        for t in 1:size(x, 4)
-            for i in axes(x, 1), j in axes(x, 2), k in axes(x, 3)
-                # dim 1
-                if i == first(axes(x, 1))
-                    manual[i, j, k, t, 1] = x[i + 1, j, k, t] - x[i, j, k, t]
-                else
-                    manual[i, j, k, t, 1] = x[i, j, k, t] - x[i - 1, j, k, t]
-                end
-                # dim 2
-                if j == first(axes(x, 2))
-                    manual[i, j, k, t, 2] = x[i, j + 1, k, t] - x[i, j, k, t]
-                else
-                    manual[i, j, k, t, 2] = x[i, j, k, t] - x[i, j - 1, k, t]
-                end
-                # dim 3
-                if k == first(axes(x, 3))
-                    manual[i, j, k, t, 3] = x[i, j, k + 1, t] - x[i, j, k, t]
-                else
-                    manual[i, j, k, t, 3] = x[i, j, k, t] - x[i, j, k - 1, t]
-                end
-            end
-        end
-        @test result == manual
+        @test result == manual_gradient(x, 3)
     end
 
     @testset "get_operator - dimension check" for threaded in [false, true]
