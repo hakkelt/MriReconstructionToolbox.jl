@@ -46,6 +46,11 @@ the same way here; this is not a bug in either.
 - **Pins BLAS to one thread during the iterative solve** — except for large problems, and except
   for low-rank regularizers (`LowRank`, `LocallyLowRank`, `MultiScaleLowRank`), whose SVDs
   genuinely do benefit from threading. See [`with_serial_blas`](@ref).
+- **Applies the same size rule to one slice of a decomposed problem.** When there are few enough
+  slices that they are reconstructed one at a time, the work *inside* a slice threads only if
+  that slice is itself large enough to pay for it — a 2-slice 128² problem runs serially inside
+  even at `threaded = true`, which is ~10% faster end to end. With many slices the slice loop
+  itself is the parallelism and the inside is serial regardless.
 - **Runs the whole reconstruction serially when there is nothing to parallelise over.** If the
   problem has no batch dimension (a single 2-D slice, no coil/time/slice loop) and the image is
   small, `threaded = true` is ignored — threading a lone 128²-ish problem is a 2–3x loss, not a

@@ -146,6 +146,18 @@ allowed → a default of 4), so do not assume the two environments agree.
 
 An operator that genuinely wants a threaded `gemm` (a large `MatrixOp`) is unaffected: it
 resolves its own `threaded` flag through `AbstractOperators._blas_threaded`, outside this scope.
+
+## Why the gate keys on the work item and not on batch width
+
+The tables above say the decision really depends on two quantities — item size *and* whether
+enough slabs are in flight to saturate the cores — but `_iterative_reconstruct_core` only ever
+sees one work item; it cannot see how many slabs the caller has in flight, and the decomposition
+executor that does know is several frames up. The two quantities disagree only for a wide batch
+of large items, and there the gate opens BLAS while the outer loop is already using the machine
+— i.e. the budget wins over this scope in exactly the case the gate gets wrong. Preferring the
+budget there is the conservative direction (a wide batch of 16 MiB+ items is the one row where
+threaded BLAS-1 is within noise either way), so this is left keyed on the item alone rather than
+plumbed through.
 """
 function with_serial_blas(f::F) where {F}
     prev = LinearAlgebra.BLAS.get_num_threads()
@@ -183,6 +195,19 @@ function with_restricted_threads_if_needed(f::F) where {F}
 end
 
 """
+    _should_thread_work_item(config, bytes) -> Bool
+
+Whether a work item of `bytes` bytes is worth threading, given `config`. The single predicate
+behind both [`maybe_disable_undecomposed_threading`](@ref) (an undecomposed whole-problem
+variable) and `decomposition.jl`'s per-slice `slice_threaded` (one slice of a decomposed
+problem): `config.threaded` must be on *and* the item must be at least
+[`SERIAL_BLAS_THRESHOLD_BYTES`](@ref). See `with_serial_blas`'s docstring for the measurements
+the threshold comes from.
+"""
+_should_thread_work_item(config, bytes) =
+    config.threaded && bytes >= SERIAL_BLAS_THRESHOLD_BYTES
+
+"""
     maybe_disable_undecomposed_threading(config, method, acq_data) -> Config
 
 When a reconstruction has no batch dimensions to decompose over, `config.threaded` would
@@ -198,7 +223,7 @@ genuinely pays) untouched.
 function maybe_disable_undecomposed_threading(config, method, acq_data)
     config.threaded || return config
     bytes = prod(variable_size(method, acq_data)) * sizeof(eltype(acq_data.kspace_data))
-    return bytes < SERIAL_BLAS_THRESHOLD_BYTES ? Config(config; threaded = false) : config
+    return _should_thread_work_item(config, bytes) ? config : Config(config; threaded = false)
 end
 
 _work_item_bytes(x::AbstractArray) = length(x) * sizeof(eltype(x))

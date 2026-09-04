@@ -680,6 +680,37 @@ where the gate applies.
 
 ### C6.1 — Size-gate the sequential executor (finding 2, item 3 — the real gap)
 
+**Done** (2026-09-04). Both sites now call `slice_threading(plan, acq_data, config, executor)`
+(`src/reconstruction/decomposition.jl`): a `MultiThreadingExecutor` still hard-returns `false`,
+and otherwise the decision goes through `_should_thread_work_item(config, bytes)` —
+extracted from `maybe_disable_undecomposed_threading` as the entry asked, so the decomposed and
+undecomposed paths now share one predicate — applied to `slice_bytes(plan, acq_data)`
+(`plan.variable_size` with the batch dimensions collapsed to one, times the k-space element
+size). Nothing is measured at run time.
+
+The same decision is also handed to `for_each_item!`'s `SequentialExecutor` method, which
+previously read `config.threaded` directly: opening every pool with `with_full_threads` around a
+slice loop whose body has just been gated serial is exactly the dead weight the gate exists to
+remove, so the loop scope now follows `slice_threaded` too.
+
+Measured on a 2-slice 128²×4 TV solve, 20 iterations, `-t 8`, interleaved rounds of min-of-3
+(interleaved because this node's run-to-run spread is what killed `C4`): the gated build won
+**11 of 12** rounds, with round medians 602 ms → 548 ms (**−9%**) on the noisiest campaign and
+594/566/608 ms → 521/492/557 ms (**−13%**, disjoint ranges) on the quietest. Results are
+bit-identical with `threaded = true` and `threaded = false` (`maximum(abs, Δ) == 0`), which is
+the point: the gate is a performance decision only.
+
+Test added (`test/test_reconstruction_integration.jl`, `:reconstruction`): asserts
+`slice_bytes`, both executors' `slice_threading` verdicts at 128² (false) and at a synthetic
+2048² plan (true under the sequential executor, false under the multi-threading one and false
+with `threaded = false`), plus result identity across `threaded`.
+
+`C6.3`'s documentation half also went in here, since it is one paragraph in the same file: the
+`with_serial_blas` docstring now records *why* the gate keys on the work item rather than on
+batch width (the two disagree only for a wide batch of large items, where the budget wins over
+this scope anyway — the conservative direction).
+
+
 `run_slices!` (`src/reconstruction/decomposition.jl:99-112`) and `execute_two_phase` (`:172-186`)
 both set `slice_threaded = executor isa MultiThreadingExecutor ? false : config.threaded`. For the
 `SequentialExecutor` (few slices, `length(plan) ≤ nthreads()`) that leaves `true`, and
