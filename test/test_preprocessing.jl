@@ -209,3 +209,87 @@ end
     @test isapprox(d[1], delay_true[1]; atol = 2.0e-3)
     @test isapprox(d[2], delay_true[2]; atol = 2.0e-3)
 end
+
+@testitem "Gradient delay correction in non-Cartesian MRI" tags = [:preprocessing, :acquisition, :nfft] begin
+    using Test
+    using MriReconstructionToolbox
+    using LinearAlgebra
+    using NamedDims
+
+    Nsamples = 32
+    Nspokes = 16
+    angles = range(0, 2π, length = Nspokes + 1)[1:Nspokes]
+    r = range(-0.5f0, 0.5f0, length = Nsamples)
+
+    traj_true = zeros(Float32, 2, Nsamples, Nspokes)
+    for s in 1:Nspokes
+        traj_true[1, :, s] = r .* cos(angles[s])
+        traj_true[2, :, s] = r .* sin(angles[s])
+    end
+
+    delay_true = (0.02, -0.015)
+    traj_delayed = copy(traj_true)
+    for s in 1:Nspokes
+        traj_delayed[1, :, s] .+= delay_true[1] * cos(angles[s])
+        traj_delayed[2, :, s] .+= delay_true[2] * sin(angles[s])
+    end
+
+    # Peak centered signal along readout
+    ksp = zeros(ComplexF32, Nsamples, Nspokes)
+    for s in 1:Nspokes
+        shift_s = delay_true[1] * cos(angles[s]) + delay_true[2] * sin(angles[s])
+        ksp[:, s] = exp.(-50.0f0 .* (r .- shift_s) .^ 2)
+    end
+
+    acq_noncart = NonCartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky)}(ksp);
+        trajectory = NamedDimsArray{(:dim, :kx, :ky)}(traj_delayed),
+        image_size = (32, 32),
+    )
+
+    # 1. Validation test on Cartesian
+    acq_cart = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky)}(zeros(ComplexF32, 16, 16));
+        is3D = false,
+    )
+    @test_throws ArgumentError correct_gradient_delays(acq_cart)
+
+    # 2. Estimation and correction with OpposingSpokes
+    delays_est = estimate_gradient_delays(acq_noncart; method = OpposingSpokes())
+    @test isapprox(delays_est[1], delay_true[1]; atol = 1.0e-3)
+    @test isapprox(delays_est[2], delay_true[2]; atol = 1.0e-3)
+
+    acq_corr = correct_gradient_delays(acq_noncart; method = OpposingSpokes())
+    @test acq_corr isa NonCartesianAcquisitionInfo
+    @test norm(unname(acq_corr.trajectory) - traj_true) < 2.0e-3
+
+    # 3. Estimation and correction with RING (anisotropic delay tensor)
+    Sxx, Syy, Sxy = 0.02, -0.015, 0.005
+    traj_ring = copy(traj_true)
+    for s in 1:Nspokes
+        θ = angles[s]
+        shift = Sxx * cos(θ)^2 + Syy * sin(θ)^2 + 2.0 * Sxy * cos(θ) * sin(θ)
+        traj_ring[1, :, s] .+= shift * cos(θ)
+        traj_ring[2, :, s] .+= shift * sin(θ)
+    end
+    ksp_ring = zeros(ComplexF32, Nsamples, Nspokes)
+    for s in 1:Nspokes
+        θ = angles[s]
+        shift_s = Sxx * cos(θ)^2 + Syy * sin(θ)^2 + 2.0 * Sxy * cos(θ) * sin(θ)
+        ksp_ring[:, s] = exp.(-50.0f0 .* (r .- shift_s) .^ 2)
+    end
+    acq_ring_data = NonCartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky)}(ksp_ring);
+        trajectory = NamedDimsArray{(:dim, :kx, :ky)}(traj_ring),
+        image_size = (32, 32),
+    )
+    delays_ring = estimate_gradient_delays(acq_ring_data; method = RING())
+    @test delays_ring isa NamedTuple
+    @test isapprox(delays_ring.dx, Sxx; atol = 1.0e-3)
+    @test isapprox(delays_ring.dy, Syy; atol = 1.0e-3)
+    @test isapprox(delays_ring.dxy, Sxy; atol = 1.0e-3)
+
+    acq_ring_corr = correct_gradient_delays(acq_ring_data; method = RING())
+    @test acq_ring_corr isa NonCartesianAcquisitionInfo
+    @test norm(unname(acq_ring_corr.trajectory) - traj_true) < 2.0e-3
+end

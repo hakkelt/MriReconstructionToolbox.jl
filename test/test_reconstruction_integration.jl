@@ -544,7 +544,7 @@ end
         ksp_ms = rand(ComplexF32, nx, ny, nc, nslices)
         acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
-        # Force MultiThreadingExecutor to cover that path in decomposition.jl
+        # Force MultiThreadingExecutor to cover that path in decomposition/execution.jl
         executor = MriReconstructionToolbox.MultiThreadingExecutor()
         img_recon = test_type_stable(
             Array{ComplexF32, 3},

@@ -23,7 +23,7 @@ AcquisitionInfo → Encoding operators → Regularization → Reconstruction
 | Acquisition data | `src/acquisition_data/` | `AcquisitionInfo` types, dimension utilities, copy constructors |
 | Encoding | `src/encoding/` | Fourier (FFT/NFFT), sensitivity map, subsampling operators; `NamedDimsOp` wrapper |
 | Regularization | `src/regularization/` | one file per regularizer + `regularization.jl` (abstract type, contract, fallbacks) |
-| Reconstruction | `src/reconstruction/` | `config.jl`, `build_model.jl`, `decomposition.jl`, `components.jl`, `reconstruct.jl` |
+| Reconstruction | `src/reconstruction/` | `config.jl`, `build_model.jl`, `decomposition/`, `components.jl`, `reconstruct.jl` |
 | Simulation | `src/simulation/` | phantom sampling patterns, coil sensitivities, full acquisition simulation |
 
 `src/MriReconstructionToolbox.jl` is the authoritative list of source files (`include` order) and
