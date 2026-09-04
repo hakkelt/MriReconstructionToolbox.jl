@@ -1,21 +1,13 @@
 using TestItems
 
-@testitem "EdgePreservingRoughness regularization" tags = [:regularization] begin
+@testitem "EdgePreservingRoughness regularization" tags = [:regularization] setup = [RegTestSetup, ProxOf] begin
     using Test
     using LinearAlgebra
     using MriReconstructionToolbox
     using AbstractOperators
     using NamedDims
 
-    const SO = MriReconstructionToolbox.StructuredOptimization
-    const PC = MriReconstructionToolbox.ProximalCore
-
     huber(t, λ, δ) = abs(t) <= δ ? λ * abs(t)^2 / (2δ) : λ * (abs(t) - δ / 2)
-
-    function functions_of(reg, x)
-        term = MriReconstructionToolbox.materialize(reg, Variable(x); threaded = false)
-        return SO.extract_functions(term)
-    end
 
     @testset "Constructor" begin
         reg = EdgePreservingRoughness2D(0.1; δ = 0.05)

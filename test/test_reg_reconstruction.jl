@@ -1,6 +1,6 @@
 using TestItems
 
-@testitem "Regularization terms in reconstruction" tags = [:regularization, :integration] begin
+@testitem "Regularization terms in reconstruction" tags = [:regularization, :integration] setup = [TestHelpers] begin
     using Test
     using LinearAlgebra
     using MriReconstructionToolbox
@@ -22,7 +22,7 @@ using TestItems
     end
     acq = AcquisitionInfo(NamedDimsArray{(:kx, :ky, :time)}(ksp); is3D = false)
 
-    relerr(x) = norm(Array(x) .- img) / norm(img)
+    relerr(x) = relative_error(Array(x), img)
 
     @testset "LocallyLowRank" begin
         @test relerr(

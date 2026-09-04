@@ -1,16 +1,6 @@
-@testitem "Model builder: Eye + L1Image" tags = [:minimizer] begin
+@testitem "Model builder: Eye + L1Image" tags = [:minimizer] setup = [ModelEval] begin
     using Test
     using MriReconstructionToolbox
-
-    function eval_term(terms)
-        vars = StructuredOptimization.extract_variables(terms)
-        @assert length(vars) == 1
-        xvar = vars[1]
-        f = StructuredOptimization.extract_functions(terms)
-        op = StructuredOptimization.extract_operators((xvar,), terms)
-        xval = ~xvar
-        return f(op * xval)
-    end
 
     @testset "Eye + L1Image" for threaded in (false, true)
         x = rand(8, 8)
@@ -28,19 +18,9 @@
     end
 end
 
-@testitem "Model builder: Eye + L1Image + Tikhonov" tags = [:minimizer] begin
+@testitem "Model builder: Eye + L1Image + Tikhonov" tags = [:minimizer] setup = [ModelEval] begin
     using Test
     using MriReconstructionToolbox
-
-    function eval_term(terms)
-        vars = StructuredOptimization.extract_variables(terms)
-        @assert length(vars) == 1
-        xvar = vars[1]
-        f = StructuredOptimization.extract_functions(terms)
-        op = StructuredOptimization.extract_operators((xvar,), terms)
-        xval = ~xvar
-        return f(op * xval)
-    end
 
     @testset "Eye + L1Image + Tikhonov" for threaded in (false, true)
         x = rand(6, 6)
@@ -59,19 +39,9 @@ end
     end
 end
 
-@testitem "Model builder: Linear op + Tikhonov" tags = [:minimizer] begin
+@testitem "Model builder: Linear op + Tikhonov" tags = [:minimizer] setup = [ModelEval] begin
     using Test
     using MriReconstructionToolbox
-
-    function eval_term(terms)
-        vars = StructuredOptimization.extract_variables(terms)
-        @assert length(vars) == 1
-        xvar = vars[1]
-        f = StructuredOptimization.extract_functions(terms)
-        op = StructuredOptimization.extract_operators((xvar,), terms)
-        xval = ~xvar
-        return f(op * xval)
-    end
 
     @testset "Linear op + Tikhonov" for threaded in (false, true)
         x = rand(8, 8)
@@ -100,20 +70,10 @@ end
     end
 end
 
-@testitem "Model builder: NamedDims y and A" tags = [:minimizer] begin
+@testitem "Model builder: NamedDims y and A" tags = [:minimizer] setup = [ModelEval] begin
     using Test
     using MriReconstructionToolbox
     using NamedDims
-
-    function eval_term(terms)
-        vars = StructuredOptimization.extract_variables(terms)
-        @assert length(vars) == 1
-        xvar = vars[1]
-        f = StructuredOptimization.extract_functions(terms)
-        op = StructuredOptimization.extract_operators((xvar,), terms)
-        xval = ~xvar
-        return f(op * xval)
-    end
 
     @testset "NamedDims y and A" for threaded in (false, true)
         x = rand(8, 8)
@@ -131,19 +91,9 @@ end
     end
 end
 
-@testitem "Model builder: overload parity" tags = [:minimizer] begin
+@testitem "Model builder: overload parity" tags = [:minimizer] setup = [ModelEval] begin
     using Test
     using MriReconstructionToolbox
-
-    function eval_term(terms)
-        vars = StructuredOptimization.extract_variables(terms)
-        @assert length(vars) == 1
-        xvar = vars[1]
-        f = StructuredOptimization.extract_functions(terms)
-        op = StructuredOptimization.extract_operators((xvar,), terms)
-        xval = ~xvar
-        return f(op * xval)
-    end
 
     @testset "overload parity" for threaded in (false, true)
         x = rand(5, 5)

@@ -1,11 +1,7 @@
 using TestItems
 
-@testitem "ReferencePrior regularization" tags = [:regularization] begin
-    using Test
+@testitem "ReferencePrior regularization" tags = [:regularization] setup = [RegTestSetup] begin
     using LinearAlgebra
-    using MriReconstructionToolbox
-    using AbstractOperators
-    using NamedDims
 
     @testset "materialize" for threaded in [false, true]
         x_ref = randn(5, 5)

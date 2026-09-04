@@ -1,11 +1,7 @@
 using TestItems
 
-@testitem "JointSparsity regularization" tags = [:regularization] begin
-    using Test
+@testitem "JointSparsity regularization" tags = [:regularization] setup = [RegTestSetup] begin
     using LinearAlgebra
-    using MriReconstructionToolbox
-    using AbstractOperators
-    using NamedDims
 
     l21(x, dim) = sum(sqrt.(sum(abs2, x; dims = dim)))
 

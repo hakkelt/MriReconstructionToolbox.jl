@@ -1,10 +1,6 @@
 using TestItems
 
-@testitem "NonNegative and BoxConstraint regularizations" tags = [:regularization] begin
-    using Test
-    using MriReconstructionToolbox
-    using AbstractOperators
-    using NamedDims
+@testitem "NonNegative and BoxConstraint regularizations" tags = [:regularization] setup = [RegTestSetup] begin
 
     @testset "NonNegative" for threaded in [false, true]
         @test MriReconstructionToolbox.calculate(NonNegative(), abs.(randn(4, 4)); threaded) == 0

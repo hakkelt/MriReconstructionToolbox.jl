@@ -89,11 +89,8 @@ end
     end
 end
 
-@testitem "LocallyLowRank regularization" tags = [:regularization] setup = [RegTestSetup] begin
+@testitem "LocallyLowRank regularization" tags = [:regularization] setup = [RegTestSetup, ProxOf] begin
     using LinearAlgebra
-
-    const SO = MriReconstructionToolbox.StructuredOptimization
-    const PC = MriReconstructionToolbox.ProximalCore
 
     function reference_llr(x, λ, block_size, nt)
         value = 0.0
@@ -209,10 +206,6 @@ end
     using LinearAlgebra
     using Random
 
-    materialized(reg, x) = SO.extract_functions(
-        MriReconstructionToolbox.materialize(reg, Variable(x); threaded = false)
-    )
-
     @testset "Constructor" begin
         @test LocallyLowRank(0.1; block_size = 4).shift == :none
         @test LocallyLowRank(0.1; block_size = 4, shift = :random).shift == :random
@@ -223,7 +216,7 @@ end
         x = randn(MersenneTwister(11), ComplexF64, 8, 8, 5)
         unshifted = LocallyLowRank(0.3; block_size = 4, time_dim = 3)
         shifted = LocallyLowRank(0.3; block_size = 4, time_dim = 3, shift = :fixed, rng = MersenneTwister(7))
-        f = materialized(shifted, x)
+        f = functions_of(shifted, x)
         offset = f.offset[]
         @test offset != (0, 0)   # the seed above must actually produce a shift for this test to mean anything
 
@@ -245,7 +238,7 @@ end
     @testset "shift=:random redraws the origin on every prox call" begin
         x = randn(MersenneTwister(3), 8, 8, 4)
         reg = LocallyLowRank(0.3; block_size = 4, time_dim = 3, shift = :random, rng = MersenneTwister(5))
-        f = materialized(reg, x)
+        f = functions_of(reg, x)
         y = similar(x)
         offsets = map(1:12) do _
             PC.prox!(y, f, x, 1.0)
@@ -331,8 +324,7 @@ end
     end
 end
 
-@testitem "ProximalAverage" tags = [:regularization] setup = [RegTestSetup] begin
-    const PC = MriReconstructionToolbox.ProximalCore
+@testitem "ProximalAverage" tags = [:regularization] setup = [RegTestSetup, ProxOf] begin
     const PA = MriReconstructionToolbox.ProximalAverage
     const PO = MriReconstructionToolbox.ProximalOperators
 
