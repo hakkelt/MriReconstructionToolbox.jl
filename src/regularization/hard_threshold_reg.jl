@@ -10,11 +10,6 @@ _sparsifying_operator(::Val{:wavelet2d}, wavelet_type, levels::Int, x::AbstractA
     get_operator(L1Wavelet2D(1; wavelet = wavelet_type, levels), x; threaded)
 _sparsifying_operator(::Val{:wavelet3d}, wavelet_type, levels::Int, x::AbstractArray; threaded::Bool) =
     get_operator(L1Wavelet3D(1; wavelet = wavelet_type, levels), x; threaded)
-# Unreachable in practice: both constructors run `_check_sparsifying_domain` with an identical
-# message before this could be hit. Kept as defence in depth for internal callers.
-function _sparsifying_operator(::Val{domain}, wavelet_type, levels::Int, x::AbstractArray; threaded::Bool) where {domain}
-    return throw(ArgumentError("domain must be :image, :wavelet2d or :wavelet3d, got :$domain"))
-end
 
 _sparsifying_affected_dims(::Val{:image}, image_dims) = ()
 _sparsifying_affected_dims(::Val{:wavelet2d}, image_dims) = Tuple(image_dims[1:2])

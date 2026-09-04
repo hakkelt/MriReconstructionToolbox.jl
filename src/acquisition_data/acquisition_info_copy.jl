@@ -1,7 +1,3 @@
-# Trait for derived fields that should be skipped during keyword-based copying.
-_derived_fields(::Type{<:AcquisitionInfo}) = ()
-_derived_fields(::Type{<:NonCartesianAcquisitionInfo}) = (:is3D,)
-
 """
     _copy_with_overrides(config::CartesianAcquisitionInfo; kwargs...)
 
