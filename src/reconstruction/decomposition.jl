@@ -92,9 +92,7 @@ function execute(f::Function, plan, acq_data, config, executor::ReconstructionEx
     maybe_print_decomposition_info(plan, config)
     batch_sizes = plan.variable_size[collect(plan.variable_batch_dims)]
     slices = collect(get_slices(plan, acq_data))
-    # A multi-threading executor already occupies the threads with whole slices, so the work inside a
-    # slice runs sequentially there.
-    slice_threaded = executor isa MultiThreadingExecutor ? false : config.threaded
+    slice_threaded = slice_threading(plan, acq_data, config, executor)
     scales = Array{real(eltype(acq_data.kspace_data))}(undef, batch_sizes)
 
     # A slice's result type isn't known until `f` actually runs (it depends on the acquisition
@@ -115,7 +113,7 @@ function execute(f::Function, plan, acq_data, config, executor::ReconstructionEx
 end
 
 function run_slices!(results, scales, f, slices, config, executor::ReconstructionExecutor; threaded)
-    for_each_item!(slices, config, executor) do (idx, id, local_acq)
+    for_each_item!(slices, config, executor; threaded) do (idx, id, local_acq)
         r, s = execute_single_slice(f, idx, id, local_acq, config; threaded)
         results[idx] = r
         scales[idx] = s
@@ -202,7 +200,7 @@ function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Fun
     batch_sizes = plan.variable_size[collect(plan.variable_batch_dims)]
     slices = collect(get_slices(plan, acq_data))
 
-    slice_threaded = executor isa MultiThreadingExecutor ? false : config.threaded
+    slice_threaded = slice_threading(plan, acq_data, config, executor)
     slice_config = (id) -> Config(
         config;
         verbose = false, printfunc = (s...) -> config.printfunc("[$id] ", s...),
@@ -218,7 +216,7 @@ function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Fun
     first_prelim = (first_id, first_local_acq, first_warm_start, first_scale, first_𝒜)
     prelim = Array{typeof(first_prelim)}(undef, batch_sizes)
     prelim[first_idx] = first_prelim
-    for_each_item!(@view(slices[2:end]), config, executor) do (idx, id, local_acq)
+    for_each_item!(@view(slices[2:end]), config, executor; threaded = slice_threaded) do (idx, id, local_acq)
         warm_start, scale, 𝒜 = prepare(idx, local_acq, slice_config(id))
         prelim[idx] = (id, local_acq, warm_start, scale, 𝒜)
     end
@@ -238,7 +236,7 @@ function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Fun
     )
     results = Array{typeof(first_result)}(undef, batch_sizes)
     results[first_result_idx] = first_result
-    for_each_item!(@view(indices[2:end]), config, executor) do idx
+    for_each_item!(@view(indices[2:end]), config, executor; threaded = slice_threaded) do idx
         id, local_acq, warm_start, scale, 𝒜 = prelim[idx]
         ratio = safe_scale_ratio(scale, global_scale)
         results[idx] = solve(local_acq, warm_start, ratio, global_scale, slice_config(id), 𝒜)
@@ -255,15 +253,23 @@ function slice_x₀_components(x₀::NamedTuple, plan, idx)
     return NamedTuple{keys(x₀)}(map(x -> get_x₀_slice(x, plan, idx), values(x₀)))
 end
 
-function for_each_item!(f!::Function, items, config, ::SequentialExecutor)
-    threaded = config.threaded
+# `threaded` is the *work item's* threading decision (`slice_threading`), not `config.threaded`:
+# opening every pool around a loop whose body was just gated serial is the dead weight this
+# scope exists to avoid.
+function for_each_item!(
+        f!::Function, items, config, ::SequentialExecutor; threaded = config.threaded
+    )
     @conditionally_enable_threading threaded for item in items
         f!(item)
     end
     return nothing
 end
 
-function for_each_item!(f!::Function, items, config, ::MultiThreadingExecutor)
+# `threaded` is accepted for a uniform call site and ignored: here the slice loop itself is the
+# parallelism, and `@budgeted_threads` decides its own budget.
+function for_each_item!(
+        f!::Function, items, config, ::MultiThreadingExecutor; threaded = false
+    )
     @budgeted_threads for item in items
         f!(item)
     end
@@ -433,6 +439,47 @@ end
 
 _rescale_result!(x::AbstractArray, factor) = (x .*= factor)
 _rescale_result!(x::DecomposedImage, factor) = rescale!(x, factor)
+
+"""
+    slice_threading(plan, acq_data, config, executor) -> Bool
+
+Whether the work *inside* one slice of a decomposed reconstruction may thread.
+
+Two independent reasons to say no:
+
+  - A [`MultiThreadingExecutor`](@ref) already occupies every thread with whole slices, so the
+    work inside a slice must run sequentially.
+  - A [`SequentialExecutor`](@ref) runs slices one at a time, but a slice is by construction
+    smaller than the whole problem, and below [`SERIAL_BLAS_THRESHOLD_BYTES`](@ref) threading a
+    work item that small is a net loss — the same predicate
+    `maybe_disable_undecomposed_threading` applies to an undecomposed problem, here applied per
+    slice. Without this the outer scope is serial only around the *solve*
+    (`with_restricted_threads` in `solve_core.jl`), leaving the per-slice operator build, the
+    adjoint and the operator-norm estimate threaded over a work item too small to pay for it.
+
+The per-slice byte count comes from `plan` (batch dimensions collapsed to one) and the k-space
+element type, both known before any slice runs; nothing is measured at run time.
+"""
+function slice_threading(plan, acq_data, config, executor::ReconstructionExecutor)
+    executor isa MultiThreadingExecutor && return false
+    return _should_thread_work_item(config, slice_bytes(plan, acq_data))
+end
+
+"""
+    slice_bytes(plan, acq_data) -> Int
+
+Size in bytes of one slice's image variable under `plan`: `plan.variable_size` with every batch
+dimension collapsed to one, times the size of a k-space element.
+"""
+function slice_bytes(plan, acq_data)
+    per_slice = prod(
+        ntuple(
+            d -> d in plan.variable_batch_dims ? 1 : plan.variable_size[d],
+            length(plan.variable_size),
+        )
+    )
+    return per_slice * sizeof(eltype(acq_data.kspace_data))
+end
 
 function suggest_executor(plan, config)
     if !isnothing(config.decomposition_executor)

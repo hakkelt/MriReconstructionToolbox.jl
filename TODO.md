@@ -183,7 +183,19 @@ Measured on the cluster `test` node (`x1001c4s3b0n1`, dual AMD EPYC 7352, 128x12
      opens `with_full_threads()` around the slice loop via `@conditionally_enable_threading`. The
      inner `with_restricted_threads` in `solve_core` covers the solve, but the per-slice operator
      build / adjoint / opnorm still run threaded. Size-gate `slice_threaded` in `run_slices!` /
-     `execute_two_phase` the same way.
+     `execute_two_phase` the same way — **resolved** (`IMPLEMENTATION_PLAN.md` `C6.1`,
+     2026-09-04): both sites now call `slice_threading(plan, acq_data, config, executor)`
+     (`decomposition.jl`), which keeps the `MultiThreadingExecutor` hard `false` and otherwise
+     applies `_should_thread_work_item` — the predicate extracted from
+     `maybe_disable_undecomposed_threading`, so the decomposed and undecomposed paths share one
+     rule — to the per-slice byte count `slice_bytes(plan, acq_data)` (`plan.variable_size` with
+     the batch dimensions collapsed to one, times the k-space element size; known before any
+     slice runs). `for_each_item!`'s `SequentialExecutor` method takes the same flag, so the
+     `with_full_threads` scope around the slice loop is no longer opened for a loop whose body
+     is gated serial. Measured on a 2-slice 128²×4 TV solve, 20 iterations, `-t 8`, interleaved
+     rounds of min-of-3: the gated build won 11 of 12 rounds, medians 602 → 548 ms (−9%) on the
+     noisiest campaign and 566/594/608 → 492/521/557 ms (−13%, disjoint ranges) on the
+     quietest. Results are bit-identical either way.
 
 ### Problem-decomposition threading audit (2026-09-01)
 
@@ -192,12 +204,14 @@ Does decomposition disable threading *within* each slice reconstruction? **Mostl
 | path | `slice_threaded` | correct? |
 |---|---|---|
 | `MultiThreadingExecutor` (`length(plan) > nthreads()`) | `false`, hard-coded (`decomposition.jl:105,193`) | yes — slices run serial, `@budgeted_threads` parallelises the slice loop |
-| `SequentialExecutor` (few slices) | `config.threaded` (true) + `@conditionally_enable_threading` opens all pools | **the gap** — a small few-slice problem threads every library on a small work item |
+| `SequentialExecutor` (few slices) | was `config.threaded` (true); now size-gated by `slice_threading` (`C6.1`) | fixed — a slice below `SERIAL_BLAS_THRESHOLD_BYTES` runs serial inside |
 | no decomposition (no batch dims) | was `config.threaded`; now gated by `maybe_disable_undecomposed_threading` | fixed for small problems |
 
-The `MultiThreadingExecutor` design is sound. The two other paths were the leak; the
-no-decomposition one (which is what the TV/TGV/L1-Wavelet benchmarks hit — 128²×8, no
-coil/time/slice loop) is now fixed, the sequential-executor one is item 3 above.
+The `MultiThreadingExecutor` design is sound. The two other paths were the leak; both are now
+fixed — the no-decomposition one (which is what the TV/TGV/L1-Wavelet benchmarks hit — 128²×8,
+no coil/time/slice loop) by `maybe_disable_undecomposed_threading`, the sequential-executor one
+by `slice_threading` (item 3 above, `C6.1`). Both consult the same
+`_should_thread_work_item(config, bytes)` predicate.
 
 ### 3. Threaded BLAS on the iterative path (was: "Intel MKL OpenMP Thread Thrashing")
 

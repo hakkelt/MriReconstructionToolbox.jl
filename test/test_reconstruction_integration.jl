@@ -553,3 +553,45 @@ end
         @test size(img_recon) == (nx, ny, nslices)
     end
 end
+
+@testitem "Per-slice threading gate" tags = [:reconstruction, :integration] begin
+    using GeometricMedicalPhantoms
+    const MRT = MriReconstructionToolbox
+
+    nx, ny, nslices, nc = 128, 128, 2, 4
+    smaps = repeat(coil_sensitivities(nx, ny, nc), 1, 1, 1, nslices)
+    ksp = rand(ComplexF32, nx, ny, nc, nslices)
+    acq = AcquisitionInfo(ksp; is3D = false, sensitivity_maps = smaps)
+    method = IterativeReconstruction(Tikhonov(0.01f0))
+
+    config = Config(; threaded = true, maxit = 5, verbose = false)
+    plan = MRT.get_problem_decomposition_plan(acq, method, config)
+    @test plan !== nothing
+
+    # Two slices on an 8-thread process take the sequential executor, and one 128² slice is far
+    # below `SERIAL_BLAS_THRESHOLD_BYTES`, so the work inside a slice must stay serial even
+    # though `config.threaded` is on.
+    @test MRT.slice_bytes(plan, acq) == nx * ny * sizeof(ComplexF32)
+    @test MRT.slice_bytes(plan, acq) < MRT.SERIAL_BLAS_THRESHOLD_BYTES
+    @test MRT.slice_threading(plan, acq, config, MRT.SequentialExecutor()) == false
+    @test MRT.slice_threading(plan, acq, config, MRT.MultiThreadingExecutor()) == false
+
+    # A slice large enough to pay for threading keeps it -- but only under the sequential
+    # executor, and only when `config.threaded` is on.
+    big_size = (2048, 2048, nslices)
+    big = MRT.ProblemDecompositionPlan(
+        big_size, (3,), (2048, 2048, nc, nslices), (4,), false, big_size
+    )
+    @test MRT.slice_bytes(big, acq) >= MRT.SERIAL_BLAS_THRESHOLD_BYTES
+    @test MRT.slice_threading(big, acq, config, MRT.SequentialExecutor()) == true
+    @test MRT.slice_threading(big, acq, config, MRT.MultiThreadingExecutor()) == false
+    @test MRT.slice_threading(
+        big, acq, Config(config; threaded = false), MRT.SequentialExecutor()
+    ) == false
+
+    # The gate is a performance decision only: the result may not depend on it.
+    img_threaded = reconstruct(acq, method; maxit = 5, verbose = false, threaded = true)
+    img_serial = reconstruct(acq, method; maxit = 5, verbose = false, threaded = false)
+    @test size(img_threaded) == (nx, ny, nslices)
+    @test img_threaded == img_serial
+end
