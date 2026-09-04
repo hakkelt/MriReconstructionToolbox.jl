@@ -105,3 +105,34 @@ end
     NFFTTestHelper.test_nfft_normal_op(false)
     NFFTTestHelper.test_nfft_normal_op(true)
 end
+
+@testitem "NFFTOp multi-dimensional k-space" tags = [:nfft, :NFFTOp] setup = [TestUtils] begin
+    using AbstractOperators, NFFTOperators, LinearAlgebra, NFFT, Random
+    Random.seed!(0)
+
+    # A trajectory laid out as (dim, samples, profiles, partitions) gives a 3-D k-space, so
+    # `ksp_buffer` and `dcf` are 3-D arrays. The operator's type parameters are bounded by
+    # `AbstractArray`, not `AbstractMatrix`, precisely so this shape is representable.
+    trajectory = rand(2, 12, 5, 3) .- 0.5
+    dcf = rand(12, 5, 3)
+    image_size = (16, 16)
+    image = rand(ComplexF64, image_size)
+    plan = plan_nfft(reshape(trajectory, 2, :), image_size)
+    op = NFFTOp(image_size, trajectory, dcf; threaded = false)
+
+    @test size(op, 1) == (12, 5, 3)
+    ksp = op * image
+    @test size(ksp) == (12, 5, 3)
+    ksp_ref = similar(ksp)
+    mul!(vec(ksp_ref), plan, image)
+    @test ksp == ksp_ref
+
+    # The adjoint is the density-compensated one, as in every other NFFTOp test.
+    image_ref = similar(image)
+    mul!(image_ref, plan', vec(ksp_ref .* dcf))
+    @test op' * ksp ≈ image_ref
+
+    c = copy_operator(op)
+    @test c.plan !== op.plan
+    @test c * image ≈ ksp
+end
