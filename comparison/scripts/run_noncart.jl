@@ -29,17 +29,17 @@ using LinearAlgebra: mul!
 
 img_mc, cmap = IMG_MC, CMAP
 
-t = RadialTrajectory(Float32, N, N; TE = 0.0f0, AQ = 1.0f-3)
+t = RadialTrajectory(Float32, N, N; TE=0.0f0, AQ=1.0f-3)
 traj_named = NamedDimsArray(t.nodes, (:dim, :k))
 smaps_nc = NamedDimsArray(ComplexF32.(cmap), (:x, :y, :coil))
 
 acq_sim = NonCartesianAcquisitionInfo(
     NamedDimsArray(zeros(ComplexF32, 16384, Nc), (:k, :coil));
-    trajectory = traj_named, image_size = (N, N), sensitivity_maps = smaps_nc, shifted_image_dims = (:x, :y),
+    trajectory=traj_named, image_size=(N, N), sensitivity_maps=smaps_nc, shifted_image_dims=(:x, :y),
 )
 kdata_nc = MriReconstructionToolbox.get_encoding_operator(acq_sim) * NamedDimsArray(ComplexF32.(img_mc), (:x, :y))
 
-acq_dcf = NonCartesianAcquisitionInfo(kdata_nc; trajectory = traj_named, image_size = (N, N), sensitivity_maps = smaps_nc, shifted_image_dims = (:x, :y))
+acq_dcf = NonCartesianAcquisitionInfo(kdata_nc; trajectory=traj_named, image_size=(N, N), sensitivity_maps=smaps_nc, shifted_image_dims=(:x, :y))
 E_dcf = MriReconstructionToolbox.get_encoding_operator(acq_dcf)
 tm, _, xm_raw = time_reconstruction(() -> E_dcf' * kdata_nc)
 xm = xm_raw .* (norm(abs.(img_mc)) / norm(abs.(xm_raw)))
@@ -50,10 +50,11 @@ push!(results, BenchResult("Non-Cartesian", "DCF Adjoint (Gridding)", FW, NUM_TH
 # the operator MRT already built.
 let
     nfft_inner = E_dcf.L.A[3].operator          # Compose(broadcast, dcf-diag, BatchOp(NFFTOp))
-    NFFTmod = parentmodule(typeof(nfft_inner.plan))
+    nfft_op0 = nfft_inner isa Tuple ? first(nfft_inner) : nfft_inner   # threaded: one NFFTOp per thread
+    NFFTmod = parentmodule(typeof(nfft_op0.plan))
     o = MriReconstructionToolbox.NFFTOp(
-        (N, N), parent(traj_named), nfft_inner.dcf;
-        threaded = false, m = 3, σ = 1.25f0, precompute = NFFTmod.TENSOR,
+        (N, N), parent(traj_named), nfft_op0.dcf;
+        threaded=false, m=3, σ=1.25f0, precompute=NFFTmod.TENSOR,
     )
     kdm = collect(parent(kdata_nc))
     smap = ComplexF32.(cmap)
@@ -75,12 +76,12 @@ try
     kdata_mr = reshape(kdata_nc, 16384, Nc, 1, 1)
     acq_mr = AcquisitionData(t, fill(kdata_mr[:, :, 1, 1], 1, 1, 1))
     smap_mr = reshape(ComplexF32.(cmap), N, N, 1, Nc)
-    rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => (N, N), :senseMaps => smap_mr)
+    rp = Dict{Symbol,Any}(:reco => "direct", :reconSize => (N, N), :senseMaps => smap_mr)
     # The coil combination is inside the timed closure: MRT's row includes the sensitivity adjoint,
     # and MRIReco's `direct` reco returns per-coil images, so combining outside would undercount it.
     tr, _, xr_raw = time_reconstruction() do
         imr = MRIReco.reconstruction(acq_mr, rp)[:, :, 1, 1, :]
-        return sum(imr .* conj.(reshape(ComplexF32.(cmap), N, N, Nc)), dims = 3)[:, :, 1]
+        return sum(imr .* conj.(reshape(ComplexF32.(cmap), N, N, Nc)), dims=3)[:, :, 1]
     end
     xr = xr_raw .* (norm(abs.(img_mc)) / norm(abs.(xr_raw)))
     push!(results, BenchResult("Non-Cartesian", "DCF Adjoint (Gridding)", "MRIReco", NUM_THREADS, tr * 1000, nrmse(xr, img_mc), nrmse(xm, xr)))

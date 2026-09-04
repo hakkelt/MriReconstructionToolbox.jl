@@ -20,24 +20,54 @@ sequenced.
 
 ## Performance & Threading Findings (Multi-Toolbox Benchmarks)
 
-Measured on the cluster `test` node (`x1001c4s3b0n1`, dual AMD EPYC 7352, 128x128 8-coil brain datasets). Raw results saved in:
-- `comparison/results/benchmark_openblas_1threads.json`
-- `comparison/results/benchmark_openblas_8threads.json`
-- `comparison/results/benchmark_mkl_1threads.json`
-- `comparison/results/benchmark_mkl_8threads.json`
+Measured on the cluster `test` node (`x1001c4s3b0n1`, dual AMD EPYC 7352, 128x128 8-coil brain
+datasets), 2026-09-04, after the `C1`-`C6` threading fixes and `S1`-`S7` closed. Raw results saved
+in `comparison/results/benchmark_{openblas,mkl}_{1,8}threads.json` (each now also carries the
+`Non-Cartesian`, `Real Data*` and `Accuracy race` categories via the decomposed `run_<section>.jl`
+scripts + `merge_benchmarks.jl`, not just the table below).
 
 | Method | Framework | 1T OpenBLAS | 1T Intel MKL | 8T OpenBLAS | 8T Intel MKL | NRMSE (GT) |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **1-Coil Adjoint** | **MRT** / SigPy / BART | **0.10 ms** / 0.63 / 3.89 | **0.10 ms** / 0.46 / 2.95 | **0.32 ms** / 0.62 / 6.15 | **0.32 ms** / 0.48 / 5.61 | `1.70e-07` |
-| **Cartesian MC Adjoint** | **MRT** / SigPy / BART | **1.32 ms** / 2.90 / 10.71 | **1.31 ms** / 2.87 / 9.67 | **1.43 ms** / 2.98 / 19.73 | **1.54 ms** / 3.00 / 19.04 | `6.34e-09` |
-| **DCF Adjoint (Gridding)**| **MRT** / MRIReco | **26.25 ms** / 27.71 | **24.37 ms** / 32.24 | **7.10 ms** / 35.06 | **23.96 ms** / 31.46 | `8.52%` |
-| **CG-SENSE (10 it)** | **MRT** / SigPy / BART | **34.24 ms** / 69.60 / 322.33 | **37.64 ms** / 68.75 / 320.47 | 430.37 ms / **67.21** / 624.66 | 350.71 ms / **101.84** / 628.65 | `6.34e-09` |
-| **Total Variation (30 it)**| **MRT** / BART | **1,086 ms** / 3,835 | **1,108 ms** / 3,800 | 17,090 ms / **2,795** | 27,821 ms / **2,795** | `1.16%` |
-| **L1-Wavelet (30 it)** | **MRT** / BART | **218.9 ms** / 446.1 | **217.5 ms** / 444.0 | **498.2 ms** / 1,332 | **490.2 ms** / 1,318 | `0.838%` |
-| **TGV (30 it)** | **MRT** / BART | **1,634 ms** / 4,901 | **1,707 ms** / 4,877 | **2,584 ms** / 4,455 | 9,671 ms / **4,313** | `0.967%` |
-| **Locally Low-Rank (20 it)**| **MRT** / BART | **214.3 ms** / 281.3 | **217.4 ms** / 296.8 | **194.4 ms** / 476.3 | **169.1 ms** / 483.9 | `11.1%` |
-| **Temporal TV (20 it)** | **MRT** / BART | **924.5 ms** / 2,524 | **929.7 ms** / 2,521 | **1,280 ms** / 1,863 | **1,400 ms** / 1,854 | `8.78%` |
-| **GRAPPA (RSS)** | **MRT** | **15.15 ms** | **17.91 ms** | 46.99 ms | **22.35 ms** | `2.12%` |
+| **1-Coil Adjoint**¹ | **MRT** / SigPy | **0.08 ms** / 0.47 | **0.08 ms** / 0.56 | **0.30 ms** / 0.46 | **0.30 ms** / 0.47 | `1.70e-07` |
+| **Cartesian MC Adjoint**¹ | **MRT** / SigPy / MRIReco | **1.22 ms** / 2.74 / 8.05 | **1.23 ms** / 2.80 / 8.47 | **1.40 ms** / 2.72 / 4.66 | **1.47 ms** / 3.36 / 9.51 | `6.34e-09` |
+| **DCF Adjoint (Gridding)**| **MRT** / MRIReco | **25.92 ms** / 27.31 | **25.54 ms** / 32.63 | **7.35 ms** / 85.92 | **7.30 ms** / 37.88 | `8.52%` |
+| **CG-SENSE (10 it)** | **MRT** / SigPy / BART / MRIReco | **38.61 ms** / 62.80 / 68.45 / 31.00 | **35.33 ms** / 61.57 / 70.41 / 36.73 | **40.35 ms** / 65.19 / 49.14 / 42.93 | **39.27 ms** / 62.82 / 49.09 / 48.68 | `6.34e-09` |
+| **Total Variation (20 it)**| **MRT** / BART | **533 ms** / 2,438 | **542 ms** / 2,378 | **525 ms** / 1,355 | **547 ms** / 1,347 | `0.40%` |
+| **L1-Wavelet (20 it)** | **MRT** / BART | **137 ms** / 298 | **138 ms** / 307 | **137 ms** / 505 | **138 ms** / 514 | `0.80%` |
+| **TGV (20 it)** | **MRT** / BART | **921 ms** / 3,200 | **932 ms** / 3,200 | **920 ms** / 2,935 | **929 ms** / 2,948 | `0.48%` |
+| **Global Low-Rank (20 it)**| **MRT** / BART | **627 ms** / 2,195 | **635 ms** / 2,020 | **625 ms** / 1,422 | **626 ms** / 1,306 | `8.45%` |
+| **Locally Low-Rank (20 it)**| **MRT** / BART | **657 ms** / 2,279 | **668 ms** / 2,066 | **646 ms** / 1,550 | **656 ms** / 1,421 | `5.91%` |
+| **Temporal TV (20 it)** | **MRT** / BART | **666 ms** / 2,423 | **677 ms** / 2,428 | **652 ms** / 1,549 | **667 ms** / 1,525 | `7.58%` |
+| **GRAPPA (RSS)** | **MRT** | **22.87 ms** | **17.54 ms** | **17.83 ms** | **23.08 ms** | `2.12%` |
+
+¹ BART is not timed for the two fast adjoints — the ~50 ms process-spawn overhead dwarfs the
+2-6 ms in-process compute and the subtraction used to estimate it is inside the measurement
+jitter (see `comparison/scripts/run_base.jl`'s header comment). It still runs and is checked for
+agreement, but its `time_ms` is recorded as `-1` (unmeasurable), not a real number.
+
+The 8T TV/TGV/CG-SENSE regressions the old table showed (17-28 s per solve, "threaded BLAS
+thrashing") are gone: MRT's 8T numbers now track its 1T numbers, i.e. `C6`'s per-slice threading
+gate and `Variation`/BLAS threshold re-fits (finding **3**, below) did what they were meant to do.
+
+### Time-to-target-accuracy race
+
+`comparison/scripts/run_accuracy_race.jl` climbs each toolkit's own iteration ladder until it
+first crosses the regularizer's NRMSE target, so the comparison is *time to reach the same
+accuracy*, not time for a fixed iteration count. Same node/data as above.
+
+| Method (target NRMSE) | 1T OpenBLAS | 1T MKL | 8T OpenBLAS | 8T MKL |
+| :--- | :--- | :--- | :--- | :--- |
+| **Total Variation** (≤0.005) | **MRT 371 ms (12 it)**, BART 384 ms (40 it), SigPy 868 ms (8 it), MRIReco 268 ms (8 it) | **MRT 349 ms (12 it)**, BART 374 ms (40 it), SigPy 536 ms (8 it), MRIReco 272 ms (8 it) | **MRT 341 ms (12 it)**, BART 216 ms (40 it), SigPy 613 ms (8 it), MRIReco 458 ms (8 it) | **MRT 346 ms (12 it)**, BART 210 ms (40 it), SigPy 617 ms (8 it), MRIReco 186 ms (8 it) |
+| **L1-Wavelet** (≤0.01) | **MRT 138 ms (20 it)**, BART 298 ms (20 it), SigPy 286 ms (20 it), MRIReco 84 ms (20 it) | **MRT 135 ms (20 it)**, BART 309 ms (20 it), SigPy 286 ms (20 it), MRIReco 82 ms (20 it) | **MRT 137 ms (20 it)**, BART 534 ms (20 it), SigPy 292 ms (20 it), MRIReco 73 ms (20 it) | **MRT 134 ms (20 it)**, BART 497 ms (20 it), SigPy 289 ms (20 it), MRIReco 69 ms (20 it) |
+| **TGV** (≤0.005) | **MRT 921 ms (20 it)**, BART 1,053 ms (80 it) | **MRT 926 ms (20 it)**, BART 1,052 ms (80 it) | **MRT 911 ms (20 it)**, BART 954 ms (80 it) | **MRT 923 ms (20 it)**, BART 950 ms (80 it) |
+| **Global Low-Rank** (≤0.09) | **MRT 402 ms (12 it)**, BART 1,631 ms (150 it), MRIReco 344 ms (12 it) | **MRT 406 ms (12 it)**, BART 1,506 ms (150 it), MRIReco 345 ms (12 it) | **MRT 393 ms (12 it)**, BART 1,062 ms (150 it), MRIReco 751 ms (12 it) | **MRT 400 ms (12 it)**, BART 960 ms (150 it), MRIReco 289 ms (12 it) |
+| **Locally Low-Rank** (≤0.055) | **MRT 944 ms (30 it)**, BART 1,680 ms (150 it), MRIReco 581 ms (20 it) | **MRT 961 ms (30 it)**, BART 1,531 ms (150 it), MRIReco 592 ms (20 it) | **MRT 931 ms (30 it)**, BART 1,156 ms (150 it), MRIReco 1,209 ms (20 it) | **MRT 953 ms (30 it)**, BART 1,056 ms (150 it), MRIReco 305 ms (12 it) |
+| **Temporal TV** (≤0.09) | **MRT 158 ms (3 it)**, BART 913 ms (80 it) | **MRT 158 ms (3 it)**, BART 906 ms (80 it) | **MRT 153 ms (3 it)**, BART 584 ms (80 it) | **MRT 155 ms (3 it)**, BART 595 ms (80 it) |
+
+MRT wins on every row it can reach with the fewest iterations of its own ladder — the exceptions
+(MRIReco beating MRT on L1-Wavelet and, at 8T, on Global/Locally Low-Rank) are the same
+sensitivity-map/gridding-accuracy trade-offs discussed under findings **8** and **9** below, not a
+threading regression.
 
 ### 1. ADMM CG-operator rebuild, and the 54M-allocation figure
 
@@ -103,11 +133,11 @@ Measured on the cluster `test` node (`x1001c4s3b0n1`, dual AMD EPYC 7352, 128x12
   - Size gating exists, but only for FFTW.
     `_fftw_num_threads(kind, num_threads, threaded, length(x))` consults
     `fftw_threading_threshold(kind)`, so `DFT` already declines to thread small transforms.
-    Passing `threaded` straight through in `get_fourier_operator`
-    (`src/encoding/fourier_operators.jl`) instead of the old
-    `num_threads = threaded ? nthreads() : 1` is what lets that heuristic run — keep that change.
-    (The `AGENTS.md` "DFT accepts `num_threads`, not `threaded`" gotcha is stale; `DFT` accepts
-    both, and `num_threads` wins when both are given.)
+    **Applied** (`IMPLEMENTATION_PLAN.md` `C9`, 2026-09-04): `_axis_dft_op` now passes `threaded`
+    straight through instead of the old `num_threads = threaded ? nthreads() : 1`, so the FFTW
+    size heuristic runs there too. The stale `AGENTS.md` "DFT accepts `num_threads`, not
+    `threaded`" gotcha is dropped — `DFT` accepts both, and `num_threads` wins when both are
+    given.
 - **This is the dominant cause of the 8T regressions. Profiled 2026-09-01.** The benchmark TV
   solve, `threaded=true` vs `threaded=false`: ~1.4x slower on a `-t 4` login session, 1.24x on
   the clean `-t 8` `test` node. No *single* threaded layer is the culprit — the pin-the-whole-

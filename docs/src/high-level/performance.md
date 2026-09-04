@@ -154,9 +154,11 @@ MRT has always taken NFFT.jl's own defaults (`m = 5`, `σ = 2.0`, `NFFT.POLYNOMI
 That default is far more accurate than MRIReco's operating point (`m = 3`, `σ = 1.25`,
 `NFFT.TENSOR`) for accuracy the reconstruction does not use: measured per coil, 4.28 ms vs
 1.00 ms for a forward error of 1.6e-7 vs 5.7e-5, while the reconstructed image's NRMSE is 0.085
-either way. At MRIReco's operating point MRT reconstructs in 8.35 ms against MRIReco's 47.1 ms
-for the same accuracy — MRT is faster at every point on this curve, but a caller who wants the
-faster end of *MRT's own* curve now has a way to ask for it:
+either way (measured whole multi-coil DCF adjoint, single thread, `comparison/scripts/
+run_noncart.jl`, 2026-09-04: MRT at its default 25.9 ms, MRT at MRIReco's operating point 6.1 ms,
+MRIReco 27.3 ms — all at NRMSE ≈ 0.085 against the phantom). At MRIReco's operating point MRT is
+faster than MRIReco while gridding more accurately, but a caller who wants the faster end of
+*MRT's own* curve now has a way to ask for it:
 
 ```julia
 𝒜 = get_encoding_operator(info; m = 3, sigma = 1.25, precompute = NFFT.TENSOR)
