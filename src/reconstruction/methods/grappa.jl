@@ -80,9 +80,9 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::GRAPPA)
             @argcheck num_b > n_src_feats ÷ Nc "GRAPPA calibration region is too small for kernel_size=$(method.kernel_size) at R=$R_acc"
             S_mat = zeros(T, num_b, n_src_feats)
             T_mat = zeros(T, num_b, Nc)
+            patch = zeros(T, Kx, Ky_src, Nc)
             b = 1
             for bx in 1:(cal_kx - Kx + 1), by in by_range
-                patch = zeros(T, Kx, Ky_src, Nc)
                 for (jy, ro) in enumerate(rows)
                     patch[:, jy, :] = calib[bx:(bx + Kx - 1), by + ro, :]
                 end
@@ -106,8 +106,8 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::GRAPPA)
             rows = ky0 .+ src_row_offsets(t)
             all(r -> 1 <= r <= Ny, rows) || continue
             W = W_by_offset[t]
+            patch = zeros(T, Kx, Ky_src, Nc)
             for kx in 1:Nx
-                patch = zeros(T, Kx, Ky_src, Nc)
                 for (jy, r) in enumerate(rows), (ix, xo) in enumerate(x_taps)
                     patch[ix, jy, :] = raw_ksp[mod1(kx + xo, Nx), r, :]
                 end

@@ -9,18 +9,11 @@ k-space or calibration acquisition.
 - `coil_dim`: (optional) Dimension index or name corresponding to receiver coils (defaults to `:coil` or dim 3 for 2D/dim 4 for 3D).
 """
 function estimate_noise_covariance(noise_data::AbstractArray; coil_dim = nothing)
-    c_idx = if !isnothing(coil_dim)
-        coil_dim isa Symbol ? findfirst(==(coil_dim), dimnames(noise_data)) : coil_dim
-    elseif noise_data isa NamedDimsArray && :coil ∈ dimnames(noise_data)
-        findfirst(==(:coil), dimnames(noise_data))
-    else
-        ndims(noise_data) >= 4 ? 4 : 3
-    end
-    @argcheck !isnothing(c_idx) && 1 <= c_idx <= ndims(noise_data) "Invalid coil dimension"
+    c_idx = _resolve_coil_dim(noise_data, coil_dim)
 
     Nc = size(noise_data, c_idx)
     # Permute coil dimension to first dimension and flatten remaining dimensions
-    perm = ntuple(i -> i == 1 ? c_idx : (i <= c_idx ? i - 1 : i), ndims(noise_data))
+    perm = _front_perm(c_idx, ndims(noise_data))
     perm_data = permutedims(unname(noise_data), perm)
     flat_noise = reshape(perm_data, Nc, :)
     Nsamples = size(flat_noise, 2)
@@ -44,22 +37,15 @@ function prewhiten(acq::AcquisitionInfo, Ψ::AbstractMatrix; coil_dim = nothing)
 end
 
 function prewhiten(data::AbstractArray, Ψ::AbstractMatrix; coil_dim = nothing)
-    c_idx = if !isnothing(coil_dim)
-        coil_dim isa Symbol ? findfirst(==(coil_dim), dimnames(data)) : coil_dim
-    elseif data isa NamedDimsArray && :coil ∈ dimnames(data)
-        findfirst(==(:coil), dimnames(data))
-    else
-        ndims(data) >= 4 ? 4 : 3
-    end
-    @argcheck !isnothing(c_idx) && 1 <= c_idx <= ndims(data) "Invalid coil dimension"
+    c_idx = _resolve_coil_dim(data, coil_dim)
 
     Nc = size(data, c_idx)
     @argcheck size(Ψ, 1) == Nc && size(Ψ, 2) == Nc "Noise covariance size $(size(Ψ)) does not match coil count $Nc"
 
     L = cholesky(Hermitian(Ψ)).L
     orig_dims = size(data)
-    perm = ntuple(i -> i == 1 ? c_idx : (i <= c_idx ? i - 1 : i), ndims(data))
-    inv_perm = ntuple(i -> i == c_idx ? 1 : (i < c_idx ? i + 1 : i), ndims(data))
+    perm = _front_perm(c_idx, ndims(data))
+    inv_perm = _front_inv_perm(c_idx, ndims(data))
 
     perm_data = permutedims(unname(data), perm)
     flat_data = reshape(perm_data, Nc, :)
