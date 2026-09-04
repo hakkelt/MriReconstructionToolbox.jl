@@ -1,6 +1,6 @@
 using TestItems
 
-@testitem "L1Wavelet2D Regularization" tags = [:regularization] setup = [RegTestSetup] begin
+@testitem "L1Wavelet2D Regularization" tags = [:regularization] setup = [RegTestSetup, WaveletHelpers] begin
     @testset "constructor" begin
         reg = L1Wavelet2D(0.1; wavelet = WT.db4, levels = 3)
         @test reg.λ == 0.1
@@ -20,8 +20,7 @@ using TestItems
         @test result == manual_result
 
         # Test inverse
-        x_reconstructed = op' * result
-        @test x_reconstructed ≈ x rtol = 1.0e-10
+        check_wavelet_roundtrip(op, x, result)
     end
 
     @testset "get_operator - padding needed" for threaded in [false, true]
@@ -88,7 +87,7 @@ using TestItems
     end
 end
 
-@testitem "L1Wavelet3D Regularization" tags = [:regularization] setup = [RegTestSetup] begin
+@testitem "L1Wavelet3D Regularization" tags = [:regularization] setup = [RegTestSetup, WaveletHelpers] begin
     @testset "constructor" begin
         reg = L1Wavelet3D(0.15; wavelet = WT.haar, levels = 1)
         @test reg.λ == 0.15
@@ -107,8 +106,7 @@ end
         @test length(result) == length(x)
 
         # Test inverse
-        x_reconstructed = op' * result
-        @test x_reconstructed ≈ x rtol = 1.0e-10
+        check_wavelet_roundtrip(op, x, result)
     end
 
     @testset "get_operator - padding needed" for threaded in [false, true]
@@ -121,8 +119,7 @@ end
         result = op * x
         @test length(result) >= length(x)  # Due to padding
         # Check inverse with cropping via adjoint
-        x_reconstructed = op' * result
-        @test x_reconstructed ≈ x rtol = 1.0e-10
+        check_wavelet_roundtrip(op, x, result)
     end
 
     @testset "get_operator - 4D input (batched)" for threaded in [false, true]
@@ -135,8 +132,7 @@ end
         result = op * x
         @test length(result) == length(x)
         # Inverse consistency per batch
-        x_reconstructed = op' * result
-        @test x_reconstructed ≈ x rtol = 1.0e-10
+        check_wavelet_roundtrip(op, x, result)
     end
 
     @testset "get_operator - dimension check" for threaded in [false, true]

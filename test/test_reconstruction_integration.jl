@@ -347,9 +347,11 @@ end
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern)
             acq_with_data = simulate_acquisition(img_true, acq)
 
-            img_bart = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); normalization = BartScaling(), maxit = 20, verbose = false))
-            img_noscale = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); normalization = NoScaling(), maxit = 20, verbose = false))
-            img_meas = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); normalization = MeasurementBasedScaling(), maxit = 20, verbose = false))
+            # Only the output shape is checked here, so a single iteration is enough -- 20 iterations
+            # bought no extra coverage, just a slower test.
+            img_bart = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); normalization = BartScaling(), maxit = 1, verbose = false))
+            img_noscale = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); normalization = NoScaling(), maxit = 1, verbose = false))
+            img_meas = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); normalization = MeasurementBasedScaling(), maxit = 1, verbose = false))
 
             @test size(img_bart) == size(img_noscale) == size(img_meas)
         end
@@ -367,8 +369,10 @@ end
             @test_throws ArgumentError FixedScaling(-1.0)
 
             scale = MriReconstructionToolbox.get_scale(BartScaling(), acq_with_data, img_true)
-            img_fixed = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); normalization = FixedScaling(scale), maxit = 20, verbose = false, tol = 0.0))
-            img_bart = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); normalization = BartScaling(), maxit = 20, verbose = false, tol = 0.0))
+            # Only the output shape is checked here, so a single iteration is enough -- 20 iterations
+            # bought no extra coverage, just a slower test.
+            img_fixed = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); normalization = FixedScaling(scale), maxit = 1, verbose = false, tol = 0.0))
+            img_bart = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); normalization = BartScaling(), maxit = 1, verbose = false, tol = 0.0))
             @test size(img_fixed) == size(img_bart)
         end
     end
@@ -433,8 +437,10 @@ end
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern)
             acq_with_data = simulate_acquisition(img_true, acq)
 
-            img_norm = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); disable_operator_normalization = false); maxit = 20, verbose = false))
-            img_unnorm = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); disable_operator_normalization = true); maxit = 20, verbose = false))
+            # Only the output shape is checked here, so a single iteration is enough -- 20 iterations
+            # bought no extra coverage, just a slower test.
+            img_norm = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); disable_operator_normalization = false); maxit = 1, verbose = false))
+            img_unnorm = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); disable_operator_normalization = true); maxit = 1, verbose = false))
 
             @test size(img_norm) == size(img_unnorm)
         end
