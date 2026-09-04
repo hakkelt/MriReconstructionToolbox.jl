@@ -437,6 +437,39 @@ Thread the existing one through:
 
 ### C4 — ADMM per-iteration dead work
 
+**Dropped** (2026-09-04) — measured, and the whole item is worth ≈0.25% of a solve, against the
+2% floor this entry set for itself. No code change was kept; `admm.jl` is untouched.
+
+Measurements on the benchmark node (8 threads, `benchmarking/src/ReconBench.jl` cases):
+
+| | cost | share of the 30-iteration TV solve (~1300 ms) |
+|---|---|---|
+| one-trip `Threads.@threads` fork/join | 9.66 µs (inline body: 31 ns), ×2 per outer iteration | 0.58 ms — 0.04% |
+| the six residual norms + the extra `Bᴴ` | `Bᴴ` 31.0 µs, `norm(Bx)` 12.6 µs ×4, `norm(x)` 6.2 µs ×2 = 94 µs per outer iteration | 2.81 ms — 0.2% |
+
+The loop change was also implemented and A/B'd against `HEAD` end-to-end (three interleaved
+rounds, hot-swapped through Revise inside one session, min-of-3 each, on TV / TGV / Temporal TV).
+It produced no signal at all: run-to-run spread on this node is ±30-60% (Temporal TV ranged
+817–1301 ms across six identical measurements), i.e. two orders of magnitude larger than the
+0.04% being chased. The naive before/after run that preceded it appeared to show TV −6.3% and
+Temporal TV −6.8% — pure node noise, and a good example of why the interleaved form is the only
+usable one here.
+
+Two corrections to the entry's premises, both found while measuring:
+
+- The residual norms are **not** dead under MRT's defaults, and not for the reason given. MRT's
+  default penalty is `SpectralRadiusApproximationPenalty`, whose `get_next_rho!` derives ρ from
+  `u` and `z` directly and never reads `rᵏ_norm`/`sᵏ_norm`/`ϵᵖʳⁱ`/`ϵᵈᵘᵃ` — only
+  `ResidualBalancingPenalty` and `WohlbergPenalty` do. What keeps them live is `tol`:
+  `Config.tol` defaults to `1e-4` and `default_stopping_criterion` consumes all four vectors, so
+  the proposed `needs_residuals` gate would be `true` on every MRT reconstruction. It could only
+  ever fire for a caller who passes `tol = 0` with a fixed ρ — and buy them 0.2%.
+- The `Bᴴ` application is 31 µs against a ~3.5 ms `𝒜`+`𝒜ᴴ` pair, so "7 vector passes out of ~10
+  normal-op applications" overstates it by ~30x: the residual passes are over image- and
+  `Bx`-sized arrays, not k-space-sized ones.
+
+Original entry, for the record:
+
 `admm.jl:376,403` and `:418-428`.
 
 - Both `Threads.@threads for i in eachindex(iter.g)` loops are one-trip with a single
@@ -786,7 +819,7 @@ fixes; the 8T columns for TV/TGV/CG-SENSE are stale by construction. After Phase
 | `C1` `SqrNormL2WithNormalOp` value | 2 | Phase 1 | **done** `c36c3b8` (the `g_z` half is still open) |
 | `C2` cancel the `±` pair | 2 | `S2` | **done** `1f5c343` (+ `ec75b5c`); CG-SENSE 2.06x, LR 1.42x |
 | `C3` `𝒜ᴴ𝒜` built twice | 2 | `C1` | **done** `274b625`; ~4 MiB/solve, not the claimed 57 MiB |
-| `C4` ADMM dead work | 2 | `C3` | needs a flag threaded from MRT's defaults; measure first, may be dropped |
+| `C4` ADMM dead work | 2 | `C3` | **dropped** (2026-09-04); measured at 0.25% of a solve, no code change |
 | `C5` operator norm | 2 | `C3` | **done**; `C5.2` dropped, `C5.3` taken (λ convention changed), `powerit` made deterministic |
 | `C6` threading residuals | 2 | Phase 1 | `C6.3` is a re-fit campaign; only valid once per-solve cost is final |
 | `C7` prox buffers | 2 | `C6.4` | needs the thread-ownership contract written down first |

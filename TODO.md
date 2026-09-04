@@ -509,8 +509,18 @@ per-row numbers above; the benchmark tables are regenerated once, in `C9`.
   buffers (57 MiB allocated for a single-iteration solve).
 - ADMM computes 6 vector norms and one extra `B'` application unconditionally per outer iteration
   (`admm.jl:418-428`); dead work under `FixedPenalty` with `tol = 0`.
+  **Dropped, measured** (`IMPLEMENTATION_PLAN.md` `C4`, 2026-09-04): 94 µs per outer iteration
+  (`Bᴴ` 31 µs, four `norm(Bx)` at 12.6 µs, two `norm(x)` at 6.2 µs) — 2.81 ms of the ~1300 ms
+  30-iteration TV solve, 0.2%. And it is not dead on MRT's path: `Config.tol` defaults to `1e-4`
+  and `default_stopping_criterion` reads all four residual vectors, so the gate would be `true`
+  on every MRT reconstruction. (MRT's default `SpectralRadiusApproximationPenalty` does *not*
+  read them — only `ResidualBalancingPenalty` and `WohlbergPenalty` do.)
 - `Threads.@threads` over `eachindex(iter.g)` twice per outer iteration (`admm.jl:376, 403`) is a
   one-trip loop with a single regularizer.
+  **Dropped, measured** (`IMPLEMENTATION_PLAN.md` `C4`, 2026-09-04): the one-trip fork/join costs
+  9.66 µs against 31 ns for the body inline, so 0.58 ms of a 30-iteration solve — 0.04%. An
+  interleaved A/B of the serial-branch patch against `HEAD` (three rounds, Revise hot-swap, TV /
+  TGV / Temporal TV) showed no signal above this node's ±30-60% run-to-run spread.
 
 What is already good (do not "optimize"): one `A`+`A'` costs 3.50 ms against a 2.95 ms floor for
 two batched 128x128x8 in-place FFTs (MRIReco's fused `AHA` is 3.34 ms — on par). `NamedDimsOp` is
