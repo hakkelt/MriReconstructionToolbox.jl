@@ -71,7 +71,7 @@ using TestItems
     end
 end
 
-@testitem "TotalGeneralizedVariation2D denoising behaviour" tags = [:regularization, :minimizer] begin
+@testitem "TotalGeneralizedVariation2D denoising behaviour" tags = [:regularization, :minimizer] setup = [TestHelpers] begin
     using Test
     using LinearAlgebra
     using Random
@@ -94,7 +94,7 @@ end
     n = 32
     truth = [(i > n ÷ 2 ? 1.0 : 0.0) + 0.02 * j for i in 1:n, j in 1:n]
     noisy = truth .+ 0.05 .* randn(MersenneTwister(2), n, n)
-    relative_error(z) = norm(z .- truth) / norm(truth)
+    relative_error(z) = relative_error(z, truth)
 
     @testset "TGV beats TV on a ramp with an edge" begin
         tv = denoise(TotalVariation2D(0.05), noisy)
@@ -125,7 +125,7 @@ end
     end
 end
 
-@testitem "Infimal-convolution total variation via components" tags = [:regularization, :components] begin
+@testitem "Infimal-convolution total variation via components" tags = [:regularization, :components] setup = [TestHelpers] begin
     using Test
     using LinearAlgebra
     using Random
@@ -140,7 +140,7 @@ end
     n = 32
     truth = [(i > n ÷ 2 ? 1.0 : 0.0) + 0.02 * j for i in 1:n, j in 1:n]
     noisy = truth .+ 0.05 .* randn(MersenneTwister(3), n, n)
-    relative_error(z) = norm(z .- truth) / norm(truth)
+    relative_error(z) = relative_error(z, truth)
 
     components = (
         Component(:cartoon, TotalVariation2D(0.05)),

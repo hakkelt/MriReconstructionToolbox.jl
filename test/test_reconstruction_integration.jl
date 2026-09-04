@@ -1,11 +1,9 @@
-@testitem "2D Reconstruction Pipeline" tags = [:reconstruction, :integration] begin
+@testitem "2D Reconstruction Pipeline" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
     using GeometricMedicalPhantoms
     using Random
-
-    test_type_stable(::Type{T}, value) where {T} = (@test typeof(value) == T; value)
 
     @testset "2D Reconstruction Pipeline" begin
         @testset "Fully-sampled without regularization" begin
@@ -148,13 +146,11 @@
     end
 end
 
-@testitem "3D Reconstruction Pipeline" tags = [:reconstruction, :integration] begin
+@testitem "3D Reconstruction Pipeline" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
     using GeometricMedicalPhantoms
-
-    test_type_stable(::Type{T}, value) where {T} = (@test typeof(value) == T; value)
 
     @testset "3D Reconstruction Pipeline" begin
         @testset "Fully-sampled 3D" begin
@@ -190,13 +186,11 @@ end
     end
 end
 
-@testitem "Multi-slice 2D Reconstruction" tags = [:reconstruction, :integration] begin
+@testitem "Multi-slice 2D Reconstruction" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
     using GeometricMedicalPhantoms
-
-    test_type_stable(::Type{T}, value) where {T} = (@test typeof(value) == T; value)
 
     @testset "Multi-slice 2D Reconstruction" begin
         @testset "Multi-slice with decomposition" begin
@@ -299,13 +293,11 @@ end
     end
 end
 
-@testitem "Config and Configuration Options" tags = [:reconstruction, :integration] begin
+@testitem "Config and Configuration Options" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
     using GeometricMedicalPhantoms
-
-    test_type_stable(::Type{T}, value) where {T} = (@test typeof(value) == T; value)
 
     @testset "Config and Configuration Options" begin
         @testset "Config object usage" begin
@@ -382,12 +374,10 @@ end
     end
 end
 
-@testitem "NamedDims Support" tags = [:reconstruction, :integration] begin
+@testitem "NamedDims Support" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
     using MriReconstructionToolbox
     using NamedDims
-
-    test_type_stable(::Type{T}, value) where {T} = (@test typeof(value) == T; value)
 
     @testset "NamedDims Support" begin
         @testset "NamedDims preservation" begin
@@ -425,13 +415,11 @@ end
     end
 end
 
-@testitem "Operator Options" tags = [:reconstruction, :integration] begin
+@testitem "Operator Options" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
     using GeometricMedicalPhantoms
-
-    test_type_stable(::Type{T}, value) where {T} = (@test typeof(value) == T; value)
 
     @testset "Operator Options" begin
         @testset "Operator normalization" begin
@@ -513,13 +501,11 @@ end
     end
 end
 
-@testitem "Verbose and MultiThreading Decomposition" tags = [:reconstruction, :integration] begin
+@testitem "Verbose and MultiThreading Decomposition" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
     using GeometricMedicalPhantoms
-
-    test_type_stable(::Type{T}, value) where {T} = (@test typeof(value) == T; value)
 
     @testset "Verbose progress output" begin
         nx, ny, nc = 16, 16, 2

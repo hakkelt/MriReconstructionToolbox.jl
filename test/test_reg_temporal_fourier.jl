@@ -1,10 +1,6 @@
 using TestItems
 
-@testitem "TemporalFourier regularization" tags = [:regularization] begin
-    using Test
-    using MriReconstructionToolbox
-    using AbstractOperators
-    using NamedDims
+@testitem "TemporalFourier regularization" tags = [:regularization] setup = [RegTestSetup] begin
 
     @testset "Constructor" begin
         reg = TemporalFourier(0.1)
