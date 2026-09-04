@@ -446,45 +446,52 @@ push!(results, BenchResult("K-Space", "GRAPPA (Sensitivity)", "MRT ($(use_mkl ? 
 # -------------------------------------------------------------
 # 5. Real Scanner Data (opt-in — ENV["MRT_BENCH_REAL_DATA"] = "1")
 # -------------------------------------------------------------
-# Real fully-sampled Cartesian k-space via MRITestData.jl (default: M4Raw, 0.3 T brain,
-# 4-channel, ~12 MB, downloaded + cached on first run). Same CG-SENSE recipe as the synthetic
-# "Base MC" rows, on real data with ESPIRiT maps. A failure is logged and the section skipped.
+# Real fully-sampled Cartesian k-space via MRITestData.jl (pinned: M4Raw multicoil_train/
+# 2022062402_T203, 0.3 T brain, 4-channel, 256², ~12 MB, downloaded + cached on first run).
+# Same CG-SENSE recipe as the synthetic "Base MC" row, MRT vs SigPy vs BART, on that member and
+# again SENSE-combined to a single virtual channel ("Real Data 1ch"). A failure is logged and
+# the section skipped.
+#
+# NRMSE is taken on |·| for both operands: the RSS / combined reference is magnitude-only while
+# real scanner recons carry a spatially varying receive phase, and BART / SigPy / MRT each pick
+# their own global phase — a complex-vs-magnitude compare gave ≈√2 regardless of quality.
+mag_nrmse(est, ref) = (a = abs.(est); r = abs.(ref); nrmse(a .* (norm(r) / norm(a)), r))
+
+function real_data_block!(results, category, rc)
+    Nr, Nry = rc.image_size
+    Ncr = size(rc.smaps, 3)
+    @info "real-data comparison case" category label=rc.label size=rc.image_size coils=Ncr
+    img_real = rc.reference
+    ksp_real = parent(rc.kspace)
+    cmap_real = parent(rc.smaps)
+
+    acq_real = CartesianAcquisitionInfo(rc.kspace; is3D=false, sensitivity_maps=rc.smaps, shifted_image_dims=(:x, :y))
+    method_cg_real = IterativeReconstruction(regularization=(), algorithm=MriReconstructionToolbox.CGNR(maxit=10, tol=1e-14))
+    t_min_mrt_rcg, _, x_mrt_rcg = time_reconstruction(() -> reconstruct(acq_real, method_cg_real; tol=1e-14, maxit=10, verbose=false))
+    push!(results, BenchResult(category, "CG-SENSE (10 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_rcg * 1000, mag_nrmse(x_mrt_rcg, img_real), 0.0))
+
+    kdata_sp_real = parent(permutedims(rc.kspace, (3, 2, 1)))
+    smaps_sp_real = parent(permutedims(rc.smaps, (3, 2, 1)))
+    t_min_sp_rcg, _, sp_rcg_raw = time_reconstruction(() -> sp_mri.app.SenseRecon(kdata_sp_real, smaps_sp_real, max_iter=10, show_pbar=false).run())
+    sp_rcg = permutedims(sp_rcg_raw, (2, 1))
+    push!(results, BenchResult(category, "CG-SENSE (10 it)", "SigPy", num_threads, t_min_sp_rcg * 1000, mag_nrmse(sp_rcg, img_real), mag_nrmse(x_mrt_rcg, sp_rcg)))
+
+    kdata_bart_real = reshape(ComplexF32.(ksp_real), Nr, Nry, 1, Ncr)
+    smaps_bart_real = reshape(ComplexF32.(cmap_real), Nr, Nry, 1, Ncr)
+    t_min_bart_rcg, _, bart_rcg_raw = time_reconstruction(() -> run_bart(1, "pics -S -i 10", kdata_bart_real, smaps_bart_real), is_bart=true)
+    bart_rcg = bart_rcg_raw[:, :, 1]
+    push!(results, BenchResult(category, "CG-SENSE (10 it)", "BART ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_bart_rcg * 1000, mag_nrmse(bart_rcg, img_real), mag_nrmse(x_mrt_rcg, bart_rcg)))
+    return results
+end
+
 if get(ENV, "MRT_BENCH_REAL_DATA", "0") == "1"
-    try
-        println("--> Benchmarking Real Data CG-SENSE (10 Iterations)...")
-        rc = load_real_case()
-        Nr, Nry = rc.image_size
-        Ncr = size(rc.smaps, 3)
-        @info "real-data comparison case" label=rc.label size=rc.image_size coils=Ncr
-        img_real = rc.reference
-        ksp_real = parent(rc.kspace)                       # (kx, ky, coil) ComplexF64
-        cmap_real = parent(rc.smaps)                       # (x, y, coil)
-
-        acq_real = CartesianAcquisitionInfo(rc.kspace; is3D=false, sensitivity_maps=rc.smaps, shifted_image_dims=(:x, :y))
-        method_cg_real = IterativeReconstruction(regularization=(), algorithm=MriReconstructionToolbox.CGNR(maxit=10, tol=1e-14))
-        t_min_mrt_rcg, _, x_mrt_rcg = time_reconstruction(() -> reconstruct(acq_real, method_cg_real; tol=1e-14, maxit=10, verbose=false))
-        e_gt_mrt_rcg = nrmse(x_mrt_rcg .* (norm(abs.(img_real)) / norm(abs.(x_mrt_rcg))), img_real)
-        push!(results, BenchResult("Real Data", "CG-SENSE (10 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_rcg * 1000, e_gt_mrt_rcg, 0.0))
-
-        # SigPy CG-SENSE on the same k-space / maps
-        kdata_sp_real = parent(permutedims(rc.kspace, (3, 2, 1)))
-        smaps_sp_real = parent(permutedims(rc.smaps, (3, 2, 1)))
-        t_min_sp_rcg, _, sp_rcg_raw = time_reconstruction(() -> sp_mri.app.SenseRecon(kdata_sp_real, smaps_sp_real, max_iter=10, show_pbar=false).run())
-        sp_rcg = permutedims(sp_rcg_raw, (2, 1))
-        e_gt_sp_rcg = nrmse(sp_rcg .* (norm(abs.(img_real)) / norm(abs.(sp_rcg))), img_real)
-        e_mrt_sp_rcg = nrmse(x_mrt_rcg .* (norm(abs.(sp_rcg)) / norm(abs.(x_mrt_rcg))), sp_rcg)
-        push!(results, BenchResult("Real Data", "CG-SENSE (10 it)", "SigPy", num_threads, t_min_sp_rcg * 1000, e_gt_sp_rcg, e_mrt_sp_rcg))
-
-        # BART CG-SENSE
-        kdata_bart_real = reshape(ComplexF32.(ksp_real), Nr, Nry, 1, Ncr)
-        smaps_bart_real = reshape(ComplexF32.(cmap_real), Nr, Nry, 1, Ncr)
-        t_min_bart_rcg, _, bart_rcg_raw = time_reconstruction(() -> run_bart(1, "pics -S -i 10", kdata_bart_real, smaps_bart_real), is_bart=true)
-        bart_rcg = bart_rcg_raw[:, :, 1]
-        e_gt_bart_rcg = nrmse(bart_rcg .* (norm(abs.(img_real)) / norm(abs.(bart_rcg))), img_real)
-        e_mrt_bart_rcg = nrmse(x_mrt_rcg .* (norm(abs.(bart_rcg)) / norm(abs.(x_mrt_rcg))), bart_rcg)
-        push!(results, BenchResult("Real Data", "CG-SENSE (10 it)", "BART ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_bart_rcg * 1000, e_gt_bart_rcg, e_mrt_bart_rcg))
-    catch e
-        @warn "MRT_BENCH_REAL_DATA set but the real-data section failed; skipping it" exception=(e, catch_backtrace())
+    for (category, combine) in (("Real Data", false), ("Real Data 1ch", true))
+        try
+            println("--> Benchmarking $category CG-SENSE (10 Iterations)...")
+            real_data_block!(results, category, load_real_case(; combine_coils=combine))
+        catch e
+            @warn "MRT_BENCH_REAL_DATA set but the $category section failed; skipping it" exception=(e, catch_backtrace())
+        end
     end
 end
 

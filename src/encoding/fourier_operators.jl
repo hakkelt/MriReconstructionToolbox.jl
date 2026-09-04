@@ -241,7 +241,7 @@ function _axis_dft_op(
         kspace_shift::Bool = false, threaded::Bool = true, fast_planning::Bool = false,
     )
     flags = fast_planning ? FFTW.ESTIMATE : FFTW.MEASURE
-    ℱ = DFT(template, dims; normalization = FFTWOperators.BACKWARD, flags, num_threads = threaded ? nthreads() : 1)
+    ℱ = DFT(template, dims; normalization = FFTWOperators.BACKWARD, flags, threaded)
     return kspace_shift ? fftshift_op(ℱ; codomain_shifts = dims) : ℱ
 end
 

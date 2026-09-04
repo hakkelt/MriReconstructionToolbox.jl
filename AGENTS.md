@@ -49,7 +49,6 @@ is unnamed into a `Variable`.
 
 - `materialize` / `materialize_with_auxiliaries` / `materialize_all` are not exported — call as
   `MriReconstructionToolbox.materialize(reg, x::Variable; threaded)`.
-- `DFT` accepts `num_threads`, not `threaded` — pass `num_threads = threaded ? Threads.nthreads() : 1`.
 - `Variable(T, dims...)` — splat, do not pass a tuple.
 - `Base.reshape` on an `AbstractOperator` returns `Reshape(...)`.
 - `create_sampling_pattern` returns `(:, mask)` when `subsample_freq_encoding=false` (default).
