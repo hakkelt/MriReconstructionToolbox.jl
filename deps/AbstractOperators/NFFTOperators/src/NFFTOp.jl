@@ -320,7 +320,9 @@ end
 # NFFT is a *counted* pool in NestedThreading: the plan itself is built for a thread count
 # and `mul!` runs under `with_full_threads`/`with_restricted_threads` (see `_nfft_run`).
 # So `threaded` here selects a plan-time thread count, not a Julia loop, and it cannot be
-# flipped after construction -- switching it rebuilds the plan.
+# flipped on an existing plan -- but it does not need a full replan either: `copy_operator`
+# copies the plan under the target budget, which rebuilds only its FFT plans (see
+# `_copy_operator_impl`).
 is_threaded(op::NFFTOp) = op.threaded
 supports_threading(::NFFTOp) = true
 
@@ -330,16 +332,32 @@ is_thread_safe(::NFFTOp) = false
 function _copy_operator_impl(
         op::NFFTOp{T, D, P, K, DC}; storage_type = nothing, threaded = nothing
     ) where {T, D, P, K, DC}
-    new_threaded = threaded === nothing ? op.threaded : threaded
     if storage_type === nothing
         # `mul!` writes the plan's internal scratch (`plan.tmpVec` / `plan.tmpVecHat`), so a
-        # plan shared between two operator copies races when they run concurrently. `Base.copy`
-        # on an `NFFTPlan` gives the copy its own scratch and FFT plans while only *copying*
-        # (not recomputing) the expensive gridding tables -- far cheaper than replanning from
-        # the trajectory, and safe for per-thread copies. `dcf` is read-only in `mul!`, so it
-        # is shared per the copy convention; `ksp_buffer` is operator-owned scratch, so copied.
-        return NFFTOp{T, D, P, K, DC}(copy(op.plan), similar(op.ksp_buffer), op.dcf, new_threaded)
+        # plan *shared* between two operator copies races when they run concurrently -- which
+        # is exactly what a per-thread copy is for. `Base.copy` on an `NFFTPlan` gives the copy
+        # its own scratch and its own FFT plans while only copying (not recomputing) the
+        # expensive gridding tables, so it is far cheaper than replanning from the trajectory.
+        #
+        # It re-plans those FFTs at FFTW's *current* budget, though, and nothing else in the
+        # plan is thread-count-specific -- so copying inside the target threading scope is what
+        # makes a thread-count change honest without a replan. `threaded` still goes through
+        # the package rule (`false` vetoes, `true` is a permission), so `is_threaded` on the
+        # copy reports what it will actually do.
+        #
+        # `dcf` is read-only in `mul!` and is shared per the copy convention; `ksp_buffer` is
+        # operator-owned scratch, so the copy gets its own.
+        new_threaded = if threaded === nothing
+            op.threaded
+        else
+            _nfft_threaded(threaded, _array_wrapper_type(K))
+        end
+        plan = with_nfft_threading(new_threaded) do
+            copy(op.plan)
+        end
+        return NFFTOp{T, D, P, K, DC}(plan, similar(op.ksp_buffer), op.dcf, new_threaded)
     end
+    new_threaded = threaded === nothing ? op.threaded : threaded
     # Storage-backend change: rebuild on the requested array type from the trajectory, which
     # the plan still carries (`plan.k`, in the flattened 2D form `create_plan` reshapes to).
     image_size = NFFT.size_in(op.plan)

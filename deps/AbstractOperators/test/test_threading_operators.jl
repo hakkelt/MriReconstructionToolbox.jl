@@ -461,17 +461,29 @@ end
     @test is_threaded(op) == false
     @test is_thread_safe(op) == false   # ksp_buffer is operator-owned scratch
 
-    # A copy shares the immutable plan and dcf but gets its own scratch buffer -- sharing
-    # that buffer is precisely what makes the operator unsafe to run from two threads.
+    # A copy gets its own scratch buffer *and* its own plan: `mul!` writes the plan's internal
+    # scratch (`tmpVec`/`tmpVecHat`), so two copies sharing one plan race, and a per-thread
+    # copy is exactly the case this is for. `dcf` is read-only in `mul!` and stays shared.
     c = copy_operator(op)
-    @test c.plan === op.plan
+    @test c.plan !== op.plan
+    @test c.plan.tmpVec !== op.plan.tmpVec
+    @test c.dcf === op.dcf
     @test c.ksp_buffer !== op.ksp_buffer
     x = rand(ComplexF64, 16, 16)
     @test op * x ≈ c * x
 
-    # The plan is built for a fixed thread count and backend, so a request for either means
-    # replanning -- recovering the trajectory from the existing plan (`plan.k`) and dcf
-    # rather than refusing, since both are still available.
+    # Two copies driven concurrently must agree with the serial result -- the property the
+    # shared plan used to break.
+    copies = [copy_operator(op) for _ in 1:2]
+    ref = op * x
+    outs = Vector{Any}(undef, length(copies))
+    Threads.@threads for i in eachindex(copies)
+        outs[i] = copies[i] * x
+    end
+    @test all(o ≈ ref for o in outs)
+
+    # A thread-count change needs new FFT plans but not new gridding tables, so it is served
+    # by copying the plan inside the target threading scope rather than replanning.
     # `threaded = true` is a permission: NFFT grants it only from
     # `MIN_THREADS_FOR_NFFT` workers up, because below that its threaded path is slower at
     # every workload size measured (see that constant's provenance table).
@@ -479,6 +491,11 @@ end
     @test is_threaded(threaded_copy) ==
         (Threads.nthreads() >= NFFTOperators.MIN_THREADS_FOR_NFFT)
     @test threaded_copy * x ≈ op * x
+    # `threaded = false` is a veto and must hold at any thread count.
+    @test is_threaded(copy_operator(threaded_copy; threaded = false)) == false
+
+    # A storage-backend change still replans, recovering the trajectory from the existing
+    # plan (`plan.k`) and dcf rather than refusing, since both are still available.
 
     storage_copy = copy_operator(op; storage_type = Array)
     @test domain_array_type(storage_copy) <: Array
