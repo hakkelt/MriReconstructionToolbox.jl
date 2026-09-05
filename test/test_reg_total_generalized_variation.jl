@@ -187,9 +187,7 @@ end
 
     img_recon = reconstruct(
         acq,
-        IterativeReconstruction(TotalGeneralizedVariation2D(0.005); algorithm = ADMM(rho = 1.0));
-        maxit = 50,
-        verbose = false,
+        IterativeReconstruction(TotalGeneralizedVariation2D(0.005); algorithm = ADMM(rho = 1.0), maxit = 50); verbosity = Silent()
     )
     @test size(img_recon) == (nx, ny)
     @test all(isfinite, img_recon)

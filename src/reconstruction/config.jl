@@ -1,21 +1,23 @@
 """
     Config(; kwargs...)
 
-Global reconstruction configuration used by `reconstruct` and internal routines.
-It centralizes iteration control, tolerances, normalization, threading, and
-automatic problem decomposition behavior.
+Method-independent run settings for `reconstruct`: normalization, output, threading and
+automatic problem decomposition.
+
+Anything that only a particular method can act on — iteration counts, tolerances, the solver
+algorithm — belongs on that method's constructor instead, not here. `Config` rejects such
+keywords rather than silently ignoring them.
 
 Fields (with defaults):
-- normalization::Normalization = BartScaling() — scaling applied to operators/data (see also NoScaling, MeasurementBasedScaling, FixedScaling)
-- tol::Float64 = 1e-4 — stopping tolerance for iterative algorithms
-- maxit::Int = 100 — maximum iterations for the chosen solver
-- freq::Union{Nothing,Int} = nothing — progress print frequency (iterations)
-- verbose::Bool = true — enable/disable logging output
-- threaded::Bool = (Threads.nthreads() > 1) — enable threaded execution when available
-- decomposition_executor::Union{Nothing,ReconstructionExecutor} = nothing — override executor for decomposition
-- disable_inverse_scale_output::Bool = false — skip rescaling the final output
-- disable_problem_decomposition::Bool = false — disable automatic problem decomposition
-- printfunc::Function = println — custom logging function
+- `normalization::Normalization = BartScaling()` — scaling applied to operators/data (see also `NoScaling`, `MeasurementBasedScaling`, `FixedScaling`)
+- `verbosity::Verbosity = Verbose()` — output mode: `Silent()`, `ProgressBar()` or `Verbose()`
+- `threaded::Bool = (Threads.nthreads() > 1)` — enable threaded execution when available
+- `decomposition_executor::Union{Nothing,ReconstructionExecutor} = nothing` — override executor for decomposition
+- `disable_inverse_scale_output::Bool = false` — skip rescaling the final output
+- `disable_problem_decomposition::Bool = false` — disable automatic problem decomposition
+
+`verbosity` also accepts `true`/`false` and the symbols `:verbose`, `:progress`, `:silent`,
+which are normalized to the corresponding [`Verbosity`](@ref) via `as_verbosity`.
 
 Constructors:
 - `Config(; kwargs...)` — build from defaults, override selected fields
@@ -28,27 +30,41 @@ using MriReconstructionToolbox
 # Default config
 conf = Config()
 
-# Custom tolerances and iterations
-conf = Config(; tol=1e-5, maxit=200, verbose=false)
+# A progress bar instead of the textual log
+conf = Config(; verbosity = ProgressBar())
 
 # Extend an existing config
-conf2 = Config(conf; maxit=50, disable_problem_decomposition=true)
+conf2 = Config(conf; disable_problem_decomposition = true)
 
-# Use with reconstruct (keywords still override config fields)
-x̂ = reconstruct(acq; config=conf2, maxit=25)
+# Iteration control belongs to the method, not the config
+x̂ = reconstruct(acq, IterativeReconstruction(reg; maxit = 50, tol = 1e-6); config = conf2)
 ```
 """
-Base.@kwdef struct Config
-    normalization::Normalization = BartScaling()
-    tol::Float64 = 1.0e-4
-    maxit::Int = 100
-    freq::Union{Nothing, Int} = nothing
-    verbose::Bool = true
-    threaded::Bool = nthreads() > 1
-    decomposition_executor::Union{Nothing, ReconstructionExecutor} = nothing
-    disable_inverse_scale_output::Bool = false
-    disable_problem_decomposition::Bool = false
-    printfunc::Function = println
+struct Config
+    normalization::Normalization
+    verbosity::Verbosity
+    threaded::Bool
+    decomposition_executor::Union{Nothing, ReconstructionExecutor}
+    disable_inverse_scale_output::Bool
+    disable_problem_decomposition::Bool
+
+    function Config(;
+            normalization::Normalization = BartScaling(),
+            verbosity = Verbose(),
+            threaded::Bool = nthreads() > 1,
+            decomposition_executor::Union{Nothing, ReconstructionExecutor} = nothing,
+            disable_inverse_scale_output::Bool = false,
+            disable_problem_decomposition::Bool = false,
+        )
+        return new(
+            normalization,
+            as_verbosity(verbosity),
+            threaded,
+            decomposition_executor,
+            disable_inverse_scale_output,
+            disable_problem_decomposition,
+        )
+    end
 end
 
 function Config(config::Config; kwargs...)
@@ -76,8 +92,23 @@ function construct_config(kwargs)
     end
 end
 
+# Keywords that used to live on `Config` but are properties of a method, not of a run. Naming
+# them explicitly turns what would be "unknown keyword" into a message that says where the
+# parameter went.
+const _METHOD_OWNED_KWARGS = Dict{Symbol, String}(
+    :maxit => "Pass `maxit` to the reconstruction method instead, e.g. `IterativeReconstruction(reg; maxit = 50)` or `POCS(; maxit = 20)`.",
+    :tol => "Pass `tol` to the reconstruction method instead, e.g. `IterativeReconstruction(reg; tol = 1e-6)`.",
+    :algorithm => "Pass `algorithm` to `IterativeReconstruction`, e.g. `IterativeReconstruction(reg; algorithm = FISTA())`.",
+    :verbose => "Use `verbosity` instead: `verbosity = Verbose()` / `Silent()` / `ProgressBar()`.",
+    :printfunc => "Use `verbosity = Verbose(; printfunc = ...)` instead.",
+    :freq => "Use `verbosity = Verbose(; freq = ...)` instead.",
+)
+
 function check_kwargs(kwargs)
     for key in keys(kwargs)
+        if haskey(_METHOD_OWNED_KWARGS, key) && !hasfield(Config, key)
+            throw(ArgumentError("`$key` is no longer a `Config` field. $(_METHOD_OWNED_KWARGS[key])"))
+        end
         @argcheck hasfield(Config, key) "Unknown keyword argument: $key"
     end
     return nothing

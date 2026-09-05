@@ -14,28 +14,44 @@ function execute(f::Function, plan, acq_data, config, executor::ReconstructionEx
     slice_threaded = slice_threading(plan, acq_data, config, executor)
     scales = Array{real(eltype(acq_data.kspace_data))}(undef, batch_sizes)
 
-    # A slice's result type isn't known until `f` actually runs (it depends on the acquisition
-    # and warm-start array types), so -- mirroring `execute_two_phase`'s own `prelim` idiom --
-    # the first slice runs outside the (possibly threaded) loop to learn it, and `results` is
-    # then allocated concretely instead of as `Array{AbstractArray}`.
-    first_idx, first_id, first_local_acq = slices[1]
-    first_r, first_s = execute_single_slice(
-        f, first_idx, first_id, first_local_acq, config; threaded = slice_threaded
-    )
-    results = Array{typeof(first_r)}(undef, batch_sizes)
-    results[first_idx] = first_r
-    scales[first_idx] = first_s
+    # A decomposed run's bar counts slices, not iterations: it is the only granularity that is
+    # meaningful across every method, and `slice_verbosity` silences the slices so no inner bar
+    # can open underneath it. `ProgressMeter.next!` is lock-guarded, so the threaded executor
+    # ticking from several slices at once is safe.
+    return with_progress(config.verbosity, length(slices); desc = "Slices ") do verbosity
+        conf = Config(config; verbosity)
+        tick = progress_tick(verbosity)
 
-    run_slices!(results, scales, f, @view(slices[2:end]), config, executor; threaded = slice_threaded)
-    maybe_rescale_results!(results, scales, config)
-    return stack_image_slices(results, plan, Val(config.threaded))
+        # A slice's result type isn't known until `f` actually runs (it depends on the acquisition
+        # and warm-start array types), so -- mirroring `execute_two_phase`'s own `prelim` idiom --
+        # the first slice runs outside the (possibly threaded) loop to learn it, and `results` is
+        # then allocated concretely instead of as `Array{AbstractArray}`.
+        first_idx, first_id, first_local_acq = slices[1]
+        first_r, first_s = execute_single_slice(
+            f, first_idx, first_id, first_local_acq, conf; threaded = slice_threaded
+        )
+        isnothing(tick) || tick()
+        results = Array{typeof(first_r)}(undef, batch_sizes)
+        results[first_idx] = first_r
+        scales[first_idx] = first_s
+
+        run_slices!(
+            results, scales, f, @view(slices[2:end]), conf, executor;
+            threaded = slice_threaded, tick,
+        )
+        maybe_rescale_results!(results, scales, conf)
+        stack_image_slices(results, plan, Val(conf.threaded))
+    end
 end
 
-function run_slices!(results, scales, f, slices, config, executor::ReconstructionExecutor; threaded)
+function run_slices!(
+        results, scales, f, slices, config, executor::ReconstructionExecutor; threaded, tick = nothing
+    )
     for_each_item!(slices, config, executor; threaded) do (idx, id, local_acq)
         r, s = execute_single_slice(f, idx, id, local_acq, config; threaded)
         results[idx] = r
         scales[idx] = s
+        isnothing(tick) || tick()
     end
     return nothing
 end
@@ -60,15 +76,7 @@ function execute_regularized(plan, acq_data, config, method::IterativeReconstruc
     end
     solve_slice = function (local_acq, warm_start, ratio, global_scale, local_conf, 𝒜)
         local_reg = map(r -> scale_regularization(r, ratio), method.regularization)
-        local_method = IterativeReconstruction(
-            local_reg,
-            method.algorithm,
-            method.fidelity,
-            method.signal_model,
-            method.exact_opnorm,
-            method.disable_operator_normalization,
-            method.disable_normalop_optimization,
-        )
+        local_method = _with_regularization(method, local_reg)
         result, _ = _reconstruct(
             local_acq, local_method, warm_start, local_conf; scale_override = global_scale, 𝒜
         )
@@ -90,15 +98,7 @@ function execute_regularized_components(plan, acq_data, config, method::Iterativ
     end
     solve_slice = function (local_acq, x₀s, ratio, global_scale, local_conf, 𝒜)
         local_components = map(c -> scale_regularization(c, ratio), method.regularization)
-        local_method = IterativeReconstruction(
-            local_components,
-            method.algorithm,
-            method.fidelity,
-            method.signal_model,
-            method.exact_opnorm,
-            method.disable_operator_normalization,
-            method.disable_normalop_optimization,
-        )
+        local_method = _with_regularization(method, local_components)
         result, _ = _reconstruct_components(
             local_acq, local_method, nothing, local_conf;
             scale_override = global_scale, x₀s, 𝒜,
@@ -120,48 +120,58 @@ function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Fun
     slices = collect(get_slices(plan, acq_data))
 
     slice_threaded = slice_threading(plan, acq_data, config, executor)
-    slice_config = (id) -> Config(
-        config;
-        verbose = false, printfunc = (s...) -> config.printfunc("[$id] ", s...),
-        freq = -1, threaded = slice_threaded,
-    )
 
-    # `prelim`'s element type isn't known until `prepare` actually runs (it depends on the acquisition
-    # and warm-start array types), so the first slice is run outside the (possibly threaded) loop to
-    # learn it; `prelim` is then allocated concretely instead of as `Array{Any}`, keeping the phase-2
-    # unpacking below type-stable.
-    first_idx, first_id, first_local_acq = slices[1]
-    first_warm_start, first_scale, first_𝒜 = prepare(first_idx, first_local_acq, slice_config(first_id))
-    first_prelim = (first_id, first_local_acq, first_warm_start, first_scale, first_𝒜)
-    prelim = Array{typeof(first_prelim)}(undef, batch_sizes)
-    prelim[first_idx] = first_prelim
-    for_each_item!(@view(slices[2:end]), config, executor; threaded = slice_threaded) do (idx, id, local_acq)
-        warm_start, scale, 𝒜 = prepare(idx, local_acq, slice_config(id))
-        prelim[idx] = (id, local_acq, warm_start, scale, 𝒜)
+    # Both phases visit every slice, so the bar counts `2 * length(slices)` ticks.
+    return with_progress(config.verbosity, 2 * length(slices); desc = "Slices ") do verbosity
+        conf = Config(config; verbosity)
+        tick = progress_tick(verbosity)
+        slice_config = (id) -> Config(
+            conf;
+            verbosity = slice_verbosity(verbosity, id; freq = -1),
+            threaded = slice_threaded,
+        )
+
+        # `prelim`'s element type isn't known until `prepare` actually runs (it depends on the acquisition
+        # and warm-start array types), so the first slice is run outside the (possibly threaded) loop to
+        # learn it; `prelim` is then allocated concretely instead of as `Array{Any}`, keeping the phase-2
+        # unpacking below type-stable.
+        first_idx, first_id, first_local_acq = slices[1]
+        first_warm_start, first_scale, first_𝒜 = prepare(first_idx, first_local_acq, slice_config(first_id))
+        isnothing(tick) || tick()
+        first_prelim = (first_id, first_local_acq, first_warm_start, first_scale, first_𝒜)
+        prelim = Array{typeof(first_prelim)}(undef, batch_sizes)
+        prelim[first_idx] = first_prelim
+        for_each_item!(@view(slices[2:end]), conf, executor; threaded = slice_threaded) do (idx, id, local_acq)
+            warm_start, scale, 𝒜 = prepare(idx, local_acq, slice_config(id))
+            prelim[idx] = (id, local_acq, warm_start, scale, 𝒜)
+            isnothing(tick) || tick()
+        end
+
+        global_scale = robust_global_scale(vec(map(p -> p[4], prelim)))
+        log_message(
+            verbosity, @sprintf("Using shared scaling factor across slices: %g", global_scale)
+        )
+
+        indices = vec(collect(CartesianIndices(batch_sizes)))
+        first_result_idx = indices[1]
+        first_res_id, first_res_acq, first_res_warm_start, first_res_scale, first_res_𝒜 = prelim[first_result_idx]
+        first_res_ratio = safe_scale_ratio(first_res_scale, global_scale)
+        first_result = solve(
+            first_res_acq, first_res_warm_start, first_res_ratio, global_scale,
+            slice_config(first_res_id), first_res_𝒜,
+        )
+        isnothing(tick) || tick()
+        results = Array{typeof(first_result)}(undef, batch_sizes)
+        results[first_result_idx] = first_result
+        for_each_item!(@view(indices[2:end]), conf, executor; threaded = slice_threaded) do idx
+            id, local_acq, warm_start, scale, 𝒜 = prelim[idx]
+            ratio = safe_scale_ratio(scale, global_scale)
+            results[idx] = solve(local_acq, warm_start, ratio, global_scale, slice_config(id), 𝒜)
+            isnothing(tick) || tick()
+        end
+
+        stack_image_slices(results, plan, Val(conf.threaded))
     end
-
-    global_scale = robust_global_scale(vec(map(p -> p[4], prelim)))
-    config.verbose && config.printfunc(
-        @sprintf("Using shared scaling factor across slices: %g", global_scale)
-    )
-
-    indices = vec(collect(CartesianIndices(batch_sizes)))
-    first_result_idx = indices[1]
-    first_res_id, first_res_acq, first_res_warm_start, first_res_scale, first_res_𝒜 = prelim[first_result_idx]
-    first_res_ratio = safe_scale_ratio(first_res_scale, global_scale)
-    first_result = solve(
-        first_res_acq, first_res_warm_start, first_res_ratio, global_scale,
-        slice_config(first_res_id), first_res_𝒜,
-    )
-    results = Array{typeof(first_result)}(undef, batch_sizes)
-    results[first_result_idx] = first_result
-    for_each_item!(@view(indices[2:end]), config, executor; threaded = slice_threaded) do idx
-        id, local_acq, warm_start, scale, 𝒜 = prelim[idx]
-        ratio = safe_scale_ratio(scale, global_scale)
-        results[idx] = solve(local_acq, warm_start, ratio, global_scale, slice_config(id), 𝒜)
-    end
-
-    return stack_image_slices(results, plan, Val(config.threaded))
 end
 
 # `threaded` is the *work item's* threading decision (`slice_threading`), not `config.threaded`:
@@ -188,15 +198,14 @@ function for_each_item!(
 end
 
 function execute_single_slice(f::Function, idx, id, local_acq, config; kwargs...)
-    if config.verbose
-        freq = isnothing(config.freq) ? 0 : config.freq
-    else
-        freq = -1
-    end
-    printfunc = (s...) -> config.printfunc("[$id] ", s...)
+    v = config.verbosity
+    # A slice keeps the solver's own periodic output (prefixed with the slice id) but not the
+    # phase log; `freq = 0` is the "final summary only" default this path has always used.
+    freq = v isa Verbose && !isnothing(v.freq) ? v.freq : 0
     local_conf = Config(
         config;
-        verbose = false, printfunc, freq, disable_inverse_scale_output = true, kwargs...,
+        verbosity = slice_verbosity(v, id; freq),
+        disable_inverse_scale_output = true, kwargs...,
     )
     return f(idx, local_acq, local_conf)
 end

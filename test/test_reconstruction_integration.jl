@@ -14,7 +14,7 @@
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
             acq_with_data = simulate_acquisition(img_true, acq)
 
-            img_recon = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data; verbose = false))
+            img_recon = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data; verbosity = Silent()))
 
             error_norm = norm(img_recon - img_true) / norm(img_true)
             @test error_norm < 1.0e-3
@@ -33,7 +33,7 @@
 
             img_recon = test_type_stable(
                 Matrix{ComplexF32},
-                reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.001)); maxit = 100, verbose = false),
+                reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.001); maxit = 100); verbosity = Silent()),
             )
 
             error_norm = norm(img_recon - img_true) / norm(img_true)
@@ -59,7 +59,7 @@
 
             img_recon = test_type_stable(
                 Matrix{ComplexF32},
-                reconstruct(acq_with_data, IterativeReconstruction(L1Wavelet2D(0.005)); maxit = 50, verbose = false),
+                reconstruct(acq_with_data, IterativeReconstruction(L1Wavelet2D(0.005); maxit = 50); verbosity = Silent()),
             )
 
             error_norm = norm(img_recon - img_true) / norm(img_true)
@@ -83,9 +83,7 @@
                 Matrix{ComplexF32},
                 reconstruct(
                     acq_with_data,
-                    IterativeReconstruction(L1Wavelet2D(0.003), TotalVariation2D(0.001));
-                    maxit = 100,
-                    verbose = false,
+                    IterativeReconstruction(L1Wavelet2D(0.003), TotalVariation2D(0.001); maxit = 100); verbosity = Silent()
                 ),
             )
 
@@ -108,14 +106,14 @@
 
             img_fista = test_type_stable(
                 Matrix{ComplexF32},
-                reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.001)); maxit = 100, verbose = false),
+                reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.001); maxit = 100); verbosity = Silent()),
             )
             error_fista = norm(img_fista - img_true) / norm(img_true)
             @test error_fista < 0.3  # measured ≈0.01-0.10 depending on the random sampling pattern
 
             img_admm = test_type_stable(
                 Matrix{ComplexF32},
-                reconstruct(acq_with_data, IterativeReconstruction(L1Wavelet2D(0.003); algorithm = ADMM()); maxit = 50, verbose = false),
+                reconstruct(acq_with_data, IterativeReconstruction(L1Wavelet2D(0.003); algorithm = ADMM(), maxit = 50); verbosity = Silent()),
             )
             error_admm = norm(img_admm - img_true) / norm(img_true)
             # A sign error in the ADMM data term lands at ≈2.0; measured ≈0.06 at 50 iterations.
@@ -133,11 +131,11 @@
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern)
             acq_with_data = simulate_acquisition(img_true, acq)
 
-            x_init = reconstruct(acq_with_data; verbose = false)
+            x_init = reconstruct(acq_with_data; verbosity = Silent())
 
             img_recon = test_type_stable(
                 Matrix{ComplexF32},
-                reconstruct(acq_with_data, IterativeReconstruction(L1Wavelet2D(0.005)); x₀ = x_init, maxit = 30, verbose = false),
+                reconstruct(acq_with_data, IterativeReconstruction(L1Wavelet2D(0.005); maxit = 30); x₀ = x_init, verbosity = Silent()),
             )
 
             error_norm = norm(img_recon - img_true) / norm(img_true)
@@ -161,7 +159,7 @@ end
             acq = AcquisitionInfo(is3D = true, sensitivity_maps = smaps)
             acq_with_data = simulate_acquisition(img_true, acq)
 
-            img_recon = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_with_data; verbose = false))
+            img_recon = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_with_data; verbosity = Silent()))
 
             error_norm = norm(img_recon - img_true) / norm(img_true)
             @test error_norm < 1.0e-3
@@ -178,7 +176,7 @@ end
             acq = AcquisitionInfo(is3D = true, sensitivity_maps = smaps, subsampling = pattern)
             acq_with_data = simulate_acquisition(img_true, acq)
 
-            img_recon = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_with_data, IterativeReconstruction(L1Wavelet3D(0.005)); maxit = 30, verbose = false))
+            img_recon = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_with_data, IterativeReconstruction(L1Wavelet3D(0.005); maxit = 30); verbosity = Silent()))
 
             error_norm = norm(img_recon - img_true) / norm(img_true)
             @test error_norm < 0.7
@@ -211,7 +209,7 @@ end
 
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
-            img_recon = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms; maxit = 10, verbose = false))
+            img_recon = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms; verbosity = Silent()))
 
             @test size(img_recon) == (nx, ny, nslices)
             error_norm = norm(img_recon - img_true_ms) / norm(img_true_ms)
@@ -228,7 +226,7 @@ end
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
             # Tikhonov regularization + multislice exercises problem decomposition with regularization
-            img_recon = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01)); maxit = 5, verbose = false))
+            img_recon = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01); maxit = 5); verbosity = Silent()))
             @test size(img_recon) == (nx, ny, nslices)
         end
 
@@ -253,8 +251,8 @@ end
             end
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
-            img_decomp = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.05)); disable_problem_decomposition = false, maxit = 20, verbose = false)
-            img_no_decomp = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.05)); disable_problem_decomposition = true, maxit = 20, verbose = false)
+            img_decomp = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.05); maxit = 20); disable_problem_decomposition = false, verbosity = Silent())
+            img_no_decomp = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.05); maxit = 20); disable_problem_decomposition = true, verbosity = Silent())
 
             # Decomposed vs jointly-solved must agree closely regardless of the intensity spread.
             @test norm(img_decomp - img_no_decomp) / norm(img_no_decomp) < 1.0e-3
@@ -286,7 +284,7 @@ end
             end
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
-            img_recon = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.05)); disable_problem_decomposition = false, maxit = 15, verbose = false)
+            img_recon = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.05); maxit = 15); disable_problem_decomposition = false, verbosity = Silent())
             @test all(isfinite, img_recon)
             @test norm(img_recon[:, :, 2]) / norm(img_recon[:, :, 1]) < 0.1
         end
@@ -311,11 +309,18 @@ end
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern)
             acq_with_data = simulate_acquisition(img_true, acq)
 
-            img1 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); maxit = 20, tol = 1.0e-5, verbose = false))
-            config = Config(maxit = 20, tol = 1.0e-5, verbose = false)
-            img2 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); config = config))
-            config_base = Config(maxit = 100, verbose = false)
-            img3 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); config = config_base, maxit = 20))
+            img1 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 20, tol = 1.0e-5); verbosity = Silent()))
+            config = Config(; verbosity = Silent())
+            img2 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 20, tol = 1.0e-5); config = config))
+            # Iteration control lives on the method, so extending a `Config` cannot change it;
+            # only the run settings come from the config.
+            config_base = Config(; verbosity = Verbose())
+            img3 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 20, tol = 1.0e-5); config = config_base, verbosity = Silent()))
+
+            # `maxit`/`tol`/`verbose` at `reconstruct` are rejected, not silently ignored.
+            @test_throws ArgumentError reconstruct(acq_with_data, DirectReconstruction(); maxit = 5)
+            @test_throws ArgumentError reconstruct(acq_with_data, DirectReconstruction(); tol = 1.0e-5)
+            @test_throws ArgumentError reconstruct(acq_with_data, DirectReconstruction(); verbose = false)
 
             # Loose tolerance: threaded FFTs make repeated solver runs agree only to ~1e-3
             @test norm(img1 - img2) / norm(img1) < 5.0e-3
@@ -330,8 +335,8 @@ end
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
             acq_with_data = simulate_acquisition(img_true, acq)
 
-            img_st = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data; threaded = false, verbose = false))
-            img_mt = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data; threaded = true, verbose = false))
+            img_st = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data; threaded = false, verbosity = Silent()))
+            img_mt = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data; threaded = true, verbosity = Silent()))
 
             @test norm(img_st - img_mt) / norm(img_st) < 1.0e-10
         end
@@ -349,9 +354,9 @@ end
 
             # Only the output shape is checked here, so a single iteration is enough -- 20 iterations
             # bought no extra coverage, just a slower test.
-            img_bart = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); normalization = BartScaling(), maxit = 1, verbose = false))
-            img_noscale = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); normalization = NoScaling(), maxit = 1, verbose = false))
-            img_meas = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); normalization = MeasurementBasedScaling(), maxit = 1, verbose = false))
+            img_bart = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 1); normalization = BartScaling(), verbosity = Silent()))
+            img_noscale = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 1); normalization = NoScaling(), verbosity = Silent()))
+            img_meas = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 1); normalization = MeasurementBasedScaling(), verbosity = Silent()))
 
             @test size(img_bart) == size(img_noscale) == size(img_meas)
         end
@@ -371,8 +376,8 @@ end
             scale = MriReconstructionToolbox.get_scale(BartScaling(), acq_with_data, img_true)
             # Only the output shape is checked here, so a single iteration is enough -- 20 iterations
             # bought no extra coverage, just a slower test.
-            img_fixed = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); normalization = FixedScaling(scale), maxit = 1, verbose = false, tol = 0.0))
-            img_bart = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01)); normalization = BartScaling(), maxit = 1, verbose = false, tol = 0.0))
+            img_fixed = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 1, tol = 0.0); normalization = FixedScaling(scale), verbosity = Silent()))
+            img_bart = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 1, tol = 0.0); normalization = BartScaling(), verbosity = Silent()))
             @test size(img_fixed) == size(img_bart)
         end
     end
@@ -392,7 +397,7 @@ end
 
             acq = AcquisitionInfo(ksp; sensitivity_maps = smaps)
 
-            img_recon = test_type_stable(NamedDimsArray{(:x, :y), ComplexF32, 2, Matrix{ComplexF32}}, reconstruct(acq; verbose = false))
+            img_recon = test_type_stable(NamedDimsArray{(:x, :y), ComplexF32, 2, Matrix{ComplexF32}}, reconstruct(acq; verbosity = Silent()))
 
             @test dimnames(img_recon) == (:x, :y)
             @test eltype(img_recon) == ComplexF32
@@ -406,12 +411,12 @@ end
 
             acq = AcquisitionInfo(ksp; sensitivity_maps = smaps)
 
-            img_direct = reconstruct(acq; verbose = false)
+            img_direct = reconstruct(acq; verbosity = Silent())
             @test img_direct isa NamedDimsArray
             @test dimnames(img_direct) == (:x, :y, :z)
             @test size(img_direct) == (nx, ny, nslices)
 
-            img_reg = reconstruct(acq, IterativeReconstruction(Tikhonov(0.01)); maxit = 5, verbose = false)
+            img_reg = reconstruct(acq, IterativeReconstruction(Tikhonov(0.01); maxit = 5); verbosity = Silent())
             @test img_reg isa NamedDimsArray
             @test dimnames(img_reg) == (:x, :y, :z)
             @test size(img_reg) == (nx, ny, nslices)
@@ -439,8 +444,8 @@ end
 
             # Only the output shape is checked here, so a single iteration is enough -- 20 iterations
             # bought no extra coverage, just a slower test.
-            img_norm = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); disable_operator_normalization = false); maxit = 1, verbose = false))
-            img_unnorm = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); disable_operator_normalization = true); maxit = 1, verbose = false))
+            img_norm = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); disable_operator_normalization = false, maxit = 1); verbosity = Silent()))
+            img_unnorm = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); disable_operator_normalization = true, maxit = 1); verbosity = Silent()))
 
             @test size(img_norm) == size(img_unnorm)
         end
@@ -463,8 +468,8 @@ end
 
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
-            img_decomp = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms; disable_problem_decomposition = false, maxit = 10, verbose = false))
-            img_no_decomp = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms; disable_problem_decomposition = true, maxit = 10, verbose = false))
+            img_decomp = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms; disable_problem_decomposition = false, verbosity = Silent()))
+            img_no_decomp = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms; disable_problem_decomposition = true, verbosity = Silent()))
 
             # The two paths are the same computation in a different summation order, so they can
             # only agree to Float32 precision (eps ≈ 1.2e-7), and the order the reductions actually
@@ -474,8 +479,8 @@ end
 
             # Regularized case: slices are identical, so the per-slice median scale equals
             # the global scale and both paths must converge to the same solution.
-            img_decomp_reg = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01)); disable_problem_decomposition = false, maxit = 30, verbose = false)
-            img_no_decomp_reg = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01)); disable_problem_decomposition = true, maxit = 30, verbose = false)
+            img_decomp_reg = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01); maxit = 30); disable_problem_decomposition = false, verbosity = Silent())
+            img_no_decomp_reg = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01); maxit = 30); disable_problem_decomposition = true, verbosity = Silent())
 
             @test norm(img_decomp_reg - img_no_decomp_reg) / norm(img_no_decomp_reg) < 1.0e-3
         end
@@ -488,11 +493,11 @@ end
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
             x₀ = zeros(ComplexF32, nx, ny, nslices)
-            img_recon = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01)); x₀, maxit = 5, verbose = false)
+            img_recon = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01); maxit = 5); x₀, verbosity = Silent())
             @test size(img_recon) == (nx, ny, nslices)
 
             x₀_wrong = zeros(ComplexF32, nx, ny)
-            @test_throws ArgumentError reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01)); x₀ = x₀_wrong, maxit = 5, verbose = false)
+            @test_throws ArgumentError reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01); maxit = 5); x₀ = x₀_wrong, verbosity = Silent())
 
             # `reconstruct` must not write its solution back through the caller's `x₀`. The
             # component path handed the arrays straight to `Variable`, which stores them by
@@ -501,7 +506,7 @@ end
             # decomposition path passes down.
             x₀_keep = rand(ComplexF32, nx, ny, nslices)
             x₀_ref = copy(x₀_keep)
-            reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01)); x₀ = x₀_keep, normalization = NoScaling(), maxit = 5, verbose = false)
+            reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01); maxit = 5); x₀ = x₀_keep, normalization = NoScaling(), verbosity = Silent())
             @test x₀_keep == x₀_ref
         end
     end
@@ -522,7 +527,7 @@ end
 
         output = IOBuffer()
         printfunc = (args...) -> print(output, args...)
-        config = Config(; verbose = true, printfunc = printfunc, maxit = 5)
+        config = Config(; verbosity = Verbose(; printfunc = printfunc))
         img_recon = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data; config = config))
 
         @test size(img_recon) == (nx, ny)
@@ -540,7 +545,7 @@ end
         executor = MriReconstructionToolbox.MultiThreadingExecutor()
         img_recon = test_type_stable(
             Array{ComplexF32, 3},
-            reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01)); maxit = 5, verbose = false, decomposition_executor = executor),
+            reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01); maxit = 5); decomposition_executor = executor, verbosity = Silent()),
         )
         @test size(img_recon) == (nx, ny, nslices)
     end
@@ -554,9 +559,9 @@ end
     smaps = repeat(coil_sensitivities(nx, ny, nc), 1, 1, 1, nslices)
     ksp = rand(ComplexF32, nx, ny, nc, nslices)
     acq = AcquisitionInfo(ksp; is3D = false, sensitivity_maps = smaps)
-    method = IterativeReconstruction(Tikhonov(0.01f0))
+    method = IterativeReconstruction(Tikhonov(0.01f0); maxit = 5)
 
-    config = Config(; threaded = true, maxit = 5, verbose = false)
+    config = Config(; threaded = true, verbosity = Silent())
     plan = MRT.get_problem_decomposition_plan(acq, method, config)
     @test plan !== nothing
 
@@ -582,8 +587,8 @@ end
     ) == false
 
     # The gate is a performance decision only: the result may not depend on it.
-    img_threaded = reconstruct(acq, method; maxit = 5, verbose = false, threaded = true)
-    img_serial = reconstruct(acq, method; maxit = 5, verbose = false, threaded = false)
+    img_threaded = reconstruct(acq, method; threaded = true, verbosity = Silent())
+    img_serial = reconstruct(acq, method; threaded = false, verbosity = Silent())
     @test size(img_threaded) == (nx, ny, nslices)
     @test img_threaded == img_serial
 end

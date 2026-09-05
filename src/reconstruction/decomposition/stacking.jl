@@ -63,8 +63,8 @@ function maybe_rescale_results!(results, scales, config)
         @threads for i in eachindex(results)
             _rescale_result!(results[i], median_scale)
         end
-        config.verbose && median_scale != 1 &&
-            config.printfunc("Rescaled output by median scale factor $median_scale")
+        median_scale != 1 &&
+            log_message(config.verbosity, "Rescaled output by median scale factor $median_scale")
     end
 end
 

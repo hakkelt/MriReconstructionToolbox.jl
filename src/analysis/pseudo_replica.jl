@@ -28,9 +28,12 @@ function pseudo_replica(
     if !haskey(config_kwargs, :normalization)
         config_kwargs[:normalization] = NoScaling()
     end
-    if !haskey(config_kwargs, :verbose)
-        config_kwargs[:verbose] = false
-    end
+    # Replicas are quiet by default -- a per-replica log repeated 64 times is noise. A
+    # `ProgressBar` belongs to the replica loop rather than to each individual reconstruction, so
+    # it is lifted out here; an explicitly requested `Verbose` is left on each reconstruction,
+    # which is what asking for the log means.
+    outer_verbosity = as_verbosity(get(config_kwargs, :verbosity, Silent()))
+    config_kwargs[:verbosity] = outer_verbosity isa Verbose ? outer_verbosity : Silent()
     norm_mode = config_kwargs[:normalization]
     @argcheck norm_mode isa Union{FixedScaling, NoScaling} "pseudo_replica requires FixedScaling or NoScaling to preserve noise variance across replicas (got $(typeof(norm_mode)))"
 
@@ -57,15 +60,19 @@ function pseudo_replica(
     ksp_size = size(raw_ksp)
 
     results = Array{Any}(undef, replicas)
-    for i in 1:replicas
-        # Generate complex Gaussian noise with standard deviation noise_std
-        noise = (randn(rng, real(T), ksp_size) .+ im .* randn(rng, real(T), ksp_size)) .* (real(T)(noise_std / sqrt(2)))
-        replica_ksp = raw_ksp .+ noise
-        if acq.kspace_data isa NamedDimsArray
-            replica_ksp = NamedDimsArray{dimnames(acq.kspace_data)}(replica_ksp)
+    with_progress(outer_verbosity, replicas; desc = "Replicas ") do verbosity
+        tick = progress_tick(verbosity)
+        for i in 1:replicas
+            # Generate complex Gaussian noise with standard deviation noise_std
+            noise = (randn(rng, real(T), ksp_size) .+ im .* randn(rng, real(T), ksp_size)) .* (real(T)(noise_std / sqrt(2)))
+            replica_ksp = raw_ksp .+ noise
+            if acq.kspace_data isa NamedDimsArray
+                replica_ksp = NamedDimsArray{dimnames(acq.kspace_data)}(replica_ksp)
+            end
+            replica_acq = AcquisitionInfo(acq; kspace_data = replica_ksp)
+            results[i] = reconstruct(replica_acq, method; config_kwargs...)
+            isnothing(tick) || tick()
         end
-        replica_acq = AcquisitionInfo(acq; kspace_data = replica_ksp)
-        results[i] = reconstruct(replica_acq, method; config_kwargs...)
     end
 
     first_res = first(results)

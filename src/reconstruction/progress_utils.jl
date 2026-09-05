@@ -1,24 +1,26 @@
 macro step(step_name, config, expr)
     return quote
-        if $(esc(config)).verbose
+        verbosity = $(esc(config)).verbosity
+        if should_log_steps(verbosity)
             task = @spawn @timed $(esc(expr))
             is_stepname_printed = Threads.Atomic{Bool}(false)
             step_name = $(esc(step_name))
             timer = Timer(1) do _
                 if !is_stepname_printed[]
                     is_stepname_printed[] = true
-                    $(esc(config)).printfunc("Starting ", lowercasefirst(step_name), "...")
+                    log_message(verbosity, "Starting ", lowercasefirst(step_name), "...")
                 end
             end
             stats = fetch(task)
             if is_stepname_printed[]
-                $(esc(config)).printfunc("Finished ", lowercasefirst(step_name), " in ", format_stats(stats))
+                log_message(verbosity, "Finished ", lowercasefirst(step_name), " in ", format_stats(stats))
             else
                 is_stepname_printed[] = true
                 close(timer)
-                $(esc(config)).printfunc(uppercasefirst(step_name), ": ", format_stats(stats))
+                log_message(verbosity, uppercasefirst(step_name), ": ", format_stats(stats))
             end
         else
+            report_step(verbosity, $(esc(step_name)))
             $(esc(expr))
         end
     end
@@ -26,12 +28,14 @@ end
 
 macro printing_step(step_name, config, expr)
     return quote
-        if $(esc(config)).verbose
+        verbosity = $(esc(config)).verbosity
+        if should_log_steps(verbosity)
             step_name = $(esc(step_name))
-            $(esc(config)).printfunc("Starting ", lowercasefirst(step_name), "...")
+            log_message(verbosity, "Starting ", lowercasefirst(step_name), "...")
             stats = @timed $(esc(expr))
-            $(esc(config)).printfunc("Finished ", lowercasefirst(step_name), " in ", format_stats(stats))
+            log_message(verbosity, "Finished ", lowercasefirst(step_name), " in ", format_stats(stats))
         else
+            report_step(verbosity, $(esc(step_name)))
             $(esc(expr))
         end
     end

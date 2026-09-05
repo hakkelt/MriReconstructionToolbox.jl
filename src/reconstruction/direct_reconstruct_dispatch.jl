@@ -16,17 +16,16 @@ end
 function _resolve_scale(acq_data, x̂, config, scale_override)
     if !isnothing(scale_override)
         scale = scale_override
-        config.verbose && config.printfunc(@sprintf("Using scaling factor: %g", scale))
+        log_message(config.verbosity, @sprintf("Using scaling factor: %g", scale))
     elseif config.normalization != NoScaling()
         @step "Computing scaling factor" config begin
             scale = get_scale(config.normalization, acq_data, x̂)
         end
         if scale == 0
-            config.verbose &&
-                config.printfunc("Warning: Computed scale is zero, defaulting to scale=1.0")
+            log_message(config.verbosity, "Warning: Computed scale is zero, defaulting to scale=1.0")
             scale = 1
         end
-        config.verbose && config.printfunc(@sprintf("Using scaling factor: %g", scale))
+        log_message(config.verbosity, @sprintf("Using scaling factor: %g", scale))
     else
         scale = 1
     end
@@ -36,8 +35,9 @@ end
 function _direct_reconstruct(𝒜, acq_data, x₀, method::AbstractReconstructionMethod, config; scale_override = nothing)
     direct_recon_only = method isa AbstractDirectMethod
     if !isnothing(x₀) && direct_recon_only
-        config.verbose && config.printfunc(
-            "Warning: Initial guess x₀ is ignored when no regularization is specified."
+        log_message(
+            config.verbosity,
+            "Warning: Initial guess x₀ is ignored when no regularization is specified.",
         )
         x₀ = nothing
     end
@@ -46,7 +46,9 @@ function _direct_reconstruct(𝒜, acq_data, x₀, method::AbstractReconstructio
             if method isa DirectReconstruction || !(method isa AbstractDirectMethod)
                 x₀ = 𝒜' * acq_data.kspace_data
             else
-                x₀ = _direct_reconstruct(acq_data, method)
+                x₀ = _direct_reconstruct(
+                    acq_data, method; progress = progress_tick(config.verbosity)
+                )
             end
         end
     end

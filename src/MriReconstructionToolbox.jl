@@ -7,6 +7,7 @@ using Base.Cartesian
 using ProximalOperators
 using ProximalCore
 using ProximalAlgorithms
+import ProgressMeter
 @reexport using AbstractOperators
 using AbstractOperators: Sum  # resolve ambiguity with ProximalOperators.Sum
 @reexport using NamedDims
@@ -39,6 +40,7 @@ export SecondOrderTotalVariation2D, SecondOrderTotalVariation3D, MultiScaleLowRa
 export EdgePreservingRoughness2D, EdgePreservingRoughness3D, TotalGeneralizedVariation2D
 export HardThreshold, SparsityLimit, PlugAndPlay
 export calculate, build_model, reconstruct, Config, SequentialExecutor, MultiThreadingExecutor
+export Verbosity, Silent, ProgressBar, Verbose
 export AbstractReconstructionMethod, AbstractIterativeMethod, AbstractDirectMethod
 export DirectReconstruction, IterativeReconstruction, DEFAULT_ALGORITHMS
 export CoilCombination, AdjointSensitivity, RootSumSquares, NoCoilCombination
@@ -122,6 +124,7 @@ include("reconstruction/decomposition/plan.jl")
 include("reconstruction/decomposition/slicing.jl")
 include("reconstruction/decomposition/stacking.jl")
 include("reconstruction/decomposition/execution.jl")
+include("reconstruction/verbosity.jl")
 include("reconstruction/config.jl")
 include("reconstruction/hard_consistency.jl")
 include("reconstruction/build_model.jl")

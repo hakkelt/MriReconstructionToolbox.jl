@@ -21,8 +21,8 @@ acq_mc = CartesianAcquisitionInfo(NamedDimsArray(kspace_mc, (:kx, :ky, :coil)); 
 addrow(fw, t, x, xmrt) = push!(results, BenchResult("Base MC", "CG-SENSE (10 it)", fw, NUM_THREADS, t, mag_nrmse(x, img_mc), xmrt === nothing ? 0.0 : mag_nrmse(xmrt, x)))
 
 println("--> CG-SENSE (10 it)")
-method_cg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0))
-tm, _, xm = time_reconstruction(() -> reconstruct(acq_mc, method_cg; tol = 0.0, maxit = 10, verbose = false))
+method_cg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0); maxit = 10, tol = 0.0)
+tm, _, xm = time_reconstruction(() -> reconstruct(acq_mc, method_cg; verbosity = Silent()))
 addrow(FW, tm * 1000, xm, nothing)
 
 try

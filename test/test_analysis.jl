@@ -71,7 +71,7 @@ end
         algorithm = CGNR(maxit = 20, tol = 1.0e-5),
         signal_model = TemporalBasis(Φ; time_dim = :time),
     )
-    rec = reconstruct(acq_sim, method_subspace; verbose = false)
+    rec = reconstruct(acq_sim, method_subspace; verbosity = Silent())
 
     @test rec isa NamedDimsArray
     @test dimnames(rec) == (:x, :y, :time)

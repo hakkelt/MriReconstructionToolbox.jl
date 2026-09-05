@@ -32,18 +32,23 @@ function _iterative_reconstruct_core(
         model, vars, _auxiliaries = build(𝒜, acq_data.kspace_data; x₀ = x₀_or_x₀s)
     end
     @printing_step "Reconstructing image" config begin
-        if isnothing(config.freq)
-            freq = config.verbose ? get_reasonable_freq(config.maxit) : -1
-        else
-            freq = config.freq
-        end
+        verbose, freq, display = solver_output(config.verbosity, something(method.maxit, 100))
+        # `method.maxit` / `method.tol` are `nothing` when the caller wants the algorithm's own
+        # values: the corresponding keyword is then left out of the `solve` call entirely, because
+        # `ProximalAlgorithms.override_parameters` merges what is passed here *last* and would
+        # otherwise silently overwrite e.g. `algorithm = FISTA(maxit = 500)`.
         ϵ = eps(real(eltype(_first_x0(x₀_or_x₀s))))
-        tol = config.tol == 0 ? 0 : max(ϵ * 10, config.tol * _max_abs(x₀_or_x₀s))
-        stop =
-            (iter, state) -> ProximalAlgorithms.default_stopping_criterion(tol, iter, state)
-        display =
-            (it, alg, iter, state) ->
-        ProximalAlgorithms.default_display(it, alg, iter, state, config.printfunc)
+        solver_kwargs = (; freq, verbose, display)
+        if !isnothing(method.maxit)
+            solver_kwargs = (; solver_kwargs..., maxit = method.maxit)
+        end
+        if !isnothing(method.tol)
+            # MRT's `tol` is relative to the initial estimate; ProximalAlgorithms' is absolute.
+            tol = method.tol == 0 ? 0 : max(ϵ * 10, method.tol * _max_abs(x₀_or_x₀s))
+            stop =
+                (iter, state) -> ProximalAlgorithms.default_stopping_criterion(tol, iter, state)
+            solver_kwargs = (; solver_kwargs..., stop)
+        end
         # For n variables sharing the same operator 𝒜, the data term is ‖𝒜*(x₁+…+xₙ) - y‖², whose
         # gradient has Lipschitz constant ‖[𝒜 … 𝒜]‖² = n‖𝒜‖², since ‖[𝒜 … 𝒜]‖ = √n‖𝒜‖. When the
         # norm was not estimated (`disable_operator_normalization`), let the algorithm derive its
@@ -51,7 +56,6 @@ function _iterative_reconstruct_core(
         R_type = real(eltype(_first_x0(x₀_or_x₀s)))
         Lf = should_estimate_L ? R_type(_n_vars(vars) * L^2) : nothing
         algorithm = patch_algorithm_with_default_values(method.algorithm, Lf; eltype_real = R_type)
-        verbose = freq != -1
         try
             # For a small single-slab solve, threading every operator is a ~1.4x net loss: no one
             # layer dominates (FFT-plan threading is ≈neutral at 128², a threaded BLAS-1 CG loop
@@ -61,14 +65,14 @@ function _iterative_reconstruct_core(
             # low-rank prox is the exception: its level-3 SVDs thread 3.2x-3.9x, so those solves
             # keep the threaded budget. See `uses_blas3` / `with_serial_blas`.
             if uses_blas3(method.regularization)
-                solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
+                solve(model, algorithm; solver_kwargs...)
             elseif _work_item_bytes(_first_x0(x₀_or_x₀s)) < serial_blas_threshold_bytes()
                 with_restricted_threads_if_needed() do
-                    solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
+                    solve(model, algorithm; solver_kwargs...)
                 end
             else
                 with_serial_blas(_first_x0(x₀_or_x₀s)) do
-                    solve(model, algorithm; stop, maxit = config.maxit, freq, verbose, display)
+                    solve(model, algorithm; solver_kwargs...)
                 end
             end
         catch e

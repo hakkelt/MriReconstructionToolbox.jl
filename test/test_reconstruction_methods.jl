@@ -36,18 +36,18 @@
     @test last(band.acquired_range) == 32
 
     # 2. Test Homodyne with LinearRamp
-    rec_homodyne_linear = reconstruct(acq_pf, Homodyne(filter = LinearRamp()); verbose = false)
+    rec_homodyne_linear = reconstruct(acq_pf, Homodyne(filter = LinearRamp()); verbosity = Silent())
     @test rec_homodyne_linear isa NamedDimsArray
     @test dimnames(rec_homodyne_linear) == (:x, :y)
     mask_obj = mag .> 0.5
     @test isapprox(abs.(unname(rec_homodyne_linear))[mask_obj], mag[mask_obj]; rtol = 0.08)
 
     # 3. Test Homodyne with StepRamp
-    rec_homodyne_step = reconstruct(acq_pf, Homodyne(filter = StepRamp()); verbose = false)
+    rec_homodyne_step = reconstruct(acq_pf, Homodyne(filter = StepRamp()); verbosity = Silent())
     @test isapprox(abs.(unname(rec_homodyne_step))[mask_obj], mag[mask_obj]; rtol = 0.08)
 
     # 4. Test POCS
-    rec_pocs = reconstruct(acq_pf, POCS(maxit = 15); verbose = false)
+    rec_pocs = reconstruct(acq_pf, POCS(maxit = 15); verbosity = Silent())
     @test isapprox(abs.(unname(rec_pocs))[mask_obj], mag[mask_obj]; rtol = 0.08)
 end
 
@@ -92,13 +92,13 @@ end
     mask_obj = img .> 0.5
 
     # 1. GRAPPA reconstruction
-    rec_grappa = reconstruct(acq, GRAPPA(kernel_size = (3, 2), calib_size = (32, 12)); verbose = false)
+    rec_grappa = reconstruct(acq, GRAPPA(kernel_size = (3, 2), calib_size = (32, 12)); verbosity = Silent())
     @test rec_grappa isa NamedDimsArray
     @test dimnames(rec_grappa) == (:x, :y)
     @test isapprox(abs.(unname(rec_grappa))[mask_obj], img[mask_obj]; rtol = 0.05)
 
     # 2. SPIRiT reconstruction
-    rec_spirit = reconstruct(acq, SPIRiT(kernel_size = (5, 5), calib_size = (32, 12), maxit = 20); verbose = false)
+    rec_spirit = reconstruct(acq, SPIRiT(kernel_size = (5, 5), calib_size = (32, 12), maxit = 20); verbosity = Silent())
     @test rec_spirit isa NamedDimsArray
     @test dimnames(rec_spirit) == (:x, :y)
     @test norm(abs.(unname(rec_spirit))[mask_obj] .- img[mask_obj]) / norm(img[mask_obj]) < 0.18
@@ -133,7 +133,7 @@ end
         sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(sens),
     )
 
-    rec = reconstruct(acq, PhaseConstrained(); verbose = false)
+    rec = reconstruct(acq, PhaseConstrained(); verbosity = Silent())
     @test rec isa NamedDimsArray
     @test dimnames(rec) == (:x, :y)
     obj = abs.(img) .> 0.2
@@ -170,7 +170,7 @@ end
             sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(sens),
         )
         # default kernel_size = (4, 3) is even along kx - must not throw
-        rec = reconstruct(acq, GRAPPA(calib_size = (40, 12)); verbose = false)
+        rec = reconstruct(acq, GRAPPA(calib_size = (40, 12)); verbosity = Silent())
         @test dimnames(rec) == (:x, :y)
         rel = norm(abs.(unname(rec)) .- abs.(img)) / norm(abs.(img))
         @test rel < (R == 2 ? 0.05 : 0.2)
@@ -205,7 +205,7 @@ end
         sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(sens),
     )
     for M in (Homodyne(), POCS(maxit = 4), PhaseConstrained())
-        rec = reconstruct(acq_pf, M; verbose = false)
+        rec = reconstruct(acq_pf, M; verbosity = Silent())
         @test size(rec) == (Nx, Ny, Nt)
         @test dimnames(rec) == (:x, :y, :time)
     end
@@ -220,7 +220,7 @@ end
         sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(sens),
     )
     for M in (GRAPPA(calib_size = (32, 12)), SPIRiT(calib_size = (32, 12), maxit = 6))
-        rec = reconstruct(acq_r, M; verbose = false)
+        rec = reconstruct(acq_r, M; verbosity = Silent())
         @test size(rec) == (Nx, Ny, Nt)
         @test dimnames(rec) == (:x, :y, :time)
     end
@@ -269,7 +269,7 @@ end
         is3D = false, image_size = (Nx, Ny),
         sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(sens),
     )
-    rec_kspace = reconstruct(acq_full, IterativeReconstruction(; signal_model = KSpaceToImage(AdjointSensitivity()), algorithm = CGNR(maxit = 5), fidelity = L2Loss()); verbose = false)
+    rec_kspace = reconstruct(acq_full, IterativeReconstruction(; signal_model = KSpaceToImage(AdjointSensitivity()), algorithm = CGNR(maxit = 5), fidelity = L2Loss()); verbosity = Silent())
     @test isapprox(abs.(unname(rec_kspace)), abs.(img); atol = 1.0e-5)
 end
 
@@ -306,7 +306,7 @@ end
         sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(sens_true),
     )
 
-    rec_iter = reconstruct(acq, SPIRiT(kernel_size = (5, 5), calib_size = (32, 12), maxit = 20, iterative = true); verbose = false)
+    rec_iter = reconstruct(acq, SPIRiT(kernel_size = (5, 5), calib_size = (32, 12), maxit = 20, iterative = true); verbosity = Silent())
     @test rec_iter isa NamedDimsArray
     @test dimnames(rec_iter) == (:x, :y)
     mask_obj = img .> 0.5
@@ -340,8 +340,160 @@ end
         shifted_kspace_dims = (1, 2),
     )
 
-    rec_default = reconstruct(acq_default, DirectReconstruction(); verbose = false)
-    rec_shifted = reconstruct(acq_shifted, DirectReconstruction(); verbose = false)
+    rec_default = reconstruct(acq_default, DirectReconstruction(); verbosity = Silent())
+    rec_shifted = reconstruct(acq_shifted, DirectReconstruction(); verbosity = Silent())
 
     @test isapprox(abs.(unname(rec_default)), abs.(unname(rec_shifted)); atol = 1.0e-5)
+end
+
+
+@testitem "Verbosity modes and method-owned iteration parameters" tags = [:reconstruction, :integration] begin
+    using Test
+    using MriReconstructionToolbox
+    using LinearAlgebra
+    using Random
+    using FFTW
+
+    Random.seed!(42)
+    Nx, Ny, Nc = 32, 32, 2
+    img = zeros(ComplexF32, Nx, Ny)
+    img[9:24, 9:24] .= 1
+    smaps = coil_sensitivities(Nx, Ny, Nc)
+
+    acq = simulate_acquisition(
+        img, AcquisitionInfo(nothing; is3D = false, image_size = (Nx, Ny), sensitivity_maps = smaps)
+    )
+    # Partial-Fourier acquisition (single coil), for the methods that need one.
+    mask_y = falses(Ny)
+    mask_y[10:Ny] .= true
+    ksp_full = fftshift(fft(img)) ./ sqrt(Nx * Ny)
+    acq_pf = CartesianAcquisitionInfo(
+        ksp_full[:, mask_y];
+        is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_y),
+    )
+
+    @testset "run keywords reject method parameters" begin
+        @test_throws ArgumentError reconstruct(acq, DirectReconstruction(); maxit = 5)
+        @test_throws ArgumentError reconstruct(acq, DirectReconstruction(); tol = 1.0e-5)
+        @test_throws ArgumentError reconstruct(acq, DirectReconstruction(); algorithm = FISTA())
+        @test_throws ArgumentError reconstruct(acq, DirectReconstruction(); verbose = false)
+        @test_throws ArgumentError reconstruct(acq, DirectReconstruction(); printfunc = println)
+        @test_throws ArgumentError reconstruct(acq, DirectReconstruction(); freq = 1)
+        # `Config` itself has no such field at all.
+        @test_throws MethodError Config(; maxit = 5)
+    end
+
+    @testset "as_verbosity shorthands" begin
+        @test MriReconstructionToolbox.as_verbosity(false) === Silent()
+        @test MriReconstructionToolbox.as_verbosity(:silent) === Silent()
+        @test MriReconstructionToolbox.as_verbosity(:progress) isa ProgressBar
+        @test MriReconstructionToolbox.as_verbosity(true) isa Verbose
+        @test Config(; verbosity = false).verbosity === Silent()
+        @test_throws ArgumentError Config(; verbosity = :loud)
+    end
+
+    @testset "Silent produces no output" begin
+        method = IterativeReconstruction(Tikhonov(0.01f0); maxit = 3)
+        silent_out = mktemp() do path, io
+            redirect_stdout(io) do
+                reconstruct(acq, method; verbosity = Silent())
+            end
+            flush(io)
+            read(path, String)
+        end
+        @test isempty(silent_out)
+
+        lines = String[]
+        reconstruct(acq, method; verbosity = Verbose(; printfunc = (s...) -> push!(lines, string(s...))))
+        @test !isempty(lines)
+    end
+
+    # `IterativeReconstruction`'s own `maxit`/`tol` win over the algorithm object's, and `nothing`
+    # hands them back to it -- this pair is the regression test for the silent clobber that made
+    # `algorithm = FISTA(maxit = ...)` unreachable.
+    function iteration_numbers(method)
+        seen = Int[]
+        sink = (s...) -> begin
+            m = match(r"^\s*(\d+)\s", string(s...))
+            isnothing(m) || push!(seen, parse(Int, m[1]))
+        end
+        reconstruct(acq, method; verbosity = Verbose(; printfunc = sink, freq = 1, timing = false))
+        return seen
+    end
+
+    @testset "maxit/tol are method-owned" begin
+        reg = L1Wavelet2D(1.0f-3)
+        @test iteration_numbers(
+            IterativeReconstruction(reg; algorithm = FISTA(maxit = 7), maxit = nothing, tol = nothing)
+        ) == collect(1:7)
+        @test iteration_numbers(
+            IterativeReconstruction(reg; algorithm = FISTA(maxit = 7), maxit = 4, tol = 0)
+        ) == collect(1:4)
+        # keyword-only: there is no positional form
+        @test_throws MethodError IterativeReconstruction(reg, 5)
+    end
+
+    @testset "direct methods honour maxit/tol" begin
+        # `POCS.tol` used to be a dead field: a loose tolerance must now stop the loop early.
+        loose = reconstruct(acq_pf, POCS(; maxit = 200, tol = 1.0e-1); verbosity = Silent())
+        tight = reconstruct(acq_pf, POCS(; maxit = 200, tol = 0.0); verbosity = Silent())
+        @test size(loose) == size(tight)
+        @test norm(loose - tight) > 0
+
+        # `PhaseConstrained`'s CG length was hardcoded at 25; it is now a field.
+        pc_short = reconstruct(acq_pf, PhaseConstrained(; maxit = 1); verbosity = Silent())
+        pc_long = reconstruct(acq_pf, PhaseConstrained(; maxit = 25); verbosity = Silent())
+        @test norm(pc_short - pc_long) > 0
+    end
+
+    @testset "SPIRiT forwards maxit through lowering" begin
+        mask = falses(Nx, Ny)
+        mask[:, 1:2:end] .= true
+        mask[:, 11:22] .= true
+        acq_us = simulate_acquisition(
+            img,
+            AcquisitionInfo(
+                nothing; is3D = false, image_size = (Nx, Ny), sensitivity_maps = smaps,
+                subsampling = mask,
+            )
+        )
+        lowered = lower(SPIRiT(; calib_size = (16, 12), maxit = 3, iterative = true), acq_us)
+        @test lowered isa IterativeReconstruction
+        @test lowered.maxit == 3
+    end
+
+    @testset "one progress bar per reconstruct" begin
+        cases = (
+            (acq, DirectReconstruction(), false),                          # indeterminate indicator
+            (acq_pf, POCS(; maxit = 5, tol = 0.0), true),                  # determinate
+            (acq_pf, PhaseConstrained(; maxit = 5), true),                 # determinate
+            (acq, IterativeReconstruction(Tikhonov(0.01f0); maxit = 5, tol = 0), true),
+        )
+        for (src, method, determinate) in cases
+            io = IOBuffer()
+            reconstruct(src, method; verbosity = ProgressBar(output = io, dt = 0.0))
+            s = String(take!(io))
+            @test !isempty(s)
+            # One meter draws one trailing newline when it is finished.
+            @test count(==('\n'), s) == 1
+            determinate && @test occursin("100%", s)
+        end
+    end
+
+    @testset "decomposed run gets a slice-level bar" begin
+        nslices = 3
+        ksp_ms = repeat(unname(acq.kspace_data), 1, 1, 1, nslices)
+        smaps_ms = repeat(smaps, 1, 1, 1, nslices)
+        acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
+        io = IOBuffer()
+        x = reconstruct(
+            acq_ms, IterativeReconstruction(Tikhonov(0.01f0); maxit = 3);
+            verbosity = ProgressBar(output = io, dt = 0.0),
+        )
+        s = String(take!(io))
+        @test size(x) == (Nx, Ny, nslices)
+        # The slice bar outranks the per-method bar, so there is still exactly one meter.
+        @test count(==('\n'), s) == 1
+        @test occursin("100%", s)
+    end
 end

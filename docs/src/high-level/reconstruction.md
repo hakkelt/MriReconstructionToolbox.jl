@@ -82,31 +82,40 @@ phantom = rand(ComplexF32, 64, 64)
 data = simulate_acquisition(phantom, acq_under)
 
 # Reconstruct with L2 regularization
-x_tikhonov = reconstruct(data, IterativeReconstruction(Tikhonov(0.01)); maxit=20, verbose=false)
+x_tikhonov = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 20); verbosity = Silent())
 println("Tikhonov reconstruction completed")
 ```
 
 ## Configuration Control
 
-The `Config` struct centralizes execution parameters such as iterations, tolerances, normalization, and threading. You can pass configuration either as a `Config` object or as keyword arguments.
+There are two separate places a parameter can live, and which one it belongs to is decided by
+one question: *does it mean anything without knowing the method?*
+
+- **Method parameters** — `maxit`, `tol`, `algorithm`, and everything else only a particular
+  method can act on — go to that method's constructor. They are keyword-only there.
+- **Run settings** — normalization, output, threading, decomposition — go to `Config`, or
+  straight to `reconstruct` as keywords.
+
+Passing `maxit`, `tol` or `algorithm` to `reconstruct` throws rather than being silently
+ignored, which is what happened before this split.
 
 ```@example recon
-# Method 1: Keyword arguments
-x1 = reconstruct(data; maxit=50, tol=1e-5, verbose=false)
+# Method 1: keyword arguments for the run, constructor arguments for the method
+x1 = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 50, tol = 1e-5); verbosity = Silent())
 nothing # hide
 ```
 
 ```@example recon
-# Method 2: Config object
-config = Config(maxit=50, tol=1e-5, verbose=false)
-x2 = reconstruct(data; config=config)
+# Method 2: a Config object, reusable across methods
+config = Config(; verbosity = Silent(), normalization = BartScaling())
+x2 = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 50, tol = 1e-5); config = config)
 nothing # hide
 ```
 
 ```@example recon
-# Method 3: Override config fields with keywords
-config_base = Config(maxit=100, verbose=false)
-x3 = reconstruct(data; config=config_base, maxit=25, verbose=false)  # Uses maxit=25
+# Method 3: override config fields with keywords
+config_base = Config(; verbosity = Verbose())
+x3 = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 25); config = config_base, verbosity = Silent())
 nothing # hide
 ```
 
@@ -115,13 +124,38 @@ nothing # hide
 #### Iteration Control
 
 ```@example recon
-# Basic iteration parameters
-Config(
-    maxit=100,     # Maximum iterations
-    tol=1e-4,      # Stopping tolerance
-    freq=10,       # Print progress every 10 iterations
-    verbose=true   # Enable logging
+# Iteration parameters belong to the method
+IterativeReconstruction(
+    Tikhonov(0.01);
+    maxit = 100,          # Maximum iterations
+    tol = 1e-4,           # Relative stopping tolerance (`nothing` defers to the algorithm)
+    algorithm = FISTA(),  # Solver
 )
+```
+
+`tol` is relative: the absolute threshold handed to the solver is
+`max(10*eps, tol * maximum(abs, x₀))`. Setting `maxit = nothing` or `tol = nothing` leaves the
+corresponding parameter to the `algorithm` itself, so
+`IterativeReconstruction(reg; algorithm = FISTA(maxit = 500), maxit = nothing)` really runs 500
+iterations.
+
+#### Output
+
+```@example recon
+# Three mutually exclusive output modes
+reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 5); verbosity = Silent())      # nothing at all
+reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 5); verbosity = ProgressBar()) # one progress bar
+reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 5); verbosity = Verbose(; freq = 1))  # textual log
+nothing # hide
+```
+
+`verbosity` also accepts `true`/`false` and the symbols `:verbose`, `:progress`, `:silent`.
+
+```@docs
+Verbosity
+Silent
+ProgressBar
+Verbose
 ```
 
 #### Normalization
@@ -145,7 +179,7 @@ Specify optimization algorithms via `IterativeReconstruction`:
 
 ```@example recon
 # Single algorithm
-x_fista = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); algorithm=FISTA()); maxit=30, verbose=false)
+x_fista = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); algorithm=FISTA(), maxit = 30); verbosity = Silent())
 nothing # hide
 ```
 
@@ -155,11 +189,7 @@ x_auto = reconstruct(
     data,
     IterativeReconstruction(
         Tikhonov(0.01);
-        algorithm=(CG(), FISTA(), ADMM())
-    );
-    maxit=50,
-    verbose=false
-)
+        algorithm=(CG(), FISTA(), ADMM()), maxit = 50); verbosity = Silent())
 nothing # hide
 ```
 
@@ -178,10 +208,7 @@ Combine multiple regularization terms for composite regularization:
 # Wavelet sparsity + Total Variation
 x_composite = reconstruct(
     data,
-    IterativeReconstruction(L1Wavelet2D(0.005), TotalVariation2D(0.002));
-    maxit=50,
-    verbose=false
-)
+    IterativeReconstruction(L1Wavelet2D(0.005), TotalVariation2D(0.002); maxit = 50); verbosity = Silent())
 nothing # hide
 ```
 
@@ -195,16 +222,12 @@ Provide a custom initial estimate via `x₀`:
 
 ```@example recon
 # Use direct reconstruction as initial guess
-x_init = reconstruct(data; verbose=false)
+x_init = reconstruct(data; verbosity = Silent())
 
 # Refine with regularization
 x_refined = reconstruct(
     data,
-    IterativeReconstruction(L1Wavelet2D(0.005));
-    x₀=x_init,
-    maxit=30,
-    verbose=false
-)
+    IterativeReconstruction(L1Wavelet2D(0.005); maxit = 30); x₀=x_init, verbosity = Silent())
 nothing # hide
 ```
 
@@ -218,10 +241,7 @@ By default, the encoding operator is normalized to unit norm for stable step siz
 # Disable operator normalization
 x_unnorm = reconstruct(
     data,
-    IterativeReconstruction(Tikhonov(0.01); disable_operator_normalization=true);
-    maxit=20,
-    verbose=false
-)
+    IterativeReconstruction(Tikhonov(0.01); disable_operator_normalization=true, maxit = 20); verbosity = Silent())
 println("Unnormalized reconstruction completed")
 ```
 
@@ -244,16 +264,12 @@ Control whether the output is scaled back to the original data range:
 
 ```@example recon
 # Standard (output is inverse-scaled)
-x_scaled = reconstruct(data, IterativeReconstruction(Tikhonov(0.01)); maxit=20, verbose=false)
+x_scaled = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 20); verbosity = Silent())
 
 # Keep scaled output
 x_unscaled = reconstruct(
     data,
-    IterativeReconstruction(Tikhonov(0.01));
-    disable_inverse_scale_output=true,
-    maxit=20,
-    verbose=false
-)
+    IterativeReconstruction(Tikhonov(0.01); maxit = 20); disable_inverse_scale_output=true, verbosity = Silent())
 
 println("Scaled max: ", maximum(abs, x_scaled))
 println("Unscaled max: ", maximum(abs, x_unscaled))
@@ -272,7 +288,7 @@ smaps_ms = rand(ComplexF32, nx, ny, nc, nslices)
 acq_ms = AcquisitionInfo(ksp_ms; is3D=false, sensitivity_maps=smaps_ms)
 
 # Automatically decomposes over slice dimension
-x_slices = reconstruct(acq_ms; maxit=10, verbose=false)
+x_slices = reconstruct(acq_ms; verbosity = Silent())
 println("Reconstructed slices: ", size(x_slices))
 ```
 
@@ -286,11 +302,7 @@ To disable decomposition (e.g., for debugging):
 
 ```@example recon
 x_no_decomp = reconstruct(
-    acq_ms;
-    disable_problem_decomposition=true,
-    maxit=10,
-    verbose=false
-)
+    acq_ms; disable_problem_decomposition=true, verbosity = Silent())
 println("Sequential reconstruction completed")
 ```
 
@@ -305,12 +317,9 @@ Replace the default logging function:
 messages = String[]
 custom_print(args...) = push!(messages, string(args...))
 
-config_custom = Config(
-    printfunc=custom_print,
-    verbose=true
-)
+config_custom = Config(; verbosity = Verbose(; printfunc = custom_print))
 
-x_custom = reconstruct(data, IterativeReconstruction(Tikhonov(0.01)); config=config_custom, maxit=5)
+x_custom = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 5); config=config_custom)
 println("Captured ", length(messages), " log messages")
 println("First message: ", messages[1])
 ```
@@ -331,7 +340,7 @@ smaps_named = NamedDimsArray{(:x, :y, :coil)}(
 )
 
 acq_named = AcquisitionInfo(ksp_named; sensitivity_maps=smaps_named)
-x_named = reconstruct(acq_named; verbose=false)
+x_named = reconstruct(acq_named; verbosity = Silent())
 
 println("Output dimensions: ", dimnames(x_named))
 ```

@@ -392,7 +392,7 @@ You can compute the DCF directly using `density_compensation`:
 
 ```julia
 # Compute iterative Pipe-Menon DCF (default)
-acq_dcf = density_compensation(acq; method = PipeMenonDCF(iterations = 20))
+acq_dcf = density_compensation(acq; method = PipeMenonDCF(maxit = 20))
 
 # Or compute geometric Voronoi DCF for 2D trajectories
 acq_vor = density_compensation(acq; method = VoronoiDCF())

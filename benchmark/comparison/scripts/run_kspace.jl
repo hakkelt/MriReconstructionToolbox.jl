@@ -22,7 +22,7 @@ acq_g = CartesianAcquisitionInfo(
 for (meth, cc) in (("GRAPPA (RSS)", RootSumSquares()), ("GRAPPA (Sensitivity)", AdjointSensitivity()))
     println("--> $meth")
     m = GRAPPA(kernel_size = (4, 3), calib_size = (24, 24), coil_combination = cc)
-    t, _, x = time_mrt("K-Space", meth, () -> reconstruct(acq_g, m; verbose = false))
+    t, _, x = time_mrt("K-Space", meth, () -> reconstruct(acq_g, m; verbosity = Silent()))
     push!(results, BenchResult("K-Space", meth, FW, NUM_THREADS, t * 1000, mag_nrmse(x, img_mc), 0.0))
 end
 

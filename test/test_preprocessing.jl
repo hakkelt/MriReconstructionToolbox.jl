@@ -75,8 +75,8 @@ end
     @test dimnames(acq_comp.sensitivity_maps) == (:x, :y, :coil)
 
     # Direct reconstruction from compressed data
-    rec_orig = reconstruct(acq_sim, DirectReconstruction(); verbose = false)
-    rec_comp = reconstruct(acq_comp, DirectReconstruction(); verbose = false)
+    rec_orig = reconstruct(acq_sim, DirectReconstruction(); verbosity = Silent())
+    rec_comp = reconstruct(acq_comp, DirectReconstruction(); verbosity = Silent())
     @test isapprox(rec_comp, rec_orig; rtol = 0.05)
 
     # GeometricCompression
@@ -84,7 +84,7 @@ end
     @test size(C_geom) == (Nv, Nc, Nx)
     @test size(acq_geom.kspace_data, :coil) == Nv
     @test size(acq_geom.sensitivity_maps, :coil) == Nv
-    rec_geom = reconstruct(acq_geom, DirectReconstruction(); verbose = false)
+    rec_geom = reconstruct(acq_geom, DirectReconstruction(); verbosity = Silent())
     @test isapprox(rec_geom, rec_orig; rtol = 0.05)
 end
 
@@ -136,9 +136,9 @@ end
     end
 
     # Verify direct reconstruction magnitude with estimated maps
-    rec_selfcal = reconstruct(acq_selfcal, DirectReconstruction(); verbose = false)
-    rec_adaptive = reconstruct(acq_adaptive, DirectReconstruction(); verbose = false)
-    rec_espirit = reconstruct(acq_espirit, DirectReconstruction(); verbose = false)
+    rec_selfcal = reconstruct(acq_selfcal, DirectReconstruction(); verbosity = Silent())
+    rec_adaptive = reconstruct(acq_adaptive, DirectReconstruction(); verbosity = Silent())
+    rec_espirit = reconstruct(acq_espirit, DirectReconstruction(); verbosity = Silent())
 
     @test isapprox(abs.(unname(rec_selfcal))[mask], abs.(unname(img))[mask]; rtol = 0.15)
     @test isapprox(abs.(unname(rec_adaptive))[mask], abs.(unname(img))[mask]; rtol = 0.15)

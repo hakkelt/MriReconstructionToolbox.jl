@@ -265,7 +265,7 @@ acq = simulate_acquisition(img_true, acq)
 # acq.kspace_data is now NamedDimsArray{(:kx, :ky, :coil)}
 
 # 5. Reconstruct
-img_recon = reconstruct(acq, IterativeReconstruction(L1Wavelet2D(5e-3)), verbose=false)
+img_recon = reconstruct(acq, IterativeReconstruction(L1Wavelet2D(5e-3)); verbosity = Silent())
 
 # 6. Compare
 dimnames(img_recon)  # (:x, :y) - preserved from input
@@ -297,7 +297,7 @@ acq = simulate_acquisition(img_true, acq)
 dimnames(acq.kspace_data)
 
 # Reconstruct with temporal regularization
-img_recon = reconstruct(acq, verbose=false)
+img_recon = reconstruct(acq; verbosity = Silent())
 
 # Result preserves batch dimension
 dimnames(img_recon)  # (:x, :y, :cardiac_phase)
@@ -324,7 +324,7 @@ smaps = NamedDimsArray{(:x, :y, :coil)}(smaps_data)
 acq = AcquisitionInfo(ksp; sensitivity_maps=smaps)
 
 # Reconstruct
-img = reconstruct(acq, verbose=false)
+img = reconstruct(acq; verbosity = Silent())
 
 # Result is (:x, :y, :z)
 dimnames(img)
