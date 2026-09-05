@@ -183,6 +183,39 @@ jim(p1, p2, p3, p4; layout=(2,2), size=(800,700))
 savefig("l1wavelet2d_options.png"); nothing # hide
 ```
 
+### Contourlet Domain Regularization
+
+#### Contourlet (NSCT) Sparsity
+
+Promotes sparsity in the Nonsubsampled Contourlet Transform (NSCT) domain -- unlike wavelets,
+contourlets capture directional/curve-like structure (edges, vessels) with fewer coefficients:
+
+```@docs
+L1Contourlet
+```
+
+**When to use:**
+- Images dominated by directional edges or elongated structures (vasculature, fibrous tissue)
+- As an alternative to [`L1Wavelet2D`](@ref) when wavelet's isotropic basis under-represents oriented features
+
+**Parameters:**
+- `λ`: Regularization strength (scalar only, try 1e-3 to 1e-2)
+- `params`: `ContourletParams` controlling pyramid levels/directions (default: `J=3`, `parabolic_levels(3)`)
+
+**Example:**
+```@example imports
+reg = L1Contourlet(1e-3)
+op = get_operator(reg, example_img)
+transformed = op * x_noisy
+p1 = jim(transformed[:, :, 1]; title="Contourlet Coarse Band")
+img = reconstruct(data, IterativeReconstruction(reg), verbose=false)
+p2 = jim(img; title="Contourlet Reconstruction")
+jim(p1, p2; layout=(1,2), size=(800,400))
+savefig("contourlet_regularization.png"); nothing # hide
+```
+
+![contourlet_regularization.png](contourlet_regularization.png)
+
 ![l1wavelet2d_options.png](l1wavelet2d_options.png)
 
 #### 3D Wavelet Sparsity

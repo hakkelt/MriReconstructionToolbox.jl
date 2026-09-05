@@ -49,6 +49,7 @@ const HAS_DSP = _load_local_subpackage(:DSPOperators, "DSPOperators")
 const HAS_FFTW = _load_local_subpackage(:FFTWOperators, "FFTWOperators")
 const HAS_NFFT = _load_local_subpackage(:NFFTOperators, "NFFTOperators")
 const HAS_WAVELET = _load_local_subpackage(:WaveletOperators, "WaveletOperators")
+const HAS_CONTOURLET = _load_local_subpackage(:ContourletOperators, "ContourletOperators")
 
 const SUITE = BenchmarkGroup()
 
@@ -175,6 +176,8 @@ const BENCH_DSP_XCORR_N = 32_768
 const BENCH_DSP_MIMO_SHAPE = (16_384, 2)
 const BENCH_DFT_SHAPE = (128, 128)
 const BENCH_WAVELET_N = 131_072
+const BENCH_CONTOURLET_N = 256
+const BENCH_CONTOURLET_J = 3
 const BENCH_NFFT_IMAGE = (48, 48)
 const BENCH_NFFT_NSAMP = 48
 const BENCH_NFFT_NPROF = 24
@@ -252,6 +255,7 @@ dsp = HAS_DSP ? (SUITE["dspoperators"] = BenchmarkGroup()) : nothing
 fftw = HAS_FFTW ? (SUITE["fftwoperators"] = BenchmarkGroup()) : nothing
 nfft = HAS_NFFT ? (SUITE["nfftoperators"] = BenchmarkGroup()) : nothing
 wavelets = HAS_WAVELET ? (SUITE["waveletoperators"] = BenchmarkGroup()) : nothing
+contourlets = HAS_CONTOURLET ? (SUITE["contourletoperators"] = BenchmarkGroup()) : nothing
 normal = SUITE["normaloperators"] = BenchmarkGroup()
 
 
