@@ -107,9 +107,9 @@ as `x`. If `λ` is zero, the problem reduces to a least-squares problem:
 
 **Example:**
 ```@example imports
-reconstruct(data, IterativeReconstruction(Tikhonov(1e-4); algorithm = CGNR(maxit=2)), verbose=false) # hide
+reconstruct(data, IterativeReconstruction(Tikhonov(1e-4); algorithm = CGNR(), maxit = 2); verbosity = Silent()) # hide
 GC.gc() # hide
-img = reconstruct(data, IterativeReconstruction(Tikhonov(1e-4); algorithm = CGNR(maxit=20)));
+img = reconstruct(data, IterativeReconstruction(Tikhonov(1e-4); algorithm = CGNR(), maxit = 20));
 nothing # hide
 ```
 
@@ -157,9 +157,9 @@ where `f` is smooth.
 
 **Example:**
 ```@example imports
-reconstruct(data, IterativeReconstruction(L1Wavelet2D(5e-3); algorithm = FISTA(maxit=2)), verbose=false) # hide
+reconstruct(data, IterativeReconstruction(L1Wavelet2D(5e-3); algorithm = FISTA(), maxit = 2); verbosity = Silent()) # hide
 GC.gc() # hide
-img = reconstruct(data, IterativeReconstruction(L1Wavelet2D(5e-3); algorithm = FISTA(maxit=100)));
+img = reconstruct(data, IterativeReconstruction(L1Wavelet2D(5e-3); algorithm = FISTA(), maxit = 100));
 nothing # hide
 ```
 
@@ -222,9 +222,9 @@ for their specific update rules and references.
 ```@example imports
 # Multiple regularizers
 reg = (L1Wavelet2D(5e-3), TotalVariation2D(1e-3))
-reconstruct(data, IterativeReconstruction(reg...; algorithm = ADMM(maxit=2)), verbose=false) # hide
+reconstruct(data, IterativeReconstruction(reg...; algorithm = ADMM(), maxit = 2); verbosity = Silent()) # hide
 GC.gc() # hide
-img = reconstruct(data, IterativeReconstruction(reg...; algorithm = ADMM(maxit=50)));
+img = reconstruct(data, IterativeReconstruction(reg...; algorithm = ADMM(), maxit = 50));
 nothing # hide
 ```
 
@@ -266,11 +266,19 @@ Typical ranges:
 **Strategy:**
 ```julia
 # Start with more iterations to see convergence behavior
-img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(maxit=200)), verbose=true)
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(), maxit = 200); verbosity = Verbose())
 # Check output to see when convergence plateaus
 
 # Then use fewer iterations in production
-img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(maxit=80)))
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(), maxit = 80))
+```
+
+`maxit` and `tol` on `IterativeReconstruction` take precedence over the same parameters on the
+algorithm object. To let the algorithm's own values through instead, set the method's to
+`nothing`:
+
+```julia
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(maxit = 200), maxit = nothing))
 ```
 
 ### Convergence Tolerance
@@ -279,14 +287,17 @@ Controls early stopping:
 
 ```julia
 # Stricter convergence
-img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(maxit=200, tol=1e-6)))
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(), maxit = 200, tol = 1e-6))
 
 # Looser convergence (faster but less accurate)
-img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(maxit=200, tol=1e-3)))
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(), maxit = 200, tol = 1e-3))
 
 # Disable early stopping
-img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(maxit=100, tol=0)))
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(), maxit = 100, tol = 0))
 ```
+
+MRT's `tol` is **relative**: the absolute threshold handed to the solver is
+`max(10*eps, tol * maximum(abs, x₀))`, unlike `ProximalAlgorithms`' absolute `tol`.
 
 **Practical tip:** Default `tol=1e-4` is usually good. Tighten to 1e-5 or 1e-6 if you need higher accuracy.
 
@@ -296,13 +307,16 @@ Track convergence:
 
 ```julia
 # Show progress every iteration
-img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithm); verbose=true, freq=1)
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithm); verbosity = Verbose(; freq = 1))
 
 # Show progress every 10 iterations
-img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithm); verbose=true, freq=10)
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithm); verbosity = Verbose(; freq = 10))
+
+# A progress bar instead of the log
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithm); verbosity = ProgressBar())
 
 # No output
-img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithm); verbose=false)
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithm); verbosity = Silent())
 ```
 
 **What to look for:**

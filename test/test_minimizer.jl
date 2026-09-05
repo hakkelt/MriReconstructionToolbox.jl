@@ -143,7 +143,7 @@ end
     proj_fast = MriReconstructionToolbox._project_hard_consistency(𝒜, y, x_test, 50, 1.0e-6)
 
     # Inner-CG projection
-    v_cg = MriReconstructionToolbox._cg_solve_AAc(𝒜, 𝒜 * x_test - y; inner_maxit = 100, inner_tol = 1.0e-6)
+    v_cg = MriReconstructionToolbox._cg_solve_AAc(𝒜, 𝒜 * x_test - y; maxit = 100, tol = 1.0e-6)
     proj_cg = x_test .- 𝒜' * v_cg
 
     @test isapprox(proj_fast, proj_cg; rtol = 1.0e-4, atol = 1.0e-5)
@@ -166,7 +166,7 @@ end
         algorithm = DouglasRachford(maxit = 50, tol = 1.0e-5),
         fidelity = HardConsistency(),
     )
-    rec = reconstruct(acq_data, method; verbose = false)
+    rec = reconstruct(acq_data, method; verbosity = Silent())
     @test isapprox(rec, x_true; rtol = 1.0e-4, atol = 1.0e-4)
 end
 
@@ -186,7 +186,7 @@ end
             fidelity = L2Loss(),
             disable_normalop_optimization = disable_normalop,
         )
-        rec = reconstruct(acq_data, method; verbose = false)
+        rec = reconstruct(acq_data, method; verbosity = Silent())
         @test isapprox(rec, x_true; rtol = 1.0e-4, atol = 1.0e-4)
     end
 end
@@ -218,7 +218,7 @@ end
     # Incompatible single solver (DouglasRachford with L2Loss and 2 L1 terms) throws informative ArgumentError
     method = IterativeReconstruction(L1Image(0.1), L1Image(0.2); algorithm = DouglasRachford(), fidelity = L2Loss())
     err = try
-        reconstruct(acq_data, method; verbose = false)
+        reconstruct(acq_data, method; verbosity = Silent())
         nothing
     catch e
         e

@@ -105,7 +105,7 @@ end
         algorithm = CGNR(maxit = 20, tol = 1.0e-6),
         signal_model = TemporalBasis(Φ_eye; time_dim = :time),
     )
-    rec_eye = reconstruct(acq_data, method_eye; verbose = false)
+    rec_eye = reconstruct(acq_data, method_eye; verbosity = Silent())
     @test isapprox(rec_eye, img_true; rtol = 1.0e-4, atol = 1.0e-4)
 
     # 2. Permutation basis: reconstruct with permuted basis
@@ -115,7 +115,7 @@ end
         algorithm = CGNR(maxit = 20, tol = 1.0e-6),
         signal_model = TemporalBasis(Φ_perm; time_dim = :time),
     )
-    rec_perm = reconstruct(acq_data, method_perm; verbose = false)
+    rec_perm = reconstruct(acq_data, method_perm; verbosity = Silent())
     @test isapprox(rec_perm, img_true; rtol = 1.0e-4, atol = 1.0e-4)
 end
 
@@ -152,7 +152,7 @@ end
     @test unname(y) ≈ man
 
     # 2. full reconstruction over an extra batch dim (problem decomposition + shape-changing model)
-    rec = reconstruct(acq, method; verbose = false)
+    rec = reconstruct(acq, method; verbosity = Silent())
     @test size(rec) == (Nx, Ny, Nt, Nsl)
     @test dimnames(rec) == (:x, :y, :time, :slice)
     @test norm(unname(rec) .- imgs) / norm(imgs) < 1.0e-3

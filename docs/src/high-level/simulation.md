@@ -46,7 +46,7 @@ acq = AcquisitionInfo(is3D=false,
 acq_with_data = simulate_acquisition(img, acq)
 
 # 5. Reconstruct and compare
-img_recon = reconstruct(acq_with_data, IterativeReconstruction(L1Wavelet2D(5e-3)), verbose=false)
+img_recon = reconstruct(acq_with_data, IterativeReconstruction(L1Wavelet2D(5e-3)); verbosity = Silent())
 nothing # hide
 ```
 

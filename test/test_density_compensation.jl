@@ -31,7 +31,7 @@ end
     )
     @test isnothing(acq.dcf)
 
-    acq_dcf = density_compensation(acq; method = PipeMenonDCF(iterations = 15))
+    acq_dcf = density_compensation(acq; method = PipeMenonDCF(maxit = 15))
     @test !isnothing(acq_dcf.dcf)
     @test size(acq_dcf.dcf) == (nsamp, nspokes)
     @test eltype(acq_dcf.dcf) === Float32
@@ -117,14 +117,14 @@ end
         image_size = (nx, ny),
     )
 
-    acq_pm = density_compensation(acq; method = PipeMenonDCF(iterations = 20))
+    acq_pm = density_compensation(acq; method = PipeMenonDCF(maxit = 20))
     @test !isnothing(acq_pm.dcf)
-    rec_pm = reconstruct(acq_pm, DirectReconstruction(); verbose = false)
+    rec_pm = reconstruct(acq_pm, DirectReconstruction(); verbosity = Silent())
     @test size(rec_pm) == (nx, ny)
 
     acq_vor = density_compensation(acq; method = VoronoiDCF())
     @test !isnothing(acq_vor.dcf)
-    rec_vor = reconstruct(acq_vor, DirectReconstruction(); verbose = false)
+    rec_vor = reconstruct(acq_vor, DirectReconstruction(); verbosity = Silent())
     @test size(rec_vor) == (nx, ny)
 
     # Both DCF reconstructions should correlate highly with ground truth

@@ -43,8 +43,15 @@ IterativeReconstruction(
     exact_opnorm = false,
     disable_operator_normalization = false,
     disable_normalop_optimization = false,
+    maxit = 100,
+    tol = 1e-4,
 )
 ```
+
+`maxit` and `tol` are keyword-only, as is every other tuning parameter: regularization terms are
+the only positional arguments. `tol` is *relative* — the absolute threshold given to the solver is
+`max(10*eps, tol * maximum(abs, x₀))`. Setting either to `nothing` defers to the `algorithm`'s own
+value, which is how `algorithm = FISTA(maxit = 500)` becomes reachable.
 
 #### Signal Models
 
@@ -60,7 +67,7 @@ The `signal_model` keyword sets how the optimization variable maps to the image:
 #### Data Fidelity Terms
 
 - `L2Loss()`: Standard $\ell_2$-norm data fidelity $\frac{1}{2}\|\mathcal{A}x - y\|_2^2$. Used by default.
-- `HardConsistency(; inner_maxit = 50, inner_tol = 1e-6)`: Hard data consistency constraint indicator $\{x \mid \mathcal{A}x = y\}$. When $\mathcal{A}\mathcal{A}^*$ is diagonal (single-coil Cartesian, or a `KSpaceToImage` signal model), the projection is computed directly in closed form. Otherwise, an inner Conjugate Gradient iteration is evaluated. Ideal for pairing with `DouglasRachford()` or POCS-style projections.
+- `HardConsistency(; maxit = 50, tol = 1e-6)`: Hard data consistency constraint indicator $\{x \mid \mathcal{A}x = y\}$. When $\mathcal{A}\mathcal{A}^*$ is diagonal (single-coil Cartesian, or a `KSpaceToImage` signal model), the projection is computed directly in closed form. Otherwise, an inner Conjugate Gradient iteration is evaluated. Ideal for pairing with `DouglasRachford()` or POCS-style projections.
 - `NoFidelity()`: Omits the data consistency term completely (useful for unconstrained optimization or custom models).
 
 #### Solver Selection and Configuration

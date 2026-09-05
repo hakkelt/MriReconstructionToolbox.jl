@@ -129,7 +129,7 @@ data = simulate_acquisition(x, acq_info)
 #### Direct Reconstruction via Adjoint
 
 ```@example imports
-reconstruct(data, verbose=false); # hide
+reconstruct(data; verbosity = Silent()); # hide
 x̂_direct = reconstruct(data)
 p1 = jim(x̂_direct; title = "Direct reconstruction")
 p2 = jim(abs.(x̂_direct - xᵍᵗ); title = "Error map")
@@ -143,8 +143,8 @@ savefig("direct_reconstruction.png"); nothing # hide
 
 ```@example imports
 reg = L1Wavelet2D(0.01f0)
-reconstruct(data, IterativeReconstruction(reg); maxit=3, verbose=false) # hide
-x̂_cs = reconstruct(data, IterativeReconstruction(reg); maxit=50)
+reconstruct(data, IterativeReconstruction(reg; maxit = 3); verbosity = Silent()) # hide
+x̂_cs = reconstruct(data, IterativeReconstruction(reg; maxit = 50))
 p1 = jim(x̂_cs; title = "CS Reconstruction")
 p2 = jim(abs.(x̂_cs - xᵍᵗ); title = "Error map")
 jim(p1, p2; layout = (1, 2), size = (700, 300))

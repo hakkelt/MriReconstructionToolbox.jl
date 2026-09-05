@@ -23,9 +23,8 @@ function build_base(; N = 128, Nc = 8)
             run = () -> reconstruct(
                 acq_mc,
                 IterativeReconstruction(
-                    regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 1.0e-14)
-                );
-                tol = 1.0e-14, maxit = 10, verbose = false,
+                    regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 1.0e-14); maxit = 10, tol = 1.0e-14
+                ); verbosity = Silent()
             ),
         ),
     ]
@@ -57,7 +56,7 @@ function build_sparsity(; N = 128, Nc = 8)
             (
                 category = "Sparsity", method = name, reference = img_mc,
                 run = () -> reconstruct(
-                    acq_reg, IterativeReconstruction(regularization = reg); maxit = it, tol = 1.0e-5, verbose = false,
+                    acq_reg, IterativeReconstruction(regularization = reg; maxit = it, tol = 1.0e-5); verbosity = Silent()
                 ),
             ),
         )
@@ -93,7 +92,7 @@ function build_dynamic(; Nd = 64, Ncd = 4, Td = 8)
             (
                 category = "Dynamic", method = name, reference = img_dyn,
                 run = () -> reconstruct(
-                    acq_dyn, IterativeReconstruction(regularization = reg); maxit = 20, tol = 1.0e-4, verbose = false,
+                    acq_dyn, IterativeReconstruction(regularization = reg; maxit = 20, tol = 1.0e-4); verbosity = Silent()
                 ),
             ),
         )
@@ -124,7 +123,7 @@ function build_kspace(; N = 128, Nc = 8)
             (
                 category = "K-Space", method = name, reference = img_mc,
                 run = () -> reconstruct(
-                    acq_g, GRAPPA(kernel_size = (4, 3), calib_size = (24, 24), coil_combination = cc); verbose = false,
+                    acq_g, GRAPPA(kernel_size = (4, 3), calib_size = (24, 24), coil_combination = cc); verbosity = Silent()
                 ),
             ),
         )

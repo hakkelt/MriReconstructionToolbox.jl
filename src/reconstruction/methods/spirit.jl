@@ -230,10 +230,13 @@ function lower(method::SPIRiT, acq::CartesianAcquisitionInfo)
         signal_model = KSpaceToImage(method.coil_combination),
         fidelity = HardConsistency(),
         algorithm = FISTA(adaptive = true),
+        maxit = method.maxit,
     )
 end
 
-function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::SPIRiT)
+progress_total(method::SPIRiT, acq_data) = method.maxit
+
+function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::SPIRiT; progress = nothing)
     raw_ksp = _get_full_kspace(acq)
     Nx, Ny = size(raw_ksp, 1), size(raw_ksp, 2)
 
@@ -250,6 +253,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::SPIRiT)
     for _ in 1:(method.maxit)
         mul!(img_minus_g, op, x_ksp)
         x_ksp = ifelse.(mask_3d, raw_ksp, x_ksp .- img_minus_g)
+        isnothing(progress) || progress()
     end
 
     return _kspace_to_image(x_ksp, method.coil_combination, acq.sensitivity_maps, acq)

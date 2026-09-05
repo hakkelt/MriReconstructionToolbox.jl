@@ -41,10 +41,7 @@ img = reconstruct(
     acq,
     IterativeReconstruction(
         Component(:smooth, Tikhonov(0.01)),
-        Component(:sparse, L1Image(0.05)),
-    );
-    maxit = 30, verbose = false,
-)
+        Component(:sparse, L1Image(0.05)); maxit = 30); verbosity = Silent())
 
 println(typeof(img))
 println("Components: ", keys(components(img)))
@@ -85,10 +82,7 @@ img = reconstruct(
     acq_dynamic,
     IterativeReconstruction(
         Component(:lowrank, LowRank(5e-2; time_dim = 3)),
-        Component(:sparse, TemporalTotalVariation(2e-2; time_dim = 3)),
-    );
-    maxit = 100,
-)
+        Component(:sparse, TemporalTotalVariation(2e-2; time_dim = 3)); maxit = 100))
 
 background = img.components.lowrank   # e.g. static anatomy
 dynamics   = img.components.sparse    # e.g. contrast uptake, motion
@@ -144,7 +138,7 @@ regularization API:
 
 ```@example imgdecomp
 try
-    reconstruct(acq, IterativeReconstruction(Component(:only, L1Image(0.05))); verbose = false)
+    reconstruct(acq, IterativeReconstruction(Component(:only, L1Image(0.05))); verbosity = Silent())
 catch e
     println(e)
 end
@@ -162,10 +156,7 @@ img_multi = reconstruct(
     acq,
     IterativeReconstruction(
         Component(:structured, L1Wavelet2D(0.01), TotalVariation2D(0.005)),
-        Component(:sparse, L1Image(0.05)),
-    );
-    maxit = 20, verbose = false,
-)
+        Component(:sparse, L1Image(0.05)); maxit = 20); verbosity = Silent())
 nothing # hide
 ```
 
@@ -186,16 +177,12 @@ L+S/RPCA warm start. Override this with `x₀` as a `Tuple` (component order) or
 `NamedTuple` (by component name):
 
 ```@example imgdecomp
-x̂ = reconstruct(acq; verbose = false)
+x̂ = reconstruct(acq; verbosity = Silent())
 img_warm = reconstruct(
     acq,
     IterativeReconstruction(
         Component(:smooth, Tikhonov(0.01)),
-        Component(:sparse, L1Image(0.05)),
-    );
-    x₀ = (smooth = x̂, sparse = zero(x̂)),
-    maxit = 30, verbose = false,
-)
+        Component(:sparse, L1Image(0.05)); maxit = 30); x₀ = (smooth = x̂, sparse = zero(x̂)), verbosity = Silent())
 nothing # hide
 ```
 
@@ -244,10 +231,7 @@ img_ms = reconstruct(
     acq_ms,
     IterativeReconstruction(
         Component(:smooth, Tikhonov(0.01)),
-        Component(:sparse, L1Image(0.05)),
-    );
-    maxit = 10, verbose = false,
-)
+        Component(:sparse, L1Image(0.05)); maxit = 10); verbosity = Silent())
 println(size(img_ms))
 println(size(img_ms.components.smooth))
 ```

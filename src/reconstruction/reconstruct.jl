@@ -12,16 +12,18 @@ Performs MRI reconstruction from k-space data using the specified reconstruction
 
 # Keyword arguments
 - `x₀::Union{Nothing,AbstractArray,Tuple,NamedTuple}=nothing`: Optional initial guess for the image (default is 𝒜' * y).
+- `config::Config`: an existing [`Config`](@ref) to extend; the keywords below override its fields.
 - `normalization::Normalization = BartScaling()`: scaling applied to operators/data (see also `NoScaling`, `MeasurementBasedScaling`, `FixedScaling`)
-- `tol::Float64 = 1e-4`: stopping tolerance for iterative algorithms
-- `maxit::Int = 100`: maximum iterations for the chosen solver
-- `freq::Union{Nothing,Int} = nothing`: progress print frequency (iterations)
-- `verbose::Bool = true`: enable/disable logging output
+- `verbosity::Verbosity = Verbose()`: output mode — [`Silent`](@ref), [`ProgressBar`](@ref) or [`Verbose`](@ref)
 - `threaded::Bool = (Threads.nthreads() > 1)`: enable threaded execution when available
 - `decomposition_executor::Union{Nothing,ReconstructionExecutor} = nothing`: override executor for decomposition
 - `disable_inverse_scale_output::Bool = false`: skip rescaling the final output
 - `disable_problem_decomposition::Bool = false`: disable automatic problem decomposition
-- `printfunc::Function = println`: custom logging function
+
+Iteration control is *not* accepted here: `maxit`, `tol` and `algorithm` are properties of the
+method and are passed to its constructor, e.g.
+`reconstruct(acq, IterativeReconstruction(reg; maxit = 50, tol = 1e-6))` or
+`reconstruct(acq, POCS(; maxit = 20))`. Passing them to `reconstruct` throws.
 
 # Returns
 - The reconstructed image (NamedDimsArray if input is NamedDimsArray, otherwise standard Array).
@@ -38,7 +40,7 @@ function reconstruct(
     check_applicable(method, acq_data)
     x = _reconstruct_dispatch(acq_data, method, x₀, config)
     t_end = time()
-    config.verbose && config.printfunc("Total time: ", format_time(t_end - t_start))
+    log_message(config.verbosity, "Total time: ", format_time(t_end - t_start))
     return x
 end
 
@@ -60,21 +62,30 @@ end
 function _reconstruct_dispatch_plain(acq_data, method::AbstractReconstructionMethod, x₀, config)
     decomposition_plan = get_problem_decomposition_plan(acq_data, method, config)
     x = if isnothing(decomposition_plan)
-        config = maybe_disable_undecomposed_threading(config, method, acq_data)
-        reconstruction_result = nothing
-        @conditionally_enable_threading config.threaded begin
-            reconstruction_result = _reconstruct(acq_data, method, x₀, config)
+        # Undecomposed: this is where the one progress bar per `reconstruct` call is opened.
+        # `progress_total` decides whether it is a determinate bar over the method's own loop or
+        # the indeterminate stage indicator driven by the `@step` brackets.
+        with_progress(config.verbosity, progress_total(method, acq_data)) do verbosity
+            conf = maybe_disable_undecomposed_threading(
+                Config(config; verbosity), method, acq_data
+            )
+            reconstruction_result = nothing
+            @conditionally_enable_threading conf.threaded begin
+                reconstruction_result = _reconstruct(acq_data, method, x₀, conf)
+            end
+            first(reconstruction_result)
         end
-        first(reconstruction_result)
     else
         if !isnothing(x₀)
             @argcheck size(x₀) == decomposition_plan.variable_size "Size of x₀ ($(size(x₀))) must match the variable size ($(decomposition_plan.variable_size))"
         end
         result = if method isa AbstractDirectMethod
             # Direct reconstruction needs no scaling; keep slices identical to the
-            # non-decomposed result instead of normalizing each slice separately.
-            config = Config(config; normalization = NoScaling())
-            execute(decomposition_plan, acq_data, config) do idx, local_acq, local_conf
+            # non-decomposed result instead of normalizing each slice separately. A *new*
+            # binding, not a reassignment of `config`: rebinding it would box the variable that
+            # the `with_progress` closure above captures.
+            unscaled_config = Config(config; normalization = NoScaling())
+            execute(decomposition_plan, acq_data, unscaled_config) do idx, local_acq, local_conf
                 local_x₀ = isnothing(x₀) ? nothing : get_x₀_slice(x₀, decomposition_plan, idx)
                 _reconstruct(local_acq, method, local_x₀, local_conf)
             end
@@ -139,18 +150,22 @@ function _reconstruct_dispatch_components(acq_data, method::IterativeReconstruct
     decomposition_plan = get_problem_decomposition_plan(acq_data, method, config)
     components = method.regularization
     img = if isnothing(decomposition_plan)
-        config = maybe_disable_undecomposed_threading(config, method, acq_data)
         # The decomposition branch below validates x₀ against the plan's image size; this branch has
         # no plan, so it validates against the acquisition's own image size. Both must check, or a
         # mistyped component name is only caught when the problem happens to be decomposed.
         if !isnothing(x₀)
             check_x₀_components_size(x₀, components, get_image_size(acq_data))
         end
-        result = nothing
-        @conditionally_enable_threading config.threaded begin
-            result = _reconstruct_components(acq_data, method, x₀, config)
+        with_progress(config.verbosity, progress_total(method, acq_data)) do verbosity
+            conf = maybe_disable_undecomposed_threading(
+                Config(config; verbosity), method, acq_data
+            )
+            result = nothing
+            @conditionally_enable_threading conf.threaded begin
+                result = _reconstruct_components(acq_data, method, x₀, conf)
+            end
+            first(result)
         end
-        first(result)
     else
         if !isnothing(x₀)
             check_x₀_components_size(x₀, components, decomposition_plan.variable_size)

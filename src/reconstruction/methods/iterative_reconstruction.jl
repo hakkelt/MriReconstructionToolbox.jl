@@ -22,6 +22,15 @@ solved is `½‖𝒜x - y‖² + R(x)`: `λ` weights the regularizer in the data
 comes back in them. See "Operator norm, step size and λ" in `docs/src/high-level/methods.md` for
 what changed and how to migrate a `λ` tuned against the previous behaviour.
 - `disable_normalop_optimization::Bool`: Disable normal operator optimization (default `false`).
+- `maxit::Union{Nothing, Int}`: Maximum solver iterations (default `100`). `nothing` defers to the
+  `algorithm`'s own `maxit`, which is how an `algorithm = FISTA(maxit = 500)` is honoured.
+- `tol::Union{Nothing, Float64}`: Stopping tolerance (default `1e-4`), **relative**: the absolute
+  threshold handed to the solver is `max(10*eps, tol * maximum(abs, x₀))`, which differs from
+  `ProximalAlgorithms`' absolute `tol`. `0` disables the tolerance test and `nothing` defers to the
+  `algorithm`'s own stopping criterion.
+
+`maxit` and `tol` are keyword-only on every constructor; regularization terms are the only
+positional arguments.
 """
 struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M} <: AbstractIterativeMethod
     regularization::R
@@ -31,6 +40,8 @@ struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M} <: AbstractI
     exact_opnorm::Bool
     disable_operator_normalization::Union{Nothing, Bool}
     disable_normalop_optimization::Bool
+    maxit::Union{Nothing, Int}
+    tol::Union{Nothing, Float64}
 
     function IterativeReconstruction(
             regularization::Tuple,
@@ -39,7 +50,9 @@ struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M} <: AbstractI
             signal_model::M,
             exact_opnorm::Bool,
             disable_operator_normalization::Union{Nothing, Bool},
-            disable_normalop_optimization::Bool,
+            disable_normalop_optimization::Bool;
+            maxit::Union{Nothing, Integer} = 100,
+            tol::Union{Nothing, Real} = 1.0e-4,
         ) where {F <: DataFidelity, M}
         _validate_regularization(regularization)
         return new{typeof(regularization), typeof(algorithm), F, M}(
@@ -50,6 +63,8 @@ struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M} <: AbstractI
             exact_opnorm,
             disable_operator_normalization,
             disable_normalop_optimization,
+            isnothing(maxit) ? nothing : Int(maxit),
+            isnothing(tol) ? nothing : Float64(tol),
         )
     end
 end
@@ -72,6 +87,8 @@ function IterativeReconstruction(;
         exact_opnorm::Bool = false,
         disable_operator_normalization::Union{Nothing, Bool} = nothing,
         disable_normalop_optimization::Bool = false,
+        maxit::Union{Nothing, Integer} = 100,
+        tol::Union{Nothing, Real} = 1.0e-4,
     )
     regs_tuple = ensure_tuple(regularization)
     return IterativeReconstruction(
@@ -81,7 +98,9 @@ function IterativeReconstruction(;
         signal_model,
         exact_opnorm,
         disable_operator_normalization,
-        disable_normalop_optimization,
+        disable_normalop_optimization;
+        maxit,
+        tol,
     )
 end
 
@@ -95,6 +114,8 @@ function IterativeReconstruction(
         exact_opnorm::Bool = false,
         disable_operator_normalization::Union{Nothing, Bool} = nothing,
         disable_normalop_optimization::Bool = false,
+        maxit::Union{Nothing, Integer} = 100,
+        tol::Union{Nothing, Real} = 1.0e-4,
     )
     regs = (reg, more_regs...)
     return IterativeReconstruction(;
@@ -105,5 +126,26 @@ function IterativeReconstruction(
         exact_opnorm,
         disable_operator_normalization,
         disable_normalop_optimization,
+        maxit,
+        tol,
     )
 end
+
+# Rebuild `method` with a different regularization tuple, every other field carried over. The
+# decomposition path needs this per slice (λ is scale-compensated there); going through the
+# keyword constructor keeps that call site from having to be edited every time a field is added.
+function _with_regularization(method::IterativeReconstruction, regs::Tuple)
+    return IterativeReconstruction(;
+        regularization = regs,
+        algorithm = method.algorithm,
+        fidelity = method.fidelity,
+        signal_model = method.signal_model,
+        exact_opnorm = method.exact_opnorm,
+        disable_operator_normalization = method.disable_operator_normalization,
+        disable_normalop_optimization = method.disable_normalop_optimization,
+        maxit = method.maxit,
+        tol = method.tol,
+    )
+end
+
+progress_total(method::IterativeReconstruction, acq_data) = method.maxit

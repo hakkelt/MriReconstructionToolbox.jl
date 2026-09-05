@@ -20,9 +20,8 @@ function _real_block(category, case)
             run = () -> reconstruct(
                 acq_full,
                 IterativeReconstruction(
-                    regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 1.0e-14)
-                );
-                tol = 1.0e-14, maxit = 10, verbose = false,
+                    regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 1.0e-14); maxit = 10, tol = 1.0e-14
+                ); verbosity = Silent()
             ),
         ),
     ]
@@ -44,7 +43,7 @@ function _real_block(category, case)
             (
                 category, method = name, reference = ref,
                 run = () -> reconstruct(
-                    acq_us, IterativeReconstruction(regularization = reg); maxit = 30, tol = 1.0e-5, verbose = false,
+                    acq_us, IterativeReconstruction(regularization = reg; maxit = 30, tol = 1.0e-5); verbosity = Silent()
                 ),
             ),
         )
@@ -111,14 +110,13 @@ function build_real3d()
                 category = "Real 3D", method = "CG-SENSE (10 it)", reference = ref,
                 run = () -> reconstruct(
                     acq_full,
-                    IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 1.0e-14));
-                    tol = 1.0e-14, maxit = 10, verbose = false,
+                    IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 1.0e-14); maxit = 10, tol = 1.0e-14); verbosity = Silent()
                 ),
             ),
             (
                 category = "Real 3D", method = "Total Variation (30 it)", reference = ref,
                 run = () -> reconstruct(
-                    acq_us, IterativeReconstruction(regularization = TotalVariation2D(0.01)); maxit = 30, tol = 1.0e-5, verbose = false,
+                    acq_us, IterativeReconstruction(regularization = TotalVariation2D(0.01); maxit = 30, tol = 1.0e-5); verbosity = Silent()
                 ),
             ),
         ]
@@ -152,7 +150,7 @@ function build_realdyn()
                 cases,
                 (
                     category = "Real Dynamic", method = name, reference = ref,
-                    run = () -> reconstruct(acq, IterativeReconstruction(regularization = reg); maxit = 20, tol = 1.0e-4, verbose = false),
+                    run = () -> reconstruct(acq, IterativeReconstruction(regularization = reg; maxit = 20, tol = 1.0e-4); verbosity = Silent()),
                 ),
             )
         end

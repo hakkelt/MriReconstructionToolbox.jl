@@ -6,13 +6,13 @@ Abstract base type for k-space density compensation methods.
 abstract type DensityCompensationMethod end
 
 """
-    PipeMenonDCF(; iterations::Int = 20) <: DensityCompensationMethod
+    PipeMenonDCF(; maxit::Int = 20) <: DensityCompensationMethod
 
 Iterative sample density compensation factor (DCF) estimation based on the algorithm of
 Pipe & Menon (1999) using NFFT operators.
 """
 Base.@kwdef struct PipeMenonDCF <: DensityCompensationMethod
-    iterations::Int = 20
+    maxit::Int = 20
 end
 
 """
@@ -81,7 +81,7 @@ function compute_dcf(
     traj_flat = reshape(traj_raw, coord_dim, :)
 
     plan = NFFT.plan_nfft(traj_flat, image_size)
-    raw_dcf = NFFTTools.sdc(plan; iters = method.iterations)
+    raw_dcf = NFFTTools.sdc(plan; iters = method.maxit)
     dcf_arr = reshape(raw_dcf, ksp_shape)
 
     if trajectory isa NamedDimsArray

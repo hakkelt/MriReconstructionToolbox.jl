@@ -168,8 +168,10 @@ fixed-ρ ADMM the other toolkits are forced onto.
 """
 function _mrt_alg(kind::Symbol, maxit::Int, rho::Real)
     if kind === :admm
-        return MriReconstructionToolbox.ADMM(; rho = rho, maxit = maxit, tol = 0.0,
-            cg_tol = CMP_TOL_INNER, cg_maxit = CMP_CG_ITERS)
+        return MriReconstructionToolbox.ADMM(;
+            rho = rho, maxit = maxit, tol = 0.0,
+            cg_tol = CMP_TOL_INNER, cg_maxit = CMP_CG_ITERS
+        )
     elseif kind === :fista
         return MriReconstructionToolbox.FISTA(; maxit = maxit, tol = 0.0)
     end
@@ -181,13 +183,12 @@ end
 
 `reconstruct` with a fixed-ρ ADMM (`kind = :admm`, for TV / TGV / low-rank) or FISTA
 (`kind = :fista`, for L1-wavelet — forcing wavelet through ADMM with a fixed ρ wrecks it).
-`maxit` and `tol = 0` are passed to `reconstruct` too: it always takes the outer iteration count
-and stopping tolerance from its own kwargs, overriding whatever the algorithm object carries, so
-both must be set here to actually run the full count with no early stop.
+`maxit` and `tol = 0` are set on `IterativeReconstruction` as well as on the algorithm object: the
+method's own values win over the algorithm's, so both must agree to actually run the full count
+with no early stop.
 """
 mrt_run(acq, reg; maxit::Int, kind::Symbol = :admm, rho::Real = CMP_RHO) =
-    reconstruct(acq, IterativeReconstruction(regularization = reg, algorithm = _mrt_alg(kind, maxit, rho));
-        maxit = maxit, tol = 0.0, verbose = false)
+    reconstruct(acq, IterativeReconstruction(regularization = reg, algorithm = _mrt_alg(kind, maxit, rho); maxit = maxit, tol = 0.0); verbosity = Silent())
 
 # --- MRIReco (Julia) ------------------------------------------------------------------------
 # `MRIBase` accepts a 6D `(x, y, z, channel, echo, rep)` k-space array directly (`enc2D` for a
@@ -323,8 +324,10 @@ function sigpy_recon(method::Symbol, ksp3, smaps3; λ = 0.0, iterations = 10)
     app = if method === :cgsense
         () -> sp_app.SenseRecon(y, mps; max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
     elseif method === :tv
-        () -> sp_app.TotalVariationRecon(y, mps, λ; solver = "ADMM", rho = CMP_RHO,
-            max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
+        () -> sp_app.TotalVariationRecon(
+            y, mps, λ; solver = "ADMM", rho = CMP_RHO,
+            max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
+        ).run()
     elseif method === :wavelet
         () -> sp_app.L1WaveletRecon(y, mps, λ; wave_name = CMP_WAVELET_NAME, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
     else

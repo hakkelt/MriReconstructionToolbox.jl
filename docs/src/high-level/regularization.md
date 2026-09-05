@@ -93,8 +93,8 @@ Tikhonov
 
 **Example:**
 ```@example imports
-img₁ = reconstruct(data, IterativeReconstruction(Tikhonov(1e-1)), verbose=false)
-img₂ = reconstruct(data, IterativeReconstruction(Tikhonov(1e-6)), verbose=false)
+img₁ = reconstruct(data, IterativeReconstruction(Tikhonov(1e-1)); verbosity = Silent())
+img₂ = reconstruct(data, IterativeReconstruction(Tikhonov(1e-6)); verbosity = Silent())
 p1 = jim(img₁; title="Tikhonov λ=1e-1")
 p2 = jim(img₂; title="Tikhonov λ=1e-6")
 jim(p1, p2; layout=(1,2), size=(800,400))
@@ -116,8 +116,8 @@ L1Image
 
 **Example:**
 ```@example imports
-img₁ = reconstruct(data, IterativeReconstruction(L1Image(1e-2)), verbose=false)
-img₂ = reconstruct(data, IterativeReconstruction(L1Image(1e-5)), verbose=false)
+img₁ = reconstruct(data, IterativeReconstruction(L1Image(1e-2)); verbosity = Silent())
+img₂ = reconstruct(data, IterativeReconstruction(L1Image(1e-5)); verbosity = Silent())
 p1 = jim(img₁; title="L1Image λ=1e-2")
 p2 = jim(img₂; title="L1Image λ=1e-5")
 jim(p1, p2; layout=(1,2), size=(800,400))
@@ -153,7 +153,7 @@ example_img = rand(ComplexF32, 128, 128)
 op = get_operator(reg, example_img)
 transformed = op * x_noisy
 p1 = jim(transformed; title="Wavelet Coefficients")
-img = reconstruct(data, IterativeReconstruction(reg), verbose=false)
+img = reconstruct(data, IterativeReconstruction(reg); verbosity = Silent())
 p2 = jim(img; title="L1Wavelet2D Reconstruction")
 jim(p1, p2; layout=(1,2), size=(800,400))
 savefig("l1wavelet2d_regularization.png"); nothing # hide
@@ -169,14 +169,14 @@ savefig("l1wavelet2d_regularization.png"); nothing # hide
 reg_haar = L1Wavelet2D(1e-2; wavelet=WT.haar)
 op_haar = get_operator(reg_haar, example_img)
 transformed_haar = op_haar * x_noisy
-img_haar = reconstruct(data, IterativeReconstruction(reg_haar), verbose=false)
+img_haar = reconstruct(data, IterativeReconstruction(reg_haar); verbosity = Silent())
 p1 = jim(transformed_haar; title="Haar Coefficients")
 p2 = jim(img_haar; title="Haar Reconstruction")
 
 reg_level8 = L1Wavelet2D(1e-3; levels=8)
 op_level8 = get_operator(reg_level8, example_img)
 transformed_level8 = op_level8 * x_noisy
-img_level8 = reconstruct(data, IterativeReconstruction(reg_level8), verbose=false)
+img_level8 = reconstruct(data, IterativeReconstruction(reg_level8); verbosity = Silent())
 p3 = jim(transformed_level8; title="Level 8 Coefficients")
 p4 = jim(img_level8; title="Level 8 Reconstruction")
 jim(p1, p2, p3, p4; layout=(2,2), size=(800,700))
@@ -208,7 +208,7 @@ reg = L1Contourlet(1e-3)
 op = get_operator(reg, example_img)
 transformed = op * x_noisy
 p1 = jim(transformed[:, :, 1]; title="Contourlet Coarse Band")
-img = reconstruct(data, IterativeReconstruction(reg), verbose=false)
+img = reconstruct(data, IterativeReconstruction(reg); verbosity = Silent())
 p2 = jim(img; title="Contourlet Reconstruction")
 jim(p1, p2; layout=(1,2), size=(800,400))
 savefig("contourlet_regularization.png"); nothing # hide
@@ -262,7 +262,7 @@ TotalVariation2D
 reg = TotalVariation2D(1e-3)
 op = get_operator(reg, example_img)
 transformed = op * x_noisy
-img = reconstruct(data, IterativeReconstruction(reg), verbose=false)
+img = reconstruct(data, IterativeReconstruction(reg); verbosity = Silent())
 p1 = jim(transformed[:,:,1]; title="Δx Coefficients")
 p2 = jim(transformed[:,:,2]; title="Δy Coefficients")
 p3 = jim(img; title="TotalVariation2D Reconstruction")
@@ -318,7 +318,7 @@ TotalGeneralizedVariation2D
 
 **Example:**
 ```julia
-img = reconstruct(acq, IterativeReconstruction(TotalGeneralizedVariation2D(1e-3); algorithm = ADMM(maxit=500)))
+img = reconstruct(acq, IterativeReconstruction(TotalGeneralizedVariation2D(1e-3); algorithm = ADMM(), maxit = 500))
 ```
 
 **Practical tip:** TGV requires `ADMM` — the auxiliary field is coupled to the image through `∇x − w`, which
@@ -337,7 +337,7 @@ components = (
     Component(:cartoon, TotalVariation2D(1e-3)),
     Component(:ramp, SecondOrderTotalVariation2D(1e-3)),
 )
-img = reconstruct(acq, IterativeReconstruction(components...; algorithm = ADMM(maxit=500)))
+img = reconstruct(acq, IterativeReconstruction(components...; algorithm = ADMM(), maxit = 500))
 img.components.cartoon   # the edges
 img.components.ramp      # the smooth background
 ```
@@ -550,7 +550,8 @@ img = reconstruct(
     acq,
     IterativeReconstruction(
         PlugAndPlay((image, σ) -> bm3d(image, σ); strength = 0.05);
-        algorithm = FISTA(maxit = 100),
+        algorithm = FISTA(),
+        maxit = 100,
     ),
 )
 ```

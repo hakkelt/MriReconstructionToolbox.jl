@@ -52,7 +52,7 @@ using TestItems
         nx, ny, nt = 8, 8, 5
         ksp = NamedDimsArray{(:kx, :ky, :time)}(rand(ComplexF32, nx, ny, nt))
         acq = AcquisitionInfo(ksp)
-        config = Config(; verbose = false)
+        config = Config(; verbosity = Silent())
 
         plan_noreg = MriReconstructionToolbox.get_problem_decomposition_plan(acq, DirectReconstruction(), config)
         @test !isnothing(plan_noreg) # :time is a batch dim without regularization

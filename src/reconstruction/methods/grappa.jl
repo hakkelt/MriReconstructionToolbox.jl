@@ -30,7 +30,11 @@ struct GRAPPA{C <: CoilCombination} <: AbstractDirectMethod
     end
 end
 
-function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::GRAPPA)
+# One tick per ky line of the synthesis loop below; already-acquired lines tick too, so the bar
+# is over the full ky extent rather than only the missing lines.
+progress_total(::GRAPPA, acq_data) = get_image_size(acq_data)[2]
+
+function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::GRAPPA; progress = nothing)
     @argcheck !isnothing(acq.subsampling) "GRAPPA reconstruction requires an undersampled Cartesian acquisition"
     @argcheck !isnothing(acq.sensitivity_maps) || method.coil_combination isa RootSumSquares "GRAPPA requires sensitivity maps when using AdjointSensitivity coil combination"
 
@@ -96,6 +100,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::GRAPPA)
         # Synthesize every missing line from its two surrounding acquired lines.
         ksp_recon = copy(raw_ksp)
         for ky in 1:Ny
+            isnothing(progress) || progress()
             acquired[ky] && continue
             ky0 = ky
             while ky0 >= 1 && !acquired[ky0]

@@ -19,7 +19,7 @@ struct Homodyne{F <: PartialFourierFilter, C <: CoilCombination} <: AbstractDire
     end
 end
 
-function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::Homodyne)
+function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::Homodyne; progress = nothing)
     ksp = _get_full_kspace(acq)
     ℱ = _cartesian_fourier_op(acq, ksp)
     img_sz = get_image_size(acq)

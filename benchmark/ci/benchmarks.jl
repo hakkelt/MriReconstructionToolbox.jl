@@ -64,15 +64,13 @@ method_fista = IterativeReconstruction(reg_wavelet; algorithm = fista_alg)
 
 SUITE["reconstruct"]["2D_CS_FISTA"] = @benchmarkable reconstruct(
     $acq_2d_ksp,
-    $method_fista;
-    verbose = false,
+    $method_fista; verbosity = Silent()
 )
 
 # Multi-slice 2D CS
 SUITE["reconstruct"]["multi_slice_FISTA"] = @benchmarkable reconstruct(
     $acq_ms_ksp,
-    $method_fista;
-    verbose = false,
+    $method_fista; verbosity = Silent()
 )
 
 # -----------------------------------------------------------------------------
@@ -114,10 +112,10 @@ if get(ENV, "MRT_BENCH_REAL_DATA", "0") == "1"
         )
         SUITE["real_data"] = BenchmarkGroup()
         SUITE["real_data"]["CG_SENSE"] = @benchmarkable reconstruct(
-            $acq_real, $method_cg; maxit = 10, tol = 1.0e-14, verbose = false,
+            $acq_real, $method_cg; verbosity = Silent(), maxit = 10, tol = 1.0e-14
         )
         SUITE["real_data"]["FISTA_wavelet"] = @benchmarkable reconstruct(
-            $acq_real, $method_fista; verbose = false,
+            $acq_real, $method_fista; verbosity = Silent()
         )
     catch e
         @warn "MRT_BENCH_REAL_DATA set but real-data benchmark setup failed" exception = (e, catch_backtrace())

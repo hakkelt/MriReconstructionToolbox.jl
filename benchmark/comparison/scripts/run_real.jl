@@ -47,21 +47,29 @@ function real_case_rows!(category, ksp3_raw, smaps3, ref)
     # (The NRMSE *rising* with iterations is CG semi-convergence on noisy real data, not a defect:
     # the least-squares solution is worse than an early iterate. It is the same for every toolkit.)
     sampled = dropdims(sum(abs, ksp3, dims = 3), dims = 3) .> 0
-    acqf = CartesianAcquisitionInfo(NamedDimsArray(ComplexF64.(ksp3)[sampled, :], (:kxy, :coil)); is3D = false,
+    acqf = CartesianAcquisitionInfo(
+        NamedDimsArray(ComplexF64.(ksp3)[sampled, :], (:kxy, :coil)); is3D = false,
         image_size = (nx, ny), sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(ComplexF64.(smaps3)),
-        shifted_image_dims = (:x, :y), subsampling = sampled)
+        shifted_image_dims = (:x, :y), subsampling = sampled
+    )
     # `tol = 0.0`, as in `run_cgsense.jl`: the other three toolkits are given `CMP_TOL_INNER = 0` and
     # run their full 10 iterations, so MRT must not be allowed to exit early here either.
-    mcg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0))
-    tm, _, xm = time_reconstruction(() -> reconstruct(acqf, mcg; tol = 0.0, maxit = 10, verbose = false))
+    mcg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0); maxit = 10, tol = 0.0)
+    tm, _, xm = time_reconstruction(() -> reconstruct(acqf, mcg; verbosity = Silent()))
     add("CG-SENSE (10 it)", FW, tm * 1000, xm, nothing)
-    for (fw, f) in (("SigPy", () -> sigpy_recon(:cgsense, ksp3, smaps3; iterations = 10)),
-            ("BART ($(USE_MKL ? "MKL" : "OpenBLAS"))", () -> begin
-                tb, _, rb = time_bart("pics -S -w 1 -i 10",
-                    reshape(ComplexF32.(ksp3), nx, ny, 1, nc), reshape(ComplexF32.(smaps3), nx, ny, 1, nc))
-                (tb * 1000, rb[:, :, 1])
-            end),
-            ("MRIReco", () -> mrireco(:cgsense, ksp3, smaps3, (nx, ny); iterations = 10)))
+    for (fw, f) in (
+            ("SigPy", () -> sigpy_recon(:cgsense, ksp3, smaps3; iterations = 10)),
+            (
+                "BART ($(USE_MKL ? "MKL" : "OpenBLAS"))", () -> begin
+                    tb, _, rb = time_bart(
+                        "pics -S -w 1 -i 10",
+                        reshape(ComplexF32.(ksp3), nx, ny, 1, nc), reshape(ComplexF32.(smaps3), nx, ny, 1, nc)
+                    )
+                    (tb * 1000, rb[:, :, 1])
+                end,
+            ),
+            ("MRIReco", () -> mrireco(:cgsense, ksp3, smaps3, (nx, ny); iterations = 10)),
+        )
         try
             t, x = f()
             add("CG-SENSE (10 it)", fw, t, x, xm)
@@ -78,28 +86,40 @@ function real_case_rows!(category, ksp3_raw, smaps3, ref)
     # intersection whether we like it or not.
     mask2 = falses(nx, ny); mask2[:, kymask] .= true; mask2 .&= sampled
     ksp_z = copy(ksp3); ksp_z[.!mask2, :] .= 0
-    acqu = CartesianAcquisitionInfo(NamedDimsArray(ComplexF64.(ksp3)[mask2, :], (:kxy, :coil));
+    acqu = CartesianAcquisitionInfo(
+        NamedDimsArray(ComplexF64.(ksp3)[mask2, :], (:kxy, :coil));
         is3D = false, image_size = (nx, ny), sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(ComplexF64.(smaps3)),
-        shifted_image_dims = (:x, :y), subsampling = mask2)
+        shifted_image_dims = (:x, :y), subsampling = mask2
+    )
     # Real data has no ground truth, so λ is taken from the synthetic calibration — valid because
     # both k-spaces are unit-RMS normalised (see `norm_ksp`). Each toolkit uses its own λ.
     IT = CMP_OUTER
     for (key, meth, mrtbuild, mrtkind, spm, mrm, bartfn) in (
-            (:tv, "Total Variation ($IT it)", λ -> TotalVariation2D(λ), :admm, :tv, :tv,
-                λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R T:3:0:$λ"),
-            (:wavelet, "L1-Wavelet ($IT it)", mrt_wavelet, :fista, :wavelet, :wavelet,
-                λ -> "pics -S -w 1 -e -i $IT -R W:3:0:$λ"),
+            (
+                :tv, "Total Variation ($IT it)", λ -> TotalVariation2D(λ), :admm, :tv, :tv,
+                λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R T:3:0:$λ",
+            ),
+            (
+                :wavelet, "L1-Wavelet ($IT it)", mrt_wavelet, :fista, :wavelet, :wavelet,
+                λ -> "pics -S -w 1 -e -i $IT -R W:3:0:$λ",
+            ),
         )
         λdef = key === :tv ? 0.01 : 0.005
         tm, _, xm = time_reconstruction(() -> mrt_run(acqu, mrtbuild(load_lambda(key, "MRT", λdef)); maxit = IT, kind = mrtkind))
         add(meth, FW, tm * 1000, xm, nothing)
-        for (fw, f) in (("SigPy", () -> sigpy_recon(spm, ksp_z, smaps3; λ = load_lambda(key, "SigPy", λdef), iterations = IT)),
-                ("BART ($(USE_MKL ? "MKL" : "OpenBLAS"))", () -> begin
-                    tb, _, rb = time_bart(bartfn(load_lambda(key, "BART", λdef)),
-                        reshape(ComplexF32.(ksp_z), nx, ny, 1, nc), reshape(ComplexF32.(smaps3), nx, ny, 1, nc))
-                    (tb * 1000, rb[:, :, 1])
-                end),
-                ("MRIReco", () -> mrireco(mrm, ksp_z, smaps3, (nx, ny); λ = load_lambda(key, "MRIReco", λdef), iterations = IT)))
+        for (fw, f) in (
+                ("SigPy", () -> sigpy_recon(spm, ksp_z, smaps3; λ = load_lambda(key, "SigPy", λdef), iterations = IT)),
+                (
+                    "BART ($(USE_MKL ? "MKL" : "OpenBLAS"))", () -> begin
+                        tb, _, rb = time_bart(
+                            bartfn(load_lambda(key, "BART", λdef)),
+                            reshape(ComplexF32.(ksp_z), nx, ny, 1, nc), reshape(ComplexF32.(smaps3), nx, ny, 1, nc)
+                        )
+                        (tb * 1000, rb[:, :, 1])
+                    end,
+                ),
+                ("MRIReco", () -> mrireco(mrm, ksp_z, smaps3, (nx, ny); λ = load_lambda(key, "MRIReco", λdef), iterations = IT)),
+            )
             try
                 t, x = f()
                 add(meth, fw, t, x, xm)

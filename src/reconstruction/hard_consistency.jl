@@ -1,5 +1,5 @@
 """
-	HardConsistencyProx(𝒜, y, inner_maxit, inner_tol)
+	HardConsistencyProx(𝒜, y, maxit, tol)
 
 Proximable indicator function representing the hard data consistency constraint ``\\{x \\mid \\mathcal{A}x = y\\}``.
 The proximal operator computes the orthogonal projection:
@@ -7,13 +7,13 @@ The proximal operator computes the orthogonal projection:
 
 When `is_AAc_diagonal(𝒜)` is true (e.g. single-coil Cartesian or a `KSpaceToImage` signal model), ``(\\mathcal{A} \\mathcal{A}^*)^{-1}``
 is evaluated directly in closed form via `diag_AAc(𝒜)`. Otherwise, ``(\\mathcal{A} \\mathcal{A}^*) v = r`` is solved
-iteratively using Conjugate Gradient up to `inner_maxit` iterations and tolerance `inner_tol`.
+iteratively using Conjugate Gradient up to `maxit` iterations and tolerance `tol`.
 """
 struct HardConsistencyProx{Op, Y, R <: Real}
     𝒜::Op
     y::Y
-    inner_maxit::Int
-    inner_tol::R
+    maxit::Int
+    tol::R
 end
 
 ProximalCore.is_convex(::Type{<:HardConsistencyProx}) = true
@@ -22,17 +22,17 @@ ProximalCore.is_set_indicator(::Type{<:HardConsistencyProx}) = true
 
 function (f::HardConsistencyProx)(x)
     residual = f.𝒜 * x - f.y
-    return norm(residual) <= f.inner_tol ? real(eltype(x))(0) : real(eltype(x))(Inf)
+    return norm(residual) <= f.tol ? real(eltype(x))(0) : real(eltype(x))(Inf)
 end
 
-function _cg_solve_AAc(𝒜, r::AbstractArray{T}; inner_maxit::Int = 50, inner_tol::Real = 1.0e-6) where {T}
+function _cg_solve_AAc(𝒜, r::AbstractArray{T}; maxit::Int = 50, tol::Real = 1.0e-6) where {T}
     v = zeros(T, size(r))
     norm_r = norm(r)
-    norm_r <= inner_tol && return v
+    norm_r <= tol && return v
     p = copy(r)
     res = copy(r)
     rsold = real(dot(res, res))
-    for _ in 1:inner_maxit
+    for _ in 1:maxit
         Ap = 𝒜' * p
         Hp = 𝒜 * Ap
         pHp = real(dot(p, Hp))
@@ -43,7 +43,7 @@ function _cg_solve_AAc(𝒜, r::AbstractArray{T}; inner_maxit::Int = 50, inner_t
         v .+= alpha .* p
         res .-= alpha .* Hp
         rsnew = real(dot(res, res))
-        if sqrt(rsnew) / norm_r <= inner_tol
+        if sqrt(rsnew) / norm_r <= tol
             break
         end
         p .= res .+ (rsnew / rsold) .* p
@@ -52,9 +52,9 @@ function _cg_solve_AAc(𝒜, r::AbstractArray{T}; inner_maxit::Int = 50, inner_t
     return v
 end
 
-function _project_hard_consistency(𝒜, y, x, inner_maxit::Int, inner_tol::Real)
+function _project_hard_consistency(𝒜, y, x, maxit::Int, tol::Real)
     r = 𝒜 * x - y
-    if norm(r) <= inner_tol
+    if norm(r) <= tol
         return copy(x)
     end
     if is_AAc_diagonal(𝒜)
@@ -65,14 +65,14 @@ function _project_hard_consistency(𝒜, y, x, inner_maxit::Int, inner_tol::Real
             ifelse.(abs.(d) .> eps(real(eltype(d))), r ./ d, zero(r))
         end
     else
-        v = _cg_solve_AAc(𝒜, r; inner_maxit, inner_tol)
+        v = _cg_solve_AAc(𝒜, r; maxit, tol)
     end
     corr = 𝒜' * v
     return x .- corr
 end
 
 function ProximalCore.prox!(out, f::HardConsistencyProx, x, gamma = 1)
-    proj = _project_hard_consistency(f.𝒜, f.y, x, f.inner_maxit, f.inner_tol)
+    proj = _project_hard_consistency(f.𝒜, f.y, x, f.maxit, f.tol)
     copyto!(out, proj)
     return real(eltype(x))(0)
 end

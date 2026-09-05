@@ -96,16 +96,14 @@ function Base.length(plan::ProblemDecompositionPlan)
 end
 
 function maybe_print_decomposition_info(plan, config)
-    return if config.verbose
-        batch_dims = plan.variable_batch_dims
-        batch_size = plan.variable_size[collect(batch_dims)]
-        if length(batch_dims) == 1
-            msg_part = "dimension $(batch_dims[1]) with size $(batch_size[1])"
-        else
-            msg_part = "dimensions $batch_dims with sizes $batch_size"
-        end
-        config.printfunc("Decomposing problem over $msg_part")
+    batch_dims = plan.variable_batch_dims
+    batch_size = plan.variable_size[collect(batch_dims)]
+    msg_part = if length(batch_dims) == 1
+        "dimension $(batch_dims[1]) with size $(batch_size[1])"
+    else
+        "dimensions $batch_dims with sizes $batch_size"
     end
+    return log_message(config.verbosity, "Decomposing problem over $msg_part")
 end
 
 function get_slice_id(plan, idx, slice_idx_widths)

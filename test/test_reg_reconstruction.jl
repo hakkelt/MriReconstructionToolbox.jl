@@ -27,8 +27,7 @@ using TestItems
     @testset "LocallyLowRank" begin
         @test relerr(
             reconstruct(
-                acq, IterativeReconstruction(LocallyLowRank(0.02f0; block_size = 4, time_dim = 3));
-                maxit = 60, verbose = false
+                acq, IterativeReconstruction(LocallyLowRank(0.02f0; block_size = 4, time_dim = 3), maxit = 60); verbosity = Silent()
             )
         ) < 0.1
     end
@@ -36,8 +35,7 @@ using TestItems
     @testset "TemporalTotalVariation" begin
         @test relerr(
             reconstruct(
-                acq, IterativeReconstruction(TemporalTotalVariation(0.02f0; time_dim = 3));
-                maxit = 100, verbose = false
+                acq, IterativeReconstruction(TemporalTotalVariation(0.02f0; time_dim = 3), maxit = 100); verbosity = Silent()
             )
         ) < 0.1
     end
@@ -47,7 +45,7 @@ using TestItems
             Component(:lowrank, LocallyLowRank(0.02f0; block_size = 4, time_dim = 3)),
             Component(:sparse, TemporalTotalVariation(0.02f0; time_dim = 3)),
         )
-        img_recon = reconstruct(acq, IterativeReconstruction(components...); maxit = 100, verbose = false)
+        img_recon = reconstruct(acq, IterativeReconstruction(components...; maxit = 100); verbosity = Silent())
         @test img_recon isa DecomposedImage
         @test relerr(img_recon) < 0.2
     end
@@ -57,7 +55,7 @@ using TestItems
             Component(:lowrank, LowRank(0.02f0; time_dim = 3)),
             Component(:sparse, L1Image(0.02f0)),
         )
-        img_recon = reconstruct(acq, IterativeReconstruction(components...); maxit = 100, verbose = false)
+        img_recon = reconstruct(acq, IterativeReconstruction(components...; maxit = 100); verbosity = Silent())
         @test img_recon isa DecomposedImage
         @test relerr(img_recon) < 0.2
     end
@@ -71,7 +69,7 @@ using TestItems
             Component(:lowrank, LowRank(0.02f0; time_dim = 3)),
             Component(:sparse, TemporalTotalVariation(0.02f0; time_dim = 3)),
         )
-        img_recon = reconstruct(acq, IterativeReconstruction(components...); maxit = 100, verbose = false)
+        img_recon = reconstruct(acq, IterativeReconstruction(components...; maxit = 100); verbosity = Silent())
         @test img_recon isa DecomposedImage
         @test relerr(img_recon) < 0.2
     end
