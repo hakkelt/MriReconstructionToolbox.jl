@@ -145,6 +145,43 @@ end
     @test isapprox(abs.(unname(rec_espirit))[mask], abs.(unname(img))[mask]; rtol = 0.15)
 end
 
+@testitem "Sensitivity estimation: measured k-space smaller than image_size is zero-padded" tags = [:preprocessing, :acquisition] setup = [SyntheticCoils] begin
+    using Test
+    using MriReconstructionToolbox
+    using NamedDims
+
+    Nx, Ny, Nc, measured = 64, 64, 4, 41
+    img = NamedDimsArray{(:x, :y)}(zeros(ComplexF32, Nx, Ny))
+    img[16:48, 16:48] .= 1.0f0
+    sens_true = NamedDimsArray{(:x, :y, :coil)}(synthetic_sensitivities(ComplexF32, Nx, Ny, Nc))
+
+    acq = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky, :coil)}(zeros(ComplexF32, Nx, Ny, Nc));
+        is3D = false, sensitivity_maps = sens_true,
+    )
+    acq_sim = simulate_acquisition(img, acq)
+
+    # Only the central `measured` phase-encode lines are kept, mirroring a real acquisition where
+    # `kspace_data` stores just the measured extent rather than a zero-filled `image_size` grid.
+    lo = (Ny - measured) ÷ 2 + 1
+    ksp_measured = unname(acq_sim.kspace_data)[:, lo:(lo + measured - 1), :]
+    acq_measured = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky, :coil)}(ksp_measured); is3D = false, image_size = (Nx, Ny),
+    )
+
+    # Previously threw an ArgCheck size-mismatch when re-attaching maps sized (Nx, measured, Nc).
+    acq_out = estimate_sensitivities(acq_measured; method = ESPIRiT(calib_size = 24, kernel_size = 6))
+    @test size(acq_out.sensitivity_maps) == (Nx, Ny, Nc)
+
+    # The raw-array method accepts the same `image_size` keyword directly, and is a no-op without it.
+    padded = estimate_sensitivities(
+        ksp_measured; method = ESPIRiT(calib_size = 24, kernel_size = 6), image_size = (Nx, Ny)
+    )
+    @test size(padded) == (Nx, Ny, Nc)
+    unpadded = estimate_sensitivities(ksp_measured; method = ESPIRiT(calib_size = 24, kernel_size = 6))
+    @test size(unpadded) == (Nx, measured, Nc)
+end
+
 @testitem "Sensitivity estimation: coil axis need not be trailing" tags = [:preprocessing] begin
     using Test
     using MriReconstructionToolbox
