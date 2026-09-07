@@ -1,9 +1,9 @@
 """
-    SensitivityEstimationMethod
+    SensitivityEstimation
 
 Abstract type representing coil sensitivity estimation algorithms.
 """
-abstract type SensitivityEstimationMethod end
+abstract type SensitivityEstimation end
 
 """
     SelfCalibrating(; calib_size = 24)
@@ -11,7 +11,7 @@ abstract type SensitivityEstimationMethod end
 Direct low-resolution sensitivity estimation from the central auto-calibration signal (ACS) region
 normalized by root-sum-of-squares (McKenzie et al. 2002, Bydder et al. 2002).
 """
-struct SelfCalibrating{T} <: SensitivityEstimationMethod
+struct SelfCalibrating{T} <: SensitivityEstimation
     calib_size::T
     function SelfCalibrating(; calib_size = 24)
         return new{typeof(calib_size)}(calib_size)
@@ -24,7 +24,7 @@ end
 Adaptive coil sensitivity estimation and combination via local correlation matrix eigenanalysis (Walsh et al. 2000).
 Needs no separate calibration region and produces smooth, SNR-optimal sensitivity maps.
 """
-struct AdaptiveCombine{T} <: SensitivityEstimationMethod
+struct AdaptiveCombine{T} <: SensitivityEstimation
     kernel_size::T
     function AdaptiveCombine(; kernel_size = 5)
         return new{typeof(kernel_size)}(kernel_size)
@@ -36,7 +36,7 @@ end
 
 Eigenvalue-based sensitivity estimation (Uecker et al. 2014) from the central calibration subspace.
 """
-struct ESPIRiT{T1, T2, T3, T4} <: SensitivityEstimationMethod
+struct ESPIRiT{T1, T2, T3, T4} <: SensitivityEstimation
     calib_size::T1
     kernel_size::T2
     eigenvalue_threshold::T3
@@ -55,32 +55,39 @@ end
 
 """
     estimate_sensitivities(acq::AcquisitionInfo; method = SelfCalibrating())
-    estimate_sensitivities(kspace::AbstractArray; method = SelfCalibrating(), is3D = false, coil_dim = nothing)
+    estimate_sensitivities(kspace::AbstractArray; method = SelfCalibrating(), is3D = false, coil_dim = nothing, image_size = nothing)
 
 Estimates coil sensitivity maps from multi-coil k-space data using the specified method.
-When passed an `AcquisitionInfo`, returns a new `AcquisitionInfo` with the `sensitivity_maps` field populated.
+When passed an `AcquisitionInfo`, returns a new `AcquisitionInfo` with the `sensitivity_maps` field populated,
+sized to match `acq.image_size` (the k-space is zero-padded, centered, if it only covers the measured extent
+of a subsampled acquisition). Passing `image_size` explicitly has the same effect for the raw-array method.
 """
 function estimate_sensitivities(
         acq::AcquisitionInfo;
-        method::SensitivityEstimationMethod = SelfCalibrating(),
+        method::SensitivityEstimation = SelfCalibrating(),
     )
     sens = estimate_sensitivities(
         acq.kspace_data;
         method,
         is3D = acq isa CartesianAcquisitionInfo ? acq.is3D : false,
+        image_size = acq.image_size,
     )
     return AcquisitionInfo(acq; sensitivity_maps = sens)
 end
 
 function estimate_sensitivities(
         kspace::AbstractArray;
-        method::SensitivityEstimationMethod = SelfCalibrating(),
+        method::SensitivityEstimation = SelfCalibrating(),
         is3D::Bool = false,
         coil_dim = nothing,
+        image_size = nothing,
     )
     c_idx = _resolve_coil_dim(kspace, coil_dim; fallback = is3D ? 4 : 3)
 
     raw_ksp = unname(kspace)
+    if !isnothing(image_size)
+        raw_ksp = _pad_kspace_to_image_size(raw_ksp, image_size, c_idx)
+    end
     sens_arr = _estimate_sensitivities_core(raw_ksp, method, c_idx, is3D)
 
     if kspace isa NamedDimsArray
@@ -93,6 +100,38 @@ function estimate_sensitivities(
     else
         return sens_arr
     end
+end
+
+"""
+    _pad_kspace_to_image_size(kspace, image_size, c_idx)
+
+Zero-pad `kspace`, centered, so its spatial dimensions (all dimensions but `c_idx`) match
+`image_size`. A no-op when they already match. Assumes `kspace`'s own measured extent is
+already centered on its k-space DC, as `_estimate_sensitivities_core` does when locating the
+calibration window.
+"""
+function _pad_kspace_to_image_size(kspace::AbstractArray{T, N}, image_size, c_idx) where {T, N}
+    spatial_idx = [i for i in 1:N if i != c_idx]
+    @argcheck length(spatial_idx) == length(image_size) "image_size length must match the number of spatial dimensions"
+    current = size(kspace)
+    all(current[i] == image_size[j] for (j, i) in enumerate(spatial_idx)) && return kspace
+
+    target = collect(current)
+    for (j, i) in enumerate(spatial_idx)
+        target[i] = image_size[j]
+    end
+    padded = zeros(T, target...)
+    ranges = ntuple(N) do i
+        if i in spatial_idx
+            cur, tgt = current[i], target[i]
+            start = (tgt - cur) ÷ 2 + 1
+            start:(start + cur - 1)
+        else
+            1:current[i]
+        end
+    end
+    padded[ranges...] = kspace
+    return padded
 end
 
 # Core algorithm implementations
