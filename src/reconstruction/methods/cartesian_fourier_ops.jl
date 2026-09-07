@@ -35,10 +35,12 @@ function _kspace_to_image(
         sens::Union{Nothing, AbstractArray},
         acq::CartesianAcquisitionInfo,
     )
-    Nx, Ny = get_image_size(acq)[1:2]
     kplain = unname(ksp)
     op = _cartesian_fourier_op(acq, kplain)
-    coil_imgs = (op' * kplain) .* sqrt(Nx * Ny)
+    # `op` is `BACKWARD`-normalized (forward = plain fft, adjoint = fully N-normalized ifft), so
+    # `op' * kplain` already matches DirectReconstruction's `𝒜' * kspace_data` convention with no
+    # further scaling needed.
+    coil_imgs = op' * kplain
 
     c_dim = 3
     img_out = if coil_combine isa AdjointSensitivity

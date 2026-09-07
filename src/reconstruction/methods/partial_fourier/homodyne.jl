@@ -1,5 +1,5 @@
 """
-    Homodyne{F <: PartialFourierFilter, C <: CoilCombination} <: AbstractDirectMethod
+    Homodyne{F <: PartialFourierFilter, C <: CoilCombination} <: DirectMethod
 
 Direct Homodyne reconstruction (Noll et al. 1991) for partial Fourier acquisitions.
 Weights k-space with an asymmetric Homodyne filter and restores low-frequency phase.
@@ -8,7 +8,7 @@ Weights k-space with an asymmetric Homodyne filter and restores low-frequency ph
 - `filter`: Filter profile across the symmetric band (`LinearRamp()` or `StepRamp()`).
 - `coil_combination`: Coil combination method (`AdjointSensitivity()` or `RootSumSquares()`).
 """
-struct Homodyne{F <: PartialFourierFilter, C <: CoilCombination} <: AbstractDirectMethod
+struct Homodyne{F <: PartialFourierFilter, C <: CoilCombination} <: DirectMethod
     filter::F
     coil_combination::C
     function Homodyne(;
@@ -22,8 +22,6 @@ end
 function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::Homodyne; progress = nothing)
     ksp = _get_full_kspace(acq)
     ℱ = _cartesian_fourier_op(acq, ksp)
-    img_sz = get_image_size(acq)
-    spatial_sz = (img_sz[1], img_sz[2])
 
     band = partial_fourier_band(acq)
     dim = band.dim
@@ -69,7 +67,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::Homodyne; pr
 
     # 1. Estimate phase
     ksp_sym = ksp .* W_sym_mat
-    lowres_coil = _direct_ifft(ℱ, ksp_sym) .* sqrt(prod(spatial_sz))
+    lowres_coil = _direct_ifft(ℱ, ksp_sym)
     lowres_combined = if coil_reduced
         sens = unname(acq.sensitivity_maps)
         sum(lowres_coil .* conj.(sens); dims = c_dim)
@@ -80,7 +78,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::Homodyne; pr
 
     # 2. Homodyne weighted inverse FFT
     ksp_hom = ksp .* W_mat
-    img_coil = _direct_ifft(ℱ, ksp_hom) .* sqrt(prod(spatial_sz))
+    img_coil = _direct_ifft(ℱ, ksp_hom)
     img_combined = if coil_reduced
         sens = unname(acq.sensitivity_maps)
         sum(img_coil .* conj.(sens); dims = c_dim)

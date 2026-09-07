@@ -1,5 +1,5 @@
 """
-    POCS <: AbstractDirectMethod
+    POCS <: DirectMethod
 
 Projection Onto Convex Sets (Haacke et al. 1991) for partial Fourier image reconstruction.
 Alternates between data consistency in acquired k-space and phase consistency in image space.
@@ -10,7 +10,7 @@ Alternates between data consistency in acquired k-space and phase consistency in
   `maxit` iterations (default `1e-4`).
 - `coil_combination`: Coil combination method (`AdjointSensitivity()` or `RootSumSquares()`).
 """
-struct POCS{C <: CoilCombination} <: AbstractDirectMethod
+struct POCS{C <: CoilCombination} <: DirectMethod
     maxit::Int
     tol::Float64
     coil_combination::C
@@ -67,7 +67,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::POCS; progre
 
     c_dim = _pf_coil_dim(acq)
     coil_reduced = !isnothing(acq.sensitivity_maps)
-    final_coil_imgs = _direct_ifft(ℱ, ksp_pocs) .* sqrt(prod(spatial_sz))
+    final_coil_imgs = _direct_ifft(ℱ, ksp_pocs)
     img_out = if coil_reduced
         sens = unname(acq.sensitivity_maps)
         sum(final_coil_imgs .* conj.(sens); dims = c_dim)

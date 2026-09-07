@@ -1,6 +1,7 @@
 @testitem "Partial Fourier reconstruction: Homodyne, StepRamp, POCS" tags = [:reconstruction, :acquisition] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: Verbosity
     using LinearAlgebra
     using NamedDims
     using FFTW
@@ -14,7 +15,7 @@
     img_true = NamedDimsArray{(:x, :y)}(ComplexF32.(mag .* cis.(phase_true)))
 
     # Full k-space
-    ksp_full = fftshift(fft(unname(img_true))) ./ sqrt(Nx * Ny)
+    ksp_full = fftshift(fft(unname(img_true)))
 
     # Partial Fourier subsampling: lines 10 to 32 acquired (23 lines out of 32)
     mask_y = falses(Ny)
@@ -54,6 +55,7 @@ end
 @testitem "Parallel imaging: GRAPPA and SPIRiT" tags = [:reconstruction, :acquisition, :encoding] setup = [SyntheticCoils] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: Verbosity
     using LinearAlgebra
     using NamedDims
     using FFTW
@@ -67,7 +69,7 @@ end
     # Full k-space
     ksp_full = zeros(ComplexF32, Nx, Ny, Nc)
     for c in 1:Nc
-        ksp_full[:, :, c] = fftshift(fft(img .* sens_true[:, :, c])) ./ sqrt(Nx * Ny)
+        ksp_full[:, :, c] = fftshift(fft(img .* sens_true[:, :, c]))
     end
 
     # R = 2 undersampling with central 12-line ACS region
@@ -107,6 +109,7 @@ end
 @testitem "Partial Fourier: PhaseConstrained recovers a phased phantom" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: Verbosity
     using LinearAlgebra
     using NamedDims
     using FFTW
@@ -121,7 +124,7 @@ end
 
     full = zeros(ComplexF64, Nx, Ny, Nc)
     for c in 1:Nc
-        full[:, :, c] = fftshift(fft(img .* sens[:, :, c])) ./ sqrt(Nx * Ny)
+        full[:, :, c] = fftshift(fft(img .* sens[:, :, c]))
     end
 
     pf = 26
@@ -143,6 +146,7 @@ end
 @testitem "GRAPPA: arbitrary undersampling factor and default even kernel" tags = [:reconstruction, :acquisition, :encoding] setup = [SyntheticCoils] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: Verbosity
     using LinearAlgebra
     using NamedDims
     using FFTW
@@ -156,7 +160,7 @@ end
 
     full = zeros(ComplexF64, Nx, Ny, Nc)
     for c in 1:Nc
-        full[:, :, c] = fftshift(fft(img .* sens[:, :, c])) ./ sqrt(Nx * Ny)
+        full[:, :, c] = fftshift(fft(img .* sens[:, :, c]))
     end
 
     for R in (2, 3)
@@ -180,6 +184,7 @@ end
 @testitem "Direct methods: trailing time batch dimension is preserved" tags = [:reconstruction, :acquisition, :encoding] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: Verbosity
     using MriReconstructionToolbox: Homodyne, POCS, PhaseConstrained
     using NamedDims
     using FFTW
@@ -195,7 +200,7 @@ end
     end
     full = zeros(ComplexF64, Nx, Ny, Nc, Nt)
     for c in 1:Nc, t in 1:Nt
-        full[:, :, c, t] = fftshift(fft(imgs[:, :, t] .* sens[:, :, c])) ./ sqrt(Nx * Ny)
+        full[:, :, c, t] = fftshift(fft(imgs[:, :, t] .* sens[:, :, c]))
     end
     mask_y = falses(Ny)
     mask_y[1:22] .= true                       # partial Fourier band
@@ -229,9 +234,11 @@ end
 @testitem "SPIRiTConsistency: operator adjoint test and KSpaceToImage reconstruction" tags = [:reconstruction, :regularization] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: Verbosity
     using NamedDims
     using LinearAlgebra
     using FFTW
+    using StructuredOptimization
 
     Nx, Ny, Nc = 16, 16, 4
     Kx, Ky = 3, 3
@@ -262,7 +269,7 @@ end
     end
     ksp_full = zeros(ComplexF64, Nx, Ny, Nc)
     for c in 1:Nc
-        ksp_full[:, :, c] = fftshift(fft(img .* sens[:, :, c])) ./ sqrt(Nx * Ny)
+        ksp_full[:, :, c] = fftshift(fft(img .* sens[:, :, c]))
     end
     acq_full = CartesianAcquisitionInfo(
         NamedDimsArray{(:kx, :ky, :coil)}(ksp_full);
@@ -276,6 +283,7 @@ end
 @testitem "Iterative SPIRiT reconstruction (lowering)" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: Verbosity
     using NamedDims
     using LinearAlgebra
     using FFTW
@@ -288,7 +296,7 @@ end
 
     ksp_full = zeros(ComplexF32, Nx, Ny, Nc)
     for c in 1:Nc
-        ksp_full[:, :, c] = fftshift(fft(img .* sens_true[:, :, c])) ./ sqrt(Nx * Ny)
+        ksp_full[:, :, c] = fftshift(fft(img .* sens_true[:, :, c]))
     end
 
     R_acc = 2
@@ -316,6 +324,7 @@ end
 @testitem "Direct FFT methods respect shifted_kspace_dims" tags = [:reconstruction, :acquisition] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: Verbosity
     using NamedDims
     using FFTW
     using LinearAlgebra
@@ -346,13 +355,58 @@ end
     @test isapprox(abs.(unname(rec_default)), abs.(unname(rec_shifted)); atol = 1.0e-5)
 end
 
+@testitem "DirectReconstruction: coil_combination actually changes the result" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
+    using Test
+    using MriReconstructionToolbox
+    using NamedDims
+    using LinearAlgebra
+
+    Nx, Ny, Nc = 32, 32, 4
+    X = [(i - Nx / 2) / Nx for i in 1:Nx, j in 1:Ny]
+    Y = [(j - Ny / 2) / Ny for i in 1:Nx, j in 1:Ny]
+    mag = zeros(Float32, Nx, Ny)
+    mag[8:24, 8:24] .= 1.0f0
+    # A genuinely complex ground truth (nonzero phase) so AdjointSensitivity and RootSumSquares
+    # are mathematically distinguishable: both reduce to the same thing for a real-valued image.
+    img_true = ComplexF32.(mag) .* cis.(0.8f0 .* Float32.(X .+ Y))
+
+    sens = synthetic_sensitivities(ComplexF32, Nx, Ny, Nc)
+    acq = AcquisitionInfo(is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens)
+    data = simulate_acquisition(img_true, acq)
+
+    rec_adj = reconstruct(data, DirectReconstruction(coil_combination = AdjointSensitivity()); verbosity = Silent())
+    rec_rss = reconstruct(data, DirectReconstruction(coil_combination = RootSumSquares()); verbosity = Silent())
+    rec_none = reconstruct(data, DirectReconstruction(coil_combination = NoCoilCombination()); verbosity = Silent())
+
+    @test size(rec_adj) == (Nx, Ny)
+    @test size(rec_rss) == (Nx, Ny)
+    @test size(rec_none) == (Nx, Ny, Nc)
+    # Genuinely different results, not the old bug where all three collapsed to 𝒜' * kspace_data.
+    @test !isapprox(unname(rec_adj), unname(rec_rss))
+    @test isapprox(unname(rec_adj), img_true; rtol = 0.05)
+    @test isapprox(unname(rec_rss), abs.(img_true); rtol = 0.05)
+
+    # Also correct on Cartesian-subsampled data (measured k-space only, not zero-filled by hand).
+    mask_y = falses(Ny)
+    mask_y[1:2:Ny] .= true
+    mask_y[13:20] .= true
+    acq_sub = AcquisitionInfo(
+        is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_y), sensitivity_maps = sens,
+    )
+    data_sub = simulate_acquisition(img_true, acq_sub)
+    rec_rss_sub = reconstruct(data_sub, DirectReconstruction(coil_combination = RootSumSquares()); verbosity = Silent())
+    @test size(rec_rss_sub) == (Nx, Ny)
+end
+
 
 @testitem "Verbosity modes and method-owned iteration parameters" tags = [:reconstruction, :integration] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: Verbosity
     using LinearAlgebra
     using Random
     using FFTW
+    using MriReconstructionToolbox: lower
 
     Random.seed!(42)
     Nx, Ny, Nc = 32, 32, 2
@@ -366,7 +420,7 @@ end
     # Partial-Fourier acquisition (single coil), for the methods that need one.
     mask_y = falses(Ny)
     mask_y[10:Ny] .= true
-    ksp_full = fftshift(fft(img)) ./ sqrt(Nx * Ny)
+    ksp_full = fftshift(fft(img))
     acq_pf = CartesianAcquisitionInfo(
         ksp_full[:, mask_y];
         is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_y),
@@ -379,8 +433,8 @@ end
         @test_throws ArgumentError reconstruct(acq, DirectReconstruction(); verbose = false)
         @test_throws ArgumentError reconstruct(acq, DirectReconstruction(); printfunc = println)
         @test_throws ArgumentError reconstruct(acq, DirectReconstruction(); freq = 1)
-        # `Config` itself has no such field at all.
-        @test_throws MethodError Config(; maxit = 5)
+        # `ReconstructionConfig` itself has no such field at all.
+        @test_throws MethodError ReconstructionConfig(; maxit = 5)
     end
 
     @testset "as_verbosity shorthands" begin
@@ -388,12 +442,12 @@ end
         @test MriReconstructionToolbox.as_verbosity(:silent) === Silent()
         @test MriReconstructionToolbox.as_verbosity(:progress) isa ProgressBar
         @test MriReconstructionToolbox.as_verbosity(true) isa Verbose
-        @test Config(; verbosity = false).verbosity === Silent()
-        @test_throws ArgumentError Config(; verbosity = :loud)
+        @test ReconstructionConfig(; verbosity = false).verbosity === Silent()
+        @test_throws ArgumentError ReconstructionConfig(; verbosity = :loud)
     end
 
     @testset "Silent produces no output" begin
-        method = IterativeReconstruction(Tikhonov(0.01f0); maxit = 3)
+        method = IterativeReconstruction(L2Image(0.01f0); maxit = 3)
         silent_out = mktemp() do path, io
             redirect_stdout(io) do
                 reconstruct(acq, method; verbosity = Silent())
@@ -467,7 +521,7 @@ end
             (acq, DirectReconstruction(), false),                          # indeterminate indicator
             (acq_pf, POCS(; maxit = 5, tol = 0.0), true),                  # determinate
             (acq_pf, PhaseConstrained(; maxit = 5), true),                 # determinate
-            (acq, IterativeReconstruction(Tikhonov(0.01f0); maxit = 5, tol = 0), true),
+            (acq, IterativeReconstruction(L2Image(0.01f0); maxit = 5, tol = 0), true),
         )
         for (src, method, determinate) in cases
             io = IOBuffer()
@@ -487,7 +541,7 @@ end
         acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
         io = IOBuffer()
         x = reconstruct(
-            acq_ms, IterativeReconstruction(Tikhonov(0.01f0); maxit = 3);
+            acq_ms, IterativeReconstruction(L2Image(0.01f0); maxit = 3);
             verbosity = ProgressBar(output = io, dt = 0.0),
         )
         s = String(take!(io))
