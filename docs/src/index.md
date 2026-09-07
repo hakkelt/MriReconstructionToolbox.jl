@@ -24,6 +24,15 @@ Pkg.add(url="https://github.com/hakkelt/StructuredOptimization.jl")
 Pkg.add(url="https://github.com/hakkelt/MriReconstructionToolbox.jl")
 ```
 
+## Notebooks
+
+`docs/notebooks/` holds eleven Jupyter notebooks (Julia kernel) that work through the package
+feature by feature — from a first reconstruction to regularizers, solvers, non-Cartesian
+trajectories, the low-level interface, and two notebooks on real scanner data (a 0.3 T brain
+acquisition and a 1.5 T cardiac cine, downloaded on demand). See
+[`docs/notebooks/README.md`](https://github.com/hakkelt/MriReconstructionToolbox.jl/blob/master/docs/notebooks/README.md)
+for the setup.
+
 ## What This Package Does
 
 MriReconstructionToolbox.jl solves the MRI reconstruction inverse problem:
@@ -53,6 +62,23 @@ The package provides:
 - ✅ **Simulation Tools** - Built-in phantoms and sampling patterns
 - ✅ **High Performance** - Multi-threaded FFTs and optimized operators
 
+## The API surface
+
+`using MriReconstructionToolbox` brings in the names a user needs to assemble a reconstruction from
+the built-in pieces: the regularization terms, the reconstruction methods, the configuration types
+and the top-level verbs `reconstruct`, `build_model`, `simulate_acquisition` and friends.
+
+Everything needed to *extend* the package — the abstract supertypes you subtype, and the interface
+functions you add methods to (`get_operator`, `materialize`, `get_encoding_operator`, …) — is public
+and documented, but deliberately not exported. Import those explicitly:
+
+```julia
+using MriReconstructionToolbox: Regularization, get_operator, materialize
+```
+
+The package also does not reexport its dependencies. Code that builds operators or optimization
+problems by hand needs its own `using AbstractOperators` / `using StructuredOptimization`.
+
 ## Quick Start
 
 ### Simulation Example
@@ -69,6 +95,7 @@ using Plots
 ```@example imports
 using MriReconstructionToolbox
 using MIRTjim: jim
+using MriReconstructionToolbox: get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator
 
 nx, ny, nc = 256, 256, 8
 xᵍᵗ = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
@@ -156,6 +183,10 @@ savefig("cs_reconstruction.png"); nothing # hide
 #### Custom Reconstruction With Low-Level Interface
 
 ```@example imports
+# The low-level interface is built on packages this one does not reexport.
+using StructuredOptimization
+using WaveletOperators: WaveletOp
+
 # Prepare encoding operator
 ℳ = get_subsampling_operator(data)
 ℱ = get_fourier_operator(data)
