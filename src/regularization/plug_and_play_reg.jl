@@ -5,8 +5,9 @@ Proximable function whose proximal operator is an arbitrary image denoiser, as u
 
 This is the function behind [`PlugAndPlay`](@ref). It is *not* the proximal operator of any function that is
 known in closed form, so `DenoiserProx(...)(x)` returns `NaN`: the value of the implicit prior is unavailable.
-Solvers that only need the prox (`ISTA`, `FISTA`, `ADMM`) work with it; solvers that compare objective values
-across iterations (`PANOC`, `PANOCplus`, `ZeroFPR`) do not.
+Solvers that only need the prox and do not require it to belong to a convex function (`ISTA`, `ADMM`) work
+with it; `FISTA` requires its proximable term to be convex and rejects it at parse time, and solvers that
+compare objective values across iterations (`PANOC`, `PANOCplus`, `ZeroFPR`) do not work either.
 """
 struct DenoiserProx{D, R <: Real, N}
     denoiser::D
@@ -56,7 +57,7 @@ function _denoise(f::DenoiserProx, slice::AbstractArray{<:Complex}, σ)
 end
 
 """
-	PlugAndPlay(denoiser; strength=1, complex_handling=:split, spatial_dims=nothing)
+	PlugAndPlay(denoiser; strength=1, complex_handling=:magnitude, spatial_dims=nothing)
 
 Create a plug-and-play regularization term: the proximal operator of the regularizer is replaced by an
 off-the-shelf image `denoiser`, so that any denoiser can act as an implicit image prior in an iterative
@@ -68,9 +69,9 @@ reconstruction.
 - `strength`: (optional) Scales the noise level handed to the denoiser: the prox at step size `γ` calls the
   denoiser with `σ = strength * sqrt(γ)`. This is the tuning knob that plays the role of `λ` in an explicit
   penalty; larger values denoise more aggressively.
-- `complex_handling`: (optional) How to apply a real-valued denoiser to a complex image. `:split` (default)
-  denoises the real and imaginary parts separately, `:magnitude` denoises the magnitude and keeps the phase,
-  and `:native` passes the complex array to the denoiser unchanged.
+- `complex_handling`: (optional) How to apply a real-valued denoiser to a complex image. `:magnitude`
+  (default) denoises the magnitude and keeps the phase, `:split` denoises the real and imaginary parts
+  separately, and `:native` passes the complex array to the denoiser unchanged.
 - `spatial_dims`: (optional) Number of leading dimensions forming one image for the denoiser. Defaults to
   `min(ndims(x), 2)` if not given; everything after them is looped over.
 
@@ -81,15 +82,18 @@ reconstruction.
   BM3D and learned denoisers (DnCNN and successors).
 - The implicit prior has no value function, so the objective reported by the solvers is `NaN` and any
   convergence check based on the objective is meaningless. Convergence is a fixed-point property here, not a
-  descent property. Use `ISTA`, `FISTA` or `ADMM`; the line-search algorithms (`PANOC`, `PANOCplus`,
-  `ZeroFPR`) require objective values and will not work.
+  descent property. Use `ISTA` or `ADMM`; `FISTA` requires its proximable term to be convex (`is_convex`
+  is deliberately `false` here, since a generic denoiser is not provably convex) and rejects it at parse
+  time, and the line-search algorithms (`PANOC`, `PANOCplus`, `ZeroFPR`) require objective values and will
+  not work either.
 - Convergence guarantees for plug-and-play require the denoiser to be non-expansive (and, for the strongest
   results, a proximal operator of a convex function itself). Ordinary denoisers satisfy neither exactly, so
   the iteration can in principle stall or oscillate; in practice a moderate `strength` and a bounded number
   of iterations is what makes it work.
 - No denoiser is bundled with this package. Anything callable works, e.g.
   `PlugAndPlay((img, σ) -> bm3d(img, σ); strength=0.05)` with BM3D.jl, or a wrapper around a neural network.
-  A soft-thresholding "denoiser" reproduces [`L1Image`](@ref) exactly and is a useful sanity check.
+  A soft-thresholding "denoiser" reproduces [`L1Image`](@ref) exactly under the default `:magnitude` handling
+  and is a useful sanity check.
 
 # Example
 ```julia
@@ -104,7 +108,7 @@ struct PlugAndPlay{D, T} <: Regularization
     complex_handling::Symbol
     spatial_dims::Union{Nothing, Int}
     function PlugAndPlay(
-            denoiser::D; strength::T = 1, complex_handling::Symbol = :split,
+            denoiser::D; strength::T = 1, complex_handling::Symbol = :magnitude,
             spatial_dims::Union{Nothing, Int} = nothing
         ) where {D, T}
         @argcheck strength isa Real "strength must be a scalar"
