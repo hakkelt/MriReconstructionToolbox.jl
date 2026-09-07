@@ -19,6 +19,7 @@ Therefore ProximalOperators includes in particular projections onto commonly use
 
 ```@docs
 IndAffine
+IndAffineCG
 IndBallLinf   
 IndBallL0     
 IndBallL1     
