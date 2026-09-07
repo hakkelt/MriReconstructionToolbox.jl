@@ -1,5 +1,5 @@
 """
-    PhaseConstrained <: AbstractDirectMethod
+    PhaseConstrained <: DirectMethod
 
 Phase-constrained reconstruction for partial Fourier MRI (Margosian et al. 1986).
 
@@ -9,7 +9,7 @@ Phase-constrained reconstruction for partial Fourier MRI (Margosian et al. 1986)
 - `tol`: Conjugate-gradient stopping threshold on the squared residual, per element of the
   right-hand side — the iteration stops once `‖r‖² < tol * length(b)` (default `1e-12`).
 """
-struct PhaseConstrained{C <: CoilCombination} <: AbstractDirectMethod
+struct PhaseConstrained{C <: CoilCombination} <: DirectMethod
     coil_combination::C
     maxit::Int
     tol::Float64
@@ -51,14 +51,16 @@ function _direct_reconstruct(
     c_dim = _pf_coil_dim(acq)
     has_sens = !isnothing(acq.sensitivity_maps)
     s = has_sens ? unname(acq.sensitivity_maps) : nothing
-    scale = sqrt(prod(spatial_sz))
 
+    # `ℱ` is `BACKWARD`-normalized (forward = plain fft, adjoint = fully N-normalized ifft), so
+    # `fwd`/`adj` need no extra rescaling to stay a matched forward/adjoint pair with
+    # `DirectReconstruction`'s convention.
     fwd = m -> begin
         coilwise = has_sens ? (s .* eiϕ .* m) : (eiϕ .* m)
-        mask_nd .* (_direct_fft(ℱ, coilwise) ./ scale)
+        mask_nd .* _direct_fft(ℱ, coilwise)
     end
     adj = r -> begin
-        img = _direct_ifft(ℱ, mask_nd .* r) .* scale
+        img = _direct_ifft(ℱ, mask_nd .* r)
         img = has_sens ? sum(conj.(s) .* conj.(eiϕ) .* img; dims = c_dim) : (conj.(eiϕ) .* img)
         real.(img)
     end
