@@ -17,7 +17,7 @@ Parameter `r` must be a positive integer.
 struct IndBallRank{I}
     r::I
     function IndBallRank{I}(r::I) where {I}
-        if r <= 0
+        return if r <= 0
             error("parameter r must be a positive integer")
         else
             new(r)
@@ -26,17 +26,19 @@ struct IndBallRank{I}
 end
 
 is_set_indicator(f::Type{<:IndBallRank}) = true
-is_proximable(f::Type{<:IndBallRank}) = false
+is_proximable(f::Type{<:IndBallRank}) = true
 
-IndBallRank(r::I=1) where I = IndBallRank{I}(r)
+IndBallRank(r::I = 1) where {I} = IndBallRank{I}(r)
 
 function (f::IndBallRank)(x)
     R = real(eltype(x))
     maxr = minimum(size(x))
-    if maxr <= f.r return R(0) end
-    U, S, V = tsvd(x, f.r+1)
+    if maxr <= f.r
+        return R(0)
+    end
+    U, S, V = tsvd(x, f.r + 1)
     # the tolerance in the following line should be customizable
-    if S[end]/S[1] <= 1e-7
+    if S[end] / S[1] <= 1.0e-7
         return R(0)
     end
     return R(Inf)
@@ -64,6 +66,6 @@ function prox_naive(f::IndBallRank, x, gamma)
         return y, R(0)
     end
     F = svd(x)
-    y = F.U[:,1:f.r]*(Diagonal(F.S[1:f.r])*F.V[:,1:f.r]')
+    y = F.U[:, 1:f.r] * (Diagonal(F.S[1:f.r]) * F.V[:, 1:f.r]')
     return y, R(0)
 end
