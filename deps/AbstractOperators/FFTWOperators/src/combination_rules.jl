@@ -50,13 +50,13 @@ function can_be_combined(T1::ShiftOp, T2::AdjointOperator{<:DFT})
     return all(iseven, size(T2, 1)[collect(T1.dirs)])
 end
 function can_be_combined(T1::DFT, T2::AdjointOperator{<:ShiftOp})
-    return all(iseven, size(T1, 2)[collect(T2.dirs)])
+    return all(iseven, size(T1, 2)[collect(T2.A.dirs)])
 end
 function can_be_combined(T1::AdjointOperator{<:ShiftOp}, T2::DFT)
     return all(iseven, size(T2, 1)[collect(T1.dirs)])
 end
 function can_be_combined(T1::AdjointOperator{<:DFT}, T2::AdjointOperator{<:ShiftOp})
-    return all(iseven, size(T1, 2)[collect(T2.dirs)])
+    return all(iseven, size(T1, 2)[collect(T2.A.dirs)])
 end
 function can_be_combined(T1::AdjointOperator{<:ShiftOp}, T2::AdjointOperator{<:DFT})
     return all(iseven, size(T2, 1)[collect(T1.dirs)])
