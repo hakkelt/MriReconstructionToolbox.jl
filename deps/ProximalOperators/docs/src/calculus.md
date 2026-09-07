@@ -12,6 +12,7 @@ Conjugate
 
 ```@docs
 PointwiseMinimum
+ProximalAverage
 SeparableSum
 SlicedSeparableSum
 Sum
