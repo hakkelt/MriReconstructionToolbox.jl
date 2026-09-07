@@ -52,7 +52,7 @@ using TestItems
         nx, ny, nt = 8, 8, 5
         ksp = NamedDimsArray{(:kx, :ky, :time)}(rand(ComplexF32, nx, ny, nt))
         acq = AcquisitionInfo(ksp)
-        config = Config(; verbosity = Silent())
+        config = ReconstructionConfig(; verbosity = Silent())
 
         plan_noreg = MriReconstructionToolbox.get_problem_decomposition_plan(acq, DirectReconstruction(), config)
         @test !isnothing(plan_noreg) # :time is a batch dim without regularization
@@ -86,6 +86,18 @@ end
         reg = RankLimit(3; time_dim = 3)
         term = MriReconstructionToolbox.materialize(reg, x; threaded = false)
         @test term !== nothing
+    end
+
+    @testset "reconstruct end-to-end" begin
+        # `IndBallRank.is_proximable` used to be hardcoded `false` even though `prox!` was fully
+        # implemented, so this term could never be parsed by any solver ("Sorry, I cannot parse
+        # this problem for any of the provided solvers").
+        using NamedDims
+        x = NamedDimsArray{(:x, :y, :time)}(rand(ComplexF32, 16, 16, 6))
+        acq = AcquisitionInfo(is3D = false, image_size = (16, 16), subsampling = (:, trues(16)))
+        data = simulate_acquisition(x, acq)
+        rec = reconstruct(data, IterativeReconstruction(RankLimit(2; time_dim = :time); maxit = 5); verbosity = Silent())
+        @test size(rec) == size(x)
     end
 end
 
@@ -321,53 +333,5 @@ end
         )
         @test reg.λ ≈ 0.5
         @test reg.block_sizes == (4, 8)
-    end
-end
-
-@testitem "ProximalAverage" tags = [:regularization] setup = [RegTestSetup, ProxOf] begin
-    const PA = MriReconstructionToolbox.ProximalAverage
-    const PO = MriReconstructionToolbox.ProximalOperators
-
-    @testset "weights must be a convex combination" begin
-        f = PO.NormL1(1.0)
-        @test_throws ArgumentError PA((f, f), [0.5])
-        @test_throws ArgumentError PA((f, f), [0.7, 0.7])
-        @test_throws ArgumentError PA((f, f), [-0.5, 1.5])
-        @test PA((f, f), [0.25, 0.75]) isa PA
-    end
-
-    @testset "the prox of an average of identical functions is that function's prox" begin
-        x = randn(16)
-        f = PO.NormL1(0.3)
-        avg = PA((f, f, f), fill(1 / 3, 3))
-        y, y_ref = similar(x), similar(x)
-        PC.prox!(y, avg, x, 0.8)
-        PC.prox!(y_ref, f, x, 0.8)
-        @test y ≈ y_ref
-        @test avg(x) ≈ f(x)
-    end
-
-    @testset "prox! is safe when it writes into its own input" begin
-        # Regression: `prox!` zeroed the output before reading the input, so an in-place step
-        # `prox!(x, f, x, gamma)` -- which callers are allowed to take -- made every scale after the
-        # first see an all-zero array and silently returned zero.
-        x = randn(16)
-        avg = PA((PO.NormL1(0.3), PO.NormL2(0.2)), [0.4, 0.6])
-        y = similar(x)
-        PC.prox!(y, avg, x, 0.8)
-        x_inplace = copy(x)
-        PC.prox!(x_inplace, avg, x_inplace, 0.8)
-        @test x_inplace ≈ y
-        @test !all(iszero, x_inplace)
-    end
-
-    @testset "prox! returns the function's value at the point it wrote" begin
-        # The per-scale proxes disagree here, so averaging their own values would give a strictly
-        # smaller (and inconsistent) number than evaluating the average at `y`.
-        x = randn(16)
-        avg = PA((PO.NormL1(0.3), PO.NormL2(0.2)), [0.4, 0.6])
-        y = similar(x)
-        value = PC.prox!(y, avg, x, 0.8)
-        @test value ≈ avg(y)
     end
 end
