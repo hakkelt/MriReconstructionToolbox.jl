@@ -9,7 +9,7 @@ using TestItems
     @testset "Constructor" begin
         reg = PlugAndPlay(soft_threshold; strength = 0.3)
         @test reg.strength == 0.3
-        @test reg.complex_handling == :split
+        @test reg.complex_handling == :magnitude
         @test reg.spatial_dims === nothing
         @test_throws ArgumentError PlugAndPlay(soft_threshold; strength = -1)
         @test_throws ArgumentError PlugAndPlay(soft_threshold; complex_handling = :real)
@@ -77,6 +77,22 @@ using TestItems
         @test MriReconstructionToolbox.get_affected_dims(
             PlugAndPlay(soft_threshold; spatial_dims = 3), nothing, (:x, :y, :z, :time)
         ) == (:x, :y, :z)
+    end
+
+    @testset "FISTA rejects it (not provably convex); ISTA and ADMM accept it" begin
+        x = randn(8, 8)
+        reg = PlugAndPlay(soft_threshold; strength = 0.2)
+        b = x .+ 0.01 .* randn(8, 8)
+        acq = AcquisitionInfo(NamedDimsArray{(:kx, :ky)}(complex.(b)); is3D = false)
+        @test_throws ArgumentError reconstruct(
+            acq, IterativeReconstruction(reg; algorithm = FISTA(maxit = 3)); verbosity = Silent()
+        )
+        @test reconstruct(
+            acq, IterativeReconstruction(reg; algorithm = ISTA(maxit = 3)); verbosity = Silent()
+        ) isa Any
+        @test reconstruct(
+            acq, IterativeReconstruction(reg; algorithm = ADMM(maxit = 3)); verbosity = Silent()
+        ) isa Any
     end
 
     @testset "scale_regularization scales the noise level" begin
