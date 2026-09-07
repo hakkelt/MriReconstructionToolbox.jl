@@ -1,5 +1,6 @@
 @testitem "NonCartesianAcquisitionInfo" tags = [:acquisition, :nfft] begin
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator
     using NamedDims
 
     @testset "Basic 2D construction" begin
@@ -78,6 +79,7 @@ end
 
 @testitem "AcquisitionInfo copy constructors field round-trips" tags = [:acquisition] begin
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator
 
     @testset "CartesianAcquisitionInfo individual field round-trips" begin
         mask = rand(Bool, 16, 16)
@@ -205,6 +207,7 @@ end
 
 @testitem "Dimension utilities" tags = [:acquisition] begin
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator
     using NamedDims
     import MriReconstructionToolbox: get_image_size, get_time_dim,
         get_fourier_kspace_dims, get_fourier_image_dims,
@@ -294,6 +297,7 @@ end
 
 @testitem "Sampling patterns" tags = [:simulation] begin
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator
 
     @testset "PoissonDiskSampling" begin
         pattern = PoissonDiskSampling(4.0)
@@ -362,6 +366,16 @@ end
         pattern = PoissonDiskSampling(16.0, 0.9)
         mask = create_sampling_pattern(pattern, (16, 16); subsample_freq_encoding = true)
         @test sum(mask) > 0
+
+        # PolynomialDistribution with an odd exponent used to throw "Negative weight found in
+        # weight vector" at anisotropic dims/center_fraction combinations that push a grid
+        # corner's normalized distance past 1 (an even exponent hid the same out-of-range value).
+        for (dims, R, cf) in (((64, 64, 16), 4.0, 0.1), ((64, 64, 32), 4.0, 0.1))
+            pattern = VariableDensitySampling(PolynomialDistribution(3), R, cf)
+            result = create_sampling_pattern(pattern, dims)
+            @test result isa Tuple
+            @test sum(result[2]) > 0
+        end
     end
 
     @testset "PoissonDiskSampling with Real arguments" begin
@@ -373,6 +387,7 @@ end
 
 @testitem "CartesianAcquisitionInfo shifted dims" tags = [:acquisition] begin
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator
     using NamedDims
 
     @testset "shifted_kspace_dims as single Integer" begin

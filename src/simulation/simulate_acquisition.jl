@@ -57,8 +57,49 @@ function simulate_acquisition(image, acq_info::CartesianAcquisitionInfo)
     return acq_info
 end
 
+"""
+    simulate_acquisition(image, acq_info::NonCartesianAcquisitionInfo)
+
+Simulate MRI k-space acquisition from a given image using the specified non-Cartesian
+acquisition parameters (trajectory, and optionally sensitivity maps).
+
+# Arguments
+- `image`: The input image to be transformed into k-space data. Can be a standard array or a `NamedDimsArray`.
+- `acq_info::NonCartesianAcquisitionInfo`: Acquisition settings for non-Cartesian encoding.
+
+# Returns
+- An updated acquisition object with the simulated k-space data stored in `kspace_data`.
+"""
 function simulate_acquisition(image, acq_info::NonCartesianAcquisitionInfo)
-    error("Non-Cartesian acquisition simulation is not implemented yet")
+    if acq_info.is3D
+        @argcheck ndims(image) >= 3 "image must have at least 3 dimensions for 3D acquisition"
+        @argcheck size(image)[1:3] == acq_info.image_size "image spatial dimensions must match image_size"
+    else
+        @argcheck ndims(image) >= 2 "image must have at least 2 dimensions for 2D acquisition"
+        @argcheck size(image)[1:2] == acq_info.image_size "image spatial dimensions must match image_size"
+    end
+    if !isnothing(acq_info.sensitivity_maps)
+        spatial_dims = acq_info.is3D ? 3 : 2
+        @argcheck size(image)[1:spatial_dims] == size(acq_info.sensitivity_maps)[1:spatial_dims] "image spatial dimensions must match sensitivity maps spatial dimensions"
+    end
+
+    sample_dims = size(acq_info.trajectory)[2:end]
+    ncoil = isnothing(acq_info.sensitivity_maps) ? () : (size(acq_info.sensitivity_maps)[end],)
+    ksp_size = (sample_dims..., ncoil...)
+    ksp = similar(image, Complex{eltype(acq_info.trajectory)}, ksp_size)
+    if image isa NamedDimsArray && acq_info.trajectory isa NamedDimsArray
+        sample_dimnames = dimnames(acq_info.trajectory)[2:end]
+        coil_dimnames = isnothing(acq_info.sensitivity_maps) ? () : (:coil,)
+        ksp = NamedDimsArray{(sample_dimnames..., coil_dimnames...)}(NamedDims.unname(ksp))
+    end
+
+    acq_info = NonCartesianAcquisitionInfo(acq_info; kspace_data = ksp)
+    E = get_encoding_operator(acq_info)
+    if eltype(image) <: Real
+        image = complex.(image)
+    end
+    mul!(ksp, E, image)
+    return acq_info
 end
 
 function get_kspace_size(image, acq_info::CartesianAcquisitionInfo)

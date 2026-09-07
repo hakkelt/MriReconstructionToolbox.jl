@@ -1,6 +1,7 @@
 @testitem "Fourier Operator" tags = [:encoding, :operators, :fourier] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
     using FFTW
     using NamedDims
 
@@ -52,6 +53,7 @@ end
 @testitem "AcquisitionInfo API" tags = [:encoding, :operators, :acquisition_info] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
     using FFTW
     using NamedDims
 
@@ -101,6 +103,7 @@ end
 @testitem "NFFT operating point (S6)" tags = [:encoding, :operators, :nfft] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
     using NFFTOperators: NFFTOp
     import NFFTOperators
     using LinearAlgebra, Random
@@ -151,6 +154,7 @@ end
 @testitem "Sensitivity Map Operator" tags = [:encoding, :operators, :sensitivity_maps] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
     using AbstractOperators
     using NamedDims
 
@@ -204,6 +208,7 @@ end
 @testitem "Full Encoding Operator" tags = [:encoding, :operators, :nfft] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
     using FFTW
     using NamedDims
 
@@ -584,6 +589,7 @@ end
 
 @testitem "simulate_acquisition NamedDims and real image" tags = [:encoding, :simulation] begin
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
     using NamedDims
 
     @testset "NamedDims 2D image with smaps" begin
@@ -644,9 +650,53 @@ end
     end
 end
 
+@testitem "simulate_acquisition for NonCartesianAcquisitionInfo" tags = [:encoding, :simulation, :nfft] begin
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator
+    using NamedDims
+    using LinearAlgebra
+    using Random
+
+    Random.seed!(0)
+    nx, ny, nc, nspokes, nread = 16, 16, 3, 8, 16
+    x = rand(ComplexF32, nx, ny)
+    angles = range(0, pi; length = nspokes + 1)[1:(end - 1)]
+    r = range(-0.5f0, 0.5f0; length = nread)
+    traj = zeros(Float32, 2, nread, nspokes)
+    for (s, ang) in enumerate(angles), (i, rr) in enumerate(r)
+        traj[1, i, s] = rr * cos(ang)
+        traj[2, i, s] = rr * sin(ang)
+    end
+    smaps = coil_sensitivities(nx, ny, nc)
+
+    @testset "matches building the encoding operator by hand" begin
+        acq = NonCartesianAcquisitionInfo(nothing; trajectory = traj, image_size = (nx, ny), sensitivity_maps = smaps)
+        result = simulate_acquisition(x, acq)
+        @test size(result.kspace_data) == (nread, nspokes, nc)
+
+        placeholder = zeros(ComplexF32, nread, nspokes, nc)
+        acq_manual = NonCartesianAcquisitionInfo(placeholder; trajectory = traj, image_size = (nx, ny), sensitivity_maps = smaps)
+        y_manual = get_encoding_operator(acq_manual) * x
+        @test result.kspace_data == y_manual
+    end
+
+    @testset "no sensitivity maps" begin
+        acq = NonCartesianAcquisitionInfo(nothing; trajectory = traj, image_size = (nx, ny))
+        result = simulate_acquisition(x, acq)
+        @test size(result.kspace_data) == (nread, nspokes)
+    end
+
+    @testset "real image input is cast to complex" begin
+        acq = NonCartesianAcquisitionInfo(nothing; trajectory = traj, image_size = (nx, ny))
+        result = simulate_acquisition(real.(x), acq)
+        @test eltype(result.kspace_data) == ComplexF32
+    end
+end
+
 @testitem "Fourier operator helpers match raw FFT (even and odd sizes)" tags = [:reconstruction, :encoding] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
     using NamedDims
     using FFTW
     const MRT = MriReconstructionToolbox

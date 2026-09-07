@@ -216,14 +216,17 @@ function construct_weights(subsampling::VariableDensitySampling{PolynomialDistri
     center_region = get_fully_sampled_region(dims, subsampling.center_fraction)
     if isnothing(center_region)
         for I in CartesianIndices(dims)
-            dist = sqrt(sum(((Tuple(I) .- centers) ./ (0.5 .* dims)) .^ 2))
+            dist = min(sqrt(sum(((Tuple(I) .- centers) ./ (0.5 .* dims)) .^ 2)), 1.0)
             W[I] = (1 - dist)^subsampling.distribution.p
         end
     else
         center_width = length(center_region[1])
         normalizers = [(d - center_width) for d in dims]
         for I in CartesianIndices(dims)
-            dist = sqrt(sum(((Tuple(I) .- centers) ./ normalizers) .^ 2))
+            # An anisotropic `dims` combined with a single isotropic `center_width` can push
+            # a corner's `dist` above 1; clamp it so `(1 - dist)^p` never goes negative for
+            # an odd exponent `p`.
+            dist = min(sqrt(sum(((Tuple(I) .- centers) ./ normalizers) .^ 2)), 1.0)
             W[I] = (1 - dist)^subsampling.distribution.p
         end
         W[center_region...] .= 1
