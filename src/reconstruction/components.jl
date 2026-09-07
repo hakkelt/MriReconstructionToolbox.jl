@@ -8,8 +8,8 @@ passed to `reconstruct`. At least one regularization is required.
 # Example
 ```julia
 julia> using MriReconstructionToolbox
-julia> Component(:lowrank, LowRank(0.05; time_dim = :time), TemporalFourier(0.01; time_dim = :time))
-Component(:lowrank, LowRank(0.05), TemporalFourier(0.01))
+julia> Component(:lowrank, LowRank(0.05; time_dim = :time), L1TemporalFourier(0.01; time_dim = :time))
+Component(:lowrank, LowRank(0.05), L1TemporalFourier(0.01))
 ```
 """
 struct Component{R <: Tuple{Vararg{Regularization}}}
@@ -110,11 +110,11 @@ Base.convert(::Type{Array}, img::DecomposedImage) = Array(img)
 NamedDims.NamedDimsArray(img::DecomposedImage) = img.total isa NamedDimsArray ? img.total : throw(ArgumentError("DecomposedImage has no dimension names."))
 
 """
-    total(img::DecomposedImage)
+    total_image(img::DecomposedImage)
 
 Return the stored sum array (named or not) of an image-decomposition result.
 """
-total(img::DecomposedImage) = img.total
+total_image(img::DecomposedImage) = img.total
 
 """
     components(img::DecomposedImage)

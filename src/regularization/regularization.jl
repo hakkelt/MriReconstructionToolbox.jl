@@ -178,8 +178,8 @@ one), the regularization term has the same relative strength as it would with an
 original `λ`.
 
 For a term `λ^k ⋅ h(x)` with `h` homogeneous of degree `p` in `x`, this requires `λ_eff = λ ⋅ factor^((2-p)/k)`.
-L1-type terms (`k=1, p=1`, e.g. `L1Image`, `L1Wavelet2D/3D`, `TotalVariation2D/3D`, `TemporalFourier`, `LowRank`)
-therefore scale `λ` linearly with `factor`. Quadratic penalties (`Tikhonov`, `k=2, p=2`) and rank constraints
+L1-type terms (`k=1, p=1`, e.g. `L1Image`, `L1Wavelet2D/3D`, `TotalVariation2D/3D`, `L1TemporalFourier`, `LowRank`)
+therefore scale `λ` linearly with `factor`. Quadratic penalties (`L2Image`, `k=2, p=2`) and rank constraints
 (`RankLimit`, which has no `λ`) are already scale-consistent and need no correction; the default falls back to
 returning `reg` unchanged.
 """

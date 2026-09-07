@@ -46,7 +46,7 @@ function stack_plain_image_slices(results, plan, ::Val{true})
 end
 
 function stack_decomposed_image_slices(results, plan, threaded::Val)
-    total_image = stack_plain_image_slices(map(total, results), plan, threaded)
+    summed = stack_plain_image_slices(map(total_image, results), plan, threaded)
     names = keys(first(results).components)
     comps = NamedTuple{names}(
         Tuple(
@@ -54,7 +54,7 @@ function stack_decomposed_image_slices(results, plan, threaded::Val)
                 for name in names
         )
     )
-    return DecomposedImage(total_image, comps)
+    return DecomposedImage(summed, comps)
 end
 
 function maybe_rescale_results!(results, scales, config)

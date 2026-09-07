@@ -26,7 +26,7 @@ The sensitivity maps are constructed using:
    - Receiver electronics phase offsets
    - Geometric positioning effects
 
-4. **Normalization**: The maps are normalized using the root-sum-of-squares across all coils,
+4. **Scaling**: The maps are normalized using the root-sum-of-squares across all coils,
    ensuring that `√(Σᵢ|sᵢ(x,y)|²) ≈ 1` at each spatial location. This preserves signal
    intensity while maintaining spatial encoding information.
 

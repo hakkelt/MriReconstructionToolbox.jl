@@ -21,7 +21,7 @@ The following constructors (all exported) cover the majority of regularization n
 | `NormL0(λ)` | Counts nonzeros (scaled) | Hard sparsity (often surrogate) |
 | `NormL1(λ)` | \( λ\|x\|_1 \) (weighted variant) | Soft sparsity / wavelets |
 | `NormL2(λ)` | \( λ\|x\|_2 \) | Magnitude penalization / normalization |
-| `SqrNormL2(λ)` | \( \tfrac{λ}{2}\|x\|_2^2 \) (ridge) | Tikhonov / quadratic penalization |
+| `SqrNormL2(λ)` | \( \tfrac{λ}{2}\|x\|_2^2 \) (ridge) | L2Image / quadratic penalization |
 | `NormL21(λ)` | Group sparsity (sum of L2 norms over groups) | Multidimensional total variation |
 | `NormLinf(λ)` | \( λ\|x\|_\infty \) | Robust range control |
 | `ElasticNet(λ1, λ2)` | \( λ_1\|x\|_1 + \tfrac{λ_2}{2}\|x\|_2^2 \) | Combined sparsity + shrinkage |
@@ -137,9 +137,22 @@ rather than directly.
 
 ```@docs
 MriReconstructionToolbox.BlockNuclearNorm
-MriReconstructionToolbox.ProximalAverage
 MriReconstructionToolbox.DenoiserProx
 ```
+
+Two of them started here and were moved upstream, because nothing about either is MRI-specific:
+`MultiScaleLowRank` combines its per-scale block nuclear norms with the proximal average, and
+`HardConsistency` projects onto ``\{x : \mathcal{A}x = y\}`` with a matrix-free affine indicator.
+
+```@docs
+ProximalOperators.ProximalAverage
+ProximalOperators.IndAffine
+ProximalOperators.IndAffineCG
+```
+
+What stayed in this package for the hard-consistency constraint is the one MRI-specific part: knowing
+that `is_AAc_diagonal(𝒜)` makes the projection a division, which `hard_consistency_prox` passes to
+`IndAffineCG` as its `AAc_diag`.
 
 ## See Also
 

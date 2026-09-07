@@ -15,7 +15,7 @@
 
     # 1. Validation tests
     @test_throws ArgumentError pseudo_replica(acq_sim; replicas = 1)
-    @test_throws ArgumentError pseudo_replica(acq_sim; replicas = 10, normalization = BartScaling())
+    @test_throws ArgumentError pseudo_replica(acq_sim; replicas = 10, scaling = BartScaling())
 
     # 2. Fully sampled single-coil Cartesian: g-factor must be approximately 1.0 everywhere
     rng = Random.MersenneTwister(42)
@@ -98,7 +98,7 @@ end
     acq = NonCartesianAcquisitionInfo(ksp; trajectory = traj, image_size = (24, 24))
 
     # Must not throw on `acq.subsampling` (a field NonCartesianAcquisitionInfo lacks)
-    out = pseudo_replica(acq; replicas = 4, noise_std = 1.0, normalization = NoScaling())
+    out = pseudo_replica(acq; replicas = 4, noise_std = 1.0, scaling = NoScaling())
     @test size(out.g_factor)[1:2] == (24, 24)   # per-coil output (no coil combination without sens maps)
     @test all(isfinite, out.g_factor)
 end

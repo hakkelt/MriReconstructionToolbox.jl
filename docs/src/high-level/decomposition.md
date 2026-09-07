@@ -118,7 +118,7 @@ These regularizations couple batch dimensions:
 img = reconstruct(acq_multislice, IterativeReconstruction(L1Wavelet3D(5e-3)))  # ❌ No decomposition
 
 # Temporal regularization couples time points
-img = reconstruct(acq_dynamic, IterativeReconstruction(TemporalFourier(1e-2)))  # ❌ No decomposition
+img = reconstruct(acq_dynamic, IterativeReconstruction(L1TemporalFourier(1e-2)))  # ❌ No decomposition
 
 # Low-rank couples time points
 img = reconstruct(acq_dynamic, IterativeReconstruction(LowRank(1e-1)))  # ❌ No decomposition
@@ -128,9 +128,9 @@ img = reconstruct(acq_dynamic, IterativeReconstruction(LowRank(1e-1)))  # ❌ No
 
 ```julia
 # Spatial + Temporal regularization
-# Cannot decompose over time (coupled by TemporalFourier)
+# Cannot decompose over time (coupled by L1TemporalFourier)
 # But could decompose over other batch dimensions, like slice
-method = IterativeReconstruction(L1Wavelet2D(5e-3), TemporalFourier(1e-2))
+method = IterativeReconstruction(L1Wavelet2D(5e-3), L1TemporalFourier(1e-2))
 img = reconstruct(acq, method)  # Partial decomposition possible
 ```
 

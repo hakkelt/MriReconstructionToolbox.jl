@@ -1,6 +1,7 @@
 @testitem "Aqua" tags = [:quality, :aqua] begin
     using Aqua
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator, calculate
     Aqua.test_all(
         MriReconstructionToolbox;
         ambiguities = true,
@@ -13,12 +14,14 @@ end
 @testitem "JET test_package" tags = [:quality, :jet] begin
     using JET
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator, calculate
     JET.test_package(MriReconstructionToolbox; target_modules = (MriReconstructionToolbox,))
 end
 
 @testitem "JET exported API @test_opt" tags = [:quality, :jet] begin
     using JET
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator, calculate
     using AbstractOperators
     using NamedDims
 
@@ -47,13 +50,13 @@ end
 
     @test_opt target_modules = (MRT,) get_subsampling_operator(rand(ComplexF32, count(mask)), (nx, ny), mask)
 
-    @test_opt target_modules = (MRT,) Tikhonov(0.1)
+    @test_opt target_modules = (MRT,) L2Image(0.1)
     @test_opt target_modules = (MRT,) L1Image(0.1)
     @test_opt target_modules = (MRT,) L1Wavelet2D(0.1)
     @test_opt target_modules = (MRT,) L1Wavelet3D(0.1)
     @test_opt target_modules = (MRT,) TotalVariation2D(0.1)
     @test_opt target_modules = (MRT,) TotalVariation3D(0.1)
-    @test_opt target_modules = (MRT,) TemporalFourier(0.1; time_dim = 2)
+    @test_opt target_modules = (MRT,) L1TemporalFourier(0.1; time_dim = 2)
     @test_opt target_modules = (MRT,) LowRank(0.1; time_dim = 2)
     @test_opt target_modules = (MRT,) RankLimit(2; time_dim = 2)
 
@@ -63,7 +66,7 @@ end
     @test_opt target_modules = (MRT,) PoissonDiskSampling(2.0)
     @test_opt target_modules = (MRT,) to_displayable_mask((:, trues(ny)), (nx, ny))
     @test_opt target_modules = (MRT,) coil_sensitivities(nx, ny, nc)
-    @test_opt target_modules = (MRT,) Config(; verbosity = Silent())
+    @test_opt target_modules = (MRT,) ReconstructionConfig(; verbosity = Silent())
     @test_opt target_modules = (MRT,) SequentialExecutor()
     @test_opt target_modules = (MRT,) MultiThreadingExecutor()
     @test_opt target_modules = (MRT,) BartScaling()
@@ -74,6 +77,7 @@ end
 @testitem "JET exported API @test_call" tags = [:quality, :jet] begin
     using JET
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator, calculate
     using AbstractOperators
     using NamedDims
 
@@ -102,16 +106,16 @@ end
     @test_call target_modules = (MRT,) get_subsampling_operator(rand(ComplexF32, count(mask)), (nx, ny), mask)
     @test_call target_modules = (MRT,) get_encoding_operator(cart_info; threaded = false)
     @test_call target_modules = (MRT,) get_encoding_operator(noncart_info; threaded = false)
-    @test_call target_modules = (MRT,) calculate(Tikhonov(0.1), img; threaded = false)
-    @test_call target_modules = (MRT,) build_model(Eye(img), img, Tikhonov(0.1); threaded = false)
+    @test_call target_modules = (MRT,) calculate(L2Image(0.1), img; threaded = false)
+    @test_call target_modules = (MRT,) build_model(Eye(img), img, L2Image(0.1); threaded = false)
     @test_call target_modules = (MRT,) create_sampling_pattern(UniformRandomSampling(2.0, 0.1), (nx, ny))
     @test_call target_modules = (MRT,) to_displayable_mask((:, trues(ny)), (nx, ny))
     @test_call target_modules = (MRT,) coil_sensitivities(nx, ny, nc)
     @test_call target_modules = (MRT,) simulate_acquisition(img, AcquisitionInfo(nothing; is3D = false, image_size = (nx, ny), sensitivity_maps = smaps))
-    @test_call target_modules = (MRT,) Config(; verbosity = Silent())
+    @test_call target_modules = (MRT,) ReconstructionConfig(; verbosity = Silent())
     @test_call target_modules = (MRT,) DirectReconstruction()
-    @test_call target_modules = (MRT,) IterativeReconstruction(Tikhonov(0.01))
-    @test_call target_modules = (MRT,) reconstruct(cart_info, IterativeReconstruction(Tikhonov(0.01); maxit = 2); threaded = false, verbosity = Silent())
+    @test_call target_modules = (MRT,) IterativeReconstruction(L2Image(0.01))
+    @test_call target_modules = (MRT,) reconstruct(cart_info, IterativeReconstruction(L2Image(0.01); maxit = 2); threaded = false, verbosity = Silent())
     @test_call target_modules = (MRT,) reconstruct(cart_info; threaded = false, verbosity = Silent())
     @test_call target_modules = (MRT,) SequentialExecutor()
     @test_call target_modules = (MRT,) MultiThreadingExecutor()
@@ -123,6 +127,7 @@ end
 @testitem "Benchmark suite smoke test" tags = [:quality] begin
     using BenchmarkTools
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator, calculate
 
     benchmark_file = joinpath(pkgdir(MriReconstructionToolbox), "benchmark", "ci", "benchmarks.jl")
     @test isfile(benchmark_file)

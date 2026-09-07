@@ -80,7 +80,7 @@ SUITE["prox"] = BenchmarkGroup()
 
 reg_tv = TotalVariation2D(0.01)
 reg_lr = LowRank(0.01; time_dim = 3)
-reg_tf = TemporalFourier(0.01; time_dim = 3)
+reg_tf = L1TemporalFourier(0.01; time_dim = 3)
 
 # Test arrays
 x_2d = copy(phantom_2d)

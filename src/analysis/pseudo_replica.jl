@@ -1,7 +1,7 @@
 """
     pseudo_replica(
         acq::AcquisitionInfo,
-        method::AbstractReconstructionMethod = DirectReconstruction();
+        method::ReconstructionMethod = DirectReconstruction();
         replicas::Int = 64,
         noise_std::Real = 1.0,
         rng::AbstractRNG = Random.default_rng(),
@@ -12,11 +12,11 @@ Computes Monte Carlo pseudo-replica noise propagation and SNR / g-factor maps (R
 Reconstructs `replicas` noisy realizations of the k-space data and returns `(mean, std, g_factor)`.
 
 # Notes
-- `normalization` must be fixed (`FixedScaling()` or `NoScaling()`) to ensure noise variance is preserved across replicas.
+- `scaling` must be fixed (`FixedScaling()` or `NoScaling()`) to ensure noise variance is preserved across replicas.
 """
 function pseudo_replica(
         acq::AcquisitionInfo,
-        method::AbstractReconstructionMethod = DirectReconstruction();
+        method::ReconstructionMethod = DirectReconstruction();
         replicas::Int = 64,
         noise_std::Real = 1.0,
         rng::AbstractRNG = Random.default_rng(),
@@ -25,8 +25,8 @@ function pseudo_replica(
     @argcheck replicas >= 2 "Number of pseudo-replicas must be at least 2"
 
     config_kwargs = Dict{Symbol, Any}(kwargs)
-    if !haskey(config_kwargs, :normalization)
-        config_kwargs[:normalization] = NoScaling()
+    if !haskey(config_kwargs, :scaling)
+        config_kwargs[:scaling] = NoScaling()
     end
     # Replicas are quiet by default -- a per-replica log repeated 64 times is noise. A
     # `ProgressBar` belongs to the replica loop rather than to each individual reconstruction, so
@@ -34,7 +34,7 @@ function pseudo_replica(
     # which is what asking for the log means.
     outer_verbosity = as_verbosity(get(config_kwargs, :verbosity, Silent()))
     config_kwargs[:verbosity] = outer_verbosity isa Verbose ? outer_verbosity : Silent()
-    norm_mode = config_kwargs[:normalization]
+    norm_mode = config_kwargs[:scaling]
     @argcheck norm_mode isa Union{FixedScaling, NoScaling} "pseudo_replica requires FixedScaling or NoScaling to preserve noise variance across replicas (got $(typeof(norm_mode)))"
 
     spatial_size = get_image_size(acq)

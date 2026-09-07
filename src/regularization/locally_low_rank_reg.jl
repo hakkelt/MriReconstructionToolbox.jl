@@ -148,8 +148,11 @@ end
 
 """
 	LocallyLowRank(λ; block_size, time_dim=nothing, shift=:none, rng=Random.default_rng())
+	LLR(λ; block_size, time_dim=nothing, shift=:none, rng=Random.default_rng())
 
-Create a locally low-rank (LLR) regularization term with parameter `λ`. The image is tiled into
+Create a locally low-rank (LLR) regularization term with parameter `λ`. `LLR` is an exported alias:
+BART, RegularizedLeastSquares.jl and the literature all use the acronym, and the two names are the
+same type. The image is tiled into
 non-overlapping spatial blocks, and the nuclear norm of the Casorati matrix of every block is penalized:
 `λ ∑_b ‖𝓧_b‖_*`, where the rows of `𝓧_b` are the voxels of block `b` and its columns are the frames along
 `time_dim`.
@@ -206,6 +209,8 @@ struct LocallyLowRank{T, B, D, RNG} <: Regularization
         return new{T, B, D, RNG}(λ, block_size, time_dim, shift, rng)
     end
 end
+
+const LLR = LocallyLowRank
 
 get_operator(::LocallyLowRank, x::AbstractArray; threaded::Bool = true) = identity_operator(x)
 

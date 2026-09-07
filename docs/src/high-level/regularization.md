@@ -41,6 +41,7 @@ The code snippets in the following sections assume that `MriReconstructionToolbo
 using MriReconstructionToolbox
 using GeometricMedicalPhantoms
 using MIRTjim: jim
+using MriReconstructionToolbox: get_operator
 
 # Simulate 2D acquisition
 x = create_shepp_logan_phantom(128, 128, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
@@ -78,12 +79,13 @@ savefig("shepp_logan_phantom_3d.png"); nothing # hide
 
 ### Image Domain Regularization
 
-#### Tikhonov (L2) Regularization
+#### ℓ₂ Image Domain (Tikhonov) Regularization
 
-The simplest form of regularization, penalizing large pixel values:
+The simplest form of regularization, penalizing large pixel values. `L2Image` is the canonical name;
+`Tikhonov` is an exported alias for the same type.
 
 ```@docs
-Tikhonov
+L2Image
 ```
 
 **When to use:**
@@ -93,10 +95,10 @@ Tikhonov
 
 **Example:**
 ```@example imports
-img₁ = reconstruct(data, IterativeReconstruction(Tikhonov(1e-1)); verbosity = Silent())
-img₂ = reconstruct(data, IterativeReconstruction(Tikhonov(1e-6)); verbosity = Silent())
-p1 = jim(img₁; title="Tikhonov λ=1e-1")
-p2 = jim(img₂; title="Tikhonov λ=1e-6")
+img₁ = reconstruct(data, IterativeReconstruction(L2Image(1e-1)); verbosity = Silent())
+img₂ = reconstruct(data, IterativeReconstruction(L2Image(1e-6)); verbosity = Silent())
+p1 = jim(img₁; title="L2Image λ=1e-1")
+p2 = jim(img₂; title="L2Image λ=1e-6")
 jim(p1, p2; layout=(1,2), size=(800,400))
 savefig("tikhonov_regularization.png"); nothing # hide
 ```
@@ -310,11 +312,14 @@ Balances first- and second-order behaviour automatically through an auxiliary ve
 
 ```@docs
 TotalGeneralizedVariation2D
+TotalGeneralizedVariation3D
 ```
 
 **When to use:**
 - The default replacement for [`TotalVariation2D`](@ref) whenever staircasing is a concern, i.e. on any image that is not genuinely piecewise constant — which in MRI is most of them
 - Especially worthwhile at high acceleration, where the TV staircasing artifact is strongest
+- Use [`TotalGeneralizedVariation3D`](@ref) for volumetric data, so that the auxiliary field and the
+  symmetrized gradient run over all three spatial dimensions instead of treating slices independently
 
 **Example:**
 ```julia
@@ -377,7 +382,7 @@ those above count as edges and are preserved.
 For dynamic imaging, promotes sparsity in the temporal Fourier domain:
 
 ```@docs
-TemporalFourier
+L1TemporalFourier
 ```
 
 **When to use:**
@@ -388,7 +393,7 @@ TemporalFourier
 
 **Example:**
 ```julia
-img = reconstruct(acq, IterativeReconstruction(TemporalFourier(1e-2, time_dim=4)))
+img = reconstruct(acq, IterativeReconstruction(L1TemporalFourier(1e-2, time_dim=4)))
 ```
 
 **Practical tip:** This works best when temporal changes are smooth or periodic. For irregular motion, consider temporal total variation or low-rank methods instead.
@@ -633,7 +638,7 @@ You can combine multiple regularization terms to exploit different image propert
 method = IterativeReconstruction(
     L1Wavelet2D(5e-3),      # Spatial sparsity
     TotalVariation2D(1e-3),  # Edge preservation
-    TemporalFourier(2e-2),   # Temporal smoothness
+    L1TemporalFourier(2e-2),   # Temporal smoothness
 )
 img = reconstruct(acq_dynamic, method)
 ```
@@ -654,14 +659,14 @@ The regularization parameter λ controls the trade-off between data fidelity and
 ### Practical Guidelines
 
 **Starting values by regularization type:**
-- Tikhonov: `1e-5` to `1e-3`
+- L2Image: `1e-5` to `1e-3`
 - L1Image: `1e-4` to `1e-2`
 - L1Wavelet: `1e-3` to `1e-2`
 - TotalVariation: `1e-4` to `5e-3`
 - SecondOrderTotalVariation: `1e-4` to `1e-2` (roughly 2× the first-order λ when the two are combined)
-- TotalGeneralizedVariation2D: `1e-4` to `5e-3`, i.e. the same range as `TotalVariation2D`; leave `ratio` at `2.0`
+- TotalGeneralizedVariation2D/3D: `1e-4` to `5e-3`, i.e. the same range as `TotalVariation2D`; leave `ratio` at `2.0`
 - EdgePreservingRoughness: `1e-4` to `5e-3` for λ; `δ` from the gradient magnitudes of a preliminary reconstruction
-- TemporalFourier: `1e-2` to `1e-1`
+- L1TemporalFourier: `1e-2` to `1e-1`
 - TemporalTotalVariation: `1e-2` to `1e-1`
 - LowRank: `1e-2` to `1`
 - LocallyLowRank: `1e-2` to `5e-1`
@@ -689,7 +694,7 @@ The regularization parameter λ controls the trade-off between data fidelity and
 | Smooth penalty wanted (gradient-based solver, model-based recon) | [`EdgePreservingRoughness2D`](@ref) | + [`L1Wavelet2D`](@ref) |
 | ℓ₁ amplitude bias is a problem | [`HardThreshold`](@ref) / [`SparsityLimit`](@ref) | warm-started from an ℓ₁ solution |
 | A trained or off-the-shelf denoiser is available | [`PlugAndPlay`](@ref) | — |
-| Periodic dynamics (cine, cardiac) | [`TemporalFourier`](@ref) | + [`TotalVariation2D`](@ref) |
+| Periodic dynamics (cine, cardiac) | [`L1TemporalFourier`](@ref) | + [`TotalVariation2D`](@ref) |
 | Irregular dynamics (free-breathing, real-time) | [`TemporalTotalVariation`](@ref) | + [`TotalVariation2D`](@ref) |
 | Strong global spatiotemporal correlation (DCE, perfusion) | [`LowRank`](@ref) | L+S: [`LowRank`](@ref) + [`TemporalTotalVariation`](@ref), see [Image Decomposition](image_decomposition.md) |
 | Spatially varying dynamics, parameter mapping | [`LocallyLowRank`](@ref) | + [`TotalVariation2D`](@ref) |
@@ -697,7 +702,7 @@ The regularization parameter λ controls the trade-off between data fidelity and
 | Multi-contrast / multi-echo / diffusion | [`JointSparsity`](@ref) | + [`L1Wavelet2D`](@ref) |
 | A high-quality prior image exists | [`ReferencePrior`](@ref) | + [`L1Wavelet2D`](@ref) |
 | Real-valued images, physical range known | [`NonNegative`](@ref) / [`BoxConstraint`](@ref) | + any penalty |
-| Parallel imaging without sparsity assumptions | [`Tikhonov`](@ref) | — |
+| Parallel imaging without sparsity assumptions | [`L2Image`](@ref) | — |
 
 ## References
 
@@ -712,7 +717,7 @@ Sparsity and total variation:
 - Blumensath, T., & Davies, M. E. (2009). *Iterative hard thresholding for compressed sensing.* Applied and Computational Harmonic Analysis, 27(3), 265-274. — [`HardThreshold`](@ref) and [`SparsityLimit`](@ref).
 
 Dynamic imaging:
-- Lustig, M., Santos, J. M., Donoho, D. L., & Pauly, J. M. (2006). *k-t SPARSE: High frame rate dynamic MRI exploiting spatio-temporal sparsity.* Proc. ISMRM. — sparsity in the temporal Fourier domain ([`TemporalFourier`](@ref)).
+- Lustig, M., Santos, J. M., Donoho, D. L., & Pauly, J. M. (2006). *k-t SPARSE: High frame rate dynamic MRI exploiting spatio-temporal sparsity.* Proc. ISMRM. — sparsity in the temporal Fourier domain ([`L1TemporalFourier`](@ref)).
 - Feng, L., Grimm, R., Block, K. T., et al. (2014). *Golden-angle radial sparse parallel MRI: Combination of compressed sensing, parallel imaging, and golden-angle radial sampling for fast and flexible dynamic volumetric MRI.* Magnetic Resonance in Medicine, 72(3), 707-717. — temporal total variation ([`TemporalTotalVariation`](@ref)).
 - Otazo, R., Candès, E., & Sodickson, D. K. (2015). *Low-rank plus sparse matrix decomposition for accelerated dynamic MRI with separation of background and dynamic components.* Magnetic Resonance in Medicine, 73(3), 1125-1136. — the L+S model, see [Image Decomposition](image_decomposition.md).
 

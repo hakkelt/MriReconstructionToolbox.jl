@@ -31,7 +31,7 @@ end
 @testitem "Type Stability Tests" tags = [:regularization] setup = [RegTestSetup] begin
     @testset "Float32 compatibility" begin
         x = randn(Float32, 8, 8)
-        reg = Tikhonov(0.1f0)
+        reg = L2Image(0.1f0)
         result = MriReconstructionToolbox.calculate(reg, x; threaded = false)
         @test typeof(result) == Float32
     end
@@ -63,7 +63,7 @@ end
 
     @testset "Zero regularization parameter" begin
         x = rand(5, 5)
-        reg = Tikhonov(0.0)
+        reg = L2Image(0.0)
         result = MriReconstructionToolbox.calculate(reg, x; threaded = false)
         @test result ≈ 0.0 atol = 1.0e-15
     end
@@ -78,11 +78,11 @@ end
 end
 
 @testitem "NamedDimsArray inputs" tags = [:regularization] setup = [RegTestSetup] begin
-    @testset "Tikhonov NamedDims" for threaded in [false, true]
+    @testset "L2Image NamedDims" for threaded in [false, true]
         x = rand(5, 5)
         x_named = NamedDimsArray(x, (:x, :y))
         λ = 0.3
-        reg = Tikhonov(λ)
+        reg = L2Image(λ)
         op = get_operator(reg, x_named; threaded)
         result = op * x_named
         @test Array(result) ≈ x
@@ -172,7 +172,7 @@ end
         @test MriReconstructionToolbox.scale_regularization(L1Image(0.1), factor).λ ≈ 0.1 * factor
         @test MriReconstructionToolbox.scale_regularization(TotalVariation2D(0.2), factor).λ ≈ 0.2 * factor
         @test MriReconstructionToolbox.scale_regularization(TotalVariation3D(0.2), factor).λ ≈ 0.2 * factor
-        @test MriReconstructionToolbox.scale_regularization(TemporalFourier(0.3), factor).λ ≈ 0.3 * factor
+        @test MriReconstructionToolbox.scale_regularization(L1TemporalFourier(0.3), factor).λ ≈ 0.3 * factor
         @test MriReconstructionToolbox.scale_regularization(LowRank(0.4), factor).λ ≈ 0.4 * factor
         @test MriReconstructionToolbox.scale_regularization(L1Wavelet2D(0.5), factor).λ ≈ 0.5 * factor
         @test MriReconstructionToolbox.scale_regularization(L1Wavelet3D(0.5), factor).λ ≈ 0.5 * factor
@@ -186,7 +186,7 @@ end
     # term and the regularization term scale identically with x, so no correction is needed.
     @testset "Quadratic/rank-constraint terms need no correction" begin
         factor = 3.5
-        @test MriReconstructionToolbox.scale_regularization(Tikhonov(0.1), factor).λ == 0.1
+        @test MriReconstructionToolbox.scale_regularization(L2Image(0.1), factor).λ == 0.1
         @test MriReconstructionToolbox.scale_regularization(RankLimit(4), factor).max_rank == 4
     end
 

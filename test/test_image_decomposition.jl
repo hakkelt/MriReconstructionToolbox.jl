@@ -1,13 +1,14 @@
 @testitem "Component: construction, show, validation" tags = [:components] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: bind_dimensions
 
     c = Component(:sparse, L1Image(0.1))
     @test c.name === :sparse
     @test length(c.regularizations) == 1
     @test occursin("Component(:sparse", sprint(show, c))
 
-    c2 = Component(:smooth, Tikhonov(0.01), L1Image(0.2))
+    c2 = Component(:smooth, L2Image(0.01), L1Image(0.2))
     @test length(c2.regularizations) == 2
 
     @test_throws ArgumentError Component(:empty)
@@ -20,6 +21,8 @@ end
 @testitem "Component: forwarders" tags = [:components] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: bind_dimensions
+    using StructuredOptimization
 
     c = Component(:lowrank, LowRank(0.05))
     factor = 2.0
@@ -37,6 +40,7 @@ end
 @testitem "DecomposedImage: array semantics" tags = [:components] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: bind_dimensions
 
     a = rand(4, 4)
     b = rand(4, 4)
@@ -46,9 +50,9 @@ end
     @test img[2, 3] ≈ (a + b)[2, 3]
     @test img.components.lowrank == a
     @test img.components.sparse == b
-    @test total(img) === img.total
+    @test total_image(img) === img.total
     @test components(img) === img.components
-    @test sum(values(components(img))) ≈ total(img)
+    @test sum(values(components(img))) ≈ total_image(img)
     @test Array(img) ≈ a + b
     @test_throws ErrorException img[1, 1] = 1.0
 end
@@ -56,6 +60,9 @@ end
 @testitem "build_model: two-component model matches hand-computed objective" tags = [:components, :minimizer] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: bind_dimensions
+    using AbstractOperators
+    using StructuredOptimization
 
     x_true = rand(8, 8)
     y_true = rand(8, 8)
@@ -63,7 +70,7 @@ end
     y = 𝒜 * (x_true + y_true) .+ 0.01 .* randn(size(x_true))
 
     reg1 = L1Image(0.2)
-    reg2 = Tikhonov(0.1)
+    reg2 = L2Image(0.1)
     components = (Component(:sparse, reg1), Component(:smooth, reg2))
 
     terms, vars, _ = build_model(𝒜, y, components; threaded = false, x₀s = (copy(x_true), copy(y_true)))
@@ -106,7 +113,7 @@ end
 
     img_recon = reconstruct(
         acq_with_data,
-        IterativeReconstruction(Component(:smooth, Tikhonov(0.01)), Component(:sparse, L1Image(0.05)); maxit = 150); verbosity = Silent()
+        IterativeReconstruction(Component(:smooth, L2Image(0.01)), Component(:sparse, L1Image(0.05)); maxit = 150); verbosity = Silent()
     )
 
     @test img_recon isa DecomposedImage
@@ -121,6 +128,8 @@ end
 
 @testitem "reconstruct: Lf=n_components required for convergence" tags = [:components] begin
     using Test
+    using AbstractOperators
+    using StructuredOptimization
 
     x_true = rand(6, 6)
     y_true = rand(6, 6)
@@ -179,6 +188,7 @@ end
 @testitem "reconstruct: components interact with problem decomposition" tags = [:components, :integration] begin
     using Test
     using GeometricMedicalPhantoms
+    using StructuredOptimization
 
     nx, ny, nslices, nc = 16, 16, 3, 2
     img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
@@ -191,7 +201,7 @@ end
     end
     acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
-    components = (Component(:smooth, Tikhonov(0.005)), Component(:sparse, L1Image(0.005)))
+    components = (Component(:smooth, L2Image(0.005)), Component(:sparse, L1Image(0.005)))
 
     img_decomposed = reconstruct(acq_ms, IterativeReconstruction(components...; maxit = 30); verbosity = Silent())
     img_joint = reconstruct(acq_ms, IterativeReconstruction(components...; maxit = 30); disable_problem_decomposition = true, verbosity = Silent())
@@ -204,7 +214,7 @@ end
     # `Variable`, which stores by reference, and `solve` writes the solution back through it.
     x₀s = (rand(ComplexF32, nx, ny, nslices), rand(ComplexF32, nx, ny, nslices))
     x₀s_ref = map(copy, x₀s)
-    reconstruct(acq_ms, IterativeReconstruction(components...; maxit = 5); x₀ = x₀s, normalization = NoScaling(), verbosity = Silent())
+    reconstruct(acq_ms, IterativeReconstruction(components...; maxit = 5); x₀ = x₀s, scaling = NoScaling(), verbosity = Silent())
     @test all(x₀s .== x₀s_ref)
 end
 
@@ -219,7 +229,7 @@ end
     smaps = coil_sensitivities(nx, ny, nc)
     acq = simulate_acquisition(img_true, AcquisitionInfo(is3D = false, sensitivity_maps = smaps))
 
-    components = (Component(:lowrank, Tikhonov(0.01)), Component(:sparse, L1Image(0.01)))
+    components = (Component(:lowrank, L2Image(0.01)), Component(:sparse, L1Image(0.01)))
     good = (lowrank = zeros(ComplexF32, nx, ny), sparse = zeros(ComplexF32, nx, ny))
     typo = (lowrnak = zeros(ComplexF32, nx, ny), sparse = zeros(ComplexF32, nx, ny))
 
@@ -236,6 +246,7 @@ end
     using Test
     using NamedDims
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: bind_dimensions
 
     nx, ny, nt = 16, 16, 4
     img_true = NamedDimsArray{(:x, :y, :time)}(rand(ComplexF32, nx, ny, nt))
@@ -263,6 +274,7 @@ end
     using Test
     using NamedDims
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: bind_dimensions
 
     nx, ny, nslices, nt = 16, 16, 2, 4
     img_true = NamedDimsArray{(:x, :y, :z, :time)}(rand(ComplexF32, nx, ny, nslices, nt))
@@ -274,7 +286,7 @@ end
     # Both components affect only :time, so :z stays a batch dimension: the problem-decomposition
     # planner must resolve the symbol `time_dim` against the named image dims and pick :z to slice.
     components = (
-        Component(:fourier, TemporalFourier(0.01; time_dim = :time)),
+        Component(:fourier, L1TemporalFourier(0.01; time_dim = :time)),
         Component(:tv, TemporalTotalVariation(0.01; time_dim = :time)),
     )
 
@@ -287,7 +299,7 @@ end
     @test bound[1].regularizations[1].time_dim == 4
     @test bound[2].regularizations[1].time_dim == 4
 
-    plan = MriReconstructionToolbox.get_problem_decomposition_plan(acq_data, IterativeReconstruction(bound...), Config(; verbosity = Silent()))
+    plan = MriReconstructionToolbox.get_problem_decomposition_plan(acq_data, IterativeReconstruction(bound...), ReconstructionConfig(; verbosity = Silent()))
     @test plan !== nothing
     @test plan.variable_batch_dims == (3,)  # slice over :z
 end

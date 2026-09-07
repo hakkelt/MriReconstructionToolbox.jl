@@ -19,7 +19,7 @@ function execute(f::Function, plan, acq_data, config, executor::ReconstructionEx
     # can open underneath it. `ProgressMeter.next!` is lock-guarded, so the threaded executor
     # ticking from several slices at once is safe.
     return with_progress(config.verbosity, length(slices); desc = "Slices ") do verbosity
-        conf = Config(config; verbosity)
+        conf = ReconstructionConfig(config; verbosity)
         tick = progress_tick(verbosity)
 
         # A slice's result type isn't known until `f` actually runs (it depends on the acquisition
@@ -123,9 +123,9 @@ function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Fun
 
     # Both phases visit every slice, so the bar counts `2 * length(slices)` ticks.
     return with_progress(config.verbosity, 2 * length(slices); desc = "Slices ") do verbosity
-        conf = Config(config; verbosity)
+        conf = ReconstructionConfig(config; verbosity)
         tick = progress_tick(verbosity)
-        slice_config = (id) -> Config(
+        slice_config = (id) -> ReconstructionConfig(
             conf;
             verbosity = slice_verbosity(verbosity, id; freq = -1),
             threaded = slice_threaded,
@@ -202,7 +202,7 @@ function execute_single_slice(f::Function, idx, id, local_acq, config; kwargs...
     # A slice keeps the solver's own periodic output (prefixed with the slice id) but not the
     # phase log; `freq = 0` is the "final summary only" default this path has always used.
     freq = v isa Verbose && !isnothing(v.freq) ? v.freq : 0
-    local_conf = Config(
+    local_conf = ReconstructionConfig(
         config;
         verbosity = slice_verbosity(v, id; freq),
         disable_inverse_scale_output = true, kwargs...,

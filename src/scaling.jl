@@ -1,16 +1,16 @@
-abstract type Normalization end
+abstract type Scaling end
 
 """
-    NoScaling() <: Normalization
+    NoScaling() <: Scaling
 
-A normalization strategy that applies no scaling to the data.
+A scaling strategy that applies no scaling to the data.
 """
-struct NoScaling <: Normalization end
+struct NoScaling <: Scaling end
 
 """
-    BartScaling() <: Normalization
+    BartScaling() <: Scaling
 
-A normalization strategy that mimics the scaling used in BART.
+A scaling strategy that mimics the scaling used in BART.
 This approach inspects the distribution of the absolute values of the initial guess `x₀`
 (obtained as the adjoint of the encoding operator applied to the measured k-space data)
 and selects either the 90th percentile or the maximum value, depending on the spread of the values.
@@ -18,25 +18,25 @@ If the difference between the maximum and the 90th percentile is less than twice
 between the 90th percentile and the median, the 90th percentile is used; otherwise, the maximum value is used.
 This helps to avoid scaling based on outliers in the data.
 """
-struct BartScaling <: Normalization end
+struct BartScaling <: Scaling end
 
 """
-    MeasurementBasedScaling() <: Normalization
+    MeasurementBasedScaling() <: Scaling
 
-A normalization strategy that scales the data based on the average absolute value of the k-space measurements.
-This approach mimic the normalization of MeasurementBasedNormalization from RegularizedLeastSquares.jl
+A scaling strategy that scales the data based on the average absolute value of the k-space measurements.
+This approach mimic the scaling of MeasurementBasedNormalization from RegularizedLeastSquares.jl
 (which is used by MRIReco.jl).
 """
-struct MeasurementBasedScaling <: Normalization end
+struct MeasurementBasedScaling <: Scaling end
 
 """
-    FixedScaling(scale) <: Normalization
+    FixedScaling(scale) <: Scaling
 
-A normalization strategy that applies a user-provided, constant scaling factor.
+A scaling strategy that applies a user-provided, constant scaling factor.
 Useful for reproducing a previous reconstruction or comparing reconstructions of
 different datasets with a common scale. `scale` must be positive.
 """
-struct FixedScaling <: Normalization
+struct FixedScaling <: Scaling
     scale::Float64
     function FixedScaling(scale::Real)
         @argcheck scale > 0 "scale must be positive"
@@ -45,12 +45,12 @@ struct FixedScaling <: Normalization
 end
 
 """
-    get_scale(scaling::Normalization, acq_data::AcquisitionInfo, x₀)
+    get_scale(scaling::Scaling, acq_data::AcquisitionInfo, x₀)
 
-Computes the scaling factor based on the chosen normalization strategy.
+Computes the scaling factor based on the chosen scaling strategy.
 
 # Arguments
-- `scaling::Normalization`: The normalization strategy to use (NoScaling, BartScaling, MeasurementBasedScaling, or FixedScaling).
+- `scaling::Scaling`: The scaling strategy to use (NoScaling, BartScaling, MeasurementBasedScaling, or FixedScaling).
 - `acq_data::AcquisitionInfo`: The acquisition information containing k-space data and other parameters.
 - `x₀::AbstractArray`: The initial guess for the image, typically obtained as the adjoint of the encoding operator applied to the k-space data.
 

@@ -13,8 +13,8 @@ because the NSCT is shift-invariant, so every band shares the input's spatial si
 this way.
 
 Stacking into a plain array (rather than keeping the `ArrayPartition`) is what lets
-[`Contourlet`](@ref) reuse `AbstractOperators.BatchOp` for extra batch/time dimensions and
-`StructuredOptimization.Term`/`NormL1`, mirroring [`WaveletOp`](@ref); neither accepts an operator
+[`L1Contourlet`](@ref) reuse `AbstractOperators.BatchOp` for extra batch/time dimensions and
+`StructuredOptimization.Term`/`NormL1`, mirroring `WaveletOp`; neither accepts an operator
 whose codomain has more than one component (`ndoms(L, 1) > 1`, which an `ArrayPartition` codomain
 is).
 

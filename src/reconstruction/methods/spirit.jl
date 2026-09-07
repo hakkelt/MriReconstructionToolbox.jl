@@ -132,7 +132,7 @@ end
 get_affected_dims(::SPIRiTConsistency, ::Nothing, image_dims) = image_dims
 
 """
-    SPIRiT{C <: CoilCombination} <: AbstractDirectMethod
+    SPIRiT{C <: CoilCombination} <: DirectMethod
 
 Iterative Self-consistent Parallel Imaging Reconstruction (Lustig & Pauly 2010).
 Calibrates local multi-channel k-space convolution kernels from central ACS data and solves
@@ -147,7 +147,7 @@ for missing k-space samples using self-consistency iterations.
 - `iterative`: If `true`, lowers to an `IterativeReconstruction` with a `KSpaceToImage` signal model
   and hard data consistency.
 """
-struct SPIRiT{C <: CoilCombination} <: AbstractDirectMethod
+struct SPIRiT{C <: CoilCombination} <: DirectMethod
     kernel_size::Tuple{Int, Int}
     calib_size::Tuple{Int, Int}
     maxit::Int

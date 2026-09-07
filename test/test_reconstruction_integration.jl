@@ -1,6 +1,7 @@
 @testitem "2D Reconstruction Pipeline" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
     using LinearAlgebra
     using GeometricMedicalPhantoms
     using Random
@@ -20,7 +21,7 @@
             @test error_norm < 1.0e-3
         end
 
-        @testset "Undersampled with Tikhonov regularization" begin
+        @testset "Undersampled with L2Image regularization" begin
             nx, ny, nc = 32, 32, 4
             img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
             smaps = coil_sensitivities(nx, ny, nc)
@@ -33,7 +34,7 @@
 
             img_recon = test_type_stable(
                 Matrix{ComplexF32},
-                reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.001); maxit = 100); verbosity = Silent()),
+                reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.001); maxit = 100); verbosity = Silent()),
             )
 
             error_norm = norm(img_recon - img_true) / norm(img_true)
@@ -106,7 +107,7 @@
 
             img_fista = test_type_stable(
                 Matrix{ComplexF32},
-                reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.001); maxit = 100); verbosity = Silent()),
+                reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.001); maxit = 100); verbosity = Silent()),
             )
             error_fista = norm(img_fista - img_true) / norm(img_true)
             @test error_fista < 0.3  # measured ≈0.01-0.10 depending on the random sampling pattern
@@ -147,6 +148,7 @@ end
 @testitem "3D Reconstruction Pipeline" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
     using LinearAlgebra
     using GeometricMedicalPhantoms
 
@@ -187,8 +189,10 @@ end
 @testitem "Multi-slice 2D Reconstruction" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
     using LinearAlgebra
     using GeometricMedicalPhantoms
+    using StructuredOptimization
 
     @testset "Multi-slice 2D Reconstruction" begin
         @testset "Multi-slice with decomposition" begin
@@ -225,8 +229,8 @@ end
             ksp_ms = rand(ComplexF32, nx, ny, nc, nslices)
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
-            # Tikhonov regularization + multislice exercises problem decomposition with regularization
-            img_recon = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01); maxit = 5); verbosity = Silent()))
+            # L2Image regularization + multislice exercises problem decomposition with regularization
+            img_recon = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 5); verbosity = Silent()))
             @test size(img_recon) == (nx, ny, nslices)
         end
 
@@ -251,8 +255,8 @@ end
             end
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
-            img_decomp = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.05); maxit = 20); disable_problem_decomposition = false, verbosity = Silent())
-            img_no_decomp = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.05); maxit = 20); disable_problem_decomposition = true, verbosity = Silent())
+            img_decomp = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.05); maxit = 20); disable_problem_decomposition = false, verbosity = Silent())
+            img_no_decomp = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.05); maxit = 20); disable_problem_decomposition = true, verbosity = Silent())
 
             # Decomposed vs jointly-solved must agree closely regardless of the intensity spread.
             @test norm(img_decomp - img_no_decomp) / norm(img_no_decomp) < 1.0e-3
@@ -284,21 +288,22 @@ end
             end
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
-            img_recon = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.05); maxit = 15); disable_problem_decomposition = false, verbosity = Silent())
+            img_recon = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.05); maxit = 15); disable_problem_decomposition = false, verbosity = Silent())
             @test all(isfinite, img_recon)
             @test norm(img_recon[:, :, 2]) / norm(img_recon[:, :, 1]) < 0.1
         end
     end
 end
 
-@testitem "Config and Configuration Options" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
+@testitem "ReconstructionConfig and Configuration Options" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
     using LinearAlgebra
     using GeometricMedicalPhantoms
 
-    @testset "Config and Configuration Options" begin
-        @testset "Config object usage" begin
+    @testset "ReconstructionConfig and Configuration Options" begin
+        @testset "ReconstructionConfig object usage" begin
             nx, ny, nc = 32, 32, 4
             img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
             smaps = coil_sensitivities(nx, ny, nc)
@@ -309,13 +314,13 @@ end
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern)
             acq_with_data = simulate_acquisition(img_true, acq)
 
-            img1 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 20, tol = 1.0e-5); verbosity = Silent()))
-            config = Config(; verbosity = Silent())
-            img2 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 20, tol = 1.0e-5); config = config))
-            # Iteration control lives on the method, so extending a `Config` cannot change it;
+            img1 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 20, tol = 1.0e-5); verbosity = Silent()))
+            config = ReconstructionConfig(; verbosity = Silent())
+            img2 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 20, tol = 1.0e-5); config = config))
+            # Iteration control lives on the method, so extending a `ReconstructionConfig` cannot change it;
             # only the run settings come from the config.
-            config_base = Config(; verbosity = Verbose())
-            img3 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 20, tol = 1.0e-5); config = config_base, verbosity = Silent()))
+            config_base = ReconstructionConfig(; verbosity = Verbose())
+            img3 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 20, tol = 1.0e-5); config = config_base, verbosity = Silent()))
 
             # `maxit`/`tol`/`verbose` at `reconstruct` are rejected, not silently ignored.
             @test_throws ArgumentError reconstruct(acq_with_data, DirectReconstruction(); maxit = 5)
@@ -341,7 +346,7 @@ end
             @test norm(img_st - img_mt) / norm(img_st) < 1.0e-10
         end
 
-        @testset "Normalization strategies" begin
+        @testset "Scaling strategies" begin
             nx, ny, nc = 32, 32, 4
             img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
             smaps = coil_sensitivities(nx, ny, nc)
@@ -354,9 +359,9 @@ end
 
             # Only the output shape is checked here, so a single iteration is enough -- 20 iterations
             # bought no extra coverage, just a slower test.
-            img_bart = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 1); normalization = BartScaling(), verbosity = Silent()))
-            img_noscale = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 1); normalization = NoScaling(), verbosity = Silent()))
-            img_meas = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 1); normalization = MeasurementBasedScaling(), verbosity = Silent()))
+            img_bart = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 1); scaling = BartScaling(), verbosity = Silent()))
+            img_noscale = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 1); scaling = NoScaling(), verbosity = Silent()))
+            img_meas = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 1); scaling = MeasurementBasedScaling(), verbosity = Silent()))
 
             @test size(img_bart) == size(img_noscale) == size(img_meas)
         end
@@ -376,8 +381,8 @@ end
             scale = MriReconstructionToolbox.get_scale(BartScaling(), acq_with_data, img_true)
             # Only the output shape is checked here, so a single iteration is enough -- 20 iterations
             # bought no extra coverage, just a slower test.
-            img_fixed = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 1, tol = 0.0); normalization = FixedScaling(scale), verbosity = Silent()))
-            img_bart = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); maxit = 1, tol = 0.0); normalization = BartScaling(), verbosity = Silent()))
+            img_fixed = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 1, tol = 0.0); scaling = FixedScaling(scale), verbosity = Silent()))
+            img_bart = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 1, tol = 0.0); scaling = BartScaling(), verbosity = Silent()))
             @test size(img_fixed) == size(img_bart)
         end
     end
@@ -386,6 +391,7 @@ end
 @testitem "NamedDims Support" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
     using NamedDims
 
     @testset "NamedDims Support" begin
@@ -416,7 +422,7 @@ end
             @test dimnames(img_direct) == (:x, :y, :z)
             @test size(img_direct) == (nx, ny, nslices)
 
-            img_reg = reconstruct(acq, IterativeReconstruction(Tikhonov(0.01); maxit = 5); verbosity = Silent())
+            img_reg = reconstruct(acq, IterativeReconstruction(L2Image(0.01); maxit = 5); verbosity = Silent())
             @test img_reg isa NamedDimsArray
             @test dimnames(img_reg) == (:x, :y, :z)
             @test size(img_reg) == (nx, ny, nslices)
@@ -427,8 +433,10 @@ end
 @testitem "Operator Options" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
     using LinearAlgebra
     using GeometricMedicalPhantoms
+    using StructuredOptimization
 
     @testset "Operator Options" begin
         @testset "Operator normalization" begin
@@ -444,8 +452,8 @@ end
 
             # Only the output shape is checked here, so a single iteration is enough -- 20 iterations
             # bought no extra coverage, just a slower test.
-            img_norm = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); disable_operator_normalization = false, maxit = 1); verbosity = Silent()))
-            img_unnorm = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(Tikhonov(0.01); disable_operator_normalization = true, maxit = 1); verbosity = Silent()))
+            img_norm = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); disable_operator_normalization = false, maxit = 1); verbosity = Silent()))
+            img_unnorm = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); disable_operator_normalization = true, maxit = 1); verbosity = Silent()))
 
             @test size(img_norm) == size(img_unnorm)
         end
@@ -479,8 +487,8 @@ end
 
             # Regularized case: slices are identical, so the per-slice median scale equals
             # the global scale and both paths must converge to the same solution.
-            img_decomp_reg = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01); maxit = 30); disable_problem_decomposition = false, verbosity = Silent())
-            img_no_decomp_reg = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01); maxit = 30); disable_problem_decomposition = true, verbosity = Silent())
+            img_decomp_reg = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 30); disable_problem_decomposition = false, verbosity = Silent())
+            img_no_decomp_reg = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 30); disable_problem_decomposition = true, verbosity = Silent())
 
             @test norm(img_decomp_reg - img_no_decomp_reg) / norm(img_no_decomp_reg) < 1.0e-3
         end
@@ -493,11 +501,11 @@ end
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
             x₀ = zeros(ComplexF32, nx, ny, nslices)
-            img_recon = reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01); maxit = 5); x₀, verbosity = Silent())
+            img_recon = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 5); x₀, verbosity = Silent())
             @test size(img_recon) == (nx, ny, nslices)
 
             x₀_wrong = zeros(ComplexF32, nx, ny)
-            @test_throws ArgumentError reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01); maxit = 5); x₀ = x₀_wrong, verbosity = Silent())
+            @test_throws ArgumentError reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 5); x₀ = x₀_wrong, verbosity = Silent())
 
             # `reconstruct` must not write its solution back through the caller's `x₀`. The
             # component path handed the arrays straight to `Variable`, which stores them by
@@ -506,7 +514,7 @@ end
             # decomposition path passes down.
             x₀_keep = rand(ComplexF32, nx, ny, nslices)
             x₀_ref = copy(x₀_keep)
-            reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01); maxit = 5); x₀ = x₀_keep, normalization = NoScaling(), verbosity = Silent())
+            reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 5); x₀ = x₀_keep, scaling = NoScaling(), verbosity = Silent())
             @test x₀_keep == x₀_ref
         end
     end
@@ -515,6 +523,7 @@ end
 @testitem "Verbose and MultiThreading Decomposition" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
     using LinearAlgebra
     using GeometricMedicalPhantoms
 
@@ -527,7 +536,7 @@ end
 
         output = IOBuffer()
         printfunc = (args...) -> print(output, args...)
-        config = Config(; verbosity = Verbose(; printfunc = printfunc))
+        config = ReconstructionConfig(; verbosity = Verbose(; printfunc = printfunc))
         img_recon = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data; config = config))
 
         @test size(img_recon) == (nx, ny)
@@ -545,7 +554,7 @@ end
         executor = MriReconstructionToolbox.MultiThreadingExecutor()
         img_recon = test_type_stable(
             Array{ComplexF32, 3},
-            reconstruct(acq_ms, IterativeReconstruction(Tikhonov(0.01); maxit = 5); decomposition_executor = executor, verbosity = Silent()),
+            reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 5); decomposition_executor = executor, verbosity = Silent()),
         )
         @test size(img_recon) == (nx, ny, nslices)
     end
@@ -559,9 +568,9 @@ end
     smaps = repeat(coil_sensitivities(nx, ny, nc), 1, 1, 1, nslices)
     ksp = rand(ComplexF32, nx, ny, nc, nslices)
     acq = AcquisitionInfo(ksp; is3D = false, sensitivity_maps = smaps)
-    method = IterativeReconstruction(Tikhonov(0.01f0); maxit = 5)
+    method = IterativeReconstruction(L2Image(0.01f0); maxit = 5)
 
-    config = Config(; threaded = true, verbosity = Silent())
+    config = ReconstructionConfig(; threaded = true, verbosity = Silent())
     plan = MRT.get_problem_decomposition_plan(acq, method, config)
     @test plan !== nothing
 
@@ -583,7 +592,7 @@ end
     @test MRT.slice_threading(big, acq, config, MRT.SequentialExecutor()) == true
     @test MRT.slice_threading(big, acq, config, MRT.MultiThreadingExecutor()) == false
     @test MRT.slice_threading(
-        big, acq, Config(config; threaded = false), MRT.SequentialExecutor()
+        big, acq, ReconstructionConfig(config; threaded = false), MRT.SequentialExecutor()
     ) == false
 
     # The gate is a performance decision only: the result may not depend on it.
@@ -597,7 +606,7 @@ end
     const MRT = MriReconstructionToolbox
 
     @test MRT.serial_blas_threshold_bytes() == MRT.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
-    config = Config(; threaded = true)
+    config = ReconstructionConfig(; threaded = true)
     @test MRT._should_thread_work_item(config, MRT.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES)
     @test !MRT._should_thread_work_item(config, 4 * 2^20)
 
@@ -608,7 +617,7 @@ end
         @test MRT._should_thread_work_item(config, 4 * 2^20)
         @test !MRT._should_thread_work_item(config, 2^19)
         # `threaded = false` still vetoes, at any size.
-        @test !MRT._should_thread_work_item(Config(config; threaded = false), 2^30)
+        @test !MRT._should_thread_work_item(ReconstructionConfig(config; threaded = false), 2^30)
     finally
         MRT.set_serial_blas_threshold_bytes!(MRT.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES)
     end

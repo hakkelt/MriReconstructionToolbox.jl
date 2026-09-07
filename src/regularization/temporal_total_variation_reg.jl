@@ -16,7 +16,7 @@ or a `Symbol` (dimension name). If not provided, it will be inferred as the dime
 # Notes
 - This is the anisotropic (ℓ₁) temporal TV used in the compressed-sensing dynamic MRI literature
   (e.g. Feng et al., *Golden-angle radial sparse parallel MRI*, Magn Reson Med 2014). Unlike
-  [`TemporalFourier`](@ref) it does not assume periodic or smooth temporal dynamics, so it copes better with
+  [`L1TemporalFourier`](@ref) it does not assume periodic or smooth temporal dynamics, so it copes better with
   irregular motion; unlike [`LowRank`](@ref) it makes no assumption about the number of temporal basis
   functions.
 - It is frequently combined with [`LowRank`](@ref) (the "L+S"-style models, see [`Component`](@ref)) or with

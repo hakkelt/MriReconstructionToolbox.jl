@@ -11,16 +11,24 @@ LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MriReconstructionToolbox = "5999b5f3-4ffc-4695-817d-461c6e99e3c0"
 NamedDims = "356022a1-0364-5f58-8944-0da4b18d706f"
 NFFTOperators = "35a93202-2abf-4a13-bc94-0aee2f861ee0"
+ProximalCore = "dc4f5ac2-75d1-4f31-931e-60435d74994b"
+ProximalOperators = "a725b495-10eb-56fe-b38b-717eba820537"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+StructuredOptimization = "46cd3e9d-64ff-517d-a929-236bc1a1fc9d"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 TestItemRunner = "f8b46487-2199-4994-9208-9a1283c18c0a"
 TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
+WaveletOperators = "f3582904-6f60-4bbd-985d-55eab799bc9d"
 Wavelets = "29a6e085-ba6d-5f35-a997-948ac2efa89a"
 
 [sources]
 AbstractOperators = {path = "../deps/AbstractOperators"}
 ContourletOperators = {path = "../deps/AbstractOperators/ContourletOperators"}
 NFFTOperators = {path = "../deps/AbstractOperators/NFFTOperators"}
+ProximalCore = {url = "https://github.com/hakkelt/ProximalCore.jl"}
+ProximalOperators = {path = "../deps/ProximalOperators"}
+StructuredOptimization = {path = "../deps/StructuredOptimization"}
+WaveletOperators = {path = "../deps/AbstractOperators/WaveletOperators"}
 
 [compat]
 Aqua = "0.8"
@@ -31,5 +39,6 @@ GeometricMedicalPhantoms = "1"
 JET = "0.8, 0.9, 0.10, 0.11"
 Random = "1"
 Test = "1"
+WaveletOperators = "0.1"
 Wavelets = "0.10"
 julia = "1"

@@ -4,6 +4,8 @@ using TestItems
     using Test
     using LinearAlgebra
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_operator, get_encoding_operator, materialize, get_affected_dims, scale_regularization
+    using StructuredOptimization
     using AbstractOperators
     using NamedDims
 
@@ -76,6 +78,8 @@ end
     using LinearAlgebra
     using Random
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_operator, get_encoding_operator, materialize, get_affected_dims, scale_regularization
+    using StructuredOptimization
     using AbstractOperators
 
     const MRT = MriReconstructionToolbox
@@ -130,6 +134,8 @@ end
     using LinearAlgebra
     using Random
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_operator, get_encoding_operator, materialize, get_affected_dims, scale_regularization
+    using StructuredOptimization
     using AbstractOperators
 
     const MRT = MriReconstructionToolbox
@@ -171,6 +177,8 @@ end
     using LinearAlgebra
     using GeometricMedicalPhantoms
     using Random
+    using MriReconstructionToolbox: get_encoding_operator
+    using StructuredOptimization
 
     # Regression: TGV was only ever exercised through hand-built models passed to `solve`, so the
     # public entry point had no coverage. `build_model_with_variables` chose the `normalop_ls` data
@@ -205,4 +213,99 @@ end
     )
     @test tv_aux == ()
     @test any(t -> t.f isa MriReconstructionToolbox.StructuredOptimization.SqrNormL2WithNormalOp, tv_terms)
+end
+@testitem "TotalGeneralizedVariation3D regularization" tags = [:regularization] begin
+    using Test
+    using LinearAlgebra
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_operator, materialize, get_affected_dims, scale_regularization
+    using StructuredOptimization
+    using AbstractOperators
+
+    const MRT = MriReconstructionToolbox
+
+    @testset "Constructor" begin
+        reg = TotalGeneralizedVariation3D(0.1)
+        @test reg.λ == 0.1
+        @test reg.ratio == 2.0
+        @test TotalGeneralizedVariation3D(0.1; ratio = 3.0).ratio == 3.0
+        @test_throws ArgumentError TotalGeneralizedVariation3D(-0.1)
+        @test_throws ArgumentError TotalGeneralizedVariation3D(0.1; ratio = 0)
+    end
+
+    @testset "get_operator is the flattened 3D gradient" for threaded in [false, true]
+        x = randn(6, 6, 6)
+        op = get_operator(TotalGeneralizedVariation3D(0.1), x; threaded)
+        @test size(op, 1) == (216, 3)
+        @test op * x ≈ reshape(get_operator(TotalVariation3D(0.1), x; threaded) * x, 216, 3)
+        @test_throws ArgumentError get_operator(TotalGeneralizedVariation3D(0.1), randn(6, 6); threaded)
+    end
+
+    @testset "materialize introduces one auxiliary field with three components" begin
+        x = Variable(randn(4, 4, 4, 2))
+        terms, auxiliaries = MRT.materialize_with_auxiliaries(
+            TotalGeneralizedVariation3D(0.1), x; threaded = false
+        )
+        @test length(auxiliaries) == 1
+        w = auxiliaries[1]
+        @test size(~w) == (4 * 4 * 4 * 2, 3)
+        @test all(iszero, ~w)
+        @test terms isa MRT.StructuredOptimization.TermSet
+    end
+
+    @testset "the symmetrized-gradient operator acts per batch slice" begin
+        # Six independent components in 3D: the entries of the symmetric 3x3 matrix ℰw.
+        batched = MRT._tgv_symmetrized_operator(Float64, (4, 4, 4), 2; threaded = false)
+        single = SymmetrizedVariation(Float64, (4, 4, 4); threaded = false)
+        w = randn(64 * 2, 3)
+        result = batched * w
+        @test size(result) == (128, 6)
+        unfolded = reshape(w, 64, 2, 3)
+        for k in 1:2
+            @test result[((k - 1) * 64 + 1):(k * 64), :] ≈ single * unfolded[:, k, :]
+        end
+        y = randn(64 * 2, 6)
+        @test dot(batched * w, y) ≈ dot(w, batched' * y)
+    end
+
+    @testset "get_affected_dims" begin
+        ksp = randn(ComplexF32, 6, 6, 6, 4)
+        info = AcquisitionInfo(ksp; image_size = (6, 6, 6))
+        @test MRT.get_affected_dims(TotalGeneralizedVariation3D(0.1f0), info, 1:4) == 1:3
+    end
+
+    @testset "scale_regularization" begin
+        reg = MRT.scale_regularization(TotalGeneralizedVariation3D(0.2; ratio = 3.0), 2.5)
+        @test reg.λ ≈ 0.5
+        @test reg.ratio == 3.0
+    end
+end
+
+@testitem "TotalGeneralizedVariation3D denoising behaviour" tags = [:regularization, :minimizer] setup = [TestHelpers] begin
+    using Test
+    using LinearAlgebra
+    using Random
+    using MriReconstructionToolbox
+    using StructuredOptimization
+    using AbstractOperators
+
+    const MRT = MriReconstructionToolbox
+
+    function denoise(reg, noisy; maxit = 800)
+        model, x, _ = MRT.build_model_with_variables(
+            Eye(noisy), noisy, (reg,);
+            threaded = false, x₀ = copy(noisy), disable_normalop_optimization = true,
+        )
+        solve(model, ADMM(; maxit, rho = 1.0))
+        return copy(~x)
+    end
+
+    # A volumetric ramp with a jump: the 3D analogue of the 2D staircasing case.
+    n = 16
+    truth = [(i > n ÷ 2 ? 1.0 : 0.0) + 0.02 * j + 0.01 * k for i in 1:n, j in 1:n, k in 1:n]
+    noisy = truth .+ 0.05 .* randn(MersenneTwister(5), n, n, n)
+    relative_error(z) = relative_error(z, truth)
+
+    @test relative_error(denoise(TotalGeneralizedVariation3D(0.05), noisy)) <
+        relative_error(denoise(TotalVariation3D(0.05), noisy))
 end

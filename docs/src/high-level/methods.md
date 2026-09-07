@@ -1,6 +1,6 @@
 # Reconstruction Methods
 
-`MriReconstructionToolbox` provides a unified method taxonomy rooted in `AbstractReconstructionMethod`. Every reconstruction task is specified by passing a method object to `reconstruct`.
+`MriReconstructionToolbox` provides a unified method taxonomy rooted in `ReconstructionMethod`. Every reconstruction task is specified by passing a method object to `reconstruct`.
 
 ```julia
 reconstruct(acq_data, method = DirectReconstruction(); kwargs...)
@@ -10,8 +10,8 @@ reconstruct(acq_data, method = DirectReconstruction(); kwargs...)
 
 ```mermaid
 graph TD
-    ARM[AbstractReconstructionMethod] --> ADM[AbstractDirectMethod]
-    ARM --> AIM[AbstractIterativeMethod]
+    ARM[ReconstructionMethod] --> ADM[DirectMethod]
+    ARM --> AIM[IterativeMethod]
     ADM --> DR[DirectReconstruction]
     AIM --> IR[IterativeReconstruction]
 ```
@@ -170,11 +170,18 @@ NoFidelity
 
 ## Method Extension Interface
 
-Custom reconstruction methods implement the following interface hooks:
+A custom reconstruction method subtypes `IterativeMethod` or `DirectMethod` and may
+override one interface hook:
 
-- `lower(method)`: Lowers high-level or compound method objects into standard reconstruction methods.
 - `check_applicable(method, acq_data)`: Validates that the method is compatible with the acquisition data.
-- `variable_dims(method, acq_data)`: Returns dimension names/indices of the optimization variable.
-- `variable_size(method, acq_data)`: Returns expected dimensions/shape of the optimization variable.
-- `output_dims(method, acq_data)`: Returns dimension names of the final reconstructed image.
 
+The remaining hooks the package uses internally to lower a method and to size the optimization
+variable (`lower`, `variable_dims`, `variable_size`, `output_dims`) are not part of the public API:
+they are only ever overridden along the closed signal-model axis, which is not an extension point.
+
+The encoding operator a method lowers to is built by an internal hook that dispatches on the
+method's signal model:
+
+```@docs
+MriReconstructionToolbox.model_encoding_operator
+```

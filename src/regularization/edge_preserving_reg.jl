@@ -20,7 +20,7 @@ applied to every first-order finite difference along the two spatial dimensions.
   *Statistical image reconstruction methods for transmission tomography*, Handbook of Medical Imaging 2000;
   Charbonnier et al., *Deterministic edge-preserving regularization in computed imaging*, IEEE TIP 1997). It
   interpolates between the two terms this package already offers: as `δ → ∞` it approaches
-  `λ/(2δ)‖∇x‖²`, a quadratic roughness penalty in the spirit of [`Tikhonov`](@ref), and as `δ → 0` it
+  `λ/(2δ)‖∇x‖²`, a quadratic roughness penalty in the spirit of [`L2Image`](@ref), and as `δ → 0` it
   approaches the anisotropic total variation `λ‖∇x‖₁`. Small differences are therefore penalized
   quadratically (which suppresses noise without the amplitude bias of an ℓ₁ term) while large ones are
   penalized only linearly (which preserves edges).

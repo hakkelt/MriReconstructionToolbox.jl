@@ -2,7 +2,7 @@
     Verbosity
 
 Abstract supertype of the three progress-reporting modes a reconstruction can run in. Pass one
-as the `verbosity` field of [`Config`](@ref) (or as the `verbosity` keyword of `reconstruct`):
+as the `verbosity` field of [`ReconstructionConfig`](@ref) (or as the `verbosity` keyword of `reconstruct`):
 
 - [`Silent`](@ref) — no output at all.
 - [`ProgressBar`](@ref) — a single progress bar, nothing else.
@@ -63,7 +63,7 @@ Base.@kwdef struct Verbose <: Verbosity
 end
 
 # Internal: a `ProgressBar` whose meter has actually been opened by `with_progress`. Carrying the
-# live meter in the verbosity object (rather than in a scoped value or an extra `Config` field)
+# live meter in the verbosity object (rather than in a scoped value or an extra `ReconstructionConfig` field)
 # is what lets every output site keep going through one `config.verbosity`, and what makes the
 # "a bar is already open" check a plain dispatch instead of dynamic state.
 struct ActiveProgress{M} <: Verbosity
@@ -207,4 +207,4 @@ end
 Number of ticks a determinate progress bar for `method` should have, or `nothing` when the
 method has no countable loop and should get an indeterminate stage indicator instead.
 """
-progress_total(::AbstractReconstructionMethod, acq_data) = nothing
+progress_total(::ReconstructionMethod, acq_data) = nothing

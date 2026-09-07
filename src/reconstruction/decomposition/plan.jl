@@ -11,7 +11,7 @@ struct ProblemDecompositionPlan{N, M, K, L}
     output_size::NTuple{N, Int}
 end
 
-function get_problem_decomposition_plan(acq_data, method::AbstractReconstructionMethod, config)
+function get_problem_decomposition_plan(acq_data, method::ReconstructionMethod, config)
     if config.disable_problem_decomposition
         return nothing
     elseif acq_data isa NonCartesianAcquisitionInfo
