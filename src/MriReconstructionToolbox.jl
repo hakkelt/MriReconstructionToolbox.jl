@@ -1,5 +1,4 @@
 module MriReconstructionToolbox
-using Reexport
 
 using LinearAlgebra
 using Random: Random, AbstractRNG
@@ -8,16 +7,16 @@ using ProximalOperators
 using ProximalCore
 using ProximalAlgorithms
 import ProgressMeter
-@reexport using AbstractOperators
+using AbstractOperators
 using AbstractOperators: Sum  # resolve ambiguity with ProximalOperators.Sum
-@reexport using NamedDims
-@reexport using StructuredOptimization
+using NamedDims
+using StructuredOptimization
 using NFFTOperators: NFFTOp
 
 using NestedThreading: @budgeted_threads, with_full_threads, with_restricted_threads
-@reexport using WaveletOperators: WaveletOp, WT, wavelet
-@reexport using ContourletOperators: ContourletOp, NSCTOp, ContourletParams, parabolic_levels
-@reexport using FFTWOperators: FFTWOperators, DFT, fftshift_op, ifftshift_op, alternate_sign!
+using WaveletOperators: WaveletOp, WT, wavelet
+using ContourletOperators: ContourletOp, NSCTOp, ContourletParams, parabolic_levels
+using FFTWOperators: FFTWOperators, DFT, fftshift_op, ifftshift_op, alternate_sign!
 using RecursiveArrayTools: ArrayPartition
 using FFTW: FFTW, fft, ifft, fftshift, ifftshift
 using ArgCheck: @argcheck
@@ -33,36 +32,71 @@ const DouglasRachford = ProximalAlgorithms.DouglasRachford
 const CG = ProximalAlgorithms.CG
 const CGNR = ProximalAlgorithms.CGNR
 
-export get_operator, get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator
-export Tikhonov, L1Image, L1Wavelet2D, L1Wavelet3D, L1Contourlet, TotalVariation2D, TotalVariation3D, TemporalFourier, LowRank, RankLimit
+# Exported names target a non-expert user assembling a reconstruction from the built-in pieces.
+# The extension surface (abstract supertypes, interface functions) is `public` but not exported.
+# See NAMING.md for the rules governing this split.
+
+# Regularization terms
+export L2Image, L1Image, L1Wavelet2D, L1Wavelet3D, L1Contourlet, TotalVariation2D, TotalVariation3D, L1TemporalFourier, LowRank, RankLimit
 export TemporalTotalVariation, JointSparsity, LocallyLowRank, ReferencePrior, NonNegative, BoxConstraint
 export SecondOrderTotalVariation2D, SecondOrderTotalVariation3D, MultiScaleLowRank
-export EdgePreservingRoughness2D, EdgePreservingRoughness3D, TotalGeneralizedVariation2D
+export EdgePreservingRoughness2D, EdgePreservingRoughness3D, TotalGeneralizedVariation2D, TotalGeneralizedVariation3D
 export HardThreshold, SparsityLimit, PlugAndPlay
-export calculate, build_model, reconstruct, Config, SequentialExecutor, MultiThreadingExecutor
-export Verbosity, Silent, ProgressBar, Verbose
-export AbstractReconstructionMethod, AbstractIterativeMethod, AbstractDirectMethod
-export DirectReconstruction, IterativeReconstruction, DEFAULT_ALGORITHMS
-export CoilCombination, AdjointSensitivity, RootSumSquares, NoCoilCombination
-export DataFidelity, L2Loss, HardConsistency, NoFidelity, HardConsistencyProx
-export lower, check_applicable, variable_dims, variable_size, output_dims
-export Component, DecomposedImage, components, total
-export TemporalBasis, KSpaceToImage, build_encoding_operator, signal_model_operator
+# Established second names for two of the terms above (NAMING.md rule 2.1)
+export Tikhonov, LLR
+
+# Top-level entry points and configuration
+export build_model, reconstruct, ReconstructionConfig, SequentialExecutor, MultiThreadingExecutor
+export Silent, ProgressBar, Verbose
 export BartScaling, FixedScaling, MeasurementBasedScaling, NoScaling
 export ISTA, FISTA, ADMM, DouglasRachford, CG, CGNR
-export AcquisitionInfo, CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
-export density_compensation, DensityCompensationMethod, PipeMenonDCF, VoronoiDCF
-export prewhiten, estimate_noise_covariance
-export compress_coils, CoilCompressionMethod, SVDCompression, GeometricCompression
-export estimate_sensitivities, SensitivityEstimationMethod, SelfCalibrating, AdaptiveCombine, ESPIRiT
-export correct_gradient_delays, estimate_gradient_delays, GradientDelayMethod, OpposingSpokes, RING
-export partial_fourier_band, PartialFourierFilter, LinearRamp, StepRamp, Homodyne, PhaseConstrained, POCS
+
+# Reconstruction methods
+export DirectReconstruction, IterativeReconstruction
+export AdjointSensitivity, RootSumSquares, NoCoilCombination
+export L2Loss, HardConsistency, NoFidelity
+export LinearRamp, StepRamp, Homodyne, PhaseConstrained, POCS
 export GRAPPA
 export SPIRiT, SPIRiTConsistency
+export partial_fourier_band
+
+# Acquisition data and signal models
+export AcquisitionInfo, CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
+export TemporalBasis, KSpaceToImage
+
+# Image decomposition
+export Component, DecomposedImage, components, total_image
+
+# Preprocessing
+export density_compensation, PipeMenonDCF, VoronoiDCF
+export prewhiten, estimate_noise_covariance
+export compress_coils, SVDCompression, GeometricCompression
+export estimate_sensitivities, SelfCalibrating, AdaptiveCombine, ESPIRiT
+export correct_gradient_delays, estimate_gradient_delays, OpposingSpokes, RING
+
+# Analysis and simulation
 export pseudo_replica
 export simulate_acquisition, coil_sensitivities
 export UniformRandomSampling, VariableDensitySampling, PoissonDiskSampling, GaussianDistribution, PolynomialDistribution
 export create_sampling_pattern, to_displayable_mask
+
+# Individual names reexported from dependencies because a non-expert has to type them.
+# Never reexport a whole dependency (NAMING.md rule 6.4).
+export NamedDimsArray, dimnames, unname   # build the input array
+export WT, wavelet                        # L1Wavelet2D(λ; wavelet = WT.db4)
+export ContourletParams, parabolic_levels # L1Contourlet
+
+# Extension surface: dispatch on these, subtype them, or implement them for a new component.
+# Documented and stable, but not exported.
+public Regularization, ReconstructionMethod, IterativeMethod, DirectMethod
+public Scaling, CoilCombination, DataFidelity, Verbosity, ReconstructionExecutor
+public Subsampling, VariableDensityDistribution, PartialFourierFilter
+public DensityCompensation, CoilCompression, SensitivityEstimation, GradientDelay
+public get_operator, materialize, materialize_with_auxiliaries, materialize_all
+public get_affected_dims, scale_regularization, bind_dimensions, calculate
+public check_applicable
+public get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator
+public build_encoding_operator, signal_model_operator, NamedDimsOp, DFT, DEFAULT_ALGORITHMS
 
 include("acquisition_data/acquisition_info.jl")
 include("acquisition_data/cartesian_acquisition_info.jl")

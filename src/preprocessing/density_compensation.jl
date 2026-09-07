@@ -1,32 +1,32 @@
 """
-    DensityCompensationMethod
+    DensityCompensation
 
 Abstract base type for k-space density compensation methods.
 """
-abstract type DensityCompensationMethod end
+abstract type DensityCompensation end
 
 """
-    PipeMenonDCF(; maxit::Int = 20) <: DensityCompensationMethod
+    PipeMenonDCF(; maxit::Int = 20) <: DensityCompensation
 
 Iterative sample density compensation factor (DCF) estimation based on the algorithm of
 Pipe & Menon (1999) using NFFT operators.
 """
-Base.@kwdef struct PipeMenonDCF <: DensityCompensationMethod
+Base.@kwdef struct PipeMenonDCF <: DensityCompensation
     maxit::Int = 20
 end
 
 """
-    VoronoiDCF(; bounds = nothing) <: DensityCompensationMethod
+    VoronoiDCF(; bounds = nothing) <: DensityCompensation
 
 Geometric sample density compensation calculating Voronoi cell areas for 2D k-space trajectories.
 Points are clipped within `bounds = (xmin, xmax, ymin, ymax)` (defaulting to `(-0.5, 0.5, -0.5, 0.5)`).
 """
-Base.@kwdef struct VoronoiDCF{B} <: DensityCompensationMethod
+Base.@kwdef struct VoronoiDCF{B} <: DensityCompensation
     bounds::B = nothing
 end
 
 """
-    density_compensation(acq::AcquisitionInfo; method::DensityCompensationMethod = PipeMenonDCF())
+    density_compensation(acq::AcquisitionInfo; method::DensityCompensation = PipeMenonDCF())
 
 Compute the sample density compensation factors (DCF) for a non-Cartesian acquisition and return
 a new `NonCartesianAcquisitionInfo` with the computed `dcf`.
@@ -36,7 +36,7 @@ a density compensation factor.
 """
 function density_compensation(
         acq::CartesianAcquisitionInfo;
-        method::DensityCompensationMethod = PipeMenonDCF(),
+        method::DensityCompensation = PipeMenonDCF(),
     )
     throw(
         ArgumentError(
@@ -47,7 +47,7 @@ end
 
 function density_compensation(
         acq::NonCartesianAcquisitionInfo;
-        method::DensityCompensationMethod = PipeMenonDCF(),
+        method::DensityCompensation = PipeMenonDCF(),
     )
     dcf = compute_dcf(acq.trajectory, acq.image_size, method)
     return NonCartesianAcquisitionInfo(
@@ -62,7 +62,7 @@ function density_compensation(
 end
 
 """
-    compute_dcf(trajectory::AbstractArray, image_size::Tuple, method::DensityCompensationMethod)
+    compute_dcf(trajectory::AbstractArray, image_size::Tuple, method::DensityCompensation)
 
 Compute density compensation factor weights for the given trajectory and Cartesian image grid size.
 """

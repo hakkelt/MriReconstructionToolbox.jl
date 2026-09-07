@@ -1,19 +1,19 @@
 """
 	reconstruct(
 		acq_data::AcquisitionInfo,
-		[method::AbstractReconstructionMethod = DirectReconstruction()];
+		[method::ReconstructionMethod = DirectReconstruction()];
 		[x₀], kwargs...)
 
 Performs MRI reconstruction from k-space data using the specified reconstruction method.
 
 # Arguments
 - `acq_data::AcquisitionInfo`: The acquisition information containing k-space data, sensitivity maps, and other parameters.
-- `method::AbstractReconstructionMethod = DirectReconstruction()`: The reconstruction method (e.g. `DirectReconstruction()`, `IterativeReconstruction(...)`).
+- `method::ReconstructionMethod = DirectReconstruction()`: The reconstruction method (e.g. `DirectReconstruction()`, `IterativeReconstruction(...)`).
 
 # Keyword arguments
 - `x₀::Union{Nothing,AbstractArray,Tuple,NamedTuple}=nothing`: Optional initial guess for the image (default is 𝒜' * y).
-- `config::Config`: an existing [`Config`](@ref) to extend; the keywords below override its fields.
-- `normalization::Normalization = BartScaling()`: scaling applied to operators/data (see also `NoScaling`, `MeasurementBasedScaling`, `FixedScaling`)
+- `config::ReconstructionConfig`: an existing [`ReconstructionConfig`](@ref) to extend; the keywords below override its fields.
+- `scaling::Scaling = BartScaling()`: scaling applied to operators/data (see also `NoScaling`, `MeasurementBasedScaling`, `FixedScaling`)
 - `verbosity::Verbosity = Verbose()`: output mode — [`Silent`](@ref), [`ProgressBar`](@ref) or [`Verbose`](@ref)
 - `threaded::Bool = (Threads.nthreads() > 1)`: enable threaded execution when available
 - `decomposition_executor::Union{Nothing,ReconstructionExecutor} = nothing`: override executor for decomposition
@@ -30,7 +30,7 @@ method and are passed to its constructor, e.g.
 """
 function reconstruct(
         acq_data::AcquisitionInfo,
-        method::AbstractReconstructionMethod = DirectReconstruction();
+        method::ReconstructionMethod = DirectReconstruction();
         x₀::Union{Nothing, AbstractArray, Tuple, NamedTuple} = nothing,
         kwargs...,
     )
@@ -44,7 +44,7 @@ function reconstruct(
     return x
 end
 
-function _reconstruct_dispatch(acq_data, method::AbstractReconstructionMethod, x₀, config)
+function _reconstruct_dispatch(acq_data, method::ReconstructionMethod, x₀, config)
     @argcheck isnothing(x₀) || x₀ isa AbstractArray "x₀ must be a plain array unless reconstructing with `Component`s."
     return _reconstruct_dispatch_plain(acq_data, method, x₀, config)
 end
@@ -59,7 +59,7 @@ function _reconstruct_dispatch(acq_data, method::IterativeReconstruction, x₀, 
     end
 end
 
-function _reconstruct_dispatch_plain(acq_data, method::AbstractReconstructionMethod, x₀, config)
+function _reconstruct_dispatch_plain(acq_data, method::ReconstructionMethod, x₀, config)
     decomposition_plan = get_problem_decomposition_plan(acq_data, method, config)
     x = if isnothing(decomposition_plan)
         # Undecomposed: this is where the one progress bar per `reconstruct` call is opened.
@@ -67,7 +67,7 @@ function _reconstruct_dispatch_plain(acq_data, method::AbstractReconstructionMet
         # the indeterminate stage indicator driven by the `@step` brackets.
         with_progress(config.verbosity, progress_total(method, acq_data)) do verbosity
             conf = maybe_disable_undecomposed_threading(
-                Config(config; verbosity), method, acq_data
+                ReconstructionConfig(config; verbosity), method, acq_data
             )
             reconstruction_result = nothing
             @conditionally_enable_threading conf.threaded begin
@@ -79,12 +79,12 @@ function _reconstruct_dispatch_plain(acq_data, method::AbstractReconstructionMet
         if !isnothing(x₀)
             @argcheck size(x₀) == decomposition_plan.variable_size "Size of x₀ ($(size(x₀))) must match the variable size ($(decomposition_plan.variable_size))"
         end
-        result = if method isa AbstractDirectMethod
+        result = if method isa DirectMethod
             # Direct reconstruction needs no scaling; keep slices identical to the
             # non-decomposed result instead of normalizing each slice separately. A *new*
             # binding, not a reassignment of `config`: rebinding it would box the variable that
             # the `with_progress` closure above captures.
-            unscaled_config = Config(config; normalization = NoScaling())
+            unscaled_config = ReconstructionConfig(config; scaling = NoScaling())
             execute(decomposition_plan, acq_data, unscaled_config) do idx, local_acq, local_conf
                 local_x₀ = isnothing(x₀) ? nothing : get_x₀_slice(x₀, decomposition_plan, idx)
                 _reconstruct(local_acq, method, local_x₀, local_conf)
@@ -105,7 +105,7 @@ function _reconstruct_dispatch_plain(acq_data, method::AbstractReconstructionMet
 end
 
 function _reconstruct(
-        acq_data, method::AbstractReconstructionMethod, x₀, config;
+        acq_data, method::ReconstructionMethod, x₀, config;
         scale_override = nothing, 𝒜 = nothing,
     )
     fast_planning = method isa DirectReconstruction
@@ -120,7 +120,7 @@ function _reconstruct(
     # Direct reconstruction / estimate
     x̂, scale = _direct_reconstruct(𝒜, acq_data, x₀, method, config; scale_override)
 
-    if method isa AbstractDirectMethod
+    if method isa DirectMethod
         # No regularization, return direct reconstruction
         if scale != 1 && config.disable_inverse_scale_output
             @step "Scaling image" config begin
@@ -158,7 +158,7 @@ function _reconstruct_dispatch_components(acq_data, method::IterativeReconstruct
         end
         with_progress(config.verbosity, progress_total(method, acq_data)) do verbosity
             conf = maybe_disable_undecomposed_threading(
-                Config(config; verbosity), method, acq_data
+                ReconstructionConfig(config; verbosity), method, acq_data
             )
             result = nothing
             @conditionally_enable_threading conf.threaded begin
@@ -172,10 +172,10 @@ function _reconstruct_dispatch_components(acq_data, method::IterativeReconstruct
         end
         execute_regularized_components(decomposition_plan, acq_data, config, method, x₀)
     end
-    if acq_data.kspace_data isa NamedDimsArray && !(total(img) isa NamedDimsArray)
+    if acq_data.kspace_data isa NamedDimsArray && !(total_image(img) isa NamedDimsArray)
         img_dimnames = output_dims(method, acq_data)
         img = DecomposedImage(
-            NamedDimsArray{img_dimnames}(unname(total(img))),
+            NamedDimsArray{img_dimnames}(unname(total_image(img))),
             NamedTuple{keys(img.components)}(
                 map(c -> NamedDimsArray{img_dimnames}(unname(c)), values(img.components))
             ),

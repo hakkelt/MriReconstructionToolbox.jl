@@ -1,9 +1,9 @@
 """
-    CoilCompressionMethod
+    CoilCompression
 
 Abstract type representing receiver coil compression algorithms.
 """
-abstract type CoilCompressionMethod end
+abstract type CoilCompression end
 
 """
     _resolve_coil_dim(data, coil_dim) -> Int
@@ -78,20 +78,20 @@ function _apply_slicewise_compression(hybrid::AbstractArray, C::AbstractArray, c
 end
 
 """
-    SVDCompression <: CoilCompressionMethod
+    SVDCompression <: CoilCompression
 
 Principal component / SVD coil compression (Buehrer et al. 2007, Huang et al. 2008).
 Transforms multi-coil arrays to a reduced number of virtual channels spanning the principal signal subspace.
 """
-struct SVDCompression <: CoilCompressionMethod end
+struct SVDCompression <: CoilCompression end
 
 """
-    GeometricCompression <: CoilCompressionMethod
+    GeometricCompression <: CoilCompression
 
 Geometric coil compression (Zhang et al. 2013): computes SVD compression along the readout axis
 and aligns virtual coil bases across `x` via Procrustes rotation so the compressed channels vary smoothly.
 """
-struct GeometricCompression <: CoilCompressionMethod end
+struct GeometricCompression <: CoilCompression end
 
 """
     compress_coils(acq::AcquisitionInfo, n_virtual::Int; method = SVDCompression(), coil_dim = nothing)
@@ -105,7 +105,7 @@ For `GeometricCompression`, `compression_matrix` has size `(n_virtual, n_coils, 
 function compress_coils(
         acq::AcquisitionInfo,
         n_virtual::Int;
-        method::CoilCompressionMethod = SVDCompression(),
+        method::CoilCompression = SVDCompression(),
         coil_dim = nothing,
     )
     compressed_ksp, C = compress_coils(acq.kspace_data, n_virtual; method, coil_dim)
@@ -120,7 +120,7 @@ end
 function compress_coils(
         data::AbstractArray,
         n_virtual::Int;
-        method::CoilCompressionMethod = SVDCompression(),
+        method::CoilCompression = SVDCompression(),
         coil_dim = nothing,
     )
     c_idx = _resolve_coil_dim(data, coil_dim)

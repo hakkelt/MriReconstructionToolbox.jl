@@ -2,6 +2,16 @@
 
 This page documents the low-level operator interface for MRI reconstruction. These operators model the physical MRI encoding process and its components: Fourier transforms, coil sensitivity maps, and k-space subsampling patterns.
 
+!!! note "These names are public, but not exported"
+    The operator constructors below belong to the extension surface rather than to the beginner-facing
+    API, so `using MriReconstructionToolbox` does not bring them into scope. Import the ones you need
+    explicitly:
+
+    ```julia
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator,
+        get_sensitivity_map_operator, get_subsampling_operator
+    ```
+
 ## Overview
 
 The MRI encoding operator $\mathcal{A}$ maps an image to k-space measurements:
@@ -40,6 +50,7 @@ Random.seed!(123)
 
 ```@example ops
 using MriReconstructionToolbox
+using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator
 
 # Single-coil, fully sampled
 ksp = rand(ComplexF32, 64, 64)
@@ -466,6 +477,18 @@ S = get_sensitivity_map_operator(acq_info)
 𝒫 = get_subsampling_operator(acq_info)
 
 println("Encoding operator type: ", typeof(E))
+```
+
+## Contourlet Operators
+
+`L1Contourlet` is built on the nonsubsampled contourlet transform from `ContourletOperators.jl`.
+`StackedNSCTOp` is the wrapper this package adds so that the NSCT bands, which the bare operator
+returns as a ragged tuple, come back as one array a `NormL1` term can be applied to.
+
+```@docs
+ContourletOperators.NSCTOp
+ContourletOperators.ContourletOp
+MriReconstructionToolbox.StackedNSCTOp
 ```
 
 ## See Also

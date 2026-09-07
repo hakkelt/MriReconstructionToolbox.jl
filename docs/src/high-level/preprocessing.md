@@ -30,7 +30,7 @@ prewhiten
 Coil compression transforms multi-coil array data with $N_c$ channels into a smaller set of $N_v$ virtual coils ($N_v \ll N_c$), drastically speeding up iterative reconstruction while retaining $>99\%$ of the signal energy.
 
 ```@docs
-CoilCompressionMethod
+CoilCompression
 SVDCompression
 GeometricCompression
 compress_coils
@@ -44,7 +44,7 @@ compress_coils
 Parallel imaging reconstruction relies on accurate spatial sensitivity profiles $S_c(r)$. `MriReconstructionToolbox` provides three complementary sensitivity estimation algorithms:
 
 ```@docs
-SensitivityEstimationMethod
+SensitivityEstimation
 SelfCalibrating
 AdaptiveCombine
 ESPIRiT
@@ -61,7 +61,7 @@ estimate_sensitivities
 Eddy currents and gradient hardware timing delays displace non-Cartesian trajectory samples from their nominal positions, causing blurring and ring artifacts in radial and spiral acquisitions.
 
 ```@docs
-GradientDelayMethod
+GradientDelay
 OpposingSpokes
 RING
 estimate_gradient_delays

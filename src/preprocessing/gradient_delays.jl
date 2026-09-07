@@ -1,26 +1,26 @@
 """
-    GradientDelayMethod
+    GradientDelay
 
 Abstract type representing trajectory gradient delay correction methods in non-Cartesian MRI.
 """
-abstract type GradientDelayMethod end
+abstract type GradientDelay end
 
 """
-    OpposingSpokes <: GradientDelayMethod
+    OpposingSpokes <: GradientDelay
 
 Classical gradient delay estimation using cross-correlation / peak shifting of opposing radial spokes
 (Peters et al. 2003, Block & Uecker 2011). Returns `(dx, dy)`.
 """
-struct OpposingSpokes <: GradientDelayMethod end
+struct OpposingSpokes <: GradientDelay end
 
 """
-    RING <: GradientDelayMethod
+    RING <: GradientDelay
 
 Radial Intersections for Navigation and Gradient delay estimation (Rosenzweig et al. 2019):
 estimates the full anisotropic 2×2 delay tensor from spoke trajectory intersections.
 Returns a NamedTuple `(dx = Sxx, dy = Syy, dxy = Sxy)`.
 """
-struct RING <: GradientDelayMethod end
+struct RING <: GradientDelay end
 
 """
     correct_gradient_delays(acq::NonCartesianAcquisitionInfo; method = OpposingSpokes())
@@ -30,7 +30,7 @@ Estimates trajectory gradient delays from non-Cartesian k-space data and returns
 """
 function correct_gradient_delays(
         acq::NonCartesianAcquisitionInfo;
-        method::GradientDelayMethod = OpposingSpokes(),
+        method::GradientDelay = OpposingSpokes(),
     )
     delays = estimate_gradient_delays(acq; method)
     traj_corr = _apply_gradient_delays(acq.trajectory, delays)
@@ -49,7 +49,7 @@ Estimates the gradient delay parameters. Returns `(dx, dy)` for `OpposingSpokes(
 """
 function estimate_gradient_delays(
         acq::NonCartesianAcquisitionInfo;
-        method::GradientDelayMethod = OpposingSpokes(),
+        method::GradientDelay = OpposingSpokes(),
     )
     traj = unname(acq.trajectory)
     ksp = unname(acq.kspace_data)

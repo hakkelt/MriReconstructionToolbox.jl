@@ -4,8 +4,10 @@ using TestItems
     using Test
     using LinearAlgebra
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: Regularization
     using NamedDims
     using Random
+    using AbstractOperators
 
     Random.seed!(42)
     nx, ny, nt = 16, 16, 6

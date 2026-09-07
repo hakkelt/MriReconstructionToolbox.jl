@@ -47,13 +47,33 @@ is unnamed into a `Variable`.
 
 ### API gotchas
 
-- `materialize` / `materialize_with_auxiliaries` / `materialize_all` are not exported — call as
-  `MriReconstructionToolbox.materialize(reg, x::Variable; threaded)`.
+- `materialize` / `materialize_with_auxiliaries` / `materialize_all` are `public` but not exported —
+  call as `MriReconstructionToolbox.materialize(reg, x::Variable; threaded)`, or import them
+  explicitly. The same goes for `get_operator`, `calculate`, `get_encoding_operator` and the rest of
+  the extension surface listed in `NAMING.md` §6.2.
 - `Variable(T, dims...)` — splat, do not pass a tuple.
 - `Base.reshape` on an `AbstractOperator` returns `Reshape(...)`.
 - `create_sampling_pattern` returns `(:, mask)` when `subsample_freq_encoding=false` (default).
-- `@reexport using AbstractOperators` and `... ProximalOperators` both export `Sum`; resolved via
-  explicit `using AbstractOperators: Sum`.
+- `AbstractOperators` and `ProximalOperators` both export `Sum`; resolved via an explicit
+  `using AbstractOperators: Sum`.
+- The package no longer reexports its dependencies. Test items and doc examples that need
+  `Variable`, `Eye`, `WaveletOp` and friends must `using StructuredOptimization` /
+  `using AbstractOperators` / `using WaveletOperators: WaveletOp` themselves.
+
+## Naming and API surface
+
+`NAMING.md` is authoritative for how things are named and what the package exposes. Read it before
+adding a type, renaming anything, or touching the export list. The rules that bite most often:
+
+- Use the field's standard name (BART / SigPy / RegularizedLeastSquares.jl / the originating paper)
+  over a name that describes the implementation.
+- A regularizer's name must state the penalty, not only the transform — `L1TemporalFourier`, not
+  `TemporalFourier`.
+- Export concrete types and verbs a non-expert constructs or calls. Mark the extension surface —
+  abstract supertypes, interface functions — `public` but do not export it. `AcquisitionInfo` is
+  the one exported abstract type, because it is also a constructor.
+- Never `@reexport` a whole dependency; reexport the individual names a non-expert must type.
+- The package is unreleased: rename by deleting the old name, never by deprecating it.
 
 ## Adding a regularizer
 
@@ -70,6 +90,8 @@ exported there. A regularizer is `struct Foo{T} <: Regularization` plus:
   possibly `nothing`/`Symbol`): resolve it to a concrete index here. Generic fallback is identity.
 - `materialize_with_auxiliaries` — only if the term introduces extra optimization variables
   (see `TotalGeneralizedVariation2D`).
+- A new proximal function with no MRI-specific content belongs in the `deps/ProximalOperators` fork,
+  not here (`NAMING.md` §7); `ProximalAverage` and `IndAffineCG` went that way.
 
 Add a `test/test_reg_<name>.jl` (`@testitem`, `tags = [:regularization]`) and a section in
 `docs/src/high-level/regularization.md`.

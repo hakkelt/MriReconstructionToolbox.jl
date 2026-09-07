@@ -400,7 +400,7 @@ acq_vor = density_compensation(acq; method = VoronoiDCF())
 
 ```@docs
 density_compensation
-DensityCompensationMethod
+DensityCompensation
 PipeMenonDCF
 VoronoiDCF
 ```

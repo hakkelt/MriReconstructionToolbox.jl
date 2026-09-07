@@ -1,10 +1,10 @@
 using TestItems
 
-@testitem "Tikhonov Regularization" tags = [:regularization] setup = [RegTestSetup] begin
+@testitem "L2Image Regularization" tags = [:regularization] setup = [RegTestSetup] begin
 
     @testset "get_operator" for threaded in [false, true]
         x = rand(10, 10)
-        reg = Tikhonov(0.1)
+        reg = L2Image(0.1)
         op = get_operator(reg, x; threaded)
         @test op isa Eye
         @test size(op) == (size(x), size(x))
@@ -15,7 +15,7 @@ using TestItems
     @testset "materialize - scalar λ" for threaded in [false, true]
         x = rand(5, 5)
         λ = 0.5
-        reg = Tikhonov(λ)
+        reg = L2Image(λ)
         result = MriReconstructionToolbox.calculate(reg, x; threaded)
         manual_result = sum(abs2, λ .* x)
         @test result ≈ manual_result
@@ -24,7 +24,7 @@ using TestItems
     @testset "materialize - matrix λ" for threaded in [false, true]
         x = ones(3, 3)
         λ_matrix = [0.1 0.2 0.3; 0.4 0.5 0.6; 0.7 0.8 0.9]
-        reg = Tikhonov(λ_matrix)
+        reg = L2Image(λ_matrix)
         result = MriReconstructionToolbox.calculate(reg, x; threaded)
         manual_result = sum(abs2, λ_matrix .* x)
         @test result ≈ manual_result

@@ -1,9 +1,28 @@
 using Documenter
 using MriReconstructionToolbox
 using ProximalAlgorithms
+using ProximalOperators
+using ContourletOperators
+
+# The extension surface is `public` but not exported (see NAMING.md §6), so bring the names
+# documented here into scope for the `@docs` and `@ref` blocks that reference them unqualified.
+using MriReconstructionToolbox: Regularization, ReconstructionMethod, IterativeMethod,
+    DirectMethod, Scaling, CoilCombination, DataFidelity, Verbosity,
+    ReconstructionExecutor, Subsampling, VariableDensityDistribution, PartialFourierFilter,
+    DensityCompensation, CoilCompression, SensitivityEstimation, GradientDelay,
+    get_operator, materialize, materialize_with_auxiliaries, materialize_all, get_affected_dims,
+    scale_regularization, bind_dimensions, calculate, check_applicable,
+    get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator,
+    build_encoding_operator, signal_model_operator, NamedDimsOp, DEFAULT_ALGORITHMS
+
+# Internals whose docstrings are rendered on the low-level pages, or that other docstrings link to
+# with `@ref`. Cross-references resolve in the page's module, so these have to be in scope too.
+using MriReconstructionToolbox: with_serial_blas, serial_blas_threshold_bytes,
+    set_serial_blas_threshold_bytes!, uses_blas3, maybe_disable_undecomposed_threading,
+    model_encoding_operator, StackedNSCTOp, BlockNuclearNorm, DenoiserProx
 
 makedocs(;
-    modules = [MriReconstructionToolbox, ProximalAlgorithms],
+    modules = [MriReconstructionToolbox, ProximalAlgorithms, ProximalOperators, ContourletOperators],
     authors = "Tamás Hakkel <hakkelt@gmail.com>",
     sitename = "MriReconstructionToolbox.jl",
     format = Documenter.HTML(

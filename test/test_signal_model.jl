@@ -1,6 +1,7 @@
 @testitem "Signal model operator: TemporalBasis forward and adjoint" tags = [:encoding, :reconstruction] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: build_encoding_operator, signal_model_operator
     using LinearAlgebra
     using NamedDims
 
@@ -38,6 +39,7 @@ end
 @testitem "build_encoding_operator with signal model" tags = [:encoding] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: build_encoding_operator, signal_model_operator
     using LinearAlgebra
     using NamedDims
 
@@ -63,6 +65,7 @@ end
 @testitem "KSpaceToImage signal model: dim queries and encoding operator" tags = [:encoding, :reconstruction] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: build_encoding_operator, signal_model_operator
     using NamedDims
     const MRT = MriReconstructionToolbox
 
@@ -90,6 +93,7 @@ end
 @testitem "Subspace reconstruction with TemporalBasis identity and permutation" tags = [:reconstruction, :minimizer] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: build_encoding_operator, signal_model_operator
     using LinearAlgebra
     using NamedDims
 
@@ -122,6 +126,7 @@ end
 @testitem "Signal model: non-trailing time dimension" tags = [:reconstruction, :minimizer] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: build_encoding_operator, signal_model_operator
     using LinearAlgebra
     using NamedDims
     using FFTW

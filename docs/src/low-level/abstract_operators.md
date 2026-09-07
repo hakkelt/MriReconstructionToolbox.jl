@@ -107,7 +107,7 @@ y == fft(x)  # Verify correctness
 x_back = F' * y;
 x_back == bfft(x)  # Verify correctness
 
-scale = 1 / (nx * ny) # Normalization factor that makes F unitary
+scale = 1 / (nx * ny) # Scaling factor that makes F unitary
 norm(x - scale * x_back) / norm(x) < 1e-6 # Verify it's an approximate inverse
 ```
 

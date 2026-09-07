@@ -4,6 +4,7 @@ using TestItems
     using Test
     using LinearAlgebra
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_operator, calculate, materialize, get_affected_dims, scale_regularization
     using AbstractOperators
     using NamedDims
 
@@ -36,7 +37,7 @@ using TestItems
         @test MriReconstructionToolbox.calculate(EdgePreservingRoughness2D(λ; δ), x) ≈ expected
     end
 
-    @testset "δ interpolates between Tikhonov-like and TV-like behaviour" begin
+    @testset "δ interpolates between L2Image-like and TV-like behaviour" begin
         x = randn(6, 6)
         λ = 0.5
         gradient = get_operator(EdgePreservingRoughness2D(λ), x; threaded = false) * x
@@ -117,6 +118,8 @@ end
 @testitem "EdgePreservingRoughness with λ = 0 is a no-op" tags = [:regularization] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_operator, calculate, materialize, get_affected_dims, scale_regularization
+    using StructuredOptimization
 
     # Regression: the constructor accepts λ >= 0, but materialize built SeparableHuberLoss(δ, λ/δ),
     # which rejects μ == 0 -- so disabling the term raised an opaque error from inside

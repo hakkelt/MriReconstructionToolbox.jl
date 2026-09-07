@@ -149,7 +149,7 @@ function build_model_with_variables(
         use_normalop = !disable_normalop_optimization && isempty(auxiliaries)
         use_normalop ? (@term normalop_ls(𝒜 * x - y)) : (@term ls(𝒜 * x - y))
     elseif fidelity isa HardConsistency
-        prox = HardConsistencyProx(𝒜, y, fidelity.maxit, fidelity.tol)
+        prox = hard_consistency_prox(𝒜, y, fidelity.maxit, fidelity.tol)
         StructuredOptimization.Term(1, prox, identity_operator(unname(~x)) * x, "HardConsistency(𝒜x=y)")
     elseif fidelity isa NoFidelity
         if isempty(reg_term_list)
@@ -213,7 +213,7 @@ function build_model(
     terms = if fidelity isa L2Loss
         StructuredOptimization.ls(ex - y)
     elseif fidelity isa HardConsistency
-        prox = HardConsistencyProx(𝒜, y, fidelity.maxit, fidelity.tol)
+        prox = hard_consistency_prox(𝒜, y, fidelity.maxit, fidelity.tol)
         StructuredOptimization.Term(1, prox, reduce(+, vars), "HardConsistency(𝒜(x₁+…)=y)")
     elseif fidelity isa NoFidelity
         nothing

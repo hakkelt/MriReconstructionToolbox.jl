@@ -16,7 +16,7 @@ struct L2Loss <: DataFidelity end
 	HardConsistency(; maxit = 50, tol = 1e-6) <: DataFidelity
 
 Hard data consistency indicator constraint: {x | 𝒜x = y}.
-Projections onto the constraint are evaluated via `HardConsistencyProx`. When `is_AAc_diagonal(𝒜)`
+Projections onto the constraint are evaluated via `ProximalOperators.IndAffineCG` (built by `hard_consistency_prox`). When `is_AAc_diagonal(𝒜)`
 is true (single-coil Cartesian, or a `KSpaceToImage` signal model), projection is evaluated directly in closed form;
 otherwise an inner Conjugate Gradient solver with maximum iterations `maxit` and relative
 tolerance `tol` is used.

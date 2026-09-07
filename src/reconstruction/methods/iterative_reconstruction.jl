@@ -1,5 +1,5 @@
 """
-	IterativeReconstruction{R, A, F<:DataFidelity, M} <: AbstractIterativeMethod
+	IterativeReconstruction{R, A, F<:DataFidelity, M} <: IterativeMethod
 
 Configures an iterative reconstruction problem with regularization terms, solver algorithms,
 data fidelity, and signal modeling options.
@@ -32,7 +32,7 @@ what changed and how to migrate a `λ` tuned against the previous behaviour.
 `maxit` and `tol` are keyword-only on every constructor; regularization terms are the only
 positional arguments.
 """
-struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M} <: AbstractIterativeMethod
+struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M} <: IterativeMethod
     regularization::R
     algorithm::A
     fidelity::F

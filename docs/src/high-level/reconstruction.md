@@ -1,6 +1,6 @@
 # [Image Reconstruction](@id reconstruction)
 
-The `reconstruct` function is the primary high-level interface for MRI image reconstruction from k-space data. It accepts an `AcquisitionInfo` object and an `AbstractReconstructionMethod` (defaulting to `DirectReconstruction()`), with automatic problem decomposition and performance optimization.
+The `reconstruct` function is the primary high-level interface for MRI image reconstruction from k-space data. It accepts an `AcquisitionInfo` object and an `ReconstructionMethod` (defaulting to `DirectReconstruction()`), with automatic problem decomposition and performance optimization.
 
 ## API Reference
 
@@ -8,7 +8,7 @@ The `reconstruct` function is the primary high-level interface for MRI image rec
 reconstruct
 DirectReconstruction
 IterativeReconstruction
-Config
+ReconstructionConfig
 ```
 
 ## Basic Usage
@@ -82,8 +82,8 @@ phantom = rand(ComplexF32, 64, 64)
 data = simulate_acquisition(phantom, acq_under)
 
 # Reconstruct with L2 regularization
-x_tikhonov = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 20); verbosity = Silent())
-println("Tikhonov reconstruction completed")
+x_tikhonov = reconstruct(data, IterativeReconstruction(L2Image(0.01); maxit = 20); verbosity = Silent())
+println("L2Image reconstruction completed")
 ```
 
 ## Configuration Control
@@ -93,7 +93,7 @@ one question: *does it mean anything without knowing the method?*
 
 - **Method parameters** — `maxit`, `tol`, `algorithm`, and everything else only a particular
   method can act on — go to that method's constructor. They are keyword-only there.
-- **Run settings** — normalization, output, threading, decomposition — go to `Config`, or
+- **Run settings** — scaling, output, threading, decomposition — go to `ReconstructionConfig`, or
   straight to `reconstruct` as keywords.
 
 Passing `maxit`, `tol` or `algorithm` to `reconstruct` throws rather than being silently
@@ -101,21 +101,21 @@ ignored, which is what happened before this split.
 
 ```@example recon
 # Method 1: keyword arguments for the run, constructor arguments for the method
-x1 = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 50, tol = 1e-5); verbosity = Silent())
+x1 = reconstruct(data, IterativeReconstruction(L2Image(0.01); maxit = 50, tol = 1e-5); verbosity = Silent())
 nothing # hide
 ```
 
 ```@example recon
-# Method 2: a Config object, reusable across methods
-config = Config(; verbosity = Silent(), normalization = BartScaling())
-x2 = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 50, tol = 1e-5); config = config)
+# Method 2: a ReconstructionConfig object, reusable across methods
+config = ReconstructionConfig(; verbosity = Silent(), scaling = BartScaling())
+x2 = reconstruct(data, IterativeReconstruction(L2Image(0.01); maxit = 50, tol = 1e-5); config = config)
 nothing # hide
 ```
 
 ```@example recon
 # Method 3: override config fields with keywords
-config_base = Config(; verbosity = Verbose())
-x3 = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 25); config = config_base, verbosity = Silent())
+config_base = ReconstructionConfig(; verbosity = Verbose())
+x3 = reconstruct(data, IterativeReconstruction(L2Image(0.01); maxit = 25); config = config_base, verbosity = Silent())
 nothing # hide
 ```
 
@@ -126,7 +126,7 @@ nothing # hide
 ```@example recon
 # Iteration parameters belong to the method
 IterativeReconstruction(
-    Tikhonov(0.01);
+    L2Image(0.01);
     maxit = 100,          # Maximum iterations
     tol = 1e-4,           # Relative stopping tolerance (`nothing` defers to the algorithm)
     algorithm = FISTA(),  # Solver
@@ -143,9 +143,9 @@ iterations.
 
 ```@example recon
 # Three mutually exclusive output modes
-reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 5); verbosity = Silent())      # nothing at all
-reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 5); verbosity = ProgressBar()) # one progress bar
-reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 5); verbosity = Verbose(; freq = 1))  # textual log
+reconstruct(data, IterativeReconstruction(L2Image(0.01); maxit = 5); verbosity = Silent())      # nothing at all
+reconstruct(data, IterativeReconstruction(L2Image(0.01); maxit = 5); verbosity = ProgressBar()) # one progress bar
+reconstruct(data, IterativeReconstruction(L2Image(0.01); maxit = 5); verbosity = Verbose(; freq = 1))  # textual log
 nothing # hide
 ```
 
@@ -158,7 +158,7 @@ ProgressBar
 Verbose
 ```
 
-#### Normalization
+#### Scaling
 
 ```@docs
 NoScaling
@@ -168,8 +168,8 @@ MeasurementBasedScaling
 
 ```@example recon
 # Data scaling strategies
-config_bart = Config(normalization=BartScaling())
-config_none = Config(normalization=NoScaling())
+config_bart = ReconstructionConfig(scaling=BartScaling())
+config_none = ReconstructionConfig(scaling=NoScaling())
 nothing # hide
 ```
 
@@ -179,7 +179,7 @@ Specify optimization algorithms via `IterativeReconstruction`:
 
 ```@example recon
 # Single algorithm
-x_fista = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); algorithm=FISTA(), maxit = 30); verbosity = Silent())
+x_fista = reconstruct(data, IterativeReconstruction(L2Image(0.01); algorithm=FISTA(), maxit = 30); verbosity = Silent())
 nothing # hide
 ```
 
@@ -188,13 +188,13 @@ nothing # hide
 x_auto = reconstruct(
     data,
     IterativeReconstruction(
-        Tikhonov(0.01);
+        L2Image(0.01);
         algorithm=(CG(), FISTA(), ADMM()), maxit = 50); verbosity = Silent())
 nothing # hide
 ```
 
 Common algorithms:
-- **CG / CGNR**: Conjugate Gradient - best for quadratic problems (Tikhonov / least squares)
+- **CG / CGNR**: Conjugate Gradient - best for quadratic problems (L2Image / least squares)
 - **FISTA**: Fast Iterative Shrinkage-Thresholding - for L1 / sparsity regularization
 - **ADMM**: Alternating Direction Method of Multipliers - for composite / multi-term regularization
 
@@ -233,7 +233,7 @@ nothing # hide
 
 ## Advanced Method Options
 
-### Operator Normalization
+### Operator Scaling
 
 By default, the encoding operator is normalized to unit norm for stable step size selection. This can be configured on `IterativeReconstruction`:
 
@@ -241,7 +241,7 @@ By default, the encoding operator is normalized to unit norm for stable step siz
 # Disable operator normalization
 x_unnorm = reconstruct(
     data,
-    IterativeReconstruction(Tikhonov(0.01); disable_operator_normalization=true, maxit = 20); verbosity = Silent())
+    IterativeReconstruction(L2Image(0.01); disable_operator_normalization=true, maxit = 20); verbosity = Silent())
 println("Unnormalized reconstruction completed")
 ```
 
@@ -252,7 +252,7 @@ For least-squares problems, `IterativeReconstruction` can exploit efficient norm
 ```@example recon
 # Disable normal operator optimization for debugging
 method_noopt = IterativeReconstruction(
-    Tikhonov(0.01);
+    L2Image(0.01);
     disable_normalop_optimization=true
 )
 nothing # hide
@@ -264,12 +264,12 @@ Control whether the output is scaled back to the original data range:
 
 ```@example recon
 # Standard (output is inverse-scaled)
-x_scaled = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 20); verbosity = Silent())
+x_scaled = reconstruct(data, IterativeReconstruction(L2Image(0.01); maxit = 20); verbosity = Silent())
 
 # Keep scaled output
 x_unscaled = reconstruct(
     data,
-    IterativeReconstruction(Tikhonov(0.01); maxit = 20); disable_inverse_scale_output=true, verbosity = Silent())
+    IterativeReconstruction(L2Image(0.01); maxit = 20); disable_inverse_scale_output=true, verbosity = Silent())
 
 println("Scaled max: ", maximum(abs, x_scaled))
 println("Unscaled max: ", maximum(abs, x_unscaled))
@@ -317,9 +317,9 @@ Replace the default logging function:
 messages = String[]
 custom_print(args...) = push!(messages, string(args...))
 
-config_custom = Config(; verbosity = Verbose(; printfunc = custom_print))
+config_custom = ReconstructionConfig(; verbosity = Verbose(; printfunc = custom_print))
 
-x_custom = reconstruct(data, IterativeReconstruction(Tikhonov(0.01); maxit = 5); config=config_custom)
+x_custom = reconstruct(data, IterativeReconstruction(L2Image(0.01); maxit = 5); config=config_custom)
 println("Captured ", length(messages), " log messages")
 println("First message: ", messages[1])
 ```

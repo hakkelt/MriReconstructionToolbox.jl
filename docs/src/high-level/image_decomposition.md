@@ -17,7 +17,7 @@ underlying optimization model.
 Component
 DecomposedImage
 components
-total
+total_image
 ```
 
 ## Basic Usage
@@ -40,7 +40,7 @@ acq = AcquisitionInfo(ksp; is3D = false)
 img = reconstruct(
     acq,
     IterativeReconstruction(
-        Component(:smooth, Tikhonov(0.01)),
+        Component(:smooth, L2Image(0.01)),
         Component(:sparse, L1Image(0.05)); maxit = 30); verbosity = Silent())
 
 println(typeof(img))
@@ -53,7 +53,7 @@ to the sum of the components:
 ```@example imgdecomp
 using LinearAlgebra
 
-sum(values(components(img))) ≈ total(img)
+sum(values(components(img))) ≈ total_image(img)
 ```
 
 Individual components stay accessible via `.components`:
@@ -89,14 +89,14 @@ dynamics   = img.components.sparse    # e.g. contrast uptake, motion
 ```
 
 Common choices for the sparse component are [`TemporalTotalVariation`](@ref)
-(irregular dynamics), [`TemporalFourier`](@ref) (periodic dynamics, the
+(irregular dynamics), [`L1TemporalFourier`](@ref) (periodic dynamics, the
 original k-t SPARSE transform) or [`L1Image`](@ref); the low-rank component is
 [`LowRank`](@ref), or [`LocallyLowRank`](@ref) when the dynamics vary across
 the field of view.
 
 !!! note "Solvable combinations"
     - **L+S dynamic MRI**: `LowRank` (or `LocallyLowRank`) + `TemporalTotalVariation`
-      (or `TemporalFourier` or `L1Image`) cleanly separates background from motion/contrast.
+      (or `L1TemporalFourier` or `L1Image`) cleanly separates background from motion/contrast.
     - **Infimal convolution TV**: `Component(:cartoon, TotalVariation2D(λ))` +
       `Component(:ramp, SecondOrderTotalVariation2D(λ))` splits the image into a
       piecewise-constant and a piecewise-linear part.
@@ -181,7 +181,7 @@ x̂ = reconstruct(acq; verbosity = Silent())
 img_warm = reconstruct(
     acq,
     IterativeReconstruction(
-        Component(:smooth, Tikhonov(0.01)),
+        Component(:smooth, L2Image(0.01)),
         Component(:sparse, L1Image(0.05)); maxit = 30); x₀ = (smooth = x̂, sparse = zero(x̂)), verbosity = Silent())
 nothing # hide
 ```
@@ -230,7 +230,7 @@ acq_ms = AcquisitionInfo(ksp_ms; is3D = false)
 img_ms = reconstruct(
     acq_ms,
     IterativeReconstruction(
-        Component(:smooth, Tikhonov(0.01)),
+        Component(:smooth, L2Image(0.01)),
         Component(:sparse, L1Image(0.05)); maxit = 10); verbosity = Silent())
 println(size(img_ms))
 println(size(img_ms.components.smooth))

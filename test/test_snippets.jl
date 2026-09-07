@@ -3,7 +3,11 @@ using TestItems
 @testsnippet RegTestSetup begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: Regularization, get_operator, get_affected_dims,
+        materialize, materialize_with_auxiliaries, materialize_all,
+        scale_regularization, bind_dimensions, calculate
     using AbstractOperators
+    using StructuredOptimization
     using NamedDims
     using Wavelets
 end
@@ -66,11 +70,15 @@ end
 end
 
 @testsnippet WaveletHelpers begin
+    using WaveletOperators: WaveletOp
+
     # The inverse must recover the original signal, whether or not the forward pass padded it.
     check_wavelet_roundtrip(op, x, result) = (Test.@test op' * result ≈ x rtol = 1.0e-10)
 end
 
 @testsnippet ModelEval begin
+    using StructuredOptimization
+
     function eval_term(terms)
         vars = StructuredOptimization.extract_variables(terms)
         @assert length(vars) == 1

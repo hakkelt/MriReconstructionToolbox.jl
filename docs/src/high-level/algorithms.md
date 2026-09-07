@@ -80,7 +80,7 @@ as `x`. If `λ` is zero, the problem reduces to a least-squares problem:
 
 	argminₓ ‖Ax - b‖₂²
 
-**Best for:** Least-squares problems with optional Tikhonov regularization
+**Best for:** Least-squares problems with optional L2Image regularization
 
 **Properties:**
 - Solves normal equations: A'A·x = A'·b
@@ -107,9 +107,9 @@ as `x`. If `λ` is zero, the problem reduces to a least-squares problem:
 
 **Example:**
 ```@example imports
-reconstruct(data, IterativeReconstruction(Tikhonov(1e-4); algorithm = CGNR(), maxit = 2); verbosity = Silent()) # hide
+reconstruct(data, IterativeReconstruction(L2Image(1e-4); algorithm = CGNR(), maxit = 2); verbosity = Silent()) # hide
 GC.gc() # hide
-img = reconstruct(data, IterativeReconstruction(Tikhonov(1e-4); algorithm = CGNR(), maxit = 20));
+img = reconstruct(data, IterativeReconstruction(L2Image(1e-4); algorithm = CGNR(), maxit = 20));
 nothing # hide
 ```
 

@@ -14,7 +14,7 @@ pseudo_replica
 
 ```julia
 # Run 64 pseudo-replica iterations with fixed scaling
-res = pseudo_replica(acq_data, method; replicas = 64, normalization = NoScaling())
+res = pseudo_replica(acq_data, method; replicas = 64, scaling = NoScaling())
 
 mean_img = res.mean
 std_img = res.std
@@ -22,4 +22,4 @@ g_factor_map = res.g_factor
 ```
 
 > [!IMPORTANT]
-> `pseudo_replica` requires `normalization = FixedScaling(...)` or `normalization = NoScaling()`. Data-dependent percentile scaling (`BartScaling()`) rescales each noisy replica independently by its own noise quantile, distorting inter-replica variance.
+> `pseudo_replica` requires `scaling = FixedScaling(...)` or `scaling = NoScaling()`. Data-dependent percentile scaling (`BartScaling()`) rescales each noisy replica independently by its own noise quantile, distorting inter-replica variance.

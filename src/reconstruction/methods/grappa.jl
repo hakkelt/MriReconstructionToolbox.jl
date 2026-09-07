@@ -1,5 +1,5 @@
 """
-    GRAPPA{C <: CoilCombination} <: AbstractDirectMethod
+    GRAPPA{C <: CoilCombination} <: DirectMethod
 
 Generalized Autocalibrating Partially Parallel Acquisitions (Griswold et al. 2002, MRM 47:1202-1210).
 A direct parallel imaging method that synthesizes missing k-space lines via localized multi-channel convolution
@@ -13,7 +13,7 @@ is fitted for each of the `R - 1` missing-line positions.
 - `calib_size`: ACS calibration region size (default: `(24, 24)`).
 - `coil_combination`: Method for combining synthesized multi-coil channels (`RootSumSquares()` or `AdjointSensitivity()`).
 """
-struct GRAPPA{C <: CoilCombination} <: AbstractDirectMethod
+struct GRAPPA{C <: CoilCombination} <: DirectMethod
     kernel_size::Tuple{Int, Int}
     calib_size::Tuple{Int, Int}
     coil_combination::C

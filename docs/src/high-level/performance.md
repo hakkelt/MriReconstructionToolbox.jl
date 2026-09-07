@@ -195,4 +195,5 @@ MriReconstructionToolbox.serial_blas_threshold_bytes
 MriReconstructionToolbox.set_serial_blas_threshold_bytes!
 MriReconstructionToolbox.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
 MriReconstructionToolbox.uses_blas3
+MriReconstructionToolbox.maybe_disable_undecomposed_threading
 ```

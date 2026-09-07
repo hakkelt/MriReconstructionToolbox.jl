@@ -1,5 +1,5 @@
 """
-    TemporalFourier(λ; time_dim=nothing)
+    L1TemporalFourier(λ; time_dim=nothing)
 
 Create a temporal Fourier regularization term with parameter `λ`. The regularization term is given by `λ‖𝓕ₜ{x}‖₁`,
 where `𝓕ₜ` is the discrete Fourier transform along the temporal dimension specified by `time_dim`. If `time_dim`
@@ -10,16 +10,16 @@ is not provided, it will be inferred as the dimension named `:time` if `x` is a 
 - `time_dim`: (optional) Dimension along which to apply the Fourier transform. Can be an `Integer` (1-based index)
 or a `Symbol` (dimension name). If not provided, it will be inferred as the dimension named `:time` if `x` is a `NamedDimsArray`.
 """
-struct TemporalFourier{T, D} <: Regularization
+struct L1TemporalFourier{T, D} <: Regularization
     λ::T
     time_dim::D
-    function TemporalFourier(λ::T; time_dim::D = nothing) where {T, D}
+    function L1TemporalFourier(λ::T; time_dim::D = nothing) where {T, D}
         _check_dim_spec(time_dim, "time_dim")
         return new{T, D}(λ, time_dim)
     end
 end
 
-function get_operator(reg::TemporalFourier, x::AbstractArray; threaded::Bool = true)
+function get_operator(reg::L1TemporalFourier, x::AbstractArray; threaded::Bool = true)
     time_dim = get_time_dim(reg.time_dim, dims_of(x))
     num_threads = threaded ? Threads.nthreads() : 1
     F = DFT(unname(x), time_dim; num_threads)
@@ -33,17 +33,17 @@ function get_operator(reg::TemporalFourier, x::AbstractArray; threaded::Bool = t
     return F
 end
 
-function get_affected_dims(reg::TemporalFourier, ::Nothing, image_dims)
+function get_affected_dims(reg::L1TemporalFourier, ::Nothing, image_dims)
     # Return the image_dims entry (a Symbol for named dimensions) rather than the index.
     return (image_dims[get_time_dim(reg.time_dim, image_dims)],)
 end
 
 # L1 norm is homogeneous of degree 1, so λ scales linearly (see scale_regularization docstring).
-scale_regularization(reg::TemporalFourier, factor::Real) = TemporalFourier(reg.λ .* factor; time_dim = reg.time_dim)
+scale_regularization(reg::L1TemporalFourier, factor::Real) = L1TemporalFourier(reg.λ .* factor; time_dim = reg.time_dim)
 
-bind_dimensions(reg::TemporalFourier, image_dims) = TemporalFourier(reg.λ; time_dim = get_time_dim(reg.time_dim, image_dims))
+bind_dimensions(reg::L1TemporalFourier, image_dims) = L1TemporalFourier(reg.λ; time_dim = get_time_dim(reg.time_dim, image_dims))
 
-function materialize(reg::TemporalFourier, x::Variable{T}; threaded::Bool) where {T}
+function materialize(reg::L1TemporalFourier, x::Variable{T}; threaded::Bool) where {T}
     R = real(T)
     λ = R.(reg.λ)
     op = get_operator(reg, ~x; threaded)

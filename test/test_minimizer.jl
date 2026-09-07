@@ -1,6 +1,8 @@
 @testitem "Model builder: Eye + L1Image" tags = [:minimizer] setup = [ModelEval] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator
+    using AbstractOperators
 
     @testset "Eye + L1Image" for threaded in (false, true)
         x = rand(8, 8)
@@ -18,15 +20,17 @@
     end
 end
 
-@testitem "Model builder: Eye + L1Image + Tikhonov" tags = [:minimizer] setup = [ModelEval] begin
+@testitem "Model builder: Eye + L1Image + L2Image" tags = [:minimizer] setup = [ModelEval] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator
+    using AbstractOperators
 
-    @testset "Eye + L1Image + Tikhonov" for threaded in (false, true)
+    @testset "Eye + L1Image + L2Image" for threaded in (false, true)
         x = rand(6, 6)
         𝒜 = Eye(x)
         y = copy(x)
-        regs = (L1Image(0.1), Tikhonov(0.05))
+        regs = (L1Image(0.1), L2Image(0.05))
         terms = build_model(𝒜, y, regs; threaded)
 
         model_val = eval_term(terms)
@@ -39,15 +43,17 @@ end
     end
 end
 
-@testitem "Model builder: Linear op + Tikhonov" tags = [:minimizer] setup = [ModelEval] begin
+@testitem "Model builder: Linear op + L2Image" tags = [:minimizer] setup = [ModelEval] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator
+    using AbstractOperators
 
-    @testset "Linear op + Tikhonov" for threaded in (false, true)
+    @testset "Linear op + L2Image" for threaded in (false, true)
         x = rand(8, 8)
         y = rand(8, 8)
         𝒜 = Eye(x)
-        reg = Tikhonov(0.3)
+        reg = L2Image(0.3)
         terms = build_model(𝒜, y, reg; threaded)
 
         model_val = eval_term(terms)
@@ -73,7 +79,9 @@ end
 @testitem "Model builder: NamedDims y and A" tags = [:minimizer] setup = [ModelEval] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator
     using NamedDims
+    using AbstractOperators
 
     @testset "NamedDims y and A" for threaded in (false, true)
         x = rand(8, 8)
@@ -94,12 +102,14 @@ end
 @testitem "Model builder: overload parity" tags = [:minimizer] setup = [ModelEval] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator
+    using AbstractOperators
 
     @testset "overload parity" for threaded in (false, true)
         x = rand(5, 5)
         𝒜 = Eye(x)
         y = copy(x)
-        reg = Tikhonov(0.2)
+        reg = L2Image(0.2)
         t1 = build_model(𝒜, y, reg; threaded)
         t2 = build_model(𝒜, y, (reg,); threaded)
         @test isapprox(eval_term(t1), eval_term(t2); atol = 1.0e-12)
@@ -109,6 +119,7 @@ end
 @testitem "DouglasRachford default parameter patching" tags = [:minimizer] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator
 
     alg = DouglasRachford(maxit = 100)
     patched = MriReconstructionToolbox.patch_algorithm_with_default_values(alg, 2.0)
@@ -125,7 +136,10 @@ end
 @testitem "HardConsistency projection fast path vs inner-CG" tags = [:minimizer] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator
     using LinearAlgebra
+    using ProximalCore
+    using ProximalOperators
 
     nx, ny = 16, 16
     x = rand(ComplexF32, nx, ny)
@@ -138,12 +152,16 @@ end
 
     @test MriReconstructionToolbox.is_AAc_diagonal(𝒜)
 
-    # Fast diagonal projection
+    # Fast diagonal projection: `hard_consistency_prox` hands `diag_AAc(𝒜)` to `IndAffineCG`, which
+    # then divides instead of iterating.
     x_test = rand(ComplexF32, nx, ny)
-    proj_fast = MriReconstructionToolbox._project_hard_consistency(𝒜, y, x_test, 50, 1.0e-6)
+    f_fast = MriReconstructionToolbox.hard_consistency_prox(𝒜, y, 50, 1.0e-6)
+    @test f_fast.AAc_diag !== nothing
+    proj_fast = similar(x_test)
+    ProximalCore.prox!(proj_fast, f_fast, x_test, 1.0)
 
     # Inner-CG projection
-    v_cg = MriReconstructionToolbox._cg_solve_AAc(𝒜, 𝒜 * x_test - y; maxit = 100, tol = 1.0e-6)
+    v_cg = ProximalOperators._cg_solve_AAc(𝒜, 𝒜 * x_test - y; maxit = 100, tol = 1.0e-6)
     proj_cg = x_test .- 𝒜' * v_cg
 
     @test isapprox(proj_fast, proj_cg; rtol = 1.0e-4, atol = 1.0e-5)
@@ -153,6 +171,7 @@ end
 @testitem "Reconstruction with HardConsistency + DouglasRachford" tags = [:minimizer, :reconstruction] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator
     using LinearAlgebra
 
     nx, ny = 16, 16
@@ -173,6 +192,7 @@ end
 @testitem "Unregularized Iterative Least-Squares with CGNR" tags = [:minimizer, :reconstruction] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator
     using LinearAlgebra
 
     nx, ny = 16, 16
@@ -194,6 +214,7 @@ end
 @testitem "NoFidelity and error handling" tags = [:minimizer] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator
 
     nx, ny = 8, 8
     x = rand(ComplexF32, nx, ny)
@@ -209,6 +230,7 @@ end
 @testitem "Diagnostic ArgumentError on single-solver parse failure" tags = [:minimizer, :reconstruction] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator
 
     nx, ny = 16, 16
     x = rand(ComplexF32, nx, ny)

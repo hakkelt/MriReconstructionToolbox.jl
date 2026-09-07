@@ -1,32 +1,39 @@
 """
+	L2Image(λ)
 	Tikhonov(λ)
 
-Create a Tikhonov regularization term with parameter `λ`.
+Create an ℓ₂ image-domain regularization term with parameter `λ`.
 
 The regularization term is given by `λ²‖x‖₂²`, or `‖Γ .* x‖₂²` if `λ` is an array `Γ` of the same size as `x`.
+
+`Tikhonov` is an exported alias: Tikhonov regularization is the textbook name for this term, and it
+is the name most readers will reach for first. The two names are the same type.
 
 # Arguments
 - `λ`: Regularization parameter, can be a scalar or an array of the same size as `x`.
 
 # Notes
-- This regularization term is also known as L2 regularization or ridge regression.
+- This regularization term is also known as ridge regression, or (in BART's `-R Q`) the
+  ℓ₂-norm image-domain penalty.
 - The squared parameter `λ²` is used in the formulation to align with common conventions in
- Tikhonov regularization literature.
+  the Tikhonov regularization literature.
 """
-struct Tikhonov{T} <: Regularization
+struct L2Image{T} <: Regularization
     λ::T
 end
 
-get_operator(::Tikhonov, x::AbstractArray; threaded::Bool = true) = identity_operator(x)
+const Tikhonov = L2Image
 
-function get_affected_dims(::Tikhonov, ::Nothing, image_dims)
-    return () # Tikhonov regularization applies element-wise, so no specific dimensions are affected
+get_operator(::L2Image, x::AbstractArray; threaded::Bool = true) = identity_operator(x)
+
+function get_affected_dims(::L2Image, ::Nothing, image_dims)
+    return () # L2Image regularization applies element-wise, so no specific dimensions are affected
 end
 
 # λ²‖x‖² is homogeneous of degree 2 in x, same as the data-consistency term, so no correction is
 # needed (see scale_regularization docstring): falls back to the generic no-op method.
 
-function materialize(reg::Tikhonov, x::Variable{T}; threaded::Bool) where {T}
+function materialize(reg::L2Image, x::Variable{T}; threaded::Bool) where {T}
     if reg.λ isa AbstractArray
         @argcheck size(reg.λ) == size(x) "Incompatible sizes"
     end

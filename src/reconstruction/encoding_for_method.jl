@@ -18,12 +18,12 @@ struct TemporalBasis{T, M <: AbstractMatrix{T}, D}
 end
 
 """
-    signal_model_operator(method::AbstractReconstructionMethod, acq::AcquisitionInfo; threaded::Bool)
+    signal_model_operator(method::ReconstructionMethod, acq::AcquisitionInfo; threaded::Bool)
 
 Constructs the signal model linear operator `ℳ` for the given reconstruction method and acquisition data.
 Returns `nothing` if no signal model is specified.
 """
-signal_model_operator(::AbstractReconstructionMethod, ::AcquisitionInfo; threaded::Bool = true) = nothing
+signal_model_operator(::ReconstructionMethod, ::AcquisitionInfo; threaded::Bool = true) = nothing
 
 function signal_model_operator(method::IterativeReconstruction, acq::AcquisitionInfo; threaded::Bool = true)
     return signal_model_operator(method.signal_model, acq; threaded)
@@ -157,14 +157,14 @@ function apply_signal_model(model::KSpaceToImage, x̂, acq::AcquisitionInfo; thr
 end
 
 """
-    build_encoding_operator(acq::AcquisitionInfo, method::AbstractReconstructionMethod; threaded::Bool = true, fast_planning::Bool = false)
+    build_encoding_operator(acq::AcquisitionInfo, method::ReconstructionMethod; threaded::Bool = true, fast_planning::Bool = false)
 
 Builds the encoding operator mapping the reconstruction optimization variable to the measured
 k-space, dispatching on the method's signal model (see [`model_encoding_operator`](@ref)).
 """
 function build_encoding_operator(
         acq::AcquisitionInfo,
-        method::AbstractReconstructionMethod;
+        method::ReconstructionMethod;
         threaded::Bool = true,
         fast_planning::Bool = false,
     )
