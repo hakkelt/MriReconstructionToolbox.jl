@@ -37,17 +37,29 @@ end
 Zero-pad the calibrated `Kx×Ky×Nc×Nc` SPIRiT kernel onto the full `Nx×Ny` grid and Fourier
 transform every coil-pair slice in one batched apply, yielding the `Nx×Ny×Nc×Nc` frequency-domain
 convolution kernel `Ĝ` with `Ĝ[:, :, src, target]` layout.
+
+The kernel is *reversed* along both k-space axes before zero-padding. Calibration
+([`_calibrate_spirit_kernel`](@ref)) fits a **correlation** — the target sample is the weighted sum
+of `x[n + m]` over the patch offsets `m` — while multiplying by `Ĝ` in the frequency domain applies
+a **convolution**, `Σₘ h[m] x[n − m]`. Reversing the taps (`h[m] = kernel[−m]`) makes the two agree;
+without it the fitted neighbourhood is applied point-reflected through the kernel centre and the
+self-consistency relation is badly violated (Lustig & Pauly's reference implementation performs the
+same flip).
 """
 function _spirit_gfft(kernel::AbstractArray, Nx::Integer, Ny::Integer; threaded::Bool = true)
     Kx, Ky, Nc, _ = size(kernel)
     T = eltype(kernel)
     pad_x, pad_y = Kx ÷ 2, Ky ÷ 2
+    # Position of the kernel centre after the reversal below, so the circshift lands it on index 1.
+    shift_x, shift_y = Kx - pad_x - 1, Ky - pad_y - 1
     padded = zeros(T, Nx, Ny, Nc * Nc)
-    for idx in 1:(Nc * Nc)
-        j, i = fldmod1(idx, Nc)          # column-major over (src j, target i), matching the loop below
+    for tgt in 1:Nc, src in 1:Nc
+        # Column-major flattening of the trailing `(src, target)` pair, so the `reshape` below puts
+        # `kernel[:, :, src, tgt]` back at `Ĝ[:, :, src, tgt]` — the layout `mul!` indexes with.
+        idx = src + (tgt - 1) * Nc
         slice = @view padded[:, :, idx]
-        slice[1:Kx, 1:Ky] .= kernel[:, :, j, i]
-        padded[:, :, idx] .= circshift(slice, (-pad_x, -pad_y))
+        slice[1:Kx, 1:Ky] .= @view kernel[Kx:-1:1, Ky:-1:1, src, tgt]
+        padded[:, :, idx] .= circshift(slice, (-shift_x, -shift_y))
     end
     dft = _spirit_plane_dft(T, Nx, Ny, Nc * Nc; threaded)
     return reshape(dft * padded, Nx, Ny, Nc, Nc)
@@ -143,6 +155,11 @@ for missing k-space samples using self-consistency iterations.
 - `calib_size`: ACS calibration region size (default: `(24, 24)`).
 - `maxit`: Number of iterations (default: `25`).
 - `λ`: Regularization parameter on self-consistency (default: `1.0`).
+- `calib_λ`: Relative Tikhonov regularization of the kernel calibration solve (default: `1.0e-4`).
+  The ACS system is close to rank-deficient — neighbouring k-space samples are highly correlated —
+  so the unregularized least-squares fit produces a kernel that amplifies noise and extrapolation
+  error. The penalty is scaled by `‖X‖²/n` so the value is dimensionless; set it to `0` to recover
+  the plain least-squares solve.
 - `coil_combination`: Method for combining reconstructed multi-coil channels (`RootSumSquares()` or `AdjointSensitivity()`).
 - `iterative`: If `true`, lowers to an `IterativeReconstruction` with a `KSpaceToImage` signal model
   and hard data consistency.
@@ -152,6 +169,7 @@ struct SPIRiT{C <: CoilCombination} <: DirectMethod
     calib_size::Tuple{Int, Int}
     maxit::Int
     λ::Float64
+    calib_λ::Float64
     coil_combination::C
     iterative::Bool
     function SPIRiT(;
@@ -159,14 +177,17 @@ struct SPIRiT{C <: CoilCombination} <: DirectMethod
             calib_size = (24, 24),
             maxit = 25,
             λ = 1.0,
+            calib_λ = 1.0e-4,
             coil_combination::CoilCombination = RootSumSquares(),
             iterative::Bool = false,
         )
+        @argcheck calib_λ >= 0 "SPIRiT calib_λ must be non-negative"
         return new{typeof(coil_combination)}(
             kernel_size,
             calib_size,
             maxit,
             Float64(λ),
+            Float64(calib_λ),
             coil_combination,
             iterative,
         )
@@ -208,7 +229,15 @@ function _calibrate_spirit_kernel(acq::CartesianAcquisitionInfo, method::SPIRiT,
 
         y_tgt = A_mat[:, target_feat_idx]
         X_src = A_mat[:, src_cols]
-        w = X_src \ y_tgt
+        w = if method.calib_λ > 0
+            # Relative Tikhonov: the penalty tracks the scale of the calibration data, so the same
+            # `calib_λ` is meaningful across datasets and normalizations.
+            XhX = X_src' * X_src
+            μ = real(eltype(XhX))(method.calib_λ * real(tr(XhX)) / size(X_src, 2))
+            (XhX + μ * I) \ (X_src' * y_tgt)
+        else
+            X_src \ y_tgt
+        end
 
         full_w = zeros(T, Kx * Ky * Nc)
         full_w[src_cols] = w
