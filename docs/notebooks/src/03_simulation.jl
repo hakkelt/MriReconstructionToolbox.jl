@@ -35,7 +35,8 @@ include("NotebookUtils.jl")
 using .NotebookUtils
 
 using MriReconstructionToolbox
-using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
+using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities,
+    create_torso_phantom, generate_respiratory_signal
 using MIRTjim: jim
 using Plots
 using LinearAlgebra: norm
@@ -177,24 +178,42 @@ jim(
 # %% [markdown]
 # ## 5. Hand-written patterns
 #
-# Any boolean mask or index tuple works, so scanner-specific schemes are easy to reproduce.
+# `subsampling` does not have to come from a generator. The **default idiom** for a
+# scanner-specific scheme is a tuple of per-dimension indexing expressions — a range, a
+# `step`, a `Vector` of indices, `:` for "everything acquired" — because it states the
+# pattern directly (a stride, a start, a count) instead of making the reader recover those
+# numbers by scanning a boolean array. A boolean mask is still accepted, and stays the right
+# tool for a pattern that has no closed form — variable-density and Poisson-disc random
+# sampling in section 3 are exactly that case, which is why `create_sampling_pattern` returns
+# one there.
 
 # %%
-# Regular R = 4 with a 21-line autocalibration band — the GRAPPA-style pattern.
+# Partial Fourier: the first 65% of phase encodes, as a plain range.
 ny = 256
-mask_grappa = falses(ny)
-mask_grappa[1:4:ny] .= true
-mask_grappa[(ny ÷ 2 - 10):(ny ÷ 2 + 10)] .= true
-println("net acceleration: ", round(ny / sum(mask_grappa), digits = 2), "×")
-
-acq_grappa_like = AcquisitionInfo(
-    nothing; is3D = false, image_size = (256, 256), subsampling = (:, mask_grappa)
+subsampling_pf = (:, 1:round(Int, 0.65 * ny))
+acq_pf = AcquisitionInfo(
+    nothing; is3D = false, image_size = (256, 256), subsampling = subsampling_pf
 )
+println("phase encodes: ", length(subsampling_pf[2]), " of ", ny)
 
 # %%
-# Partial Fourier: an asymmetric band of phase encodes.
+# Regular R = 4 with a 21-line autocalibration (ACS) band — the GRAPPA-style pattern. A
+# strided range unioned with the ACS range states the acceleration and the calibration extent
+# directly; recovering either number from a boolean mask would mean scanning it (or plotting
+# it, as below) instead of just reading the expression.
+acs_half = 10
+subsampling_grappa = (:, sort(union(1:4:ny, (ny ÷ 2 - acs_half):(ny ÷ 2 + acs_half))))
+acq_grappa_like = AcquisitionInfo(
+    nothing; is3D = false, image_size = (256, 256), subsampling = subsampling_grappa
+)
+println("net acceleration: ", round(ny / length(subsampling_grappa[2]), digits = 2), "×")
+
+# %%
+# The two patterns above, rendered as masks purely for display.
+mask_grappa = falses(ny)
+mask_grappa[subsampling_grappa[2]] .= true
 mask_pf = falses(ny)
-mask_pf[1:round(Int, 0.65 * ny)] .= true
+mask_pf[subsampling_pf[2]] .= true
 jim(
     jim(repeat(reshape(mask_grappa, 1, :), 256, 1); title = "regular R=4 + ACS"),
     jim(repeat(reshape(mask_pf, 1, :), 256, 1); title = "partial Fourier 65%");
@@ -244,19 +263,14 @@ println("3D k-space: ", size(data3.kspace_data))
 # %% [markdown]
 # ## 7. Noise, SNR and dynamic series
 #
-# Noise is added to the simulated k-space; the copy constructor makes that a one-liner.
+# `add_noise` is part of the package: `snr_db` targets a signal-to-noise ratio (RMS-relative,
+# `σ = rms(data) * 10^(-snr_db / 20)`), `noise_std` an absolute complex standard deviation.
+# Passing an `AcquisitionInfo` adds noise to its k-space and returns a new configuration via
+# the copy constructor.
 
 # %%
-function add_noise(data, snr_db)
-    ksp = data.kspace_data
-    signal = sqrt(sum(abs2, ksp) / length(ksp))
-    σ = signal / (10^(snr_db / 20)) / sqrt(2)
-    noise = σ * (randn(ComplexF32, size(ksp)))
-    return AcquisitionInfo(data; kspace_data = ksp .+ noise)
-end
-
 recs = map((40, 20, 10)) do snr
-    rec = reconstruct(add_noise(data_full, snr); verbosity = Silent())
+    rec = reconstruct(add_noise(data_full; snr_db = snr); verbosity = Silent())
     jim(rec; title = "SNR $(snr) dB")
 end
 jim(recs...; layout = (1, 3), size = (1000, 320))
@@ -264,36 +278,58 @@ jim(recs...; layout = (1, 3), size = (1000, 320))
 # %% [markdown]
 # ### A dynamic series
 #
-# A batch dimension (here `:time`) is simulated exactly like anything else. This series — a
-# static background plus a contrast bolus in one ellipse — is the toy dataset used in the
-# dynamic-imaging notebook.
+# A batch dimension (here `:time`) is simulated exactly like anything else. For a realistic
+# dynamic series, `create_torso_phantom` from GeometricMedicalPhantoms.jl (already a dependency
+# of these notebooks) takes a `respiratory_signal` (in litres, from `generate_respiratory_signal`)
+# and returns a 4D `(nx, ny, nz, nt)` phantom breathing along with it; a single axial slice
+# gives a 2D dynamic series driven by real respiratory motion instead of a hand-rolled bolus.
 
 # %%
 using NamedDims
 
 nt = 16
-base = create_shepp_logan_phantom(64, 64, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
-roi = falses(64, 64)
-roi[26:38, 20:30] .= true
-
-series = zeros(ComplexF32, 64, 64, nt)
-for t in 1:nt
-    uptake = 0.6f0 * (1 - exp(-3.0f0 * (t - 1) / nt))     # contrast wash-in
-    frame = copy(base)
-    frame[roi] .+= uptake
-    series[:, :, t] = frame
-end
-series = NamedDimsArray{(:x, :y, :time)}(series)
+t_resp, resp_liters = generate_respiratory_signal(nt * 1.0, 1.0, 15.0)   # nt samples, 15 breaths/min
+vol_dyn = create_torso_phantom(64, 64, 16; respiratory_signal = resp_liters[1:nt], eltype = ComplexF32)
+series = NamedDimsArray{(:x, :y, :time)}(vol_dyn[:, :, 8, :])            # one axial slice, all frames
 
 jim(series[:, :, 1:5:16]; title = "dynamic frames 1, 6, 11, 16", nrow = 1, size = (1000, 280))
 
+# %% [markdown]
+# #### The same pattern for every frame
+#
+# The `(:, mask)`/index-expression idiom from section 5 applies unchanged to a series with a
+# `:time` batch dimension: one `subsampling` acquires the same phase encodes at every frame.
+
 # %%
-# Simulate it with a different random sampling pattern per frame is also possible, but the
-# simplest version shares one pattern across time.
-acq_dyn = AcquisitionInfo(
-    NamedDimsArray{(:kx, :ky, :coil, :time)}(zeros(ComplexF32, 64, 64, 4, nt));
-    is3D = false,
-    sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(coil_sensitivities(64, 64, 4)),
+smaps_dyn = coil_sensitivities(64, 64, 4)
+subsampling_same = (:, 1:2:64)
+acq_dyn_same = AcquisitionInfo(
+    nothing; is3D = false, image_size = (64, 64),
+    sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps_dyn), subsampling = subsampling_same,
 )
-data_dyn = simulate_acquisition(series, acq_dyn)
-println(dimnames(data_dyn.kspace_data), " ", size(data_dyn.kspace_data))
+data_dyn_same = simulate_acquisition(series, acq_dyn_same)
+println(dimnames(data_dyn_same.kspace_data), " ", size(data_dyn_same.kspace_data))
+
+# %% [markdown]
+# #### A different pattern per frame
+#
+# The interesting case for temporal regularizers: incoherent aliasing across time, so that a
+# temporal-Fourier or low-rank penalty has something to exploit. Because the acquired sample
+# count then differs frame to frame, the pattern is expressed as a `Vector` of `subsampling`
+# tuples — one per frame — and each frame is simulated with its own `AcquisitionInfo` rather
+# than combined into a single fixed-shape array.
+
+# %%
+ny_dyn = 64
+subsampling_per_frame = [(:, sort(union(t:2:ny_dyn, 26:38))) for t in 1:nt]
+println("acquired phase encodes per frame: ", length.(getindex.(subsampling_per_frame, 2)))
+
+data_dyn_varying = map(1:nt) do t
+    acq_t = AcquisitionInfo(
+        nothing; is3D = false, image_size = (64, 64),
+        sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps_dyn),
+        subsampling = subsampling_per_frame[t],
+    )
+    simulate_acquisition(series[:, :, t], acq_t)
+end
+println([size(d.kspace_data) for d in data_dyn_varying])

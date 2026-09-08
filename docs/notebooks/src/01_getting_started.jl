@@ -39,7 +39,6 @@ using MriReconstructionToolbox
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
 using MIRTjim: jim
 using Plots
-using LinearAlgebra: norm
 using Random
 
 Random.seed!(0)
@@ -110,12 +109,9 @@ println("k-space data: ", size(data.kspace_data), " ", eltype(data.kspace_data))
 # %%
 x_direct = reconstruct(data; verbosity = Silent())
 
-nrmse(x̂, x) = norm(abs.(x̂) - abs.(x)) / norm(abs.(x))
 println("direct NRMSE: ", round(nrmse(x_direct, x_true), digits = 4))
 
-p1 = jim(x_direct; title = "Direct (adjoint)")
-p2 = jim(abs.(x_direct - x_true); title = "Error")
-jim(p1, p2; layout = (1, 2), size = (800, 350))
+jim(jim(x_direct; title = "Direct (adjoint)"), difference_image(x_direct, x_true); layout = (1, 2), size = (800, 350))
 
 # %% [markdown]
 # ## 4. Compressed-sensing reconstruction
@@ -131,18 +127,11 @@ x_cs = reconstruct(data, method; verbosity = ProgressBar())
 
 println("CS NRMSE:     ", round(nrmse(x_cs, x_true), digits = 4))
 
-p1 = jim(x_cs; title = "L1-wavelet CS")
-p2 = jim(abs.(x_cs - x_true); title = "Error")
-jim(p1, p2; layout = (1, 2), size = (800, 350))
+jim(jim(x_cs; title = "L1-wavelet CS"), difference_image(x_cs, x_true); layout = (1, 2), size = (800, 350))
 
 # %%
 # Side by side with the ground truth.
-jim(
-    jim(x_true; title = "Ground truth"),
-    jim(x_direct; title = "Direct"),
-    jim(x_cs; title = "CS");
-    layout = (1, 3), size = (1100, 330)
-)
+side_by_side(x_true, x_direct, x_cs; titles = ("Ground truth", "Direct", "CS"), size = (1100, 330))
 
 # %% [markdown]
 # ## 5. Where to go next
