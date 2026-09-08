@@ -52,6 +52,29 @@ end
     end
 end
 
+@testsnippet IterationCallbackSetup begin
+    using Test
+    using MriReconstructionToolbox
+    using Random
+
+    # Fully sampled and single-coil, so the encoding operator is square and every algorithm in
+    # `DEFAULT_ALGORITHMS` -- CG included -- can be run against the same problem.
+    function square_acquisition(nx = 16, ny = 16; seed = 5)
+        Random.seed!(seed)
+        x_true = rand(ComplexF32, nx, ny)
+        acq = CartesianAcquisitionInfo(; is3D = false, image_size = (nx, ny))
+        return simulate_acquisition(x_true, acq), x_true
+    end
+
+    # Multi-slice, so `get_task_splitting_plan` splits it into one task per slice.
+    function multislice_acquisition(nx = 16, ny = 16, nslices = 4, nc = 2; seed = 7)
+        Random.seed!(seed)
+        smaps = repeat(coil_sensitivities(nx, ny, nc), 1, 1, 1, nslices)
+        kspace = rand(ComplexF32, nx, ny, nc, nslices)
+        return AcquisitionInfo(kspace; is3D = false, sensitivity_maps = smaps)
+    end
+end
+
 @testsnippet SyntheticCoils begin
     # A smooth, complex-valued coil pattern: a Gaussian blob offset around a ring per coil, with a
     # linear phase ramp, normalized so the coils combine to unit magnitude (root-sum-of-squares).
