@@ -97,7 +97,7 @@ coefficients and zeroes the rest.
 - The constraint set is non-convex, so the solvers only guarantee a stationary point, and the result depends
   on the initialization.
 - The count is over the entire coefficient array, including all batch dimensions. Because a per-sub-problem
-  budget would not be the same constraint, this term blocks problem decomposition; reconstruct slice by slice
+  budget would not be the same constraint, this term blocks task splitting; reconstruct slice by slice
   explicitly if a per-slice budget is what is wanted.
 """
 struct SparsityLimit{W} <: Regularization
@@ -118,7 +118,7 @@ end
 
 # Unlike the separable penalties, the budget couples every voxel of the coefficient array: splitting the
 # problem would give each sub-problem its own budget of `max_nonzeros` and so change the constraint. All
-# image dimensions are therefore reported as affected, which blocks problem decomposition.
+# image dimensions are therefore reported as affected, which blocks task splitting.
 get_affected_dims(::SparsityLimit, ::Nothing, image_dims) = Tuple(image_dims)
 
 # The constraint is scale-invariant (nnz(factor * x) == nnz(x)); no correction needed.

@@ -155,7 +155,7 @@ end
 	get_affected_dims(reg, acq_info, image_dims)
 
 Get the dimensions in the image domain that are affected by the regularization `reg`.
-This is used to determine which dimensions can be used for problem decomposition during reconstruction.
+This is used to determine which dimensions can be used for task splitting during reconstruction.
 
 `acq_info` is the acquisition the term will be applied to, or `nothing` when it is not available. Terms
 implement the `::Nothing` method; the `::AcquisitionInfo` one falls back to it, so only a term whose
@@ -173,7 +173,7 @@ end
 	scale_regularization(reg, factor)
 
 Return a copy of `reg` with its `λ` adjusted so that, when the image variable itself is scaled by `factor`
-(e.g. because problem decomposition uses one common data-scaling factor for all slices instead of a per-slice
+(e.g. because task splitting uses one common data-scaling factor for all slices instead of a per-slice
 one), the regularization term has the same relative strength as it would with an unscaled variable and the
 original `λ`.
 

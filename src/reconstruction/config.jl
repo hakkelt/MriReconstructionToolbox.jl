@@ -2,7 +2,7 @@
     ReconstructionConfig(; kwargs...)
 
 Method-independent run settings for `reconstruct`: scaling, output, threading and
-automatic problem decomposition.
+automatic task splitting.
 
 Anything that only a particular method can act on — iteration counts, tolerances, the solver
 algorithm — belongs on that method's constructor instead, not here. `ReconstructionConfig` rejects such
@@ -12,9 +12,9 @@ Fields (with defaults):
 - `scaling::Scaling = BartScaling()` — scaling applied to operators/data (see also `NoScaling`, `MeasurementBasedScaling`, `FixedScaling`)
 - `verbosity::Verbosity = Verbose()` — output mode: `Silent()`, `ProgressBar()` or `Verbose()`
 - `threaded::Bool = (Threads.nthreads() > 1)` — enable threaded execution when available
-- `decomposition_executor::Union{Nothing,ReconstructionExecutor} = nothing` — override executor for decomposition
+- `task_executor::Union{Nothing,ReconstructionExecutor} = nothing` — override executor for task splitting
 - `disable_inverse_scale_output::Bool = false` — skip rescaling the final output
-- `disable_problem_decomposition::Bool = false` — disable automatic problem decomposition
+- `disable_task_splitting::Bool = false` — disable automatic task splitting
 
 `verbosity` also accepts `true`/`false` and the symbols `:verbose`, `:progress`, `:silent`,
 which are normalized to the corresponding [`Verbosity`](@ref) via `as_verbosity`.
@@ -34,7 +34,7 @@ conf = ReconstructionConfig()
 conf = ReconstructionConfig(; verbosity = ProgressBar())
 
 # Extend an existing config
-conf2 = ReconstructionConfig(conf; disable_problem_decomposition = true)
+conf2 = ReconstructionConfig(conf; disable_task_splitting = true)
 
 # Iteration control belongs to the method, not the config
 x̂ = reconstruct(acq, IterativeReconstruction(reg; maxit = 50, tol = 1e-6); config = conf2)
@@ -44,25 +44,25 @@ struct ReconstructionConfig
     scaling::Scaling
     verbosity::Verbosity
     threaded::Bool
-    decomposition_executor::Union{Nothing, ReconstructionExecutor}
+    task_executor::Union{Nothing, ReconstructionExecutor}
     disable_inverse_scale_output::Bool
-    disable_problem_decomposition::Bool
+    disable_task_splitting::Bool
 
     function ReconstructionConfig(;
             scaling::Scaling = BartScaling(),
             verbosity = Verbose(),
             threaded::Bool = nthreads() > 1,
-            decomposition_executor::Union{Nothing, ReconstructionExecutor} = nothing,
+            task_executor::Union{Nothing, ReconstructionExecutor} = nothing,
             disable_inverse_scale_output::Bool = false,
-            disable_problem_decomposition::Bool = false,
+            disable_task_splitting::Bool = false,
         )
         return new(
             scaling,
             as_verbosity(verbosity),
             threaded,
-            decomposition_executor,
+            task_executor,
             disable_inverse_scale_output,
-            disable_problem_decomposition,
+            disable_task_splitting,
         )
     end
 end

@@ -205,7 +205,7 @@ function build_model(
     y = unname(y)
     # `Variable` stores the array by reference and `solve` writes the solution back through it, so
     # the caller's `x₀` must be copied here -- exactly as the single-variable path above does. In
-    # the decomposition path `x₀s` are `@view`s into the caller's full array, which would otherwise
+    # the task-splitting path `x₀s` are `@view`s into the caller's full array, which would otherwise
     # be written through as well.
     vars = Tuple(Variable(copy(unname(x₀))) for x₀ in x₀s)
     ex = 𝒜 * reduce(+, vars)

@@ -22,7 +22,7 @@ function stack_slices_like(::AbstractArray, results, plan, threaded::Val)
 end
 
 function stack_slices_like(::DecomposedImage, results, plan, threaded::Val)
-    return stack_decomposed_image_slices(results, plan, threaded)
+    return stack_split_image_slices(results, plan, threaded)
 end
 
 function stack_plain_image_slices(results, plan, ::Val{false})
@@ -45,7 +45,7 @@ function stack_plain_image_slices(results, plan, ::Val{true})
     return full_image
 end
 
-function stack_decomposed_image_slices(results, plan, threaded::Val)
+function stack_split_image_slices(results, plan, threaded::Val)
     summed = stack_plain_image_slices(map(total_image, results), plan, threaded)
     names = keys(first(results).components)
     comps = NamedTuple{names}(
