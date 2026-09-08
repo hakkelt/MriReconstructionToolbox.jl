@@ -343,8 +343,8 @@ components = (
     Component(:ramp, SecondOrderTotalVariation2D(1e-3)),
 )
 img = reconstruct(acq, IterativeReconstruction(components...; algorithm = ADMM(), maxit = 500))
-img.components.cartoon   # the edges
-img.components.ramp      # the smooth background
+img.cartoon   # the edges, shorthand for img.components.cartoon
+img.ramp      # the smooth background, shorthand for img.components.ramp
 ```
 
 Compared to [`TotalGeneralizedVariation2D`](@ref) this is the older and slightly weaker model — the two parts

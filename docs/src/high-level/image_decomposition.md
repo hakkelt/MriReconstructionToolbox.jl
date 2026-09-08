@@ -56,10 +56,39 @@ using LinearAlgebra
 sum(values(components(img))) ≈ total_image(img)
 ```
 
-Individual components stay accessible via `.components`:
+Individual components stay accessible via `.components`, or, more concisely,
+directly as a property — `img.smooth` is shorthand for `img.components.smooth`:
 
 ```@example imgdecomp
 img.components.smooth isa AbstractArray
+img.smooth isa AbstractArray
+```
+
+The struct's own fields (`total`, `components`) always resolve first, so a
+component cannot be named `total` or `components` — `reconstruct` (via
+`Component`/`check_components`) and the `DecomposedImage` constructor both
+reject that collision, since such a component would otherwise be unreachable
+through dot access:
+
+```@example imgdecomp
+try
+    MriReconstructionToolbox.DecomposedImage(zeros(2, 2), (total = zeros(2, 2),))
+catch e
+    println(e)
+end
+```
+
+`propertynames(img)` lists both the real fields and every component name, and
+accessing an unknown property raises an `ArgumentError` naming the available
+ones:
+
+```@example imgdecomp
+println(propertynames(img))
+try
+    img.nonexistent
+catch e
+    println(e)
+end
 ```
 
 To get a plain, mutable array of the sum (rather than the read-only
@@ -84,8 +113,8 @@ img = reconstruct(
         Component(:lowrank, LowRank(5e-2; time_dim = 3)),
         Component(:sparse, TemporalTotalVariation(2e-2; time_dim = 3)); maxit = 100))
 
-background = img.components.lowrank   # e.g. static anatomy
-dynamics   = img.components.sparse    # e.g. contrast uptake, motion
+background = img.lowrank   # e.g. static anatomy
+dynamics   = img.sparse    # e.g. contrast uptake, motion
 ```
 
 Common choices for the sparse component are [`TemporalTotalVariation`](@ref)
@@ -233,5 +262,5 @@ img_ms = reconstruct(
         Component(:smooth, L2Image(0.01)),
         Component(:sparse, L1Image(0.05)); maxit = 10); verbosity = Silent())
 println(size(img_ms))
-println(size(img_ms.components.smooth))
+println(size(img_ms.smooth))
 ```

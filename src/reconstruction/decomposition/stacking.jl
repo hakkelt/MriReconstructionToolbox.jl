@@ -47,10 +47,10 @@ end
 
 function stack_decomposed_image_slices(results, plan, threaded::Val)
     summed = stack_plain_image_slices(map(total_image, results), plan, threaded)
-    names = keys(first(results).components)
+    names = keys(getfield(first(results), :components))
     comps = NamedTuple{names}(
         Tuple(
-            stack_plain_image_slices(map(r -> r.components[name], results), plan, threaded)
+            stack_plain_image_slices(map(r -> getfield(r, :components)[name], results), plan, threaded)
                 for name in names
         )
     )
