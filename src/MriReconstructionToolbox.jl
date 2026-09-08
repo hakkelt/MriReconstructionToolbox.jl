@@ -61,7 +61,7 @@ export SPIRiT, SPIRiTConsistency
 export partial_fourier_band
 
 # Acquisition data and signal models
-export AcquisitionInfo, CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
+export AcquisitionInfo, CartesianAcquisitionInfo
 export TemporalBasis, KSpaceToImage
 
 # Image decomposition
@@ -76,9 +76,10 @@ export correct_gradient_delays, estimate_gradient_delays, OpposingSpokes, RING
 
 # Analysis and simulation
 export pseudo_replica
-export simulate_acquisition, coil_sensitivities
+export simulate_acquisition, coil_sensitivities, add_noise
 export UniformRandomSampling, VariableDensitySampling, PoissonDiskSampling, GaussianDistribution, PolynomialDistribution
 export create_sampling_pattern, to_displayable_mask
+export radial_trajectory, stack_of_stars_trajectory, kooshball_trajectory, spiral_trajectory
 
 # Individual names reexported from dependencies because a non-expert has to type them.
 # Never reexport a whole dependency (NAMING.md rule 6.4).
@@ -88,6 +89,7 @@ export ContourletParams, parabolic_levels # L1Contourlet
 
 # Extension surface: dispatch on these, subtype them, or implement them for a new component.
 # Documented and stable, but not exported.
+public NonCartesianAcquisitionInfo
 public Regularization, ReconstructionMethod, IterativeMethod, DirectMethod
 public Scaling, CoilCombination, DataFidelity, Verbosity, ReconstructionExecutor
 public Subsampling, VariableDensityDistribution, PartialFourierFilter
@@ -173,6 +175,8 @@ include("analysis/pseudo_replica.jl")
 include("simulation/subsampling.jl")
 include("simulation/sensitivities.jl")
 include("simulation/simulate_acquisition.jl")
+include("simulation/add_noise.jl")
+include("simulation/trajectories.jl")
 
 function __init__()
     _init_serial_blas_threshold!()

@@ -429,9 +429,51 @@ info2 = AcquisitionInfo(info1; sensitivity_maps=smaps)
 println("With sensitivity maps:", info2)
 ```
 
+## Non-Cartesian Acquisitions
+
+Passing a `trajectory` dispatches `AcquisitionInfo` to the non-Cartesian variant. No k-space
+data is required to set up the acquisition — this is the normal way to prepare a trajectory for
+[`simulate_acquisition`](@ref), with no placeholder array to invent:
+
+```@example acqinfo
+using NamedDims
+
+traj = NamedDimsArray{(:coord, :sample, :spoke)}(rand(Float32, 2, 64, 32) .- 0.5f0)
+acq_nc = AcquisitionInfo(; trajectory = traj, image_size = (64, 64))
+println("k-space data: ", acq_nc.kspace_data)  # nothing until simulated or measured
+```
+
+Sensitivity maps can be attached the same way, still with no k-space data:
+
+```@example acqinfo
+smaps = coil_sensitivities(64, 64, 4)
+acq_nc_smaps = AcquisitionInfo(; trajectory = traj, image_size = (64, 64), sensitivity_maps = smaps)
+```
+
+Passing measured k-space data works the same way as the Cartesian case — as the first
+(positional) argument:
+
+```@example acqinfo
+measured_ksp = rand(ComplexF32, 64, 32)
+acq_nc_data = AcquisitionInfo(measured_ksp; trajectory = traj, image_size = (64, 64))
+```
+
+`AcquisitionInfo` constructs a `NonCartesianAcquisitionInfo` under the hood. That concrete type
+is `public` (documented, stable, dispatchable) but **not exported** — `AcquisitionInfo(...)` is
+the advertised, non-expert-facing constructor. Code that needs the concrete type explicitly
+(e.g. for a type annotation or `isa` check) imports it or qualifies it:
+
+```julia
+using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+# or: MriReconstructionToolbox.NonCartesianAcquisitionInfo
+```
+
+See `docs/src/high-level/simulation.md` for ready-made trajectory generators
+(`radial_trajectory`, `stack_of_stars_trajectory`, `kooshball_trajectory`, `spiral_trajectory`).
+
 ## Density Compensation (Non-Cartesian)
 
-Non-Cartesian acquisitions (such as radial, spiral, or arbitrary k-space trajectories) need density compensation factors (DCF) to turn the adjoint NFFT into a usable direct (gridding) reconstruction — the adjoint on its own is *not* an inverse for non-uniformly sampled data. `NonCartesianAcquisitionInfo` holds the trajectory and an optional `dcf` array.
+Non-Cartesian acquisitions (such as radial, spiral, or arbitrary k-space trajectories) need density compensation factors (DCF) to turn the adjoint NFFT into a usable direct (gridding) reconstruction — the adjoint on its own is *not* an inverse for non-uniformly sampled data. `NonCartesianAcquisitionInfo` (`public`, not exported — see above) holds the trajectory and an optional `dcf` array.
 
 **`acq.dcf` defaults to `nothing`, and `nothing` means no density compensation is applied**: the
 encoding operator's adjoint stays the mathematically true adjoint of the forward NFFT. This
@@ -440,7 +482,9 @@ CG/CGNR, and any algorithm built on that relationship. Reconstructing directly f
 `NonCartesianAcquisitionInfo` you have not run `density_compensation` on therefore does *not*
 silently pull in a density-weighted adjoint; call `density_compensation` explicitly when you want
 one (e.g. for a quick direct reconstruction), and be aware that once you do, the operator's
-adjoint is a density-compensated approximate inverse, not the true adjoint.
+adjoint is a density-compensated approximate inverse, not the true adjoint. This is also why the
+non-Cartesian trajectory generators and [`simulate_acquisition`](@ref) never apply density
+compensation on their own — see `docs/src/high-level/simulation.md`.
 
 You can compute the DCF directly using `density_compensation`:
 
