@@ -1,6 +1,6 @@
 # [Image Reconstruction](@id reconstruction)
 
-The `reconstruct` function is the primary high-level interface for MRI image reconstruction from k-space data. It accepts an `AcquisitionInfo` object and an `ReconstructionMethod` (defaulting to `DirectReconstruction()`), with automatic problem decomposition and performance optimization.
+The `reconstruct` function is the primary high-level interface for MRI image reconstruction from k-space data. It accepts an `AcquisitionInfo` object and an `ReconstructionMethod` (defaulting to `DirectReconstruction()`), with automatic task splitting and performance optimization.
 
 ## API Reference
 
@@ -93,7 +93,7 @@ one question: *does it mean anything without knowing the method?*
 
 - **Method parameters** — `maxit`, `tol`, `algorithm`, and everything else only a particular
   method can act on — go to that method's constructor. They are keyword-only there.
-- **Run settings** — scaling, output, threading, decomposition — go to `ReconstructionConfig`, or
+- **Run settings** — scaling, output, threading, task splitting — go to `ReconstructionConfig`, or
   straight to `reconstruct` as keywords.
 
 Passing `maxit`, `tol` or `algorithm` to `reconstruct` throws rather than being silently
@@ -275,9 +275,9 @@ println("Scaled max: ", maximum(abs, x_scaled))
 println("Unscaled max: ", maximum(abs, x_unscaled))
 ```
 
-## Problem Decomposition
+## Task Splitting
 
-For multi-dimensional data (e.g., 2D+time, multi-slice), `reconstruct` automatically decomposes the problem over independent dimensions:
+For multi-dimensional data (e.g., 2D+time, multi-slice), `reconstruct` automatically splits the task over independent dimensions:
 
 ```@example recon
 # Multi-slice 2D data
@@ -287,26 +287,26 @@ smaps_ms = rand(ComplexF32, nx, ny, nc, nslices)
 
 acq_ms = AcquisitionInfo(ksp_ms; is3D=false, sensitivity_maps=smaps_ms)
 
-# Automatically decomposes over slice dimension
+# Automatically splits over slice dimension
 x_slices = reconstruct(acq_ms; verbosity = Silent())
 println("Reconstructed slices: ", size(x_slices))
 ```
 
-The decomposition:
+Task splitting:
 - Identifies batch dimensions not affected by Fourier transforms or regularization
 - Reconstructs each batch element independently
 - Utilizes multiple CPU cores for parallel execution
 - Combines results into a single output array
 
-To disable decomposition (e.g., for debugging):
+To disable task splitting (e.g., for debugging):
 
 ```@example recon
-x_no_decomp = reconstruct(
-    acq_ms; disable_problem_decomposition=true, verbosity = Silent())
+x_no_split = reconstruct(
+    acq_ms; disable_task_splitting=true, verbosity = Silent())
 println("Sequential reconstruction completed")
 ```
 
-See [Problem Decomposition](decomposition.md) for details.
+See [Task Splitting](task_splitting.md) for details.
 
 ## Custom Progress Logging
 

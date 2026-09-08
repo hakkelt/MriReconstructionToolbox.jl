@@ -46,7 +46,7 @@ the same way here; this is not a bug in either.
 - **Pins BLAS to one thread during the iterative solve** — except for large problems, and except
   for low-rank regularizers (`LowRank`, `LocallyLowRank`, `MultiScaleLowRank`), whose SVDs
   genuinely do benefit from threading. See [`with_serial_blas`](@ref).
-- **Applies the same size rule to one slice of a decomposed problem.** When there are few enough
+- **Applies the same size rule to one slice of a task-split problem.** When there are few enough
   slices that they are reconstructed one at a time, the work *inside* a slice threads only if
   that slice is itself large enough to pay for it — a 2-slice 128² problem runs serially inside
   even at `threaded = true`, which is ~10% faster end to end. With many slices the slice loop
@@ -55,7 +55,7 @@ the same way here; this is not a bug in either.
   problem has no batch dimension (a single 2-D slice, no coil/time/slice loop) and the image is
   small, `threaded = true` is ignored — threading a lone 128²-ish problem is a 2–3x loss, not a
   gain. Large single volumes (roughly 16 MiB per image and up) still thread. See
-  [`maybe_disable_undecomposed_threading`](@ref).
+  [`maybe_disable_unsplit_threading`](@ref).
 
 ## What you have to set yourself
 
@@ -195,5 +195,5 @@ MriReconstructionToolbox.serial_blas_threshold_bytes
 MriReconstructionToolbox.set_serial_blas_threshold_bytes!
 MriReconstructionToolbox.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
 MriReconstructionToolbox.uses_blas3
-MriReconstructionToolbox.maybe_disable_undecomposed_threading
+MriReconstructionToolbox.maybe_disable_unsplit_threading
 ```
