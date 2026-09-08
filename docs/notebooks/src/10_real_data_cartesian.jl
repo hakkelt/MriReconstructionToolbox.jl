@@ -286,18 +286,16 @@ plot(
 # of 0.5 and up, the same step is worth much more.
 
 # %%
-maps_white = estimate_sensitivities(acq_white; method = ESPIRiT(calib_size = 24, kernel_size = 6)).sensitivity_maps
-L = cholesky(Hermitian(Ψ)).L
-maps_raw = NamedDimsArray{dimnames(maps_white)}(
-    reshape(L * reshape(permutedims(unname(maps_white), (3, 1, 2)), size(Ψ, 1), :),
-        size(Ψ, 1), acq_coils.image_size...) |> a -> permutedims(a, (2, 3, 1))
-)
+# One set of maps, estimated on the measured data, carried into the whitened frame by the very
+# same transform `prewhiten` applies to the k-space — so the two reconstructions differ in
+# nothing but whether the data term knows about Ψ.
+maps_raw = estimate_sensitivities(acq_coils; method = ESPIRiT(calib_size = 24, kernel_size = 6)).sensitivity_maps
+maps_matched = prewhiten(maps_raw, Ψ)
 
 x_raw = reconstruct(AcquisitionInfo(acq_coils; sensitivity_maps = maps_raw); verbosity = Silent())
-x_white = reconstruct(AcquisitionInfo(acq_white; sensitivity_maps = maps_white); verbosity = Silent())
+x_white = reconstruct(AcquisitionInfo(acq_white; sensitivity_maps = maps_matched); verbosity = Silent())
 
 box = 100:156
-bg = vcat(vec(reference[1:30, 1:30]), vec(reference[(end - 29):end, (end - 29):end]))
 bg_idx = findall(reference .< 0.02maximum(reference))
 snr(x) = mean(abs.(unname(x))[box, box]) / std(abs.(unname(x))[bg_idx])
 
