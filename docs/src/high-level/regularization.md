@@ -513,22 +513,24 @@ Cost grows linearly with the number of scales, so two or three are usually enoug
 
 ### Hard Thresholding
 
-Penalizes or constrains the *number* of non-zero coefficients rather than their magnitude:
+Penalizes or constrains the *number* of non-zero coefficients rather than their magnitude. One type per
+sparsifying transform, each taking `threshold` (penalty form) XOR `count` (constraint form):
 
 ```@docs
-HardThreshold
-SparsityLimit
+L0Image
+L0Wavelet2D
+L0Wavelet3D
 ```
 
 **When to use:**
 - When the amplitude bias of the ℓ₁ terms is a problem: soft thresholding shrinks the coefficients it keeps, hard thresholding does not, so lesion or vessel intensities are not systematically underestimated
-- [`SparsityLimit`](@ref) when the sparsity level is known a priori and is easier to specify than a penalty weight — the same argument that makes [`RankLimit`](@ref) preferable to [`LowRank`](@ref) in some settings
+- The `count` form when the sparsity level is known a priori and is easier to specify than a penalty weight — the same argument that makes [`RankLimit`](@ref) preferable to [`LowRank`](@ref) in some settings
 
 **Example:**
 ```julia
 # ℓ₀ penalty on wavelet coefficients, warm-started from an ℓ₁ solution
 x_l1 = reconstruct(acq, IterativeReconstruction(L1Wavelet2D(1e-3)))
-img = reconstruct(acq, IterativeReconstruction(HardThreshold(1e-3; domain = :wavelet2d)); x₀ = x_l1)
+img = reconstruct(acq, IterativeReconstruction(L0Wavelet2D(threshold = 1e-3)); x₀ = x_l1)
 ```
 
 **Practical tip:** Both terms are non-convex, so the solvers only guarantee a stationary point and the result
@@ -671,8 +673,8 @@ The regularization parameter λ controls the trade-off between data fidelity and
 - LowRank: `1e-2` to `1`
 - LocallyLowRank: `1e-2` to `5e-1`
 - MultiScaleLowRank: `1e-2` to `5e-1`, as for LocallyLowRank
-- HardThreshold: `1e-4` to `1e-2`, but note the `sqrt(2γλ)` threshold — retune rather than reusing an ℓ₁ λ
-- SparsityLimit: no λ; set the coefficient budget from the expected sparsity
+- L0Image/L0Wavelet2D/L0Wavelet3D, `threshold` form: `1e-4` to `1e-2`, but note the `sqrt(2γλ)` threshold — retune rather than reusing an ℓ₁ λ
+- L0Image/L0Wavelet2D/L0Wavelet3D, `count` form: no λ; set the coefficient budget from the expected sparsity
 - PlugAndPlay: `strength` `1e-2` to `1e-1`, in the units of the image intensity
 - JointSparsity: `1e-3` to `1e-2`
 - ReferencePrior: `1e-3` to `1e-1`
@@ -692,7 +694,7 @@ The regularization parameter λ controls the trade-off between data fidelity and
 | Piecewise-constant anatomy, strong edges | [`TotalVariation2D`](@ref) / [`TotalVariation3D`](@ref) | + [`L1Wavelet2D`](@ref) |
 | Edges *and* smooth intensity variation (staircasing is a problem) | [`TotalGeneralizedVariation2D`](@ref) | infimal convolution: [`TotalVariation2D`](@ref) + [`SecondOrderTotalVariation2D`](@ref) as components |
 | Smooth penalty wanted (gradient-based solver, model-based recon) | [`EdgePreservingRoughness2D`](@ref) | + [`L1Wavelet2D`](@ref) |
-| ℓ₁ amplitude bias is a problem | [`HardThreshold`](@ref) / [`SparsityLimit`](@ref) | warm-started from an ℓ₁ solution |
+| ℓ₁ amplitude bias is a problem | [`L0Image`](@ref) / [`L0Wavelet2D`](@ref) / [`L0Wavelet3D`](@ref) | warm-started from an ℓ₁ solution |
 | A trained or off-the-shelf denoiser is available | [`PlugAndPlay`](@ref) | — |
 | Periodic dynamics (cine, cardiac) | [`L1TemporalFourier`](@ref) | + [`TotalVariation2D`](@ref) |
 | Irregular dynamics (free-breathing, real-time) | [`TemporalTotalVariation`](@ref) | + [`TotalVariation2D`](@ref) |
@@ -714,7 +716,7 @@ Sparsity and total variation:
 - Chambolle, A., & Lions, P.-L. (1997). *Image recovery via total variation minimization and related problems.* Numerische Mathematik, 76(2), 167-188. — infimal convolution of first- and second-order TV.
 - Bredies, K., Kunisch, K., & Pock, T. (2010). *Total generalized variation.* SIAM Journal on Imaging Sciences, 3(3), 492-526. — [`TotalGeneralizedVariation2D`](@ref).
 - Knoll, F., Bredies, K., Pock, T., & Stollberger, R. (2011). *Second order total generalized variation (TGV) for MRI.* Magnetic Resonance in Medicine, 65(2), 480-491.
-- Blumensath, T., & Davies, M. E. (2009). *Iterative hard thresholding for compressed sensing.* Applied and Computational Harmonic Analysis, 27(3), 265-274. — [`HardThreshold`](@ref) and [`SparsityLimit`](@ref).
+- Blumensath, T., & Davies, M. E. (2009). *Iterative hard thresholding for compressed sensing.* Applied and Computational Harmonic Analysis, 27(3), 265-274. — [`L0Image`](@ref), [`L0Wavelet2D`](@ref) and [`L0Wavelet3D`](@ref).
 
 Dynamic imaging:
 - Lustig, M., Santos, J. M., Donoho, D. L., & Pauly, J. M. (2006). *k-t SPARSE: High frame rate dynamic MRI exploiting spatio-temporal sparsity.* Proc. ISMRM. — sparsity in the temporal Fourier domain ([`L1TemporalFourier`](@ref)).
