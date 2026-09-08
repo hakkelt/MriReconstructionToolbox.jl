@@ -11,7 +11,7 @@ using AbstractOperators
 using AbstractOperators: Sum  # resolve ambiguity with ProximalOperators.Sum
 using NamedDims
 using StructuredOptimization
-using NFFTOperators: NFFTOp
+using NFFTOperators: NFFTOp, NFFT
 
 using NestedThreading: @budgeted_threads, with_full_threads, with_restricted_threads
 using WaveletOperators: WaveletOp, WT, wavelet
