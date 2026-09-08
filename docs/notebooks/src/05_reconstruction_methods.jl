@@ -15,18 +15,27 @@
 # ---
 
 # %% [markdown]
-# # 6 — Reconstruction methods
+# # 5 — Reconstruction methods
 #
-# Everything MRT can do is expressed as a *method* object handed to `reconstruct`. This notebook
-# covers the ones that are not "iterative SENSE with a regularizer": direct reconstruction and
-# coil combination, partial Fourier, autocalibrated parallel imaging (GRAPPA, SPIRiT), the data
-# fidelity choices, and the signal models.
+# Everything MRT can do is expressed as a *method* object handed to `reconstruct`. A method says
+# **what kind of reconstruction this is** — how the measurements become an image. This notebook is
+# a tour of the methods that are not "iterative SENSE with a regularizer": direct reconstruction
+# and coil combination, partial Fourier, autocalibrated parallel imaging (GRAPPA, SPIRiT), the
+# data-fidelity choices, and the signal models.
 #
 # ```
 # ReconstructionMethod
 # ├── DirectMethod     → DirectReconstruction, GRAPPA, Homodyne, PhaseConstrained, …
 # └── IterativeMethod  → IterativeReconstruction, POCS, SPIRiT(iterative = true), …
 # ```
+#
+# Several of these methods do iterate internally, and a few of the comparisons below run
+# `IterativeReconstruction` as a reference. That is deliberately kept in the background here: how
+# the iteration is *driven* — which solver, how many iterations, what stopping tolerance, how much
+# the run prints — is the subject of the next notebook,
+# [`06_algorithms_and_configuration`](06_algorithms_and_configuration.ipynb). Where this notebook
+# passes `maxit` or `algorithm`, treat the values as "enough to converge on this small phantom"
+# and look there for how to choose them.
 #
 # **Contents**
 # 1. Direct reconstruction and coil combination
@@ -41,12 +50,14 @@ include("NotebookUtils.jl")
 using .NotebookUtils
 
 using MriReconstructionToolbox
-using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
+using GeometricMedicalPhantoms:
+    create_shepp_logan_phantom, create_torso_phantom, MRISheppLoganIntensities, TissueMask
 using MIRTjim: jim
 using Plots
 using NamedDims
 using FFTW
 using LinearAlgebra
+using Statistics
 using Random
 
 Random.seed!(0)
@@ -54,23 +65,23 @@ Random.seed!(0)
 # %% [markdown]
 # ## 1. Direct reconstruction and coil combination
 #
-# `DirectReconstruction` is $\mathcal{A}^H y$: inverse FFT, then combine the coils. Which
-# combination is used follows from the acquisition — if it carries sensitivity maps, the adjoint
-# of the sensitivity operator does the combining ($\sum_c \bar s_c x_c$, the SNR-optimal one);
-# if it does not, the reconstruction comes back per coil.
+# `DirectReconstruction` is $\mathcal{A}^H y$: inverse FFT, then combine the coils. The
+# `coil_combination` keyword names the three strategies:
 #
-# The `coil_combination` keyword names the three strategies:
+# - `AdjointSensitivity()` (the default) — $\sum_c \bar s_c x_c$, the SNR-optimal combination, and
+#   the only one that keeps the image's phase. It needs sensitivity maps.
+# - `RootSumSquares()` — $\sqrt{\sum_c |x_c|^2}$, needs no maps but discards the phase.
+# - `NoCoilCombination()` — keep the coil channels separate.
 #
-# - `AdjointSensitivity()` — $\sum_c \bar s_c x_c$
-# - `RootSumSquares()` — $\sqrt{\sum_c |x_c|^2}$, needs no maps but loses the phase
-# - `NoCoilCombination()` — keep the coil channels separate
+# All three are honored by `DirectReconstruction` on Cartesian data, and by the methods that
+# synthesize k-space (`GRAPPA`, `SPIRiT`, and the `KSpaceToImage` signal model — those three
+# default to `RootSumSquares()`, since they do not need maps for anything else). On non-Cartesian
+# data `DirectReconstruction` supports `AdjointSensitivity()` only; the other two raise an error
+# rather than silently ignoring the request.
 #
-# !!! note
-#     In this version of MRT the keyword is only acted on by the methods that synthesize
-#     k-space — `GRAPPA`, `SPIRiT` and the `KSpaceToImage` signal model (all three default to
-#     `RootSumSquares()`). `DirectReconstruction` always applies $\mathcal{A}^H$, so its own
-#     `coil_combination` argument currently changes nothing; the root-sum-of-squares of an
-#     uncombined reconstruction is one line of Julia, shown below.
+# When the acquisition carries no sensitivity maps and the combination is the default
+# `AdjointSensitivity()`, there is nothing to combine with, so the reconstruction comes back per
+# coil.
 
 # %%
 nx, ny, nc = 128, 128, 8
@@ -85,26 +96,75 @@ acq_full = AcquisitionInfo(
 )
 data_full = simulate_acquisition(x_true, acq_full)
 
-# With sensitivity maps: one combined image.
+# With sensitivity maps and the default combination: one combined image.
 x_adj = reconstruct(data_full, DirectReconstruction(); verbosity = Silent())
-println("with maps:    ", size(x_adj), " ", dimnames(x_adj))
+println("AdjointSensitivity: ", size(x_adj), " ", dimnames(x_adj))
 
-# The same k-space, described without maps: one image per coil.
+# Same data, root sum of squares: also one image, but no phase.
+x_rss = reconstruct(data_full, DirectReconstruction(RootSumSquares()); verbosity = Silent())
+println("RootSumSquares:     ", size(x_rss), " ", dimnames(x_rss))
+
+# Same data, coils kept apart.
+x_coils = reconstruct(data_full, DirectReconstruction(NoCoilCombination()); verbosity = Silent())
+println("NoCoilCombination:  ", size(x_coils), " ", dimnames(x_coils))
+
+# The same k-space described *without* maps also comes back per coil under the default.
 acq_nomaps = AcquisitionInfo(data_full.kspace_data; is3D = false)
-x_coils = reconstruct(acq_nomaps, DirectReconstruction(); verbosity = Silent())
-println("without maps: ", size(x_coils), " ", dimnames(x_coils))
-
-# Root sum of squares over the coil dimension.
-x_rss = sqrt.(sum(abs2, unname(x_coils); dims = 3)[:, :, 1])
-
-jim(
-    jim(x_adj; title = "adjoint sensitivity combination"),
-    jim(x_rss; title = "root sum of squares");
-    layout = (1, 2), size = (800, 350)
-)
+x_nomaps = reconstruct(acq_nomaps, DirectReconstruction(); verbosity = Silent())
+println("no maps, default:   ", size(x_nomaps), " ", dimnames(x_nomaps))
 
 # %%
 jim(x_coils; title = "uncombined coil images", nrow = 2, size = (800, 400))
+
+# %% [markdown]
+# ### Where the two combinations actually differ
+#
+# On noiseless data with normalized maps ($\sum_c |s_c|^2 \equiv 1$, which is what
+# `coil_sensitivities` produces) the two magnitude images are nearly indistinguishable — which is
+# why a side-by-side of them teaches nothing. The difference is a **noise** effect, and it shows up
+# in two places:
+#
+# - Root sum of squares is a *biased* magnitude estimator. Squaring and adding the coil channels
+#   rectifies the noise, so signal-free regions acquire a positive floor that grows with the coil
+#   count; the sensitivity-weighted sum keeps noise zero-mean and complex.
+# - The sensitivity-weighted sum is the matched filter for the coil array, so it is SNR-optimal;
+#   root sum of squares is not, and loses the most where a single coil dominates.
+#
+# So the comparison below is run on noisy data, and the figure carries a difference panel on its
+# own color scale next to the two magnitude images.
+
+# %%
+data_noisy = add_noise(data_full; snr_db = 12)
+
+xn_adj = reconstruct(data_noisy, DirectReconstruction(); verbosity = Silent())
+xn_rss = reconstruct(data_noisy, DirectReconstruction(RootSumSquares()); verbosity = Silent())
+
+println("NRMSE vs. truth")
+println("  AdjointSensitivity ", round(nrmse(xn_adj, x_true), digits = 4))
+println("  RootSumSquares     ", round(nrmse(xn_rss, x_true), digits = 4))
+
+background = abs.(unname(x_true)) .< 1.0e-6
+println("mean magnitude in the signal-free background (the RSS noise floor)")
+println("  AdjointSensitivity ", round(mean(abs.(unname(xn_adj))[background]), digits = 4))
+println("  RootSumSquares     ", round(mean(abs.(unname(xn_rss))[background]), digits = 4))
+
+# %%
+side_by_side(
+    unname(xn_adj), unname(xn_rss);
+    titles = ("adjoint sensitivity", "root sum of squares"), size = (1100, 360)
+)
+
+# %%
+difference_image(
+    unname(xn_rss), unname(xn_adj);
+    title = "|RSS| - |adjoint sensitivity|", size = (450, 380)
+)
+
+# %% [markdown]
+# The difference image is not noise-shaped scatter: it is a picture of the object, brightest where
+# the phantom is dark, because that is where the rectification bias is largest relative to the
+# signal. Only `AdjointSensitivity` keeps the phase, so it is the one to use whenever the phase
+# matters (partial Fourier, off-resonance correction, phase-contrast flow).
 
 # %% [markdown]
 # ## 2. Partial Fourier
@@ -138,16 +198,10 @@ band = partial_fourier_band(acq_pf)
 println("partial-Fourier band: dimension ", band.dim, ", lines ", first(band.acquired_range), ":", last(band.acquired_range))
 
 # %%
-# The partial-Fourier methods in this version return an image scaled by `sqrt(Nx*Ny)` relative
-# to the adjoint path, so the errors below are amplitude-aligned (the least-squares scale factor
-# is divided out before comparing) — which is what one does anyway when comparing magnitude
-# images from different pipelines.
-function rel(x̂)
-    a = abs.(unname(x̂))
-    α = sum(a .* mag) / sum(abs2, a)
-    return norm(α .* a - mag) / norm(mag)
-end
-
+# Every method here returns an image in the data's own units — the zero-filled adjoint, the three
+# partial-Fourier methods and the phantom are all on one scale, so a plain NRMSE against the
+# magnitude phantom is meaningful with no amplitude alignment. (The least-squares scale factor
+# that would align them is printed below to make that concrete: it is 1 to within a percent.)
 x_zf = reconstruct(acq_pf; verbosity = Silent())
 x_hom_lin = reconstruct(acq_pf, Homodyne(filter = LinearRamp()); verbosity = Silent())
 x_hom_step = reconstruct(acq_pf, Homodyne(filter = StepRamp()); verbosity = Silent())
@@ -158,15 +212,15 @@ for (label, x̂) in (
         ("zero-filled", x_zf), ("Homodyne / LinearRamp", x_hom_lin), ("Homodyne / StepRamp", x_hom_step),
         ("PhaseConstrained", x_pc), ("POCS", x_pocs),
     )
-    println(rpad(label, 24), " relative magnitude error ", round(rel(x̂), digits = 4))
+    a = abs.(unname(x̂))
+    α = sum(a .* mag) / sum(abs2, a)
+    println(rpad(label, 24), " NRMSE ", rpad(round(nrmse(x̂, mag), digits = 4), 8), " (scale factor ", round(α, digits = 3), ")")
 end
 
-jim(
-    jim(abs.(unname(x_zf)); title = "zero-filled"),
-    jim(abs.(unname(x_hom_lin)); title = "Homodyne"),
-    jim(abs.(unname(x_pc)); title = "PhaseConstrained"),
-    jim(abs.(unname(x_pocs)); title = "POCS");
-    layout = (2, 2), size = (800, 700)
+# %%
+side_by_side(
+    unname(x_zf), unname(x_hom_lin), unname(x_pc), unname(x_pocs);
+    titles = ("zero-filled", "Homodyne", "PhaseConstrained", "POCS"), size = (1300, 340)
 )
 
 # %% [markdown]
@@ -181,6 +235,16 @@ jim(
 # Autocalibrated parallel imaging fills in the missing k-space lines from a kernel fitted on a
 # fully-sampled autocalibration (ACS) region — no explicit sensitivity maps are used for the
 # interpolation itself.
+#
+# The two differ in what the kernel is fitted to do:
+#
+# - **GRAPPA** (Griswold 2002) fits, for each missing-line offset, the weights that predict one
+#   target sample from a neighbourhood of *acquired* lines. It therefore needs a regular
+#   undersampling pattern, and it fills each hole once.
+# - **SPIRiT** (Lustig & Pauly 2010) fits a kernel that predicts *every* sample from all of its
+#   neighbours, acquired or not — a self-consistency relation $k = G k$ on the whole multi-channel
+#   k-space. That relation is then iterated to a fixed point while the acquired samples are held.
+#   It is not restricted to a regular pattern.
 
 # %%
 Nc = 8
@@ -195,51 +259,53 @@ mask_pi[1:R:Ny] .= true
 mask_pi[acs] .= true
 println("net acceleration: ", round(Ny / sum(mask_pi), digits = 2), "×")
 
-acq_pi = simulate_acquisition(
-    img_pi,
-    CartesianAcquisitionInfo(;
-        is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_pi), sensitivity_maps = sens
-    )
+# Noise is what makes this a comparison rather than a formality: on noiseless data at R = 2 every
+# method below recovers the phantom to within a fraction of a percent.
+acq_pi = add_noise(
+    simulate_acquisition(
+        img_pi,
+        CartesianAcquisitionInfo(;
+            is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_pi), sensitivity_maps = sens
+        )
+    );
+    snr_db = 30
 )
 
 # %%
-# Amplitude-aligned again: GRAPPA and SPIRiT synthesize k-space and combine coils by
-# root-sum-of-squares, which carries its own scale.
-function relpi(x̂)
-    a = abs.(unname(x̂))
-    α = sum(a .* abs.(img_pi)) / sum(abs2, a)
-    return norm(α .* a - abs.(img_pi)) / norm(abs.(img_pi))
-end
-
 x_grappa = reconstruct(acq_pi, GRAPPA(kernel_size = (3, 2), calib_size = (Nx, 24)); verbosity = Silent())
 x_spirit = reconstruct(acq_pi, SPIRiT(kernel_size = (5, 5), calib_size = (Nx, 24), maxit = 30); verbosity = Silent())
-x_sense = reconstruct(acq_pi, IterativeReconstruction(L2Image(1.0f-5); maxit = 30); verbosity = Silent())
+x_sense = reconstruct(acq_pi, IterativeReconstruction(L2Image(1.0f-3); maxit = 30); verbosity = Silent())
 
-println("GRAPPA         ", round(relpi(x_grappa), digits = 4))
-println("SPIRiT         ", round(relpi(x_spirit), digits = 4))
-println("CG-SENSE (L2)  ", round(relpi(x_sense), digits = 4))
+println("GRAPPA         ", round(nrmse(x_grappa, img_pi), digits = 4))
+println("SPIRiT         ", round(nrmse(x_spirit, img_pi), digits = 4))
+println("CG-SENSE (L2)  ", round(nrmse(x_sense, img_pi), digits = 4))
 
-jim(
-    jim(abs.(unname(x_grappa)); title = "GRAPPA"),
-    jim(abs.(unname(x_spirit)); title = "SPIRiT"),
-    jim(abs.(unname(x_sense)); title = "CG-SENSE");
-    layout = (1, 3), size = (1100, 330)
+side_by_side(
+    unname(x_grappa), unname(x_spirit), unname(x_sense);
+    titles = ("GRAPPA", "SPIRiT", "CG-SENSE"), size = (1200, 350)
 )
 
 # %% [markdown]
-# On this phantom GRAPPA and CG-SENSE recover the image almost exactly (the data is noiseless
-# and R = 2 with a generous ACS block), while SPIRiT lags behind by an order of magnitude and
-# does not improve with more iterations, a larger kernel or a different `λ`. Treat the SPIRiT
-# numbers here as a demonstration of the interface rather than of achievable SPIRiT quality.
+# CG-SENSE wins here because it is the only one of the three given the *true* sensitivity maps;
+# GRAPPA and SPIRiT calibrate everything they know from the 24-line ACS block. Between the two
+# autocalibrated methods SPIRiT is the more accurate, which is what its extra work buys: a 5×5
+# kernel over all coils, applied to every k-space location rather than only to the holes.
+#
+# !!! note "A tuning knob worth knowing about"
+#     `SPIRiT(; calib_λ = 1e-4)` is a relative Tikhonov penalty on the *calibration* solve (not on
+#     the reconstruction). Neighbouring ACS samples are highly correlated, so the fit is close to
+#     rank-deficient and the unregularized kernel amplifies noise. The default is small; raise it
+#     on low-SNR data, set it to `0` for the plain least-squares fit.
 
 # %%
 # SPIRiT can also be run as an iterative k-space problem: the SPIRiT kernel becomes a
-# consistency term on the full multi-channel k-space (`KSpaceToImage` signal model).
+# consistency term on the full multi-channel k-space (`KSpaceToImage` signal model, §5).
 x_spirit_it = reconstruct(
     acq_pi, SPIRiT(kernel_size = (5, 5), calib_size = (Nx, 24), maxit = 30, iterative = true);
     verbosity = Silent()
 )
-println("SPIRiT (iterative) ", round(relpi(x_spirit_it), digits = 4))
+println("SPIRiT (fixed point) ", round(nrmse(x_spirit, img_pi), digits = 4))
+println("SPIRiT (iterative)   ", round(nrmse(x_spirit_it, img_pi), digits = 4))
 
 # %% [markdown]
 # ## 4. Data fidelity
@@ -251,6 +317,9 @@ println("SPIRiT (iterative) ", round(relpi(x_spirit_it), digits = 4))
 #   Closed-form when $\mathcal{A}\mathcal{A}^*$ is diagonal, otherwise an inner CG.
 # - `NoFidelity()` — no data term at all; the "reconstruction" is then pure denoising of the
 #   initial estimate, which is occasionally what you want (or a building block for a custom model).
+#
+# The algorithms named below (`DouglasRachford`, `FISTA`) are picked because they accept the
+# corresponding term; notebook 6 covers which solver goes with which problem.
 
 # %%
 # Undersampled, noisy, so the three behave differently.
@@ -260,7 +329,7 @@ acq_us = AcquisitionInfo(;
         VariableDensitySampling(PolynomialDistribution(3), 4.0, 0.05), (Nx, Ny)
     ),
 )
-data_us = simulate_acquisition(img_pi + 0.02f0 * randn(ComplexF32, Nx, Ny), acq_us)
+data_us = add_noise(simulate_acquisition(img_pi, acq_us); snr_db = 30)
 
 x_l2 = reconstruct(data_us, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40); verbosity = Silent())
 x_hc = reconstruct(
@@ -277,81 +346,315 @@ x_nf = reconstruct(
     verbosity = Silent()
 )
 
-println("L2Loss          ", round(relpi(x_l2), digits = 4))
-println("HardConsistency ", round(relpi(x_hc), digits = 4))
-println("NoFidelity      ", round(relpi(x_nf), digits = 4), "   (denoising of the initial estimate)")
+println("L2Loss          ", round(nrmse(x_l2, img_pi), digits = 4))
+println("HardConsistency ", round(nrmse(x_hc, img_pi), digits = 4))
+println("NoFidelity      ", round(nrmse(x_nf, img_pi), digits = 4), "   (denoising of the initial estimate)")
 
-jim(
-    jim(x_l2; title = "L2Loss"),
-    jim(x_hc; title = "HardConsistency"),
-    jim(x_nf; title = "NoFidelity");
-    layout = (1, 3), size = (1100, 330)
+side_by_side(
+    unname(x_l2), unname(x_hc), unname(x_nf);
+    titles = ("L2Loss", "HardConsistency", "NoFidelity"), size = (1200, 350)
 )
 
 # %% [markdown]
 # ## 5. Signal models
 #
-# A signal model changes what the optimization variable *is*.
+# A regularizer says what an image *should look like*. A signal model goes further: it changes
+# what the optimization variable **is**, so that the unknown is smaller than the image series and
+# the model is imposed exactly rather than penalized.
 #
-# ### `TemporalBasis` — subspace reconstruction
+# ```
+# variable  ──ℳ──▶  image series  ──𝒜──▶  k-space
+#    c                  x(r, t)                y
+# ```
 #
-# The variable holds $K$ coefficient maps, expanded to $N_t$ frames by a basis $\Phi$. This is
-# the standard model for relaxometry and MR fingerprinting, and for cine data whose temporal
-# behaviour is known to be low-dimensional.
+# MRT ships two: `TemporalBasis`, whose variable is a set of subspace coefficient maps, and
+# `KSpaceToImage`, whose variable is the multi-channel k-space itself.
+
+# %% [markdown]
+# ### 5.1 `TemporalBasis` — subspace (low-rank) modelling of the time dimension
+#
+# #### What a temporal basis is
+#
+# Stack a dynamic or multi-contrast series as a **Casorati matrix** $X \in \mathbb{C}^{N \times
+# N_t}$: one row per voxel, one column per frame/echo/contrast. Nothing forces $X$ to have full
+# rank. If the signal at every voxel is one of a small family of time courses — the same
+# exponential decay at different rates, the same cardiac cycle at different amplitudes — then those
+# $N$ rows all live in a $K$-dimensional subspace of $\mathbb{C}^{N_t}$ with $K \ll N_t$.
+#
+# Write an orthonormal basis of that subspace as the columns of $\Phi \in \mathbb{C}^{N_t \times
+# K}$. Then
+#
+# $$X \approx C\,\Phi^{\mathsf T}, \qquad\text{i.e.}\qquad x(r, t) \;=\; \sum_{k=1}^{K} \Phi(t, k)\, c(r, k),$$
+#
+# and the unknown is the **coefficient array** $c \in \mathbb{C}^{N_x \times N_y \times K}$ rather
+# than the $N_x \times N_y \times N_t$ series. `TemporalBasis(Φ; time_dim)` installs exactly this
+# map, so the operator the solver sees is $\mathcal{A}\,\mathcal{M}_\Phi$ and the reconstruction
+# solves for $c$; `reconstruct` expands the result back to the full series before returning it.
+#
+# Two things follow, and they are the whole reason to do it:
+#
+# - **The problem shrinks.** $K/N_t$ as many unknowns, so a given number of measurements goes
+#   further — this is what makes high accelerations feasible.
+# - **The model is a hard constraint, not a penalty.** Anything outside the subspace — including
+#   most of the noise, and undersampling artifacts that do not resemble a plausible time course —
+#   cannot be represented at all. A subspace reconstruction denoises for free.
+#
+# This is the "low-rank"/"partially separable" idea of Liang's *k-t* PCA line of work (Liang 2007;
+# Pedersen 2009; Petzschner 2011), and it is what T2-shuffling (Tamir et al., MRM 2017) and MR
+# fingerprinting reconstructions are built on.
+
+# %% [markdown]
+# #### A phantom that really is low-dimensional
+#
+# The torso phantom from `GeometricMedicalPhantoms` can be asked for one tissue at a time
+# (`TissueMask(; heart = true)` and friends), which makes it easy to build a physically meaningful
+# multi-echo series: give each tissue a $T_2$ and a proton density, and sample the decay
+# $M_0 e^{-\mathrm{TE}/T_2}$ at 24 echo times. This is a spin-echo train, the acquisition
+# T2-shuffling was designed for.
 
 # %%
-n, nt, K = 64, 24, 4
+n, nt, ncoils = 96, 24, 4
 
-# A series that really is low-dimensional: three tissue classes with different time courses.
-base = abs.(create_shepp_logan_phantom(n, n, :axial; ti = MRISheppLoganIntensities()))
-roi1 = base .> 0.9
-roi2 = (base .> 0.3) .& (base .≤ 0.9)
-roi3 = (base .> 0.05) .& (base .≤ 0.3)
+tissue_T2 = (lung = 60.0, heart = 50.0, bones = 20.0, body = 90.0, lv_blood = 250.0, rv_blood = 250.0)
+tissue_M0 = (lung = 0.35, heart = 0.85, bones = 0.25, body = 0.70, lv_blood = 1.0, rv_blood = 1.0)
 
-t = range(0, 1; length = nt)
-curves = [exp.(-2 .* t), 1 .- exp.(-3 .* t), 0.5 .+ 0.4 .* sin.(2π .* t)]
+TE = collect(range(10, 240; length = nt))     # ms
 
 series = zeros(ComplexF32, n, n, nt)
-for (roi, curve) in zip((roi1, roi2, roi3), curves), k in 1:nt
-    series[:, :, k] .+= ComplexF32(curve[k]) .* roi
+tissue_maps = Dict{Symbol, BitMatrix}()
+for tissue in keys(tissue_T2)
+    mask = create_torso_phantom(
+        n, n, :axial; fov = (40, 40), ti = TissueMask(; NamedTuple{(tissue,)}((true,))...)
+    )[:, :, 1]
+    tissue_maps[tissue] = mask
+    curve = tissue_M0[tissue] .* exp.(-TE ./ tissue_T2[tissue])
+    for k in 1:nt
+        @views series[:, :, k] .+= ComplexF32(curve[k]) .* mask
+    end
 end
 series = NamedDimsArray{(:x, :y, :time)}(series)
 
-# The temporal basis: the leading left singular vectors of the Casorati matrix.
-casorati = reshape(unname(series), n * n, nt)
-Φ = Matrix{ComplexF32}(svd(casorati').U[:, 1:K])
-println("basis Φ: ", size(Φ))
+side_by_side(
+    unname(series)[:, :, 1], unname(series)[:, :, 8], unname(series)[:, :, 24];
+    titles = ("TE = $(round(Int, TE[1])) ms", "TE = $(round(Int, TE[8])) ms", "TE = $(round(Int, TE[end])) ms"),
+    size = (1100, 340)
+)
 
 # %%
-acq_dyn = CartesianAcquisitionInfo(
-    NamedDimsArray{(:kx, :ky, :time)}(zeros(ComplexF32, n, n, nt)); is3D = false
-)
-data_dyn = simulate_acquisition(series, acq_dyn)
-
-x_sub = reconstruct(
-    data_dyn,
-    IterativeReconstruction(; signal_model = TemporalBasis(Φ; time_dim = :time), algorithm = CGNR(), maxit = 20);
-    verbosity = Silent()
-)
-println("subspace reconstruction: ", size(x_sub), " ", dimnames(x_sub))
-println("relative error: ", round(norm(unname(x_sub) - unname(series)) / norm(unname(series)), digits = 4))
-
-jim(
-    jim(abs.(unname(series)[:, :, 1]); title = "frame 1 — truth"),
-    jim(abs.(unname(x_sub)[:, :, 1]); title = "frame 1 — subspace"),
-    jim(abs.(unname(series)[:, :, nt]); title = "frame $nt — truth"),
-    jim(abs.(unname(x_sub)[:, :, nt]); title = "frame $nt — subspace");
-    layout = (2, 2), size = (800, 700)
+plot(
+    TE, [tissue_M0[t] .* exp.(-TE ./ tissue_T2[t]) for t in keys(tissue_T2)];
+    label = reshape(["$t (T2 = $(round(Int, tissue_T2[t])) ms)" for t in keys(tissue_T2)], 1, :),
+    lw = 2, xlabel = "TE (ms)", ylabel = "signal", title = "Tissue signal evolutions",
+    size = (700, 350)
 )
 
 # %% [markdown]
-# ### `KSpaceToImage`
+# #### How low-dimensional? The Casorati spectrum
 #
-# The optimization variable is the full multi-channel k-space rather than the image; data
-# consistency is enforced through the subsampling operator alone, and the result is transformed
-# to an image afterwards. This is the model `SPIRiT(; iterative = true)` runs on.
+# The singular values of the Casorati matrix say how many basis functions the series actually
+# needs. A handful of exponentials at different rates is a textbook low-rank family.
 
 # %%
+casorati = reshape(unname(series), n * n, nt)
+F = svd(casorati)
+σ = F.S ./ F.S[1]
+
+plot(
+    1:nt, max.(σ, 1.0e-8);
+    yscale = :log10, lw = 2, marker = :circle, label = "",
+    xlabel = "index", ylabel = "singular value / largest",
+    title = "Casorati spectrum of the echo series", size = (650, 330)
+)
+
+# %% [markdown]
+# #### Where the basis comes from in practice
+#
+# The SVD above uses the ground-truth series, which you do not have at reconstruction time. In
+# practice $\Phi$ comes from a **dictionary of plausible signal evolutions**, simulated from the
+# sequence:
+#
+# 1. Sweep the tissue parameters over the physiological range ($T_2$ here; $T_1$/$T_2$/$B_1$ for
+#    fingerprinting).
+# 2. Simulate the signal each parameter combination would produce under the actual pulse sequence
+#    — an analytic expression for a simple decay, an extended phase graph or a full Bloch
+#    simulation for anything realistic.
+# 3. Take the leading $K$ left singular vectors of that dictionary. They span the signal manifold
+#    without ever having seen the patient.
+#
+# This is exactly the recipe in Tamir et al. 2017 and in the fingerprinting literature; the *k-t*
+# PCA variants instead build the dictionary from low-resolution training data acquired in the same
+# scan.
+
+# %%
+# Step 1-2: a "Bloch-simulated" dictionary — here the analytic spin-echo decay over a log-spaced
+# T2 range, which is what the extended-phase-graph simulation reduces to for this sequence.
+T2_dict = exp.(range(log(15), log(400); length = 256))
+dictionary = Float32[exp(-te / t2) for te in TE, t2 in T2_dict]
+
+# Step 3: the temporal basis.
+Φ_full = Matrix{ComplexF32}(svd(dictionary).U)
+println("dictionary: ", size(dictionary), "   basis: ", size(Φ_full))
+
+plot(
+    TE, real.(Φ_full[:, 1:5]);
+    lw = 2, label = ["Φ₁" "Φ₂" "Φ₃" "Φ₄" "Φ₅"],
+    xlabel = "TE (ms)", ylabel = "amplitude", title = "Leading dictionary basis functions",
+    size = (700, 350)
+)
+
+# %% [markdown]
+# #### How many basis functions? The projection error
+#
+# Before running any reconstruction, the basis can be scored directly: project the true series onto
+# the first $K$ dictionary components and measure what is lost. That is the *model error floor* —
+# no reconstruction using this basis can do better.
+
+# %%
+proj_err = Float64[]
+for K in 1:12
+    Φ = Φ_full[:, 1:K]
+    projected = casorati * conj(Φ) * transpose(Φ)
+    push!(proj_err, norm(projected - casorati) / norm(casorati))
+end
+
+data_svd_err = [sqrt(sum(abs2, F.S[(K + 1):end]) / sum(abs2, F.S)) for K in 1:12]
+
+plot(
+    1:12, [proj_err data_svd_err];
+    yscale = :log10, lw = 2, marker = :circle,
+    label = ["dictionary basis" "data SVD (unattainable)"],
+    xlabel = "number of basis functions K", ylabel = "relative projection error",
+    title = "Model error floor vs. K", size = (700, 350)
+)
+
+# %% [markdown]
+# The dictionary basis tracks the (unattainable) data SVD closely and the error falls off a cliff
+# by $K \approx 4$–$6$: six exponentials at six rates need six components, and the dictionary found
+# them without being told the tissue parameters.
+
+# %% [markdown]
+# #### Reconstruction at K = 2, 4, 8
+#
+# Now undersample. All echoes share one phase-encoding pattern here — a real subspace acquisition
+# would vary it per echo, which helps considerably more — and the data is noisy, so both effects a
+# subspace model is good at are in play.
+
+# %%
+smaps_dyn = NamedDimsArray{(:x, :y, :coil)}(coil_sensitivities(n, n, ncoils))
+
+mask_dyn = falses(n)
+mask_dyn[1:3:n] .= true
+mask_dyn[(n ÷ 2 - 5):(n ÷ 2 + 5)] .= true
+println("acceleration: ", round(n / sum(mask_dyn), digits = 2), "×")
+
+acq_dyn = AcquisitionInfo(;
+    is3D = false, image_size = (n, n), sensitivity_maps = smaps_dyn, subsampling = (:, mask_dyn)
+)
+data_dyn = add_noise(simulate_acquisition(series, acq_dyn); snr_db = 25)
+println("k-space: ", size(data_dyn.kspace_data), " ", dimnames(data_dyn.kspace_data))
+
+# %%
+x_zf_dyn = reconstruct(data_dyn; verbosity = Silent())
+x_cg_dyn = reconstruct(data_dyn, IterativeReconstruction(; algorithm = CGNR(), maxit = 40); verbosity = Silent())
+
+println("zero-filled           ", round(nrmse(x_zf_dyn, series), digits = 4))
+println("CG, no signal model   ", round(nrmse(x_cg_dyn, series), digits = 4))
+
+subspace_recons = Dict{Int, Any}()
+for K in (1, 2, 4, 8)
+    x̂ = reconstruct(
+        data_dyn,
+        IterativeReconstruction(;
+            signal_model = TemporalBasis(Φ_full[:, 1:K]; time_dim = :time),
+            algorithm = CGNR(), maxit = 40
+        );
+        verbosity = Silent()
+    )
+    subspace_recons[K] = x̂
+    println("TemporalBasis, K = ", rpad(K, 2), "   ", round(nrmse(x̂, series), digits = 4))
+end
+
+# %% [markdown]
+# The pattern is the one to remember: $K = 1$ **underfits** — a single decay cannot describe six
+# tissues — while $K = 8$ starts spending its extra components on noise. The best $K$ sits just
+# past the knee of the projection-error curve, and the subspace reconstruction beats the
+# unconstrained CG reconstruction by a wide margin even though it is solving for a third as many
+# unknowns.
+
+# %%
+side_by_side(
+    unname(series)[:, :, 12], unname(x_cg_dyn)[:, :, 12],
+    unname(subspace_recons[2])[:, :, 12], unname(subspace_recons[4])[:, :, 12];
+    titles = ("truth, echo 12", "CG, no model", "K = 2", "K = 4"), size = (1300, 340)
+)
+
+# %%
+difference_image(
+    unname(subspace_recons[4])[:, :, 12], unname(series)[:, :, 12];
+    title = "K = 4 error, echo 12", size = (450, 380)
+)
+
+# %% [markdown]
+# Because the coefficient maps are the variable, the *fitted decay curve* is available everywhere,
+# not just the images — which is the point of the whole exercise for parameter mapping.
+
+# %%
+roi = tissue_maps[:heart]
+plot(
+    TE, [
+        [mean(abs.(unname(series))[roi, k]) for k in 1:nt],
+        [mean(abs.(unname(x_cg_dyn))[roi, k]) for k in 1:nt],
+        [mean(abs.(unname(subspace_recons[4]))[roi, k]) for k in 1:nt],
+    ];
+    lw = 2, label = ["truth" "CG, no model" "K = 4 subspace"],
+    xlabel = "TE (ms)", ylabel = "mean |x| in the myocardium ROI",
+    title = "Recovered signal evolution", size = (700, 350)
+)
+
+# %% [markdown]
+# #### Other places this model is the right one
+#
+# - **Quantitative / parameter mapping.** Multi-echo $T_2$ (above), inversion-recovery $T_1$,
+#   multi-echo $T_2^{*}$ and $B_0$ mapping, diffusion with many $b$-values. The dictionary is a
+#   forward simulation of the sequence, and the parameter map is fitted afterwards from the
+#   reconstructed evolutions.
+# - **MR fingerprinting.** The same construction with a much larger dictionary over
+#   $(T_1, T_2, B_1, \ldots)$; the subspace reconstruction is the standard way to make the
+#   highly-undersampled fingerprinting time series tractable.
+# - **Dynamic contrast enhancement.** The dictionary is a family of plausible enhancement curves
+#   (arterial input convolved with tissue responses) rather than a Bloch simulation.
+# - **Cardiac cine and real-time imaging.** The *k-t* PCA family, with the basis learned from
+#   training data acquired in the same scan. Beware: cine dynamics are driven by *motion*, and a
+#   moving edge is much less low-rank than a decaying exponential — expect to need more components,
+#   or a locally low-rank model instead (see notebook 7).
+#
+# When the low-dimensional structure is real but you cannot write down a basis in advance, use a
+# low-rank *regularizer* (`LowRank`, `LocallyLowRank`, notebook 7) instead: same intuition, learned
+# during the solve, at the cost of a penalty rather than a hard constraint.
+
+# %% [markdown]
+# ### 5.2 `KSpaceToImage` — solving in the k-space domain
+#
+# The other signal model turns the problem inside out. The optimization variable is the full
+# multi-channel k-space $k \in \mathbb{C}^{N_x \times N_y \times N_c}$; the encoding operator
+# during the solve is then just the subsampling operator $\mathcal{P}$, so data consistency is
+# $\mathcal{P}k = y$ and needs no Fourier transform and no sensitivity maps at all. The result is
+# mapped to an image afterwards by an inverse FFT and the model's own `coil_combination`.
+#
+# $$\hat k = \arg\min_k\; \tfrac12\|\mathcal{P}k - y\|^2 + \mathcal{R}(k), \qquad \hat x = \text{combine}(\mathcal{F}^{-1}\hat k)$$
+#
+# This is the natural home for any regularizer that is a statement about k-space rather than about
+# the image — `SPIRiTConsistency` being the example the package ships, and structured low-rank
+# methods being the other family. `SPIRiT(; iterative = true)` lowers to precisely this: a
+# `KSpaceToImage` variable, a `SPIRiTConsistency` term built from the calibrated kernel, and hard
+# data consistency.
+#
+# Because $\mathcal{P}\mathcal{P}^*$ is diagonal, `HardConsistency()` is closed-form here, which is
+# why the lowered SPIRiT can use it without an inner CG.
+
+# %%
+# Plain CG in the k-space domain, no k-space regularizer: this just interpolates nothing and
+# combines the coils, so it is the k-space-domain spelling of a zero-filled reconstruction.
 x_ksp = reconstruct(
     acq_pi,
     IterativeReconstruction(;
@@ -359,25 +662,100 @@ x_ksp = reconstruct(
     );
     verbosity = Silent()
 )
-println("k-space-domain solve: ", size(x_ksp), "  error ", round(relpi(x_ksp), digits = 4))
+println("KSpaceToImage, no k-space prior  ", round(nrmse(x_ksp, img_pi), digits = 4))
+
+# Adding the SPIRiT self-consistency term is what makes the k-space variable pay off — this is the
+# hand-built version of `SPIRiT(; iterative = true)`.
+kernel = MriReconstructionToolbox._calibrate_spirit_kernel(
+    acq_pi, SPIRiT(kernel_size = (5, 5), calib_size = (Nx, 24))
+)
+x_ksp_spirit = reconstruct(
+    acq_pi,
+    IterativeReconstruction(
+        SPIRiTConsistency(kernel; λ = 1.0);
+        signal_model = KSpaceToImage(RootSumSquares()),
+        fidelity = HardConsistency(), algorithm = FISTA(adaptive = true), maxit = 30
+    );
+    verbosity = Silent()
+)
+println("KSpaceToImage + SPIRiTConsistency ", round(nrmse(x_ksp_spirit, img_pi), digits = 4))
+
+side_by_side(
+    unname(x_ksp), unname(x_ksp_spirit);
+    titles = ("k-space CG, no prior", "+ SPIRiT consistency"), size = (900, 360)
+)
 
 # %% [markdown]
 # ## 6. Checking applicability
 #
-# `check_applicable(method, acq)` is the hook that decides whether a method can run on given
-# data; `reconstruct` calls it for you, and a custom method overrides it. It is what produces the
-# error below, rather than a confusing failure deeper in the pipeline.
+# `check_applicable(method, acq)` decides whether a method can run on given data. `reconstruct`
+# calls it for you, before any work is done, so an unsupported combination fails with a sentence
+# that names the problem instead of producing a plausible-looking wrong image.
+#
+# `GRAPPA` is the method with the most to check. Its kernel is fitted once per missing-line offset
+# $t = 1 \ldots R-1$ and then applied everywhere, which presupposes:
+#
+# 1. a Cartesian acquisition with fully sampled readout lines,
+# 2. acquired phase-encoding lines on a **regular lattice** of stride $R$, and
+# 3. a contiguous fully sampled ACS block, long enough for the kernel.
+#
+# Requirement 2 is the one that surprises people: **GRAPPA cannot reconstruct randomly
+# undersampled data at all.** There is no "GRAPPA kernel" for an irregular pattern — the weights
+# are defined by a fixed geometric relationship between a hole and its neighbours, and a random
+# mask does not have one. (A variable-density mask often *does* contain a fully sampled centre,
+# so the presence of an ACS region is not what disqualifies it.)
 
 # %%
 using MriReconstructionToolbox: check_applicable
 
-# GRAPPA needs a Cartesian acquisition with an autocalibration region.
+# The variable-density pattern from §4: it even has a fully sampled centre, but its acquired lines
+# are not on any lattice.
 try
-    check_applicable(GRAPPA(), data_us)          # random variable-density pattern, no ACS block
+    check_applicable(GRAPPA(), data_us)
 catch e
     println(sprint(showerror, e))
 end
 
 # %%
-check_applicable(GRAPPA(calib_size = (Nx, 24)), acq_pi)   # returns without complaint
+# Regular stride, but no ACS block at all: nothing to calibrate the kernel on.
+mask_no_acs = falses(Ny)
+mask_no_acs[1:2:Ny] .= true
+acq_no_acs = AcquisitionInfo(;
+    is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens, subsampling = (:, mask_no_acs)
+)
+try
+    check_applicable(GRAPPA(), acq_no_acs)
+catch e
+    println(sprint(showerror, e))
+end
+
+# %%
+# The R = 2 + ACS acquisition from §3 passes.
+check_applicable(GRAPPA(calib_size = (Nx, 24)), acq_pi)
 println("GRAPPA is applicable to the R = 2 + ACS acquisition")
+
+# %% [markdown]
+# For the patterns GRAPPA rejects, the alternatives are the ones this notebook has already shown:
+# `SPIRiT`, whose self-consistency relation holds at every k-space location and so does not care
+# about the lattice (it still needs a calibration region), or an `IterativeReconstruction` with a
+# sparsity prior — which is what a variable-density mask was designed for in the first place.
+#
+# A custom method plugs into the same hook: subtype `DirectMethod` or `IterativeMethod` and
+# override `check_applicable` to state your own preconditions (see notebook 9).
+
+# %% [markdown]
+# ## References
+#
+# - Griswold M. A. *et al.*, *Generalized autocalibrating partially parallel acquisitions
+#   (GRAPPA)*, Magn. Reson. Med. 47:1202–1210 (2002).
+# - Lustig M., Pauly J. M., *SPIRiT: Iterative self-consistent parallel imaging reconstruction from
+#   arbitrary k-space*, Magn. Reson. Med. 64:457–471 (2010).
+# - Noll D. C., Nishimura D. G., Macovski A., *Homodyne detection in magnetic resonance imaging*,
+#   IEEE Trans. Med. Imaging 10:154–163 (1991).
+# - Liang Z.-P., *Spatiotemporal imaging with partially separable functions*, ISBI 2007, 988–991.
+# - Pedersen H. *et al.*, *k-t PCA: temporally constrained k-t BLAST reconstruction using principal
+#   component analysis*, Magn. Reson. Med. 62:706–716 (2009).
+# - Petzschner F. H. *et al.*, *Fast MR parameter mapping using k-t principal component analysis*,
+#   Magn. Reson. Med. 66:706–716 (2011).
+# - Tamir J. I. *et al.*, *T2 shuffling: sharp, multicontrast, volumetric fast spin-echo imaging*,
+#   Magn. Reson. Med. 77:180–195 (2017).
