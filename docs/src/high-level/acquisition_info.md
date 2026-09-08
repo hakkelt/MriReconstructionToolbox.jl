@@ -179,6 +179,51 @@ info_named_shift = AcquisitionInfo(
 )
 ```
 
+### Building from raw ISMRMRD data (`MRIBase.RawAcquisitionData`)
+
+Loading `MRIBase.RawAcquisitionData` (from `MRIFiles.RawAcquisitionData`/`MRITestData.load_raw`) — a
+weak dependency: this constructor is available once `MRIBase` is loaded — derives the encoding
+matrix, k-space layout, coil dimension, subsampling pattern and Cartesian/non-Cartesian dispatch
+directly from the ISMRMRD header, instead of hand-assembling arrays from `raw.profiles`:
+
+```julia
+using MRIBase   # loads the MRIBase extension
+using MriReconstructionToolbox
+
+info = AcquisitionInfo(raw)  # raw::MRIBase.RawAcquisitionData
+```
+
+- **`kspace_data`** is a `NamedDimsArray` with `:kx`, `:ky` (and `:kz` for a true 3D acquisition —
+  see below), `:coil`, and one batch dimension per ISMRMRD counter that actually varies across
+  profiles: `:z` (slices), `:contrast`, `:time` (cardiac/dynamic phase), `:repetition`, `:set`,
+  `:average`, in that order. A counter that never varies contributes no dimension.
+- **`is3D`** is true only when `kspace_encode_step_2` actually varies (`encodedSize[3] > 1` alone
+  is not enough — a 2D multi-slice acquisition also has `encodedSize[3] > 1`, but its slices come
+  back as the `:z` batch dimension instead).
+- **`subsampling`** reflects exactly the samples present in `raw.profiles` — `kspace_data` is *not*
+  zero-padded to `encodedSize` — reduced to `Colon()` (fully sampled), a range (one contiguous
+  block, e.g. an asymmetric-echo/partial-Fourier readout), or a boolean mask (e.g. an accelerated
+  ky pattern), same as any other `AcquisitionInfo`.
+- **`sensitivity_maps`** is not derivable from raw k-space and must be passed as a keyword if
+  needed: `AcquisitionInfo(raw; sensitivity_maps)`.
+
+#### FFT-shift derivation
+
+Every profile's `kspace_encode_step_1`/`kspace_encode_step_2` and readout sample index are counted
+from 0, with the true k=0 line/sample at `encoding_limits.center` / `head.center_sample` — which
+need not be the geometric middle of the encoded axis (partial-Fourier and asymmetric-echo
+acquisitions in particular). Consistent with "FFT Shift Conventions" above (DC at
+`N ÷ 2 + 1`), this constructor places every sample at `raw_index - center + N ÷ 2` along its axis
+before construction, so the result already satisfies that convention — no `shifted_kspace_dims`,
+`shifted_image_dims` or manual `fftshift` are needed afterwards. Naively placing sample/line `i`
+at raw position `i + 1` (ignoring `center`) is exactly the bug this avoids: it silently shifts the
+reconstructed image by `center - N ÷ 2` samples along the affected axis.
+
+Non-Cartesian raw data (`raw.params["trajectory"] != "cartesian"`) builds a
+`NonCartesianAcquisitionInfo` from `MRIBase.trajectory`/`MRIBase.rawdata` for one `slice`/
+`contrast` at a time (keywords, both defaulting to `1`) — it does not collect multiple slices,
+contrasts or repetitions into batch dimensions the way the Cartesian path does.
+
 ## Validation Rules
 
 `AcquisitionInfo` performs comprehensive validation to ensure configuration consistency.
@@ -386,7 +431,16 @@ println("With sensitivity maps:", info2)
 
 ## Density Compensation (Non-Cartesian)
 
-Non-Cartesian acquisitions (such as radial, spiral, or arbitrary k-space trajectories) require density compensation factors (DCF) for direct adjoint reconstruction. `NonCartesianAcquisitionInfo` holds the trajectory and optional `dcf` array.
+Non-Cartesian acquisitions (such as radial, spiral, or arbitrary k-space trajectories) need density compensation factors (DCF) to turn the adjoint NFFT into a usable direct (gridding) reconstruction — the adjoint on its own is *not* an inverse for non-uniformly sampled data. `NonCartesianAcquisitionInfo` holds the trajectory and an optional `dcf` array.
+
+**`acq.dcf` defaults to `nothing`, and `nothing` means no density compensation is applied**: the
+encoding operator's adjoint stays the mathematically true adjoint of the forward NFFT. This
+matters for anything that assumes `𝒜'` is the true adjoint of `𝒜` — operator-norm estimation,
+CG/CGNR, and any algorithm built on that relationship. Reconstructing directly from a
+`NonCartesianAcquisitionInfo` you have not run `density_compensation` on therefore does *not*
+silently pull in a density-weighted adjoint; call `density_compensation` explicitly when you want
+one (e.g. for a quick direct reconstruction), and be aware that once you do, the operator's
+adjoint is a density-compensated approximate inverse, not the true adjoint.
 
 You can compute the DCF directly using `density_compensation`:
 
