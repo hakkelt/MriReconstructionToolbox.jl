@@ -218,7 +218,9 @@ AcquisitionInfo(info_with_maps; kspace_data = noisy)
 #
 # `AcquisitionInfo` is an abstract type and also a constructor that dispatches on its keywords:
 # pass a `trajectory` and you get a `NonCartesianAcquisitionInfo`, otherwise a
-# `CartesianAcquisitionInfo`. Both concrete types can also be named directly.
+# `CartesianAcquisitionInfo`. Only the Cartesian concrete type is exported and can be named
+# directly; `NonCartesianAcquisitionInfo` is `public` but not exported, so non-Cartesian
+# acquisitions are always built through the `AcquisitionInfo(; trajectory, ...)` dispatch.
 
 # %%
 nsamp, nspokes = 64, 32
@@ -230,7 +232,7 @@ for s in 1:nspokes, k in 1:nsamp
     traj[2, k, s] = r * sin(θ)
 end
 
-acq_radial = NonCartesianAcquisitionInfo(;
+acq_radial = AcquisitionInfo(;
     trajectory = traj, image_size = (64, 64)
 )
 
@@ -261,14 +263,16 @@ acq_ops = AcquisitionInfo(
 𝒮 = get_sensitivity_map_operator(acq_ops)
 𝒫 = get_subsampling_operator(acq_ops)
 
-println("𝒜 : ", size(𝒜))
-println("ℱ : ", size(ℱ))
-println("𝒮 : ", size(𝒮))
-println("𝒫 : ", size(𝒫))
+# size(op) is (codomain, domain) — matrix convention — so domain → codomain reads naturally.
+println("𝒜 : ", size(𝒜)[2], " → ", size(𝒜)[1])
+println("ℱ : ", size(ℱ)[2], " → ", size(ℱ)[1])
+println("𝒮 : ", size(𝒮)[2], " → ", size(𝒮)[1])
+println("𝒫 : ", size(𝒫)[2], " → ", size(𝒫)[1])
 
 # %%
 # The forward model, applied by hand.
 img = rand(ComplexF32, 64, 64)
 y = 𝒜 * img
 x̂ = 𝒜' * y
-println(size(y), " → ", size(x̂))
+println("𝒜  (forward): ", size(img), " → ", size(y))
+println("𝒜' (adjoint): ", size(y), " → ", size(x̂))
