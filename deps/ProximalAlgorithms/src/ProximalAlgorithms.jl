@@ -79,7 +79,7 @@ include("accel/noaccel.jl")
 
 # algorithm interface
 
-struct IterativeAlgorithm{IteratorType,H,S,I,D,K}
+struct IterativeAlgorithm{IteratorType,H,S,I,D,C,K}
     maxit::Int
     stop::H
     solution::S
@@ -87,8 +87,15 @@ struct IterativeAlgorithm{IteratorType,H,S,I,D,K}
     freq::Int
     summary::I
     display::D
+    hook::C
     kwargs::K
 end
+
+# Per-iteration observation hook. `hook === nothing` is the default, and because the field is
+# typed by a parameter of the struct the `Nothing` method below is what gets inlined: no branch,
+# no dispatch and no allocation survive in the iteration loop when no hook is installed.
+@inline _run_hook(::Nothing, k, alg, iter, state) = nothing
+@inline _run_hook(hook, k, alg, iter, state) = (hook(k, alg, iter, state); nothing)
 
 """
     IterativeAlgorithm(T; maxit, stop, solution, verbose, freq, summary, display, kwargs...)
@@ -124,10 +131,15 @@ for `stop`, `solution`, `summary`, `display`.
 * `freq::Int`: every how many iterations to display the algorithm state
 * `summary::Function`: function returning a summary of the iteration state, `summary(k::Int, iter::T, state)` should return a vector of pairs `(name, value)`
 * `display::Function`: display function, `display(k::Int, alg, iter::T, state)` should display a summary of the iteration state
+* `hook`: `nothing` (the default), or a function `hook(k::Int, alg, iter::T, state)` called once
+  per iteration — after the state for iteration `k` has been computed and before the termination
+  test — regardless of `verbose` and `freq`. It is meant for observing convergence (recording the
+  iterate, the objective, wall-clock time); `display` remains the printing seam. A `nothing` hook
+  costs nothing: it is dispatched away at compile time.
 * `kwargs...`: keyword arguments to pass on to `T` when constructing the iterator
 """
-IterativeAlgorithm(T; maxit, stop, solution, verbose, freq, summary, display, kwargs...) =
-    IterativeAlgorithm{T,typeof(stop),typeof(solution),typeof(summary),typeof(display),typeof(kwargs)}(
+IterativeAlgorithm(T; maxit, stop, solution, verbose, freq, summary, display, hook = nothing, kwargs...) =
+    IterativeAlgorithm{T,typeof(stop),typeof(solution),typeof(summary),typeof(display),typeof(hook),typeof(kwargs)}(
         maxit,
         stop,
         solution,
@@ -135,6 +147,7 @@ IterativeAlgorithm(T; maxit, stop, solution, verbose, freq, summary, display, kw
         freq,
         summary,
         display,
+        hook,
         kwargs,
     )
 
@@ -155,7 +168,8 @@ function override_parameters(alg::IterativeAlgorithm; new_kwargs...)
         :verbose => alg.verbose,
         :freq => alg.freq,
         :summary => alg.summary,
-        :display => alg.display)
+        :display => alg.display,
+        :hook => alg.hook)
     merge!(kwargs, alg.kwargs)
     merge!(kwargs, new_kwargs)
     return IterativeAlgorithm(typeof(alg).parameters[1]; kwargs...)
@@ -243,6 +257,7 @@ function (alg::IterativeAlgorithm{IteratorType})(; kwargs...) where {IteratorTyp
         if k == 1 && alg.verbose && alg.freq > 0
             alg.display(0, alg, iter, state)
         end
+        _run_hook(alg.hook, k, alg, iter, state)
         if k >= alg.maxit || alg.stop(iter, state)
             alg.verbose && alg.display(k, alg, iter, state)
             return (alg.solution(iter, state), k)

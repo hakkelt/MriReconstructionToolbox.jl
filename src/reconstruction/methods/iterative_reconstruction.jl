@@ -1,5 +1,5 @@
 """
-	IterativeReconstruction{R, A, F<:DataFidelity, M} <: IterativeMethod
+	IterativeReconstruction{R, A, F<:DataFidelity, M, C} <: IterativeMethod
 
 Configures an iterative reconstruction problem with regularization terms, solver algorithms,
 data fidelity, and signal modeling options.
@@ -29,10 +29,49 @@ what changed and how to migrate a `λ` tuned against the previous behaviour.
   `ProximalAlgorithms`' absolute `tol`. `0` disables the tolerance test and `nothing` defers to the
   `algorithm`'s own stopping criterion.
 
+- `on_iteration::C`: `nothing` (default) or a callback invoked once per solver iteration; see
+  "Observing the iterations" below.
+
 `maxit` and `tol` are keyword-only on every constructor; regularization terms are the only
 positional arguments.
+
+# Observing the iterations
+
+`on_iteration = f` makes the solver call `f(info)` once per iteration, with a single `NamedTuple`
+carrying at least
+
+- `iteration::Int` — 1-based count of completed iterations,
+- `x` — the current image estimate, already inverse-scaled and re-wrapped as a `NamedDimsArray`
+  (or a `DecomposedImage` on the `Component` path), i.e. in the same units and shape as the value
+  `reconstruct` will return,
+- `elapsed_ns::UInt64` — nanoseconds since the solve started, from the monotonic `time_ns` clock,
+- `slice::String` — present only when the reconstruction was split into tasks, naming the slab.
+
+Algorithm-dependent fields are present only where the algorithm actually computes them, and are
+*absent* rather than `nothing` when it does not:
+
+| algorithm | extra fields |
+|---|---|
+| `FISTA` / `ISTA` (forward-backward) | `objective`, `smooth_value`, `nonsmooth_value`, `stepsize`, `fixed_point_residual` |
+| `DouglasRachford` | `objective`, `smooth_value`, `nonsmooth_value`, `fixed_point_residual` |
+| `ADMM` | `primal_residual`, `dual_residual`, `iterate_change` |
+| `CG` / `CGNR` | `residual_norm` |
+
+Use [`IterationTrace`](@ref) rather than writing a collector by hand. The callback fires from the
+solver task, so under task splitting several slabs may call it concurrently — `IterationTrace`
+takes a lock; a hand-written callback must be thread-safe itself.
+
+When `on_iteration === nothing` nothing is installed in the solver loop at all: the hook is
+dispatched away at compile time, so an unobserved reconstruction pays neither a branch nor an
+allocation for this feature.
+
+```julia
+trace = IterationTrace(x -> nrmse(x, reference))
+reconstruct(acq, IterativeReconstruction(L1Wavelet2D(0.01); maxit = 60, on_iteration = trace))
+trace.iterations, trace.times, trace.values  # for an NRMSE-vs-iteration / -vs-time plot
+```
 """
-struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M} <: IterativeMethod
+struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M, C} <: IterativeMethod
     regularization::R
     algorithm::A
     fidelity::F
@@ -42,6 +81,7 @@ struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M} <: Iterative
     disable_normalop_optimization::Bool
     maxit::Union{Nothing, Int}
     tol::Union{Nothing, Float64}
+    on_iteration::C
 
     function IterativeReconstruction(
             regularization::Tuple,
@@ -53,9 +93,10 @@ struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M} <: Iterative
             disable_normalop_optimization::Bool;
             maxit::Union{Nothing, Integer} = 100,
             tol::Union{Nothing, Real} = 1.0e-4,
-        ) where {F <: DataFidelity, M}
+            on_iteration::C = nothing,
+        ) where {F <: DataFidelity, M, C}
         _validate_regularization(regularization)
-        return new{typeof(regularization), typeof(algorithm), F, M}(
+        return new{typeof(regularization), typeof(algorithm), F, M, C}(
             regularization,
             algorithm,
             fidelity,
@@ -65,6 +106,7 @@ struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M} <: Iterative
             disable_normalop_optimization,
             isnothing(maxit) ? nothing : Int(maxit),
             isnothing(tol) ? nothing : Float64(tol),
+            on_iteration,
         )
     end
 end
@@ -89,6 +131,7 @@ function IterativeReconstruction(;
         disable_normalop_optimization::Bool = false,
         maxit::Union{Nothing, Integer} = 100,
         tol::Union{Nothing, Real} = 1.0e-4,
+        on_iteration = nothing,
     )
     regs_tuple = ensure_tuple(regularization)
     return IterativeReconstruction(
@@ -101,6 +144,7 @@ function IterativeReconstruction(;
         disable_normalop_optimization;
         maxit,
         tol,
+        on_iteration,
     )
 end
 
@@ -116,6 +160,7 @@ function IterativeReconstruction(
         disable_normalop_optimization::Bool = false,
         maxit::Union{Nothing, Integer} = 100,
         tol::Union{Nothing, Real} = 1.0e-4,
+        on_iteration = nothing,
     )
     regs = (reg, more_regs...)
     return IterativeReconstruction(;
@@ -128,6 +173,7 @@ function IterativeReconstruction(
         disable_normalop_optimization,
         maxit,
         tol,
+        on_iteration,
     )
 end
 
@@ -145,6 +191,7 @@ function _with_regularization(method::IterativeReconstruction, regs::Tuple)
         disable_normalop_optimization = method.disable_normalop_optimization,
         maxit = method.maxit,
         tol = method.tol,
+        on_iteration = method.on_iteration,
     )
 end
 

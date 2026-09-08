@@ -48,6 +48,7 @@ export Tikhonov, LLR
 # Top-level entry points and configuration
 export build_model, reconstruct, ReconstructionConfig, SequentialExecutor, MultiThreadingExecutor
 export Silent, ProgressBar, Verbose
+export IterationTrace
 export BartScaling, FixedScaling, MeasurementBasedScaling, NoScaling
 export ISTA, FISTA, ADMM, DouglasRachford, CG, CGNR
 
@@ -167,6 +168,7 @@ include("reconstruction/build_model.jl")
 include("reconstruction/progress_utils.jl")
 include("reconstruction/initial_guess.jl")
 include("reconstruction/direct_reconstruct_dispatch.jl")
+include("reconstruction/iteration_trace.jl")
 include("reconstruction/solve_core.jl")
 include("reconstruction/reconstruct.jl")
 

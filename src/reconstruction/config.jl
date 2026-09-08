@@ -15,6 +15,9 @@ Fields (with defaults):
 - `task_executor::Union{Nothing,ReconstructionExecutor} = nothing` — override executor for task splitting
 - `disable_inverse_scale_output::Bool = false` — skip rescaling the final output
 - `disable_task_splitting::Bool = false` — disable automatic task splitting
+- `slice_id::Union{Nothing, String} = nothing` — set by the task-splitting machinery to name the
+  slab currently being solved, and surfaced to an `on_iteration` callback as its `slice` field.
+  Not meant to be passed by hand.
 
 `verbosity` also accepts `true`/`false` and the symbols `:verbose`, `:progress`, `:silent`,
 which are normalized to the corresponding [`Verbosity`](@ref) via `as_verbosity`.
@@ -47,6 +50,7 @@ struct ReconstructionConfig
     task_executor::Union{Nothing, ReconstructionExecutor}
     disable_inverse_scale_output::Bool
     disable_task_splitting::Bool
+    slice_id::Union{Nothing, String}
 
     function ReconstructionConfig(;
             scaling::Scaling = BartScaling(),
@@ -55,6 +59,7 @@ struct ReconstructionConfig
             task_executor::Union{Nothing, ReconstructionExecutor} = nothing,
             disable_inverse_scale_output::Bool = false,
             disable_task_splitting::Bool = false,
+            slice_id::Union{Nothing, AbstractString} = nothing,
         )
         return new(
             scaling,
@@ -63,6 +68,7 @@ struct ReconstructionConfig
             task_executor,
             disable_inverse_scale_output,
             disable_task_splitting,
+            isnothing(slice_id) ? nothing : String(slice_id),
         )
     end
 end
@@ -102,6 +108,9 @@ const _METHOD_OWNED_KWARGS = Dict{Symbol, String}(
     :verbose => "Use `verbosity` instead: `verbosity = Verbose()` / `Silent()` / `ProgressBar()`.",
     :printfunc => "Use `verbosity = Verbose(; printfunc = ...)` instead.",
     :freq => "Use `verbosity = Verbose(; freq = ...)` instead.",
+    :on_iteration => "Pass `on_iteration` to `IterativeReconstruction`, e.g. " *
+        "`IterativeReconstruction(reg; on_iteration = IterationTrace())`. Only an iterative " *
+        "method has iterations to observe, so the callback is method-owned rather than a run setting.",
 )
 
 function check_kwargs(kwargs)

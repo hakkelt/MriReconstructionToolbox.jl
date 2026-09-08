@@ -136,14 +136,26 @@ function _reconstruct(
             disable_normalop_optimization = method.disable_normalop_optimization,
             fidelity = method.fidelity,
         )
-        x̂ = _iterative_reconstruct_core(𝒜, acq_data, x̂, scale, method, config; build)
-        x̂ = apply_signal_model(method.signal_model, x̂, acq_data; threaded = config.threaded)
-        if acq_data.kspace_data isa NamedDimsArray && !(x̂ isa NamedDimsArray)
-            x̂ = NamedDimsArray{output_dims(method, acq_data)}(x̂)
-        end
+        # The same two post-processing steps the final image goes through below, so that an
+        # `on_iteration` callback sees intermediate iterates in the units, shape and dimension
+        # names of the value this function returns.
+        present = x -> _present_image(x, method, acq_data, config)
+        x̂ = _iterative_reconstruct_core(𝒜, acq_data, x̂, scale, method, config; build, present)
+        x̂ = _present_image(x̂, method, acq_data, config)
     end
 
     return x̂, scale
+end
+
+# Signal model + dimension names: the last two steps between a solved variable and the image the
+# caller gets. Factored out because the `on_iteration` callback has to apply exactly the same two
+# to every intermediate iterate.
+function _present_image(x, method::IterativeReconstruction, acq_data, config)
+    x = apply_signal_model(method.signal_model, x, acq_data; threaded = config.threaded)
+    if acq_data.kspace_data isa NamedDimsArray && !(x isa NamedDimsArray)
+        x = NamedDimsArray{output_dims(method, acq_data)}(x)
+    end
+    return x
 end
 
 function _reconstruct_dispatch_components(acq_data, method::IterativeReconstruction, x₀, config)
@@ -210,14 +222,21 @@ function _reconstruct_components(
         threaded = config.threaded, x₀s = x₀,
         fidelity = method.fidelity,
     )
-    xs = _iterative_reconstruct_core(𝒜, acq_data, x₀s, scale, method, config; build)
+    names = map(c -> c.name, components)
+    present = xs -> _present_components(xs, names, method, acq_data)
+    xs = _iterative_reconstruct_core(𝒜, acq_data, x₀s, scale, method, config; build, present)
+    return _present_components(xs, names, method, acq_data), scale
+end
+
+# The component counterpart of `_present_image`: sum the per-component iterates into the total
+# image and name both. An `on_iteration` callback on this path therefore receives the same
+# `DecomposedImage` type it gets back from `reconstruct`.
+function _present_components(xs::Tuple, names, method::IterativeReconstruction, acq_data)
     total_x = broadcast(+, xs...)
     if acq_data.kspace_data isa NamedDimsArray
         img_dimnames = output_dims(method, acq_data)
         total_x = NamedDimsArray{img_dimnames}(total_x)
         xs = map(x -> NamedDimsArray{img_dimnames}(x), xs)
     end
-    names = map(c -> c.name, components)
-    img = DecomposedImage(total_x, NamedTuple{names}(xs))
-    return img, scale
+    return DecomposedImage(total_x, NamedTuple{names}(xs))
 end
