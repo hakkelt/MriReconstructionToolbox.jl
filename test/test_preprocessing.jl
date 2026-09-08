@@ -205,6 +205,7 @@ end
 @testitem "Gradient delays: multi-coil k-space is combined over the coil axis" tags = [:preprocessing, :acquisition, :nfft] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
 
     Nsamples, Nspokes, Nc = 64, 30, 8
     angles = range(0, 2π, length = Nspokes + 1)[1:Nspokes]
@@ -234,6 +235,7 @@ end
 @testitem "Gradient delay correction in non-Cartesian MRI" tags = [:preprocessing, :acquisition, :nfft] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
     using LinearAlgebra
     using NamedDims
 

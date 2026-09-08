@@ -103,7 +103,7 @@ end
 @testitem "NFFT operating point (S6)" tags = [:encoding, :operators, :nfft] begin
     using Test
     using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, NonCartesianAcquisitionInfo
     using NFFTOperators: NFFTOp
     import NFFTOperators
     using LinearAlgebra, Random
@@ -208,7 +208,7 @@ end
 @testitem "Full Encoding Operator" tags = [:encoding, :operators, :nfft] begin
     using Test
     using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, NonCartesianAcquisitionInfo
     using FFTW
     using NamedDims
 
@@ -652,7 +652,7 @@ end
 
 @testitem "simulate_acquisition for NonCartesianAcquisitionInfo" tags = [:encoding, :simulation, :nfft] begin
     using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
+    using MriReconstructionToolbox: get_encoding_operator, NonCartesianAcquisitionInfo
     using NamedDims
     using LinearAlgebra
     using Random

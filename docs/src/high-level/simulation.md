@@ -251,6 +251,28 @@ savefig("poisson_disk_sampling_pattern.png"); nothing # hide
 - More uniform coverage than random
 - Good incoherence properties
 
+## Non-Cartesian Trajectories
+
+Ready-made generators for the common non-Cartesian sampling patterns, returned as
+`NamedDimsArray`s in exactly the layout `AcquisitionInfo`/[`simulate_acquisition`](@ref) expect
+(coordinate axis first, normalized to `[-0.5, 0.5)`, NFFT.jl convention):
+
+```@docs
+radial_trajectory
+stack_of_stars_trajectory
+kooshball_trajectory
+spiral_trajectory
+```
+
+```@example imports
+using NamedDims
+
+traj = radial_trajectory(128, 96; ordering = :golden_angle)
+acq_radial = AcquisitionInfo(; trajectory = traj, image_size = (256, 256))
+data_radial = simulate_acquisition(img, acq_radial)
+size(data_radial.kspace_data)
+```
+
 ## Simulate Acquisition
 
 ```@docs
@@ -261,48 +283,60 @@ simulate_acquisition
 
 ### Adding Noise
 
-```julia
-# Simulate acquisition
-acq = simulate_acquisition(img_true, acq)
+`add_noise` adds complex Gaussian noise to k-space data, either as a target SNR (in dB, relative
+to the RMS of the data) or as an absolute standard deviation. It accepts a plain array, a
+`NamedDimsArray`, or an `AcquisitionInfo` directly (in which case a *copy* with noisy
+`kspace_data` is returned, via the same copy-constructor pattern as `AcquisitionInfo(acq; ...)`):
 
-# Add Gaussian noise to k-space
-noise_level = 0.01  # Adjust based on desired SNR
-noise = noise_level * randn(ComplexF32, size(acq.kspace_data))
-acq = AcquisitionInfo(acq; kspace_data=acq.kspace_data .+ noise)
+```@docs
+add_noise
+```
+
+```@example imports
+# Target SNR in dB
+noisy_acq = add_noise(acq_with_data; snr_db = 20)
+
+# Or an absolute noise standard deviation
+noisy_acq2 = add_noise(acq_with_data; noise_std = 0.02)
 
 # Reconstruct noisy data
-img_recon = reconstruct(acq, IterativeReconstruction(L1Wavelet2D(5e-3)))
+img_recon = reconstruct(noisy_acq, IterativeReconstruction(L1Wavelet2D(5e-3)); verbosity = Silent())
+nothing # hide
 ```
 
-### Custom Subsampling Patterns
+### Subsampling: Indexing Expressions vs. Boolean Masks
 
-```julia
-# Manual pattern creation
-mask = falses(256, 256)
+`subsampling` accepts two forms (see [AcquisitionInfo](@ref) for the full set, including plain
+boolean masks):
 
-# Fully sample center
-mask[118:138, 118:138] .= true
+1. **A tuple of indexing expressions** (`Colon`, ranges, or integer vectors) — the **default**
+   idiom for anything with regular structure. It reads directly as "keep these indices along
+   each dimension", is cheaper to construct and store than a full mask, and composes naturally
+   with `Base`'s indexing:
 
-# Random sampling elsewhere
-for i in 1:256, j in 1:256
-    if !mask[i,j] && rand() < 0.2  # 20% sampling
-        mask[i,j] = true
-    end
-end
+   ```@example imports
+   ny = 256
 
-# Use custom mask
-acq = AcquisitionInfo(img, false; subsampling=mask)
-```
+   # Partial Fourier: keep the first 65% of phase-encoding lines
+   pf_pattern = (:, 1:round(Int, 0.65 * ny))
 
-### Cartesian Line Sampling
+   # Uniform GRAPPA-style undersampling (every 4th line) with a fully sampled ACS block —
+   # a range/step expression reads directly as the acceleration factor and ACS width, where a
+   # mask only shows the result of them.
+   R, acs_half_width = 4, 12
+   center = div(ny, 2)
+   grappa_lines = sort(union(1:R:ny, (center - acs_half_width):(center + acs_half_width)))
+   grappa_pattern = (:, grappa_lines)
+   ```
 
-```julia
-# Sample every 4th phase encoding line
-ny = 256
-lines_to_sample = [1:4:ny; div(ny,2)-10:div(ny,2)+10]  # Skip plus center
+2. **A boolean mask** (or `(:, mask)` for a fully sampled frequency-encoding dimension) — the
+   special case for genuinely irregular or random patterns, where there is no indexing
+   expression to write down. `create_sampling_pattern` (above) returns this form.
 
-mask = falses(256, 256)
-mask[:, lines_to_sample] .= true
+Both forms are passed the same way:
 
-acq = AcquisitionInfo(img, false; subsampling=mask)
+```@example imports
+acq_pf = AcquisitionInfo(nothing; is3D=false, image_size=(ny, ny), subsampling=pf_pattern)
+acq_grappa = AcquisitionInfo(nothing; is3D=false, image_size=(ny, ny), subsampling=grappa_pattern)
+nothing # hide
 ```
