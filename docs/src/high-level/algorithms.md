@@ -324,6 +324,77 @@ img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithm); verb
 - Changes becoming smaller
 - Reasonable convergence rate
 
+### Convergence Curves: `on_iteration` and `IterationTrace`
+
+`verbosity` prints the iterations; `on_iteration` hands them to you. `IterativeReconstruction`
+takes a callback that the solver invokes once per iteration with a single `NamedTuple`, so a
+single `reconstruct` call is enough to plot error against iteration *and* against wall-clock time:
+
+```julia
+using MriReconstructionToolbox
+
+nrmse(x, ref) = sqrt(sum(abs2, x .- ref) / sum(abs2, ref))
+
+trace = IterationTrace(x -> nrmse(x, reference))
+img = reconstruct(
+    acq,
+    IterativeReconstruction(L1Wavelet2D(0.01); algorithm = FISTA(), maxit = 60, on_iteration = trace);
+    verbosity = Silent(),
+)
+
+using Plots
+plot(trace.iterations, trace.values; xlabel = "iteration", ylabel = "NRMSE", yscale = :log10)
+plot(trace.times, trace.values; xlabel = "wall-clock time (s)", ylabel = "NRMSE", yscale = :log10)
+```
+
+`IterationTrace` collects four columns: `iterations`, `times` (seconds since the solve started, on
+a monotonic clock), `values` (the reduction applied to each iterate — the whole image if you leave
+the reduction out), and `metrics` (the algorithm's own numbers). The clock starts *after* the
+encoding operator and the operator-norm estimate are built, so `times` measures the solve, not the
+setup — which is what you want when comparing two algorithms on the same problem.
+
+The callback payload always carries `iteration`, `x` and `elapsed_ns`, plus `slice` when the
+reconstruction was split into tasks. `x` is the current estimate already inverse-scaled and
+carrying its dimension names — the same units, shape and type as the value `reconstruct`
+returns, including a `DecomposedImage` on the `Component` path. The remaining fields depend on
+what the algorithm computes, and are *absent* rather than `nothing` when it computes nothing of
+the sort:
+
+| algorithm | additional fields |
+|---|---|
+| `FISTA`, `ISTA` | `objective`, `smooth_value`, `nonsmooth_value`, `stepsize`, `fixed_point_residual` |
+| `DouglasRachford` | `objective`, `smooth_value`, `nonsmooth_value`, `fixed_point_residual` |
+| `ADMM` | `primal_residual`, `dual_residual`, `iterate_change` |
+| `CG`, `CGNR` | `residual_norm` |
+
+So an objective-vs-iteration curve for FISTA is `[m.objective for m in trace.metrics]`, while for
+ADMM the comparable curve is `[m.primal_residual for m in trace.metrics]`. Test
+`haskey(info, :objective)` in a callback that has to cope with either.
+
+A plain function works just as well when you only need a side effect:
+
+```julia
+reconstruct(acq, IterativeReconstruction(reg; on_iteration = info -> @info "iteration" info.iteration))
+```
+
+Two things to know:
+
+- **Task splitting.** With several slabs in flight the callback fires from several tasks at once,
+  and each payload gains a `slice` field naming its slab. `IterationTrace` appends under a lock,
+  so it is safe as is — but group its columns by `trace.slices` before plotting, since the entries
+  from different slabs interleave. A hand-written callback must be thread-safe itself.
+- **Cost.** The callback copies the iterate every iteration, so a trace is not free — an NRMSE
+  trace roughly doubles the solve time on a small problem. Not passing one costs nothing at all:
+  with `on_iteration === nothing` no hook is installed in the solver loop, and a 128×128 solve
+  allocates identically with and without the feature present.
+
+`on_iteration` belongs to `IterativeReconstruction`, not to `ReconstructionConfig` — a direct
+reconstruction has no iterations to observe. Passing it to `reconstruct` raises an error saying so.
+
+```@docs
+IterationTrace
+```
+
 ## Advanced Usage
 
 ### Auto-Selecting Multiple Algorithms
