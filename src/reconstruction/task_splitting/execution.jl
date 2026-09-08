@@ -129,6 +129,7 @@ function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Fun
             conf;
             verbosity = slice_verbosity(verbosity, id; freq = -1),
             threaded = slice_threaded,
+            slice_id = id,
         )
 
         # `prelim`'s element type isn't known until `prepare` actually runs (it depends on the acquisition
@@ -205,6 +206,7 @@ function execute_single_slice(f::Function, idx, id, local_acq, config; kwargs...
     local_conf = ReconstructionConfig(
         config;
         verbosity = slice_verbosity(v, id; freq),
+        slice_id = id,
         disable_inverse_scale_output = true, kwargs...,
     )
     return f(idx, local_acq, local_conf)
