@@ -10,7 +10,7 @@ function _direct_reconstruct_components(𝒜, acq_data, method::ReconstructionMe
     return x̂, _resolve_scale(acq_data, scale_input, config, scale_override)
 end
 
-# The scale is either imposed by the caller (decomposition uses one shared scale for every slice),
+# The scale is either imposed by the caller (task splitting uses one shared scale for every slice),
 # derived from the direct estimate, or absent; a zero estimate would blow up the scaled problem, so it
 # falls back to no scaling.
 function _resolve_scale(acq_data, x̂, config, scale_override)

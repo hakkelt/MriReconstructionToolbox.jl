@@ -1,4 +1,4 @@
-struct ProblemDecompositionPlan{N, M, K, L}
+struct TaskSplittingPlan{N, M, K, L}
     variable_size::NTuple{N, Int}
     variable_batch_dims::NTuple{M, Int}
     kspace_size::NTuple{K, Int}
@@ -11,14 +11,14 @@ struct ProblemDecompositionPlan{N, M, K, L}
     output_size::NTuple{N, Int}
 end
 
-function get_problem_decomposition_plan(acq_data, method::ReconstructionMethod, config)
-    if config.disable_problem_decomposition
+function get_task_splitting_plan(acq_data, method::ReconstructionMethod, config)
+    if config.disable_task_splitting
         return nothing
     elseif acq_data isa NonCartesianAcquisitionInfo
         return nothing
     end
 
-    # Determine which image/variable dimensions can be used for problem decomposition
+    # Determine which image/variable dimensions can be used for task splitting
     image_dims = get_image_dims(acq_data)
     variable_batch_dims = collect(get_nonfourier_image_dims(acq_data))
     if method isa IterativeReconstruction
@@ -33,7 +33,7 @@ function get_problem_decomposition_plan(acq_data, method::ReconstructionMethod, 
     end
     variable_batch_dims = tuple(variable_batch_dims...)
 
-    if variable_batch_dims == () # no batch dimensions, no decomposition
+    if variable_batch_dims == () # no batch dimensions, no splitting
         return nothing
     end
 
@@ -69,7 +69,7 @@ function get_problem_decomposition_plan(acq_data, method::ReconstructionMethod, 
             3 ∈ variable_batch_dims
     )
 
-    return ProblemDecompositionPlan(
+    return TaskSplittingPlan(
         var_size,
         variable_batch_dims,
         kspace_size,
@@ -83,19 +83,19 @@ function map_dims_to_strs(sizes, batch_dims)
     return map(d -> d[1] ∈ batch_dims ? "_$(d[2])_" : string(d[2]), enumerate(sizes))
 end
 
-function Base.show(io::IO, plan::ProblemDecompositionPlan)
-    print(io, "ProblemDecompositionPlan{")
+function Base.show(io::IO, plan::TaskSplittingPlan)
+    print(io, "TaskSplittingPlan{")
     img_size_strs = map_dims_to_strs(plan.variable_size, plan.variable_batch_dims)
     print(io, "variable_size=(", join(img_size_strs, ", "), "), ")
     ksp_size_strs = map_dims_to_strs(plan.kspace_size, plan.kspace_batch_dims)
     return print(io, "kspace_size=(", join(ksp_size_strs, ", "), ")}")
 end
 
-function Base.length(plan::ProblemDecompositionPlan)
+function Base.length(plan::TaskSplittingPlan)
     return prod(plan.variable_size[collect(plan.variable_batch_dims)])
 end
 
-function maybe_print_decomposition_info(plan, config)
+function maybe_print_task_splitting_info(plan, config)
     batch_dims = plan.variable_batch_dims
     batch_size = plan.variable_size[collect(batch_dims)]
     msg_part = if length(batch_dims) == 1
@@ -103,7 +103,7 @@ function maybe_print_decomposition_info(plan, config)
     else
         "dimensions $batch_dims with sizes $batch_size"
     end
-    return log_message(config.verbosity, "Decomposing problem over $msg_part")
+    return log_message(config.verbosity, "Splitting task over $msg_part")
 end
 
 function get_slice_id(plan, idx, slice_idx_widths)
