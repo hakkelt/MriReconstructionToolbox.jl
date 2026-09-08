@@ -12,12 +12,13 @@ struct NFFTOp{
 end
 
 """
-	NFFTOp(image_size::NTuple{D,Int}, trajectory::AbstractArray{T}, dcf::AbstractArray; threaded::Bool=true, kwargs...)
+	NFFTOp(image_size::NTuple{D,Int}, trajectory::AbstractArray{T}, dcf::Union{Nothing,Symbol,AbstractArray}=nothing; threaded::Bool=true, kwargs...)
 
-Create a non-uniform fast Fourier transform operator [1]. The operator is created with a given image 
-size, trajectory, and density compensation function (dcf). The dcf is used to correct for the 
-non-uniform sample density of the trajectory. The operator can be used to transform images to 
-k-space and back.
+Create a non-uniform fast Fourier transform operator [1]. The operator is created with a given image
+size, trajectory, and density compensation function (dcf). The dcf, when applied, corrects for the
+non-uniform sample density of the trajectory in the *adjoint* direction (`op' * ksp`); the forward
+direction (`op * image`) never uses it. The operator can be used to transform images to k-space and
+back.
 
 <em>To use the operator, the NFFT package must be explicitly imported!</em>
 
@@ -26,15 +27,23 @@ k-space and back.
 - `trajectory::AbstractArray{T}`: The trajectory of the samples in k-space. The first dimension
   of the trajectory must match the number of image dimensions. The trajectory must have at least
   two dimensions.
-- `dcf::AbstractArray`: The density compensation function. The shape of the trajectory from the
-  second dimension must match the shape of the dcf array. The element type of the trajectory must
-  match the element type of the dcf array. This argument is optional and defaults to `nothing`.
-  If `nothing` is passed, the dcf will be estimated using the sample density compensation method [2].
+- `dcf::Union{Nothing,Symbol,AbstractArray}=nothing`: Controls density compensation:
+  - `nothing` (the default): **no** density compensation is applied — the dcf is an array of ones,
+    so `op'` is the *true* mathematical adjoint of `op`. This is what any algorithm that assumes
+    `A'` is the adjoint (operator-norm estimation via power iteration, CG/CGNR, ...) requires.
+  - `:auto`: estimate the dcf with the iterative sample density compensation method of Pipe &
+    Menon [2] (`NFFTTools.sdc`), exactly as this constructor always did before this keyword
+    existed. With `:auto`, `op'` is **not** the true adjoint of `op` — it is a density-compensated
+    approximate inverse, useful for a quick direct (gridding) reconstruction but wrong as the
+    adjoint fed to an algorithm that relies on the adjoint relationship.
+  - An `AbstractArray`: used as given (its shape from the second dimension of `trajectory` on must
+    match, and its element type must match `trajectory`'s). Same caveat as `:auto`: a non-trivial
+    dcf makes `op'` a weighted approximate inverse, not the true adjoint.
 - `threaded::Bool=true`: `false` disables threading outright; `true` (the default) enables it subject to the threading policy, which also requires more than one Julia thread and CPU storage. Fixed at construction, since the NFFT plan is built for a thread count.
-- `dcf_estimation_iterations::Union{Nothing,Int}=nothing`: The number of iterations to use when
-  estimating the dcf. Defaults to `20`. This argument is only used if `dcf` is not provided.
+- `dcf_estimation_iterations::Int=20`: The number of iterations to use when estimating the dcf.
+  Only used when `dcf = :auto`.
 - `dcf_correction_function::Function=identity`: A correction function to apply to the estimated dcf.
-  Defaults to the identity function. This argument is only used if `dcf` is not provided.
+  Defaults to the identity function. Only used when `dcf = :auto`.
 - `kwargs...`: Additional keyword arguments to pass to the NFFTPlan constructor.
 
 # References
@@ -66,27 +75,7 @@ julia> image_reconstructed = op' * ksp;
 function NFFTOp(
         image_size::NTuple{D, Int},
         trajectory::AbstractArray{T},
-        dcf::AbstractArray;
-        threaded::Bool = true,
-        array_type::Type = Array{T},
-        kwargs...,
-    ) where {T, D}
-    check_traj_and_dcf(trajectory, dcf, D)
-    arr_wrapper = _array_wrapper_type(array_type)
-    # Resolved before planning: the plan itself is built for this thread count, so the
-    # policy has to have had its say by now (a `nothing` reaching `create_plan` would not
-    # even dispatch).
-    threaded_flag = _nfft_threaded(threaded, arr_wrapper)
-    plan = _nfft_plan(arr_wrapper, trajectory, image_size, threaded_flag; kwargs...)
-    ksp_shape = size(trajectory)[2:end]
-    ksp_buffer = _nfft_adapt(arr_wrapper, zeros(complex(T), ksp_shape...))
-    adapted_dcf = _nfft_adapt(arr_wrapper, collect(dcf))
-    return NFFTOp{T, D, typeof(plan), typeof(ksp_buffer), typeof(adapted_dcf)}(plan, ksp_buffer, adapted_dcf, threaded_flag)
-end
-
-function NFFTOp(
-        image_size::NTuple{D, Int},
-        trajectory::AbstractArray{T};
+        dcf::Union{Nothing, Symbol, AbstractArray} = nothing;
         threaded::Bool = true,
         array_type::Type = Array{T},
         dcf_estimation_iterations::Int = 20,
@@ -102,10 +91,30 @@ function NFFTOp(
     plan = _nfft_plan(arr_wrapper, trajectory, image_size, threaded_flag; kwargs...)
     ksp_shape = size(trajectory)[2:end]
     ksp_buffer = _nfft_adapt(arr_wrapper, zeros(complex(T), ksp_shape...))
-    raw_dcf = NFFTTools.sdc(plan; iters = dcf_estimation_iterations)
-    dcf_cpu = dcf_correction_function(reshape(raw_dcf, ksp_shape))
+    dcf_cpu = _resolve_dcf(dcf, plan, trajectory, ksp_shape, T, D, dcf_estimation_iterations, dcf_correction_function)
     adapted_dcf = _nfft_adapt(arr_wrapper, collect(dcf_cpu))
     return NFFTOp{T, D, typeof(plan), typeof(ksp_buffer), typeof(adapted_dcf)}(plan, ksp_buffer, adapted_dcf, threaded_flag)
+end
+
+"""
+    _resolve_dcf(dcf, plan, trajectory, ksp_shape, T, D, dcf_estimation_iterations, dcf_correction_function)
+
+Resolve the `dcf` keyword of [`NFFTOp`](@ref) into a concrete dcf array:
+- `nothing` -> an array of ones (no density compensation, `op'` is the true adjoint).
+- `:auto` -> estimate with `NFFTTools.sdc` (the pre-existing automatic behaviour).
+- an `AbstractArray` -> used as given, after validating its shape/eltype against `trajectory`.
+"""
+function _resolve_dcf(::Nothing, plan, trajectory, ksp_shape, T, D, dcf_estimation_iterations, dcf_correction_function)
+    return ones(T, ksp_shape...)
+end
+function _resolve_dcf(dcf::Symbol, plan, trajectory, ksp_shape, T, D, dcf_estimation_iterations, dcf_correction_function)
+    dcf === :auto || throw(ArgumentError("dcf as a Symbol must be :auto, got :$dcf"))
+    raw_dcf = NFFTTools.sdc(plan; iters = dcf_estimation_iterations)
+    return dcf_correction_function(reshape(raw_dcf, ksp_shape))
+end
+function _resolve_dcf(dcf::AbstractArray, plan, trajectory, ksp_shape, T, D, dcf_estimation_iterations, dcf_correction_function)
+    check_traj_and_dcf(trajectory, dcf, D)
+    return dcf
 end
 
 """
