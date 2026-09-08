@@ -14,6 +14,12 @@ LMatrixOp
 MyLinOp
 ```
 
+## Structured Matrix Embeddings
+
+```@docs
+Hankel
+```
+
 ## Finite Differences
 
 ```@docs
