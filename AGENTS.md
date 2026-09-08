@@ -23,15 +23,15 @@ AcquisitionInfo → Encoding operators → Regularization → Reconstruction
 | Acquisition data | `src/acquisition_data/` | `AcquisitionInfo` types, dimension utilities, copy constructors |
 | Encoding | `src/encoding/` | Fourier (FFT/NFFT), sensitivity map, subsampling operators; `NamedDimsOp` wrapper |
 | Regularization | `src/regularization/` | one file per regularizer + `regularization.jl` (abstract type, contract, fallbacks) |
-| Reconstruction | `src/reconstruction/` | `config.jl`, `build_model.jl`, `decomposition/`, `components.jl`, `reconstruct.jl` |
+| Reconstruction | `src/reconstruction/` | `config.jl`, `build_model.jl`, `task_splitting/`, `components.jl`, `reconstruct.jl` |
 | Simulation | `src/simulation/` | phantom sampling patterns, coil sensitivities, full acquisition simulation |
 
 `src/MriReconstructionToolbox.jl` is the authoritative list of source files (`include` order) and
 exports — read it rather than trusting a tree here.
 
-### Decomposition over batch dimensions
+### Task splitting over batch dimensions
 
-The reconstruction is decomposed over batch (non-image, non-time) dimensions: each slab is solved
+The reconstruction is split into tasks over batch (non-image, non-time) dimensions: each slab is solved
 independently, with and without regularization. `reconstruct.jl` merges the component and
 single-variable paths, caches the encoding operator `𝒜`, and dispatches on the regularizer's
 domain. When editing this path, preserve that a `NamedDimsOp` is unwrapped and rewrapped (not

@@ -57,7 +57,7 @@ The package provides:
 - ✅ **Multiple Regularizers** - Sparsity, wavelets, total variation, low-rank
 - ✅ **Image Decomposition** - Additive multi-component reconstruction (e.g. low-rank + sparse)
 - ✅ **Fast Algorithms** - FISTA, ADMM, Conjugate Gradient
-- ✅ **Auto-Parallelization** - Automatic decomposition over batch dimensions
+- ✅ **Auto-Parallelization** - Automatic task splitting over batch dimensions
 - ✅ **Named Dimensions** - Type-safe interface prevents dimension errors
 - ✅ **Simulation Tools** - Built-in phantoms and sampling patterns
 - ✅ **High Performance** - Multi-threaded FFTs and optimized operators
