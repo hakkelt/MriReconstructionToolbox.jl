@@ -176,8 +176,8 @@ function _reconstruct_dispatch_components(acq_data, method::IterativeReconstruct
         img_dimnames = output_dims(method, acq_data)
         img = DecomposedImage(
             NamedDimsArray{img_dimnames}(unname(total_image(img))),
-            NamedTuple{keys(img.components)}(
-                map(c -> NamedDimsArray{img_dimnames}(unname(c)), values(img.components))
+            NamedTuple{keys(getfield(img, :components))}(
+                map(c -> NamedDimsArray{img_dimnames}(unname(c)), values(getfield(img, :components)))
             ),
         )
     end

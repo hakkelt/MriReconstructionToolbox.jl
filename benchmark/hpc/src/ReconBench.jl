@@ -110,7 +110,7 @@ function run_cases(cases; num_runs = 3)
             res = c.run()
             push!(ts, (time_ns() - t0) / 1.0e9)
         end
-        img = res isa DecomposedImage ? total(res) : res
+        img = res isa DecomposedImage ? total_image(res) : res
         e = aligned_nrmse(img, c.reference)
         push!(
             out,
