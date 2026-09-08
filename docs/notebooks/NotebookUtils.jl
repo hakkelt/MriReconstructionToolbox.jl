@@ -16,9 +16,8 @@ module NotebookUtils
 using MIRTjim: jim, jim!
 using Plots: Plot
 using LinearAlgebra: norm
-using Unicode: normalize
 
-export nrmse, side_by_side, difference_image, asciilabel
+export nrmse, side_by_side, difference_image
 
 # --------------------------------------------------------------------------------------------
 # 1. jim orientation: MIRTjim's `yflip` default is `minimum(y) >= 0`, which is `true` for the
@@ -33,36 +32,9 @@ export nrmse, side_by_side, difference_image, asciilabel
 jim(:yflip, false)
 
 # --------------------------------------------------------------------------------------------
-# 2. GKS glyph warnings: GR (the Plots.jl backend used in these notebooks) repeatedly prints
-#    `GKS: glyph missing from current font: 119964` (and similar) whenever a plot title/label
-#    contains a MATHEMATICAL SCRIPT/CALLIGRAPHIC letter such as `𝒜`, `𝒮`, `𝒫`, `𝒲`, `𝒞` — the
-#    operator-name convention used throughout the docs (`𝒜 = 𝒫 𝒮 ℱ`, etc.). No font available on
-#    this HPC login node (checked with `fc-list`) covers the Mathematical Alphanumeric Symbols
-#    block, and installing one is not something a notebook — or this shared preamble — should
-#    depend on. So the fix is NOT a font: it is `asciilabel`, a helper that strips the styling
-#    via Unicode compatibility normalization, to be called when a notebook builds a plot title or
-#    axis label containing one of these operator-name symbols, e.g.
-#        jim(x; title = asciilabel("Direct reconstruction of 𝒜x"))
-#    `Unicode.normalize(s; compat = true)` maps every "styled" Unicode letter (Mathematical
-#    Alphanumeric Symbols block AND the older Letterlike Symbols block, e.g. `ℬ ℰ ℱ ℋ ℐ ℒ ℳ ℛ`)
-#    back to its plain ASCII letter, so this is general — it is not a fixed lookup table of the
-#    five symbols the notebooks happen to use today.
-"""
-    asciilabel(s::AbstractString) -> String
-
-Strip MATHEMATICAL SCRIPT/CALLIGRAPHIC styling (and similar Unicode letter styling) from `s`,
-returning the plain-ASCII spelling. Use this when building a `title`/`xlabel`/`ylabel` string
-that contains an operator name such as `𝒜`, `𝒫`, `𝒮`, `𝒲`, `𝒞` — GR has no font on this system
-that renders those glyphs, and every notebook using them prints a
-`GKS: glyph missing from current font: ...` warning per plot without this.
-
-```jldoctest
-julia> asciilabel("𝒜x = 𝒫𝒮ℱx")
-"Ax = PSFx"
-```
-"""
-asciilabel(s::AbstractString) = normalize(s; compat = true)
-
+# 2. Write plot titles and axis labels in plain ASCII (`title = "Ax"`, not `title = "𝒜x"`).
+#    Script letters stay in markdown prose and as Julia variable names.
+#
 # --------------------------------------------------------------------------------------------
 # 3. Shared helpers the notebooks otherwise redefine ad hoc (surveyed across all 11 notebooks
 #    before writing these): a one- or two-line `nrmse(x̂) = norm(abs.(x̂) - abs.(x_true)) /
