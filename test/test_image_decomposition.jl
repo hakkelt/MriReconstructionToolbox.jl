@@ -288,7 +288,7 @@ end
     components = (Component(:smooth, L2Image(0.005)), Component(:sparse, L1Image(0.005)))
 
     img_decomposed = reconstruct(acq_ms, IterativeReconstruction(components...; maxit = 30); verbosity = Silent())
-    img_joint = reconstruct(acq_ms, IterativeReconstruction(components...; maxit = 30); disable_task_splitting = true, verbosity = Silent())
+    img_joint = reconstruct(acq_ms, IterativeReconstruction(components...; maxit = 30); disable_problem_decomposition = true, verbosity = Silent())
 
     @test img_decomposed isa DecomposedImage
     @test size(img_decomposed) == (nx, ny, nslices)
@@ -383,7 +383,7 @@ end
     @test bound[1].regularizations[1].time_dim == 4
     @test bound[2].regularizations[1].time_dim == 4
 
-    plan = MriReconstructionToolbox.get_task_splitting_plan(acq_data, IterativeReconstruction(bound...), ReconstructionConfig(; verbosity = Silent()))
+    plan = MriReconstructionToolbox.get_problem_decomposition_plan(acq_data, IterativeReconstruction(bound...), ReconstructionConfig(; verbosity = Silent()))
     @test plan !== nothing
     @test plan.variable_batch_dims == (3,)  # slice over :z
 end
