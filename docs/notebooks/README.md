@@ -68,7 +68,8 @@ reconstruction. A full run of one notebook takes roughly:
 | Notebook | Approx. wall time |
 |---|---|
 | 01, 02, 03 | under a minute each |
-| 04, 05, 06, 09 | 1–3 minutes |
+| 04, 06, 09 | 1–3 minutes |
+| 05 | ~4 minutes (the subspace section reconstructs a 24-echo series four times) |
 | 07 | ~4 minutes |
 | 08 | ~1 minute (plus NFFT precompilation on the first call) |
 | 10 | ~2 minutes after the download |

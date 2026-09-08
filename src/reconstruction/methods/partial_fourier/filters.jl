@@ -82,8 +82,18 @@ function _pf_finalize(acq::CartesianAcquisitionInfo, img_out, coil_reduced::Bool
         img_out = dropdims(img_out; dims = c_dim)
     end
     if acq.kspace_data isa NamedDimsArray
+        # `get_image_dims` describes the *combined* image, so it carries a `:coil` axis only when
+        # the acquisition has no sensitivity maps (nothing consumed the coil axis). Both ends have
+        # to be reconciled here: drop `:coil` when the channels were combined, and re-insert it at
+        # `c_dim` when they were not but the maps had already removed it from the image dims.
         img_dims = get_image_dims(acq)
-        out_dims = coil_reduced ? filter(!=(:coil), img_dims) : img_dims
+        out_dims = if coil_reduced
+            filter(!=(:coil), img_dims)
+        elseif :coil in img_dims || c_dim == 0
+            img_dims
+        else
+            (img_dims[1:(c_dim - 1)]..., :coil, img_dims[c_dim:end]...)
+        end
         return NamedDimsArray{out_dims}(unname(img_out))
     end
     return img_out
