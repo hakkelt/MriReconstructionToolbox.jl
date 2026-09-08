@@ -103,7 +103,10 @@ end
     rec_spirit = reconstruct(acq, SPIRiT(kernel_size = (5, 5), calib_size = (32, 12), maxit = 20); verbosity = Silent())
     @test rec_spirit isa NamedDimsArray
     @test dimnames(rec_spirit) == (:x, :y)
-    @test norm(abs.(unname(rec_spirit))[mask_obj] .- img[mask_obj]) / norm(img[mask_obj]) < 0.18
+    # Tight tolerance: with its kernel applied in the calibration's own correlation convention
+    # (see the `_spirit_gfft` test item) SPIRiT is accurate here, not merely in the right ballpark.
+    spirit_err = norm(abs.(unname(rec_spirit))[mask_obj] .- img[mask_obj]) / norm(img[mask_obj])
+    @test spirit_err < 0.03
 end
 
 @testitem "Partial Fourier: PhaseConstrained recovers a phased phantom" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
@@ -550,4 +553,154 @@ end
         @test count(==('\n'), s) == 1
         @test occursin("100%", s)
     end
+end
+
+@testitem "SPIRiT: the frequency-domain kernel matches the calibration convention" tags = [:reconstruction, :regularization] begin
+    using Test
+    using MriReconstructionToolbox: _spirit_gfft, SPIRiTConsistencyOp
+    using LinearAlgebra
+    using Random
+
+    # `_calibrate_spirit_kernel` fits a *correlation*: the target sample at `n` in coil `tgt` is
+    #     Σ_{m, src} kernel[m, src, tgt] · k[n + m, src]
+    # over the patch offsets `m` (`m = 0` at the kernel centre). `_spirit_gfft` has to reproduce
+    # exactly that when its `Ĝ` is applied in the frequency domain, which needs (a) the kernel taps
+    # reversed along both axes, because a frequency-domain product is a convolution `Σ h[m] k[n−m]`,
+    # and (b) the `(src, tgt)` coil pair laid out so `Ĝ[:, :, src, tgt]` is the transform of
+    # `kernel[:, :, src, tgt]`. Getting either wrong still yields a plausible-looking operator (it
+    # stays a valid linear map, and the adjoint test below still passes) but applies the fitted
+    # neighbourhood in the wrong orientation or mixes the coils the wrong way round, which is why
+    # this is checked against an explicit reference sum rather than through a quality metric.
+    Random.seed!(11)
+    Kx, Ky, Nc, Nx, Ny = 5, 3, 3, 16, 12
+    kernel = randn(ComplexF64, Kx, Ky, Nc, Nc)
+    k = randn(ComplexF64, Nx, Ny, Nc)
+
+    op = SPIRiTConsistencyOp(_spirit_gfft(kernel, Nx, Ny), Nx, Ny)
+    Gk = k .- (op * k)                     # the operator is (I − G)
+
+    px, py = Kx ÷ 2, Ky ÷ 2
+    reference = zeros(ComplexF64, Nx, Ny, Nc)
+    for tgt in 1:Nc, src in 1:Nc, jy in 1:Ky, ix in 1:Kx
+        ox, oy = ix - 1 - px, jy - 1 - py
+        for n2 in 1:Ny, n1 in 1:Nx
+            reference[n1, n2, tgt] += kernel[ix, jy, src, tgt] * k[mod1(n1 + ox, Nx), mod1(n2 + oy, Ny), src]
+        end
+    end
+    @test isapprox(Gk, reference; rtol = 1.0e-10)
+
+    # Reversing the taps or transposing the coil pair on the way in must break the match — this is
+    # what guards the two orientation conventions above against a silent regression.
+    op_rev = SPIRiTConsistencyOp(_spirit_gfft(reverse(reverse(kernel, dims = 1), dims = 2), Nx, Ny), Nx, Ny)
+    op_tr = SPIRiTConsistencyOp(_spirit_gfft(permutedims(kernel, (1, 2, 4, 3)), Nx, Ny), Nx, Ny)
+    @test norm((k .- (op_rev * k)) - reference) / norm(reference) > 0.5
+    @test norm((k .- (op_tr * k)) - reference) / norm(reference) > 0.5
+
+    y = randn(ComplexF64, Nx, Ny, Nc)
+    @test dot(op * k, y) ≈ dot(k, op' * y)
+end
+
+@testitem "SPIRiT: calibration regularization stabilizes a noisy kernel fit" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
+    using Test
+    using MriReconstructionToolbox
+    using LinearAlgebra
+    using NamedDims
+    using FFTW
+    using Random
+
+    Random.seed!(3)
+    Nx, Ny, Nc = 32, 32, 4
+    img = zeros(ComplexF64, Nx, Ny)
+    img[8:24, 8:24] .= 1.0
+    img[12:16, 18:22] .= 0.4
+    sens = synthetic_sensitivities(ComplexF64, Nx, Ny, Nc; phase_scale = 0.6)
+    full = zeros(ComplexF64, Nx, Ny, Nc)
+    for c in 1:Nc
+        full[:, :, c] = fftshift(fft(img .* sens[:, :, c]))
+    end
+    # A noisy ACS is what makes the unregularized least-squares fit misbehave.
+    full .+= (0.02 * norm(full) / sqrt(length(full))) .* randn(ComplexF64, size(full))
+
+    mask_y = falses(Ny)
+    mask_y[1:2:Ny] .= true
+    mask_y[11:22] .= true
+    acq = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky, :coil)}(full[:, mask_y, :]);
+        is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_y),
+        sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(sens),
+    )
+
+    obj = abs.(img) .> 0.2
+    err(rec) = norm(abs.(unname(rec))[obj] .- abs.(img)[obj]) / norm(abs.(img)[obj])
+
+    reg = reconstruct(acq, SPIRiT(kernel_size = (5, 5), calib_size = (32, 12), maxit = 20); verbosity = Silent())
+    plain = reconstruct(
+        acq, SPIRiT(kernel_size = (5, 5), calib_size = (32, 12), maxit = 20, calib_λ = 0.0);
+        verbosity = Silent()
+    )
+    @test err(reg) < 0.1
+    @test err(reg) < err(plain)
+    @test_throws ArgumentError SPIRiT(calib_λ = -1.0)
+end
+
+@testitem "GRAPPA: check_applicable rejects unsupported sampling patterns" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
+    using Test
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: check_applicable
+    using NamedDims
+    using FFTW
+    using Random
+
+    Nx, Ny, Nc = 32, 32, 4
+    img = zeros(ComplexF64, Nx, Ny)
+    img[8:24, 8:24] .= 1.0
+    sens = synthetic_sensitivities(ComplexF64, Nx, Ny, Nc)
+    full = zeros(ComplexF64, Nx, Ny, Nc)
+    for c in 1:Nc
+        full[:, :, c] = fftshift(fft(img .* sens[:, :, c]))
+    end
+    sens_named = NamedDimsArray{(:x, :y, :coil)}(sens)
+
+    make_acq(mask_y) = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky, :coil)}(full[:, mask_y, :]);
+        is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_y), sensitivity_maps = sens_named,
+    )
+
+    # Regular R = 2 plus a contiguous ACS block: applicable.
+    regular = falses(Ny)
+    regular[1:2:Ny] .= true
+    regular[11:22] .= true
+    @test check_applicable(GRAPPA(calib_size = (32, 12)), make_acq(regular)) === nothing
+
+    # A random (variable-density) pattern has no fixed stride: GRAPPA's kernel assumes a regular
+    # lattice, so this must be rejected rather than silently producing garbage.
+    Random.seed!(7)
+    random_mask = falses(Ny)
+    random_mask[randperm(Ny)[1:16]] .= true
+    random_mask[15:18] .= true
+    err = try
+        check_applicable(GRAPPA(calib_size = (32, 4)), make_acq(random_mask))
+        nothing
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    @test occursin("regularly undersampled", sprint(showerror, err))
+
+    # Regular stride but no fully sampled block at all: no ACS to calibrate on.
+    no_acs = falses(Ny)
+    no_acs[1:2:Ny] .= true
+    @test_throws ArgumentError check_applicable(GRAPPA(), make_acq(no_acs))
+
+    # ACS present but too short for the requested kernel.
+    short_acs = falses(Ny)
+    short_acs[1:3:Ny] .= true
+    short_acs[16:17] .= true
+    @test_throws ArgumentError check_applicable(GRAPPA(kernel_size = (4, 3)), make_acq(short_acs))
+
+    # Fully sampled data has nothing to synthesize, but `subsampling === nothing` is still an error.
+    acq_full = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky, :coil)}(full); is3D = false, sensitivity_maps = sens_named,
+    )
+    @test_throws ArgumentError check_applicable(GRAPPA(), acq_full)
 end
