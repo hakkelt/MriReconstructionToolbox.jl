@@ -12,6 +12,15 @@ is fitted for each of the `R - 1` missing-line positions.
   apart) used per fitted kernel (default: `(4, 3)`).
 - `calib_size`: ACS calibration region size (default: `(24, 24)`).
 - `coil_combination`: Method for combining synthesized multi-coil channels (`RootSumSquares()` or `AdjointSensitivity()`).
+
+# Sampling-pattern requirements
+
+Because one kernel per missing-line offset is fitted and then applied everywhere, the phase-encoding
+pattern must be *regular*: a fixed stride `R`, fully sampled readout (`kx`) lines and a contiguous
+ACS block of at least `kernel_size[2] * R` lines. `check_applicable(::GRAPPA, acq)` — which
+[`reconstruct`](@ref) calls before doing any work — rejects everything else, including random and
+variable-density masks, for which no GRAPPA kernel exists. Use [`SPIRiT`](@ref) or an
+[`IterativeReconstruction`](@ref) on those.
 """
 struct GRAPPA{C <: CoilCombination} <: DirectMethod
     kernel_size::Tuple{Int, Int}

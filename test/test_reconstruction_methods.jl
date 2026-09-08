@@ -399,6 +399,23 @@ end
     data_sub = simulate_acquisition(img_true, acq_sub)
     rec_rss_sub = reconstruct(data_sub, DirectReconstruction(coil_combination = RootSumSquares()); verbosity = Silent())
     @test size(rec_rss_sub) == (Nx, Ny)
+
+    # Same three combinations with *named* dimensions. `get_image_dims` describes the combined
+    # image, so with sensitivity maps present it has no `:coil` axis; `NoCoilCombination` returns
+    # an array that does, and used to be labelled with the two-name tuple (a `NamedDimsArray`
+    # constructor error).
+    sens_named = NamedDimsArray{(:x, :y, :coil)}(unname(sens))
+    acq_named = AcquisitionInfo(is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens_named)
+    data_named = simulate_acquisition(NamedDimsArray{(:x, :y)}(img_true), acq_named)
+    @test data_named.kspace_data isa NamedDimsArray
+
+    rec_named_adj = reconstruct(data_named, DirectReconstruction(coil_combination = AdjointSensitivity()); verbosity = Silent())
+    rec_named_rss = reconstruct(data_named, DirectReconstruction(coil_combination = RootSumSquares()); verbosity = Silent())
+    rec_named_none = reconstruct(data_named, DirectReconstruction(coil_combination = NoCoilCombination()); verbosity = Silent())
+    @test dimnames(rec_named_adj) == (:x, :y)
+    @test dimnames(rec_named_rss) == (:x, :y)
+    @test dimnames(rec_named_none) == (:x, :y, :coil)
+    @test size(rec_named_none) == (Nx, Ny, Nc)
 end
 
 
