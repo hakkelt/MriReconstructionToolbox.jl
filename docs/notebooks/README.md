@@ -91,9 +91,10 @@ using .NotebookUtils
 - fixes MIRTjim's `jim` vertical-flip default (`jim(:yflip, false)`) so the phantoms render right
   side up in every notebook — do not pass `yflip` at individual call sites, and do not flip the
   underlying arrays;
-- provides `asciilabel(s)` to silence the repeated `GKS: glyph missing from current font: ...`
-  warnings caused by script-style operator names (`𝒜`, `𝒫`, `𝒮`, `𝒲`, `𝒞`, ...) in plot
-  titles/labels — wrap any such string in it, e.g. `jim(x; title = asciilabel("𝒜x"))`;
+- documents why plot titles and axis labels must be written in plain ASCII (`title = "Ax"`, not
+  `title = "𝒜x"`): GR has no font on this system for the script-style operator names, and each
+  such label costs a `GKS: glyph missing from current font: ...` warning per plot. Keep `𝒜`, `𝒫`
+  and friends in markdown prose and as Julia variable names, where they render correctly;
 - ships `nrmse(x̂, x)`, `side_by_side(images...; titles, clim)` (shared color scale across panels)
   and `difference_image(x̂, x; scale)` (its own color scale) so notebooks stop redefining these ad
   hoc.
