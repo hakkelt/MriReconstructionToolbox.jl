@@ -148,24 +148,56 @@ using LinearAlgebra, FFTW
 
 `get_fourier_operator`/`get_encoding_operator` take `m`, `sigma` and `precompute` keywords that
 forward straight to `NFFTOp`/NFFT.jl, exposing the gridding operating point instead of leaving
-it fixed. Left at `nothing` (the default), nothing is passed on and behaviour is unchanged —
-MRT has always taken NFFT.jl's own defaults (`m = 5`, `σ = 2.0`, `NFFT.POLYNOMIAL`).
+it fixed. Left at `nothing` (the default), **MRT's own default operating point is used**: `m = 4`,
+`σ = 1.5`, `precompute = NFFT.POLYNOMIAL` (`DEFAULT_NFFT_M`, `DEFAULT_NFFT_SIGMA`,
+`DEFAULT_NFFT_PRECOMPUTE` in `src/encoding/fourier_operators.jl`).
 
-That default is far more accurate than MRIReco's operating point (`m = 3`, `σ = 1.25`,
-`NFFT.TENSOR`) for accuracy the reconstruction does not use: measured per coil, 4.28 ms vs
-1.00 ms for a forward error of 1.6e-7 vs 5.7e-5, while the reconstructed image's NRMSE is 0.085
-either way (measured whole multi-coil DCF adjoint, single thread, `benchmark/comparison/scripts/
-run_noncart.jl`, 2026-09-04: MRT at its default 25.9 ms, MRT at MRIReco's operating point 6.1 ms,
-MRIReco 27.3 ms — all at NRMSE ≈ 0.085 against the phantom). At MRIReco's operating point MRT is
-faster than MRIReco while gridding more accurately, but a caller who wants the faster end of
-*MRT's own* curve now has a way to ask for it:
+That default was previously NFFT.jl's own (`m = 5`, `σ = 2.0`, `NFFT.POLYNOMIAL`), which is far
+more accurate than the reconstruction needs. Measured on a 128×128 radial phantom
+(`GeometricMedicalPhantoms`'s Shepp-Logan, 256 samples × 128 spokes), single thread, timings
+interleaved round-robin across configs rather than one after another (a single measurement on
+this shared login node can swing 30-60%):
+
+| m | σ | precompute | forward (min/median ms) | adjoint (min/median ms) | forward rel. error vs `m=5,σ=2` |
+|---|---|---|---|---|---|
+| 5 | 2.00 | POLYNOMIAL (former default = NFFT.jl's own) | 8.5 / 9.7 | 7.5 / 8.6 | 0 (reference) |
+| 4 | 2.00 | POLYNOMIAL | 7.0 / 8.1 | 5.5 / 6.4 | 3.8e-8 |
+| **4** | **1.50** | **POLYNOMIAL (new MRT default)** | **4.0 / 4.5** | **4.6 / 5.3** | **2.5e-7** |
+| 3 | 2.00 | POLYNOMIAL | 6.0 / 6.8 | 4.3 / 4.9 | 2.4e-6 |
+| 3 | 1.50 | POLYNOMIAL | 2.8 / 3.2 | 3.3 / 3.8 | 1.7e-5 |
+| 3 | 1.25 | TENSOR (MRIReco's point) | 2.5 / 2.9 | 2.8 / 3.1 | 7.1e-5 |
+| 2 | 1.50 | POLYNOMIAL | 2.3 / 2.6 | 2.4 / 2.8 | 7.4e-4 |
+| 2 | 1.25 | TENSOR | 2.0 / 2.3 | 1.9 / 2.2 | 2.1e-3 |
+
+The direct (gridding) reconstruction's NRMSE against the phantom does not move outside
+run-to-run noise across this whole table (consistent with the older measurement below, where
+NRMSE was ≈ 0.085 at both the old default and MRIReco's point) — non-Cartesian gridding-adjoint
+NRMSE is dominated by sampling/DCF artifacts, not by the gridding kernel's own accuracy, so
+forward relative error against the reference is the right proxy for "is this operating point
+accurate enough."
+
+`m=4, σ=1.5` is picked as the new default because its forward error (2.5e-7) is indistinguishable
+from full accuracy while it runs about 2x faster on the forward transform and about 1.6x faster
+on the adjoint than the old default; every point below it in the table trades measurably more
+accuracy for comparatively little extra speed. This default was chosen to keep passing the
+existing NFFT test suite (`test/test_encoding_op.jl`'s `"NFFT operating point (S6)"` item and the
+`:nfft`-tagged tests in `deps/AbstractOperators/NFFTOperators/test`) without loosening any
+tolerance.
+
+Independently, MRIReco's operating point (`m = 3`, `σ = 1.25`, `NFFT.TENSOR`) is faster still, at
+real accuracy cost: measured per coil, 4.28 ms vs 1.00 ms for a forward error of 1.6e-7 vs 5.7e-5
+against MRT's old (`m=5,σ=2`) default, while the reconstructed image's NRMSE is 0.085 either way
+(measured whole multi-coil DCF adjoint, single thread, `benchmark/comparison/scripts/
+run_noncart.jl`, 2026-09-04: MRT at its old default 25.9 ms, MRT at MRIReco's operating point
+6.1 ms, MRIReco 27.3 ms — all at NRMSE ≈ 0.085 against the phantom). At MRIReco's operating point
+MRT is faster than MRIReco while gridding more accurately; ask for it explicitly if you want the
+faster, less accurate end of the curve:
 
 ```julia
 𝒜 = get_encoding_operator(info; m = 3, sigma = 1.25, precompute = NFFT.TENSOR)
 ```
 
-Changing MRT's own defaults is a separate, measured decision (`IMPLEMENTATION_PLAN.md`, `C9`):
-it would move every non-Cartesian result in the test suite and needs its own tolerances.
+or go back to the old high-accuracy default with `m = 5, sigma = 2.0`.
 
 ## Notes for developers
 
