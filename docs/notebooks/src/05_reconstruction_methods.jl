@@ -318,22 +318,27 @@ println("SPIRiT (iterative)   ", round(nrmse(x_spirit_it, img_pi), digits = 4))
 # - `NoFidelity()` — no data term at all; the "reconstruction" is then pure denoising of the
 #   initial estimate, which is occasionally what you want (or a building block for a custom model).
 #
+# The choice is not a matter of taste: it is a statement about how much you trust `y`. An equality
+# constraint says the measurements are *exact*. That is why the comparison below is run on
+# noiseless data first — and why the second cell then shows what noise does to it.
+#
 # The algorithms named below (`DouglasRachford`, `FISTA`) are picked because they accept the
 # corresponding term; notebook 6 covers which solver goes with which problem.
 
 # %%
-# Undersampled, noisy, so the three behave differently.
+# A 4x variable-density mask, first with exact (noiseless) measurements.
 acq_us = AcquisitionInfo(;
     is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens,
     subsampling = create_sampling_pattern(
         VariableDensitySampling(PolynomialDistribution(3), 4.0, 0.05), (Nx, Ny)
     ),
 )
-data_us = add_noise(simulate_acquisition(img_pi, acq_us); snr_db = 30)
+data_clean = simulate_acquisition(img_pi, acq_us)
+data_us = add_noise(data_clean; snr_db = 30)
 
-x_l2 = reconstruct(data_us, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40); verbosity = Silent())
+x_l2 = reconstruct(data_clean, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40); verbosity = Silent())
 x_hc = reconstruct(
-    data_us,
+    data_clean,
     IterativeReconstruction(
         L1Wavelet2D(2.0f-3); fidelity = HardConsistency(maxit = 20),
         algorithm = DouglasRachford(), maxit = 40
@@ -341,11 +346,12 @@ x_hc = reconstruct(
     verbosity = Silent()
 )
 x_nf = reconstruct(
-    data_us,
+    data_clean,
     IterativeReconstruction(L1Wavelet2D(2.0f-3); fidelity = NoFidelity(), algorithm = FISTA(), maxit = 20);
     verbosity = Silent()
 )
 
+println("zero-filled     ", round(nrmse(reconstruct(data_clean; verbosity = Silent()), img_pi), digits = 4))
 println("L2Loss          ", round(nrmse(x_l2, img_pi), digits = 4))
 println("HardConsistency ", round(nrmse(x_hc, img_pi), digits = 4))
 println("NoFidelity      ", round(nrmse(x_nf, img_pi), digits = 4), "   (denoising of the initial estimate)")
@@ -354,6 +360,58 @@ side_by_side(
     unname(x_l2), unname(x_hc), unname(x_nf);
     titles = ("L2Loss", "HardConsistency", "NoFidelity"), size = (1200, 350)
 )
+
+# %% [markdown]
+# `NoFidelity` is the outlier, and it should be: with no data term the solver never looks at `y`
+# at all, so it can only denoise the zero-filled adjoint it started from. The aliasing the other two
+# *undo* is merely smoothed, which is why the result lands slightly behind the zero-filled image it
+# began with. It is a building block, not a reconstruction.
+
+# %% [markdown]
+# ### Why `HardConsistency` is a statement about the noise
+#
+# $\{x : \mathcal{A}x = y\}$ asks the solution to reproduce every measured sample exactly — noise
+# included. With a well-conditioned encoding that is harmless. With sensitivity maps and heavy
+# undersampling, $\mathcal{A}\mathcal{A}^*$ has very small eigenvalues, and satisfying the
+# constraint along those directions means multiplying the noise by their inverse. The projection is
+# doing exactly what was asked, so the failure mode is *silent*: the error grows the harder the
+# solver works.
+
+# %%
+for label in ("noiseless", "SNR 30 dB")
+    data = label == "noiseless" ? data_clean : data_us
+    errs = map((10, 40, 100)) do maxit
+        x̂ = reconstruct(
+            data,
+            IterativeReconstruction(
+                L1Wavelet2D(2.0f-3); fidelity = HardConsistency(maxit = 20),
+                algorithm = DouglasRachford(), maxit = maxit
+            );
+            verbosity = Silent()
+        )
+        round(nrmse(x̂, img_pi), digits = 4)
+    end
+    println(rpad(label, 12), " HardConsistency NRMSE at maxit = 10 / 40 / 100: ", join(errs, "  "))
+end
+
+x_l2_noisy = reconstruct(data_us, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40); verbosity = Silent())
+println("SNR 30 dB    L2Loss NRMSE at maxit = 40:                ", round(nrmse(x_l2_noisy, img_pi), digits = 4))
+
+# %% [markdown]
+# On exact data more iterations help, as they should. On noisy data the same run gets *worse* with
+# every iteration, and ends far behind the `L2Loss` reconstruction of the same data. The rule that
+# follows:
+#
+# - **`L2Loss` is the default for measured data**, because $\tfrac12\|\mathcal{A}x-y\|^2$ tolerates
+#   noise by construction and the regularizer sets how much.
+# - **`HardConsistency` belongs where the constraint is well posed**: essentially noiseless data, or
+#   — much more usefully — a problem in which $\mathcal{A}\mathcal{A}^*$ is *diagonal*, where the
+#   projection is closed-form and needs no inner CG at all. That is exactly the case for the
+#   `KSpaceToImage` signal model of §5.2, and it is why `SPIRiT(; iterative = true)` uses hard
+#   consistency: there $\mathcal{A}$ is the subsampling operator, so "keep the measured samples"
+#   really is just "keep the measured samples".
+# - **`NoFidelity`** is for denoising an estimate you already have, or as a component of a custom
+#   model.
 
 # %% [markdown]
 # ## 5. Signal models
@@ -717,11 +775,16 @@ catch e
 end
 
 # %%
-# Regular stride, but no ACS block at all: nothing to calibrate the kernel on.
+# Regular stride, but no ACS block at all: nothing to calibrate the kernel on. `check_applicable`
+# inspects the sampling pattern of *acquired data*, so this needs simulated k-space, not just the
+# empty `AcquisitionInfo` description.
 mask_no_acs = falses(Ny)
 mask_no_acs[1:2:Ny] .= true
-acq_no_acs = AcquisitionInfo(;
-    is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens, subsampling = (:, mask_no_acs)
+acq_no_acs = simulate_acquisition(
+    img_pi,
+    AcquisitionInfo(;
+        is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens, subsampling = (:, mask_no_acs)
+    )
 )
 try
     check_applicable(GRAPPA(), acq_no_acs)
