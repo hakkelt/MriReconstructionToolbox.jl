@@ -37,12 +37,18 @@ arguments.
 - `ksp`: Non-Cartesian k-space data array
 - `image_size::Tuple`: Cartesian image grid size used for the NFFT domain
 - `trajectory`: Sampling trajectory; its leading dimension stores coordinates
-- `dcf`: Optional density compensation factors matching the trajectory sample layout
-- `m`, `sigma`, `precompute`: Optional NFFT gridding operating point (kernel half-width,
-  oversampling factor, `NFFT.PrecomputeFlags`), forwarded to `NFFTOp`/NFFT.jl. Left at
-  `nothing` (the default), nothing is forwarded and NFFT.jl's own defaults apply, unchanged
-  from before this keyword existed. See "Non-Cartesian accuracy / speed trade-off" in
-  `docs/src/high-level/performance.md` for the accuracy/speed numbers this trades off.
+- `dcf`: Density compensation, forwarded to `NFFTOp` unchanged: `nothing` (the default) applies
+  none, so the resulting operator's adjoint is the true adjoint; `:auto` estimates it with
+  NFFTOperators' iterative sample density compensation method; an array matching the trajectory
+  sample layout is used as given. See `NFFTOp`'s docstring for the full contract and why `:auto`
+  or an explicit array makes the adjoint a density-compensated approximate inverse, not the true
+  adjoint.
+- `m`, `sigma`, `precompute`: NFFT gridding operating point (kernel half-width, oversampling
+  factor, `NFFT.PrecomputeFlags`), forwarded to `NFFTOp`/NFFT.jl. Left at `nothing` (the
+  default), MRT's own default operating point is used (`DEFAULT_NFFT_M`, `DEFAULT_NFFT_SIGMA`,
+  `DEFAULT_NFFT_PRECOMPUTE` -- a lower-accuracy, faster point than NFFT.jl's own default). See
+  "Non-Cartesian accuracy / speed trade-off" in `docs/src/high-level/performance.md` for the
+  measured accuracy/speed table this default is picked from.
 
 # Returns
 - A Fourier encoding operator backed by `DFT` for Cartesian data or `NFFTOp`
@@ -184,12 +190,23 @@ end
                           dcf=nothing, threaded=true, m=nothing, sigma=nothing, precompute=nothing)
 
 Non-Cartesian (NFFT-backed) Fourier operator. `m`, `sigma` (`σ`) and `precompute` expose the
-gridding operating point NFFT.jl otherwise picks on its own: `m` is the interpolation kernel's
-half-width, `sigma` its oversampling factor, `precompute` the `NFFT.PrecomputeFlags` gridding
-strategy. Leaving them at `nothing` (the default) forwards nothing extra to `NFFTOp`/`NFFT.jl`,
-so existing behaviour is unchanged; a lower-accuracy point trades forward/adjoint accuracy for
-speed (`docs/src/high-level/performance.md`, "Non-Cartesian accuracy / speed trade-off" — the
-default here is NFFT.jl's own high-accuracy point, not the one that section recommends).
+gridding operating point: `m` is the interpolation kernel's half-width, `sigma` its oversampling
+factor, `precompute` the `NFFT.PrecomputeFlags` gridding strategy. Leaving them at `nothing` (the
+default) uses MRT's own default operating point (`m=4, σ=1.5, precompute=NFFT.POLYNOMIAL` —
+`DEFAULT_NFFT_M`/`DEFAULT_NFFT_SIGMA`/`DEFAULT_NFFT_PRECOMPUTE`), chosen for speed at negligible
+accuracy cost; pass explicit values for a different point on the accuracy/speed curve, e.g.
+NFFT.jl's own higher-accuracy default (`m=5, sigma=2.0`) or MRIReco's faster, less accurate one
+(`m=3, sigma=1.25, precompute=NFFT.TENSOR`). See "Non-Cartesian accuracy / speed trade-off" in
+`docs/src/high-level/performance.md` for the measured table.
+
+`dcf` (density compensation) is forwarded to `NFFTOp` unchanged: `nothing` (the default) applies
+none, so `op'` is the *true* adjoint of `op` (required by anything that assumes the adjoint
+relationship, e.g. operator-norm estimation, CG/CGNR); `:auto` estimates it with NFFTOperators'
+iterative sample density compensation method; an array is used as given. Both `:auto` and an
+explicit array make `op'` a density-compensated approximate inverse instead of the true adjoint —
+useful for a quick direct (gridding) reconstruction, wrong as the adjoint fed to an
+adjoint-assuming algorithm. See `NFFTOp`'s docstring (`deps/AbstractOperators/NFFTOperators`) for
+the full contract.
 """
 function get_fourier_operator(
         ksp::AbstractArray,
@@ -205,26 +222,61 @@ function get_fourier_operator(
     batch_dims = size(ksp)[(fourier_dims + 1):end]
     inner_threaded = threaded && isempty(batch_dims)
     nfft_kwargs = _nfft_operating_point_kwargs(m, sigma, precompute)
-    𝒩 = if isnothing(dcf)
-        NFFTOp(image_size, trajectory; threaded = inner_threaded, nfft_kwargs...)
-    else
-        NFFTOp(image_size, trajectory, dcf; threaded = inner_threaded, nfft_kwargs...)
-    end
+    # `dcf` is forwarded to `NFFTOp` as-is: `nothing` (the default) means no density
+    # compensation (the true adjoint), `:auto` requests NFFTOperators' own estimator, and an
+    # array is used as given. See `NFFTOp`'s docstring for the full contract.
+    𝒩 = NFFTOp(image_size, trajectory, dcf; threaded = inner_threaded, nfft_kwargs...)
     if isempty(batch_dims)
         return 𝒩
     end
     return BatchOp(𝒩, batch_dims; threaded)
 end
 
-# Only forward what was actually asked for, so leaving `m`/`sigma`/`precompute` at `nothing`
-# reaches `NFFTOp`/`NFFT.jl` exactly as before this keyword existed -- their own defaults,
-# untouched.
+"""
+    DEFAULT_NFFT_M, DEFAULT_NFFT_SIGMA, DEFAULT_NFFT_PRECOMPUTE
+
+MRT's own default NFFT gridding operating point, applied whenever `m`/`sigma`/`precompute` are
+left at `nothing` on `get_fourier_operator`/`get_encoding_operator`. Measured on a 128×128 radial
+phantom (`GeometricMedicalPhantoms`'s Shepp-Logan, 256 samples × 128 spokes), single thread,
+interleaved runs (`benchmark/comparison`-style methodology; a single measurement on this shared
+node can swing 30-60%, so configs were timed round-robin rather than one after another):
+
+| m | σ | precompute | forward (min/median ms) | adjoint (min/median ms) | forward rel. error |
+|---|---|---|---|---|---|
+| 5 | 2.00 | POLYNOMIAL (former MRT default = NFFT.jl's own default) | 8.5 / 9.7 | 7.5 / 8.6 | 0 (reference) |
+| 4 | 2.00 | POLYNOMIAL | 7.0 / 8.1 | 5.5 / 6.4 | 3.8e-8 |
+| **4** | **1.50** | **POLYNOMIAL (new MRT default)** | **4.0 / 4.5** | **4.6 / 5.3** | **2.5e-7** |
+| 3 | 2.00 | POLYNOMIAL | 6.0 / 6.8 | 4.3 / 4.9 | 2.4e-6 |
+| 3 | 1.50 | POLYNOMIAL | 2.8 / 3.2 | 3.3 / 3.8 | 1.7e-5 |
+| 3 | 1.25 | TENSOR (MRIReco's point) | 2.5 / 2.9 | 2.8 / 3.1 | 7.1e-5 |
+| 2 | 1.50 | POLYNOMIAL | 2.3 / 2.6 | 2.4 / 2.8 | 7.4e-4 |
+| 2 | 1.25 | TENSOR | 2.0 / 2.3 | 1.9 / 2.2 | 2.1e-3 |
+
+`m=4, σ=1.5, POLYNOMIAL` is chosen as the new default: forward relative error against the old
+default is 2.5e-7 -- indistinguishable from full accuracy for reconstruction purposes (the direct
+gridding reconstruction's NRMSE against the phantom does not move outside run-to-run noise across
+this whole table, consistent with `docs/src/high-level/performance.md`'s existing observation
+that gridding-adjoint NRMSE barely depends on the operating point) -- while running about 2x
+faster on the forward transform and about 1.6x faster on the adjoint than the old default. Every
+row below it in the table trades measurably more accuracy for comparatively little extra speed.
+
+Call `get_fourier_operator`/`get_encoding_operator` with explicit `m`, `sigma`, `precompute`
+keywords to override this (e.g. to match MRIReco's `m=3, σ=1.25, precompute=NFFT.TENSOR`, or to
+go back to the old high-accuracy default with `m=5, sigma=2.0`).
+"""
+const DEFAULT_NFFT_M = 4
+const DEFAULT_NFFT_SIGMA = 1.5
+const DEFAULT_NFFT_PRECOMPUTE = NFFT.POLYNOMIAL
+
+# Always forward a concrete operating point: leaving `m`/`sigma`/`precompute` at `nothing` now
+# substitutes MRT's own (lower-accuracy, faster) default rather than NFFT.jl's own default -- see
+# `DEFAULT_NFFT_M` and friends for the measured justification.
 function _nfft_operating_point_kwargs(m, sigma, precompute)
-    kwargs = NamedTuple()
-    isnothing(m) || (kwargs = (; kwargs..., m))
-    isnothing(sigma) || (kwargs = (; kwargs..., σ = sigma))
-    isnothing(precompute) || (kwargs = (; kwargs..., precompute))
-    return kwargs
+    return (
+        m = isnothing(m) ? DEFAULT_NFFT_M : m,
+        σ = isnothing(sigma) ? DEFAULT_NFFT_SIGMA : sigma,
+        precompute = isnothing(precompute) ? DEFAULT_NFFT_PRECOMPUTE : precompute,
+    )
 end
 
 """
