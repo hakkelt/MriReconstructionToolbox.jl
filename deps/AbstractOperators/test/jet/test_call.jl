@@ -16,6 +16,7 @@
     @test_call target_modules = (AO,) Eye(n)
     @test_call target_modules = (AO,) ZeroPad((n,), m)
     @test_call target_modules = (AO,) GetIndex((n,), 1:4)
+    @test_call target_modules = (AO,) Hankel(Float64, (n,), (3,))
     @test_call target_modules = (AO,) Variation(n, 2)
     @test_call target_modules = (AO,) FiniteDiff((n,))
     @test_call target_modules = (AO,) Zeros(Float64, (n,), Float64, (n,))
@@ -80,6 +81,10 @@
     # GetIndex
     @test_call target_modules = (AO,) mul!(zeros(m), GetIndex((n,), 1:m), x)
     @test_call target_modules = (AO,) mul!(x, AdjointOperator(GetIndex((n,), 1:m)), zeros(m))
+
+    # Hankel (codomain = ℝ^(n-2, 3))
+    @test_call target_modules = (AO,) mul!(zeros(n - 2, 3), Hankel(Float64, (n,), (3,)), x)
+    @test_call target_modules = (AO,) mul!(x, AdjointOperator(Hankel(Float64, (n,), (3,))), zeros(n - 2, 3))
 
     # Zeros
     @test_call target_modules = (AO,) mul!(y, Zeros(Float64, (n,), Float64, (n,)), x)

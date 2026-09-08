@@ -25,6 +25,10 @@
     @test_opt target_modules = (AO,) mul!(zeros(m), GetIndex((n,), 1:m), x)
     @test_opt target_modules = (AO,) mul!(x, AdjointOperator(GetIndex((n,), 1:m)), zeros(m))
 
+    # Hankel (codomain = ℝ^(n-2, 3))
+    @test_opt target_modules = (AO,) mul!(zeros(n - 2, 3), Hankel(Float64, (n,), (3,)), x)
+    @test_opt target_modules = (AO,) mul!(x, AdjointOperator(Hankel(Float64, (n,), (3,))), zeros(n - 2, 3))
+
     # Zeros
     @test_opt target_modules = (AO,) mul!(y, Zeros(Float64, (n,), Float64, (n,)), x)
     @test_opt target_modules = (AO,) mul!(y, AdjointOperator(Zeros(Float64, (n,), Float64, (n,))), x)

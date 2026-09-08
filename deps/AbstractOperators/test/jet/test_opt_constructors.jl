@@ -14,6 +14,8 @@
     @test_opt target_modules = (AO,) DiagOp(d)
     @test_opt target_modules = (AO,) Eye(n)
     @test_opt target_modules = (AO,) GetIndex((n,), 1:4)
+    @test_opt target_modules = (AO,) Hankel(Float64, (n,), (3,))
+    @test_opt target_modules = (AO,) Hankel(ComplexF64, (6, 5), (2, 2); nchannels = 3)
     @test_opt target_modules = (AO,) ZeroPad((n,), m)
     @test_opt target_modules = (AO,) Variation(n, 2)
     @test_opt target_modules = (AO,) FiniteDiff((n,))
