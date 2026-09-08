@@ -231,7 +231,8 @@ end
 # The component counterpart of `_present_image`: sum the per-component iterates into the total
 # image and name both. An `on_iteration` callback on this path therefore receives the same
 # `DecomposedImage` type it gets back from `reconstruct`.
-function _present_components(xs::Tuple, names, method::IterativeReconstruction, acq_data)
+function _present_components(xs, names, method::IterativeReconstruction, acq_data)
+    xs = _component_parts(xs)
     total_x = broadcast(+, xs...)
     if acq_data.kspace_data isa NamedDimsArray
         img_dimnames = output_dims(method, acq_data)
@@ -240,3 +241,9 @@ function _present_components(xs::Tuple, names, method::IterativeReconstruction, 
     end
     return DecomposedImage(total_x, NamedTuple{names}(xs))
 end
+
+# `_extract_solution` hands back a `Tuple` of variables, but a solver *iterate* on the component
+# path is the `ArrayPartition` the multi-variable problem is solved over. Both name the same
+# per-component arrays, so normalize to a tuple before assembling the image.
+_component_parts(xs::Tuple) = xs
+_component_parts(xs::ArrayPartition) = xs.x
