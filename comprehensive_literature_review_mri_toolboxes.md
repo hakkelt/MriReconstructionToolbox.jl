@@ -171,7 +171,7 @@ This document presents a review of the state of computational MRI reconstruction
 #### 2. XD-GRASP (Extra-Dimensional Golden-Angle Radial Sparse Parallel MRI)
 * **Seminal Paper:** Feng, L., et al. (2016). *XD-GRASP: Golden-angle radial MRI with reconstruction of extra motion-state dimensions using compressed sensing.* Magnetic Resonance in Medicine, 75(2), 775–788. [DOI: 10.1002/mrm.25665](https://doi.org/10.1002/mrm.25665).
 * **Concept:** Uses continuous golden-angle radial acquisition to extract self-navigation signals (respiratory or cardiac motion curves from the k-space center) and sorts data into multi-dimensional motion-state bins (e.g. contrast × respiratory × cardiac), followed by multi-dimensional regularized reconstruction (TV across the extra dimensions).
-* **Fit with MRT:** the *reconstruction* half of XD-GRASP is already expressible today — once data are binned, `TemporalTotalVariation` over the extra dimension plus the existing decomposition machinery covers it. What is missing is the **binning half**: self-gating signal extraction, motion-state sorting, and the resulting non-uniform per-bin trajectories.
+* **Fit with MRT:** the *reconstruction* half of XD-GRASP is already expressible today — once data are binned, `TemporalTotalVariation` over the extra dimension plus the existing task-splitting machinery covers it. What is missing is the **binning half**: self-gating signal extraction, motion-state sorting, and the resulting non-uniform per-bin trajectories.
 * **Missing in MRT:** Self-gating signal extraction and multi-dimensional binning utilities.
 
 ---
@@ -229,7 +229,7 @@ This document presents a review of the state of computational MRI reconstruction
   - Pruessmann, K. P., Weiger, M., Scheidegger, M. B., & Boesiger, P. (1999). *SENSE: Sensitivity encoding for fast MRI.* Magnetic Resonance in Medicine, 42(5), 952–962. [DOI: 10.1002/(SICI)1522-2594(199911)42:5<952::AID-MRM16>3.0.CO;2-S](https://doi.org/10.1002/(SICI)1522-2594(199911)42:5%3C952::AID-MRM16%3E3.0.CO;2-S).
   - Robson, P. M., et al. (2008). *Comprehensive quantification of signal-to-noise ratio and g-factor for image-based and k-space-based parallel imaging reconstructions.* Magnetic Resonance in Medicine, 60(4), 895–907. [DOI: 10.1002/mrm.21728](https://doi.org/10.1002/mrm.21728).
 * **Concept:** The g-factor quantifies spatially varying noise amplification from parallel imaging. For non-linear or iterative reconstructions no closed form exists, and the **pseudo-replica** method estimates it empirically by repeating the reconstruction with synthetic noise realizations added to the data.
-* **Fit with MRT:** the pseudo-replica method is embarrassingly parallel and maps cleanly onto MRT's existing `ReconstructionExecutor` / decomposition infrastructure — it is a loop over the same `reconstruct` call with perturbed data. Low implementation cost, high diagnostic value, and it applies to *every* method in this document.
+* **Fit with MRT:** the pseudo-replica method is embarrassingly parallel and maps cleanly onto MRT's existing `ReconstructionExecutor` / task-splitting infrastructure — it is a loop over the same `reconstruct` call with perturbed data. Low implementation cost, high diagnostic value, and it applies to *every* method in this document.
 * **Missing in MRT:** g-factor and SNR-map utilities.
 
 ---
@@ -773,7 +773,7 @@ Perform image reconstruction on `acq_data` using the specified `method`.
   `ImageDomain`, a multi-channel k-space array for `KSpaceDomain`, and a `Tuple`/`NamedTuple` of
   image-sized arrays when the method's regularization is a set of `Component`s.
 - all existing `Config` keywords (`tol`, `maxit`, `verbose`, `threaded`, `normalization`,
-  `disable_problem_decomposition`, …) are unchanged.
+  `disable_task_splitting`, …) are unchanged.
 """
 function reconstruct(
         acq_data::AcquisitionInfo,
@@ -842,25 +842,25 @@ mistyped name surface later.
 
 ---
 
-### 5.10 Problem Decomposition
+### 5.10 Task Splitting
 
-Automatic problem decomposition integrates with the method and its domain:
+Automatic task splitting integrates with the method and its domain:
 
-* **`DirectReconstruction`**: decomposes over all non-Fourier batch dimensions.
-* **`IterativeReconstruction{…, ImageDomain}`**: decomposes over image batch dimensions unaffected
+* **`DirectReconstruction`**: splits over all non-Fourier batch dimensions.
+* **`IterativeReconstruction{…, ImageDomain}`**: splits over image batch dimensions unaffected
   by any regularizer — unchanged from today.
-* **`IterativeReconstruction{…, KSpaceDomain}`**: decomposes over batch dimensions (slices,
+* **`IterativeReconstruction{…, KSpaceDomain}`**: splits over batch dimensions (slices,
   contrasts) while keeping $(k_x, k_y, N_c)$ intact on each subproblem. The **coil dimension must
   never be split**, since every k-space method couples channels by construction.
-* **`GRAPPA` / `Homodyne`**: decompose across batch dimensions, performing calibration and synthesis
+* **`GRAPPA` / `Homodyne`**: split across batch dimensions, performing calibration and synthesis
   per slice.
 * **`signal_model` interaction**: a signal model couples the dimensions it acts on, exactly as a
-  regularizer does. `TemporalBasis(Φ)` couples the temporal dimension and forbids decomposition
-  over it; `OffResonance` couples nothing extra. The decomposition planner therefore needs
+  regularizer does. `TemporalBasis(Φ)` couples the temporal dimension and forbids task splitting
+  over it; `OffResonance` couples nothing extra. The task-splitting planner therefore needs
   `get_affected_dims(signal_model, …)` alongside the existing regularizer query — this is a small
-  but easy-to-miss extension of `get_problem_decomposition_plan`.
+  but easy-to-miss extension of `get_task_splitting_plan`.
 * **SMS caveat (future)**: simultaneous multi-slice breaks the assumption that slices are separable
-  subproblems. If SMS is ever added, the decomposition planner must be told that the slice
+  subproblems. If SMS is ever added, the task-splitting planner must be told that the slice
   dimension is coupled.
 
 ---

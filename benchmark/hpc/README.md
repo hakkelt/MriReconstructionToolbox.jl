@@ -12,7 +12,7 @@ MRIReco against, so the two folders never re-measure the same thing.
 | script | what it measures |
 |---|---|
 | `scripts/recon_bench.jl` | end-to-end `reconstruct` timings for the standard method set (TV, L1-wavelet, TGV, CG-SENSE, low-rank, temporal TV, GRAPPA), 1 vs N threads, OpenBLAS vs MKL. Writes `results/mrt_<backend>_<n>threads.json`. |
-| `scripts/threading_sweep.jl` | the BLAS-1 (CG-shaped) and BLAS-3 (SVD-shaped) work-item sweeps behind `SERIAL_BLAS_THRESHOLD_BYTES` and `maybe_disable_undecomposed_threading`. |
+| `scripts/threading_sweep.jl` | the BLAS-1 (CG-shaped) and BLAS-3 (SVD-shaped) work-item sweeps behind `SERIAL_BLAS_THRESHOLD_BYTES` and `maybe_disable_unsplit_threading`. |
 | `scripts/probe.jl` | what the process sees of its own core budget (`Cpus_allowed_list`, `jl_effective_threads`, the `LinearAlgebra` default, SLURM env). |
 
 ## Running

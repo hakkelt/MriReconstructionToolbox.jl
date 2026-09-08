@@ -1,7 +1,7 @@
 # Where "serial BLAS wins" stops being true: sweep work-item size and batch width for a
 # BLAS-1 (CG-shaped) loop and, separately, a BLAS-3 (SVD-shaped) loop of the kind the
 # locally-low-rank / multi-scale-low-rank prox steps run. This is the evidence behind
-# SERIAL_BLAS_THRESHOLD_BYTES and maybe_disable_undecomposed_threading.
+# SERIAL_BLAS_THRESHOLD_BYTES and maybe_disable_unsplit_threading.
 #
 # usage: julia --project=benchmark/hpc -t N benchmark/hpc/scripts/threading_sweep.jl <openblas|mkl> <blas_threads> <cg|svd>
 #   cg  : env N, NCOIL, NSLICE, NITER
