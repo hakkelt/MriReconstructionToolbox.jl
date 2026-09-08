@@ -195,7 +195,8 @@ relative to a slice solve, so it goes in only as a tidy-up alongside other `deco
 
 ### S6 — Expose the NFFT operating point (§8)
 
-**Done** (2026-09-03), API only — defaults unmoved (that is `C9`). `get_fourier_operator`
+**Done** (2026-09-03), API only — defaults unmoved at the time (see below for the follow-up that
+moved them). `get_fourier_operator`
 (the `(ksp, image_size, trajectory)` method, its `NamedDimsArray` wrapper, and the
 `NonCartesianAcquisitionInfo` method) and `get_encoding_operator(::NonCartesianAcquisitionInfo)`
 now take `m`, `sigma`, `precompute` keywords, all defaulting to `nothing` and only forwarded to
@@ -229,6 +230,19 @@ API gives the caller no way to choose.
   docstring updates on both `get_fourier_operator` methods.
 - Tests (`:nfft`): the operator built at the low-accuracy point still passes the adjoint dot-test
   and reconstructs the phantom within a stated, looser tolerance.
+
+**Defaults moved** (2026-09-08): `_nfft_operating_point_kwargs` in
+`src/encoding/fourier_operators.jl` now substitutes `DEFAULT_NFFT_M = 4`,
+`DEFAULT_NFFT_SIGMA = 1.5`, `DEFAULT_NFFT_PRECOMPUTE = NFFT.POLYNOMIAL` whenever the caller
+leaves `m`/`sigma`/`precompute` at `nothing`, instead of forwarding nothing (which meant NFFT.jl's
+own `m=5, σ=2.0`). Measured on a 128×128 radial Shepp-Logan phantom, interleaved timings: forward
+relative error against the old default is 2.5e-7 (indistinguishable from full accuracy) while the
+forward transform is ~2x and the adjoint ~1.6x faster; existing NFFT tests
+(`test/test_encoding_op.jl`'s `"NFFT operating point (S6)"`, `deps/AbstractOperators/
+NFFTOperators/test`'s `:nfft`-tagged items) pass unmodified, with no tolerance loosened. Full
+measured table in `docs/src/high-level/performance.md`'s "Non-Cartesian accuracy / speed
+trade-off" section. This folds in what this plan called `C9`'s default-change half; `C9` itself
+(refreshing the multi-toolbox benchmark tables) is unaffected and still open.
 
 ---
 
