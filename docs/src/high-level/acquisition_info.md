@@ -386,7 +386,16 @@ println("With sensitivity maps:", info2)
 
 ## Density Compensation (Non-Cartesian)
 
-Non-Cartesian acquisitions (such as radial, spiral, or arbitrary k-space trajectories) require density compensation factors (DCF) for direct adjoint reconstruction. `NonCartesianAcquisitionInfo` holds the trajectory and optional `dcf` array.
+Non-Cartesian acquisitions (such as radial, spiral, or arbitrary k-space trajectories) need density compensation factors (DCF) to turn the adjoint NFFT into a usable direct (gridding) reconstruction — the adjoint on its own is *not* an inverse for non-uniformly sampled data. `NonCartesianAcquisitionInfo` holds the trajectory and an optional `dcf` array.
+
+**`acq.dcf` defaults to `nothing`, and `nothing` means no density compensation is applied**: the
+encoding operator's adjoint stays the mathematically true adjoint of the forward NFFT. This
+matters for anything that assumes `𝒜'` is the true adjoint of `𝒜` — operator-norm estimation,
+CG/CGNR, and any algorithm built on that relationship. Reconstructing directly from a
+`NonCartesianAcquisitionInfo` you have not run `density_compensation` on therefore does *not*
+silently pull in a density-weighted adjoint; call `density_compensation` explicitly when you want
+one (e.g. for a quick direct reconstruction), and be aware that once you do, the operator's
+adjoint is a density-compensated approximate inverse, not the true adjoint.
 
 You can compute the DCF directly using `density_compensation`:
 
