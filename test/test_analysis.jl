@@ -85,6 +85,7 @@ end
 @testitem "Pseudo-replica: non-Cartesian acquisition" tags = [:analysis, :nfft] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
 
     Nsamples, Nspokes, Nc = 48, 21, 4
     angles = range(0, π, length = Nspokes + 1)[1:Nspokes]

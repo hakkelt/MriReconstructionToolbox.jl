@@ -13,7 +13,7 @@ end
 @testitem "PipeMenonDCF density compensation" tags = [:acquisition, :nfft] begin
     using Test
     using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
+    using MriReconstructionToolbox: get_encoding_operator, NonCartesianAcquisitionInfo
     using NamedDims
 
     nsamp, nspokes = 32, 16
@@ -53,7 +53,7 @@ end
 @testitem "VoronoiDCF density compensation" tags = [:acquisition] begin
     using Test
     using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
+    using MriReconstructionToolbox: get_encoding_operator, NonCartesianAcquisitionInfo
     using NamedDims
 
     nsamp, nspokes = 32, 16
@@ -89,7 +89,7 @@ end
 @testitem "DCF radial reconstruction accuracy" tags = [:reconstruction, :nfft, :quality] begin
     using Test
     using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
+    using MriReconstructionToolbox: get_encoding_operator, NonCartesianAcquisitionInfo
     using LinearAlgebra
     using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
 
