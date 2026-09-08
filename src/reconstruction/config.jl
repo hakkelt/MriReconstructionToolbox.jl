@@ -107,7 +107,7 @@ const _METHOD_OWNED_KWARGS = Dict{Symbol, String}(
 function check_kwargs(kwargs)
     for key in keys(kwargs)
         if haskey(_METHOD_OWNED_KWARGS, key) && !hasfield(ReconstructionConfig, key)
-            throw(ArgumentError("`$key` is no longer a `ReconstructionConfig` field. $(_METHOD_OWNED_KWARGS[key])"))
+            throw(ArgumentError("`$key` belongs to the reconstruction method, not `ReconstructionConfig`. $(_METHOD_OWNED_KWARGS[key])"))
         end
         @argcheck hasfield(ReconstructionConfig, key) "Unknown keyword argument: $key"
     end

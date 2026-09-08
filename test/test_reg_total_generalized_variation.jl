@@ -177,6 +177,7 @@ end
     using LinearAlgebra
     using GeometricMedicalPhantoms
     using Random
+    using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
     using StructuredOptimization
 

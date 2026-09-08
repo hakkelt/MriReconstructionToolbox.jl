@@ -561,6 +561,7 @@ end
 end
 
 @testitem "Per-slice threading gate" tags = [:reconstruction, :integration] begin
+    using MriReconstructionToolbox
     using GeometricMedicalPhantoms
     const MRT = MriReconstructionToolbox
 
@@ -603,6 +604,7 @@ end
 end
 
 @testitem "Serial-BLAS threshold is settable" tags = [:reconstruction] begin
+    using MriReconstructionToolbox
     const MRT = MriReconstructionToolbox
 
     @test MRT.serial_blas_threshold_bytes() == MRT.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES

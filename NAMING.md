@@ -33,17 +33,23 @@ name is `L1TemporalFourier` (matching BART's "l1-Fourier") and why the identity-
 The rule is satisfied when the *penalty* is legible, by whatever means:
 
 - by an explicit norm prefix — `L1Image`, `L2Image`, `L1Wavelet2D`, `L1Contourlet`,
-  `L1TemporalFourier`;
+  `L1TemporalFourier`, `L0Image`, `L0Wavelet2D`, `L0Wavelet3D`;
 - by a penalty name that is itself standard — `TotalVariation2D`, `TotalGeneralizedVariation2D`,
   `JointSparsity`, `LowRank`, `LocallyLowRank`, `EdgePreservingRoughness2D`, `ReferencePrior`,
-  `PlugAndPlay`, `HardThreshold`.
+  `PlugAndPlay`.
 
 A name that states only a transform (`Wavelet2D`, `TemporalFourier`) fails the rule.
 
 **Rule 1.3 — Constraints read as constraints.** A hard constraint (an indicator function) is named
-for the set, not for a norm: `RankLimit`, `SparsityLimit`, `NonNegative`, `BoxConstraint`,
-`HardConsistency`. Where a penalty and a constraint express the same idea, pair them: `LowRank` /
-`RankLimit`.
+for the set, not for a norm: `RankLimit`, `NonNegative`, `BoxConstraint`, `HardConsistency`. Where a
+penalty and a constraint express the same idea via two otherwise-identical types, pair them as
+separate names: `LowRank` / `RankLimit`. Where the penalty and the constraint are two proximal
+operators on the *same* sparsifying transform (nothing else differs — same operator, same
+`get_affected_dims`/`scale_regularization` shape aside from the constraint's scale-invariance), fold
+them into one type taking `threshold` (penalty) XOR `count` (constraint) as mutually-exclusive
+keywords instead of minting a second type name: `L0Image(; threshold, count)`,
+`L0Wavelet2D(; threshold, count)`, `L0Wavelet3D(; threshold, count)` (there is no separate
+`SparsityLimit`).
 
 **Rule 1.4 — Acronyms are kept when they are the field's own.** `GRAPPA`, `SPIRiT`, `ESPIRiT`,
 `POCS`, `RING`, `SVDCompression`, `GeometricCompression`, `PipeMenonDCF`, `VoronoiDCF`,
@@ -69,9 +75,8 @@ single type (`TV` cannot stand for both `TotalVariation2D` and `TotalVariation3D
 
 **Rule 3.1** — Spatial dimensionality is expressed by a `2D` / `3D` type suffix
 (`TotalVariation2D/3D`, `SecondOrderTotalVariation2D/3D`, `EdgePreservingRoughness2D/3D`,
-`L1Wavelet2D/3D`, `TotalGeneralizedVariation2D/3D`) **or** by a constructor field
-(`PlugAndPlay(spatial_dims)`, `HardThreshold(domain = :wavelet2d)`). Within one family, pick one and
-do not mix.
+`L1Wavelet2D/3D`, `L0Wavelet2D/3D`, `TotalGeneralizedVariation2D/3D`) **or** by a constructor field
+(`PlugAndPlay(spatial_dims)`). Within one family, pick one and do not mix.
 
 **Rule 3.2** — A family that offers a 2D member should offer the 3D member too. A missing twin is a
 gap, not a design decision; if it is deliberate, say why in the docstring.
