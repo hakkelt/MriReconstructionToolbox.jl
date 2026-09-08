@@ -85,12 +85,12 @@ y = data.kspace_data
 println("‖𝒜ᴴy − (𝒫ℱ𝒮)ᴴy‖ / ‖𝒜ᴴy‖ = ", norm(𝒜' * y - 𝒜_manual' * y) / norm(𝒜' * y))
 
 x_adj = 𝒜' * y
-jim(x_adj; title = "𝒜ᴴy — the direct reconstruction, by hand", size = (400, 350))
+jim(x_adj; title = "A'y - direct reconstruction, by hand", size = (400, 350))
 
 # %% [markdown]
 # ## 2. Adjoint and operator-norm checks
 #
-# Two things worth knowing when you build or wrap operators yourself.
+# Three things worth knowing when you build or wrap operators yourself.
 #
 # First, the FFT convention. MRT's Fourier operator is the `fft`/`ifft` pair, not the unitary one:
 # the forward transform is unnormalized and `'` carries the `1/(nx·ny)` factor. So `𝒜'` is the
@@ -110,7 +110,48 @@ println("⟨u, 𝒜'v⟩  = ", rhs)
 println("ratio      = ", round(real(lhs / rhs), digits = 3), "   (nx·ny = ", nx * ny, ")")
 
 # %% [markdown]
-# Second, the operator norm: it sets the step size of every proximal algorithm, and MRT estimates
+# Second, a subtler way to break the same identity: density compensation. It does not apply to
+# `𝒜` above (this notebook's acquisition is Cartesian), but it is the sharpest illustration of
+# "an operator that looks like an adjoint but isn't", so it is worth seeing directly on
+# `NFFTOperators.jl`'s `NFFTOp`, the operator behind every non-Cartesian `𝒜` (notebook 8).
+#
+# `NFFTOp`'s `dcf` keyword only ever weights the *adjoint* direction (`op' * y`) — the forward
+# direction (`op * image`) never sees it. Its default is `dcf = nothing` (no compensation), which
+# is exactly what makes `op'` the *true* adjoint of `op` and the dot-product identity hold up to
+# the FFT scaling above. Passing `dcf = :auto` (or an array) turns `op'` into a density-weighted
+# *approximate inverse* instead — the fast way to get a reasonable-looking direct reconstruction
+# from non-uniform samples, but no longer the mathematical adjoint, so the identity fails outright
+# rather than by a fixed scale factor. This is why MRT's own encoding operators default to no
+# density compensation (`density_compensation` is an explicit, opt-in preprocessing step, not
+# something silently baked into `𝒜'`) — anything that assumes `A'` is the adjoint (operator-norm
+# estimation via power iteration, CG/CGNR, the check above) needs the true adjoint, not an
+# approximate inverse.
+
+# %%
+using NFFTOperators: NFFTOp
+
+traj = Float32.(rand(2, 64, 32) .- 0.5f0)         # a small throwaway radial-ish trajectory
+𝒩_true_adjoint = NFFTOp((nx, ny), traj)            # dcf = nothing (the default): op' is the true adjoint
+𝒩_dcf = NFFTOp((nx, ny), traj, :auto)              # dcf = :auto: op' is a density-weighted approximate inverse
+
+u_n = randn(ComplexF32, nx, ny)
+v_n = randn(ComplexF32, size(traj, 2), size(traj, 3))
+
+for (label, 𝒩) in ("no DCF (dcf = nothing)" => 𝒩_true_adjoint, "DCF (dcf = :auto)" => 𝒩_dcf)
+    lhs_n = dot(𝒩 * u_n, v_n)
+    rhs_n = dot(u_n, 𝒩' * v_n)
+    println(
+        rpad(label, 24), ":  ⟨Nu, v⟩ = ", round(lhs_n, digits = 3), "   ⟨u, N'v⟩ = ",
+        round(rhs_n, digits = 3), "   ratio = ", round(real(lhs_n / rhs_n), digits = 3)
+    )
+end
+
+# ⟨Nu, v⟩ is identical in both rows — the forward direction never uses dcf. Only ⟨u, N'v⟩ moves,
+# and with DCF the ratio is nowhere near 1: the dot-product identity has failed, not just been
+# rescaled.
+
+# %% [markdown]
+# Third, the operator norm: it sets the step size of every proximal algorithm, and MRT estimates
 # it with 20 power iterations before each solve.
 
 # %%
@@ -175,18 +216,34 @@ jim(
 )
 
 # %%
-# Two variables, two priors: a sparse part and a part that is low rank after a wavelet transform.
-# This is the L+S model of notebook 7, written directly.
+# Two variables, two priors, summed into one image: `a` is penalized by plain image-domain ℓ1
+# (sparse pixels) and `b` by wavelet-domain ℓ1 (sparse wavelet coefficients). This is the same
+# additive, multi-variable syntax notebook 7's L+S model uses — but not the same model: L+S there
+# is low-rank (nuclear norm of the space × time Casorati matrix) plus sparse, which needs several
+# time frames to have a matrix to be low rank across; a single static image does not. Here both
+# terms are ℓ1, just in different domains, so the point is the *syntax* — `@minimize` accepts any
+# number of `Variable`s and sums their terms — not a claim that this decomposition is meaningful
+# on its own.
 a = Variable(zeros(ComplexF32, nx, ny))
 b = Variable(copy(x_adj))
 
 (â, b̂), it2 = @minimize ls(𝒜 * (a + b) - y) + 5.0f-3 * norm(a, 1) + 1.0f-3 * norm(𝒲 * b, 1) with FISTA(maxit = 40, verbose = false)
+frac_small(x, tol) = count(<(tol), abs.(x)) / length(x)
 println("iterations: ", it2, ", NRMSE of the sum: ", round(nrmse(~â + ~b̂), digits = 4))
+println(
+    "  a (image-domain ℓ1):   ", round(100 * frac_small(~â, 1.0f-3 * maximum(abs, ~â)), digits = 1),
+    "% near-zero pixels"
+)
+println(
+    "  b (wavelet-domain ℓ1): ",
+    round(100 * frac_small(𝒲 * ~b̂, 1.0f-3 * maximum(abs, 𝒲 * ~b̂)), digits = 1),
+    "% near-zero wavelet coefficients"
+)
 
 jim(
-    jim(~â; title = "sparse part"),
-    jim(~b̂; title = "wavelet-sparse part"),
-    jim(~â + ~b̂; title = "sum");
+    jim(~â; title = "sparse part (a)"),
+    jim(~b̂; title = "wavelet-sparse part (b)"),
+    jim(~â + ~b̂; title = "sum (a + b)");
     layout = (1, 3), size = (1100, 330)
 )
 
@@ -238,7 +295,7 @@ println("dimensions it couples: ", get_affected_dims(reg, nothing, (:x, :y, :sli
 # - `get_operator(reg, x; threaded)` — the linear transform it penalizes.
 # - `materialize(reg, x::Variable; threaded)` — the `StructuredOptimization.Term`.
 # - `get_affected_dims(reg, dimspec, image_dims)` — which image dimensions it couples (this is
-#   what decides whether the problem still decomposes over slices).
+#   what decides whether task splitting still applies across slices).
 #
 # Optionally `scale_regularization` (if the term is homogeneous, so that data scaling can adjust
 # λ), `bind_dimensions` (if it is parameterized by a dimension name) and
@@ -290,18 +347,11 @@ jim(
 # %% [markdown]
 # (Down-weighting the object means *less* regularization where the signal is, so this particular
 # prior is worse than plain `L1Image` on this phantom. The point is the interface: a fifteen-line
-# regularizer drops straight into `reconstruct`, data scaling, algorithm selection and problem
-# decomposition.)
+# regularizer drops straight into `reconstruct`, data scaling, algorithm selection and task
+# splitting.)
 
 # %%
-# It works through the whole stack: `calculate` evaluates it, and the problem still decomposes
-# over batch dimensions because `get_affected_dims` says it couples nothing.
+# It works through the whole stack: `calculate` evaluates it, and task splitting still applies
+# across batch dimensions because `get_affected_dims` says it couples nothing.
 println("value at x_true: ", round(calculate(MaskedL1(5.0f-3, weights), x_true), digits = 4))
 println("affected dims:   ", get_affected_dims(MaskedL1(5.0f-3, weights), nothing, (:x, :y, :slice)))
-
-# %% [markdown]
-# ### Where a new proximal function belongs
-#
-# If the new term is a *proximal function* with no MRI-specific content — a norm, an indicator,
-# a projection — it belongs in the `ProximalOperators` fork under `deps/`, not in MRT. Only the
-# MRI-facing wrapper (which operator it applies, which dimensions it touches) lives here.
