@@ -1,6 +1,6 @@
 @testitem "NonCartesianAcquisitionInfo" tags = [:acquisition, :nfft] begin
     using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, NonCartesianAcquisitionInfo
     using NamedDims
 
     @testset "Basic 2D construction" begin
@@ -79,7 +79,7 @@ end
 
 @testitem "AcquisitionInfo copy constructors field round-trips" tags = [:acquisition] begin
     using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator
+    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, NonCartesianAcquisitionInfo
 
     @testset "CartesianAcquisitionInfo individual field round-trips" begin
         mask = rand(Bool, 16, 16)
