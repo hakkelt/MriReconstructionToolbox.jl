@@ -171,7 +171,7 @@ end
 @testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — object stays centred in the FOV" tags = [:acquisition, :reconstruction] setup = [RawAcqHelpers] begin
     using MriReconstructionToolbox
     using NamedDims: unname
-    using FFTW: fft, fftshift
+    using FFTW: fft, fftshift, ifftshift
 
     # A scanner images an object centred in the FOV and stores k-space with DC at the centre.
     # MRT's plain-DFT default puts the image origin at index 1, so without `shifted_image_dims`
@@ -181,7 +181,10 @@ end
     img = zeros(ComplexF32, n, n)
     img[6:9, 7:10] .= 1              # an off-centre blob, so a half-FOV roll is unambiguous
     img[7, 8] = 3
-    ksp_true = fftshift(fft(img))    # DC at index n ÷ 2 + 1 = 9, as ISMRMRD stores it
+    # The scanner's DFT runs over CENTRED coordinates on both sides: k and x both range over
+    # -n÷2 : n÷2-1. That is `fftshift ∘ fft ∘ ifftshift`, not a bare `fft` — a bare `fft` would
+    # treat array index 1 as the spatial origin, which is MRT's own (unshifted) default.
+    ksp_true = fftshift(fft(ifftshift(img)))    # DC at index n ÷ 2 + 1 = 9, as ISMRMRD stores it
 
     profiles = Profile[
         make_profile(ComplexF32.(reshape(ksp_true[:, j], n, 1)); step1 = j - 1, center_sample = n ÷ 2)
