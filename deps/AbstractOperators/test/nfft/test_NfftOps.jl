@@ -64,7 +64,10 @@
             end
         end
         plan = plan_nfft(reshape(trajectory, 2, :), image_size)
-        op = NFFTOp(image_size, trajectory; threaded)
+        # `:auto` explicitly requests the density-compensated approximate adjoint this test
+        # exercises; the bare `dcf`-less call now means "no dcf" (`op.dcf` all ones), which
+        # would not round-trip through the adjoint the way this test expects.
+        op = NFFTOp(image_size, trajectory, :auto; threaded)
         test_nufft_op(op, plan, image, nothing)
     end
 
@@ -104,6 +107,50 @@ end
 @testitem "NfftNormalOp" tags = [:nfft, :NfftNormalOp] setup = [TestUtils, NFFTTestHelper] begin
     NFFTTestHelper.test_nfft_normal_op(false)
     NFFTTestHelper.test_nfft_normal_op(true)
+end
+
+@testitem "NFFTOp dcf contract" tags = [:nfft, :NFFTOp] setup = [TestUtils] begin
+    using AbstractOperators, NFFTOperators, LinearAlgebra, NFFT, NFFTTools, Random
+    Random.seed!(0)
+
+    image_size = (32, 32)
+    trajectory = rand(2, 64, 8) .- 0.5
+    ksp_shape = size(trajectory)[2:end]
+    plan = plan_nfft(reshape(trajectory, 2, :), image_size)
+
+    # `dcf = nothing` (the default): no density compensation, `op'` is the true adjoint of `op`.
+    op_none = NFFTOp(image_size, trajectory; threaded = false)
+    @test op_none.dcf == ones(eltype(trajectory), ksp_shape...)
+    image = rand(ComplexF64, image_size)
+    ksp = op_none * image
+    ksp_ref = similar(ksp)
+    mul!(vec(ksp_ref), plan, image)
+    @test ksp ≈ ksp_ref
+    image_ref = similar(image)
+    mul!(image_ref, plan', vec(ksp_ref))  # no dcf weighting: the *true* NFFT adjoint
+    @test op_none' * ksp ≈ image_ref
+
+    # `dcf = :auto`: same estimator NFFTOp always ran automatically before this contract existed.
+    op_auto = NFFTOp(image_size, trajectory, :auto; threaded = false)
+    expected_dcf = reshape(NFFTTools.sdc(plan; iters = 20), ksp_shape)
+    @test op_auto.dcf ≈ expected_dcf
+    @test !(op_auto.dcf ≈ op_none.dcf)
+
+    # An explicit array is used as given (already covered elsewhere, checked here for parity).
+    dcf_arr = rand(ksp_shape...)
+    op_arr = NFFTOp(image_size, trajectory, dcf_arr; threaded = false)
+    @test op_arr.dcf == dcf_arr
+
+    # An unrecognized Symbol is rejected rather than silently accepted.
+    @test_throws ArgumentError NFFTOp(image_size, trajectory, :bogus; threaded = false)
+
+    # dcf_estimation_iterations / dcf_correction_function only take effect for `:auto`.
+    op_auto_custom = NFFTOp(
+        image_size, trajectory, :auto;
+        threaded = false, dcf_estimation_iterations = 5, dcf_correction_function = x -> 2 .* x,
+    )
+    expected_custom = 2 .* reshape(NFFTTools.sdc(plan; iters = 5), ksp_shape)
+    @test op_auto_custom.dcf ≈ expected_custom
 end
 
 @testitem "NFFTOp multi-dimensional k-space" tags = [:nfft, :NFFTOp] setup = [TestUtils] begin
