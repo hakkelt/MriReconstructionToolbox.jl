@@ -41,7 +41,7 @@ export L2Image, L1Image, L1Wavelet2D, L1Wavelet3D, L1Contourlet, TotalVariation2
 export TemporalTotalVariation, JointSparsity, LocallyLowRank, ReferencePrior, NonNegative, BoxConstraint
 export SecondOrderTotalVariation2D, SecondOrderTotalVariation3D, MultiScaleLowRank
 export EdgePreservingRoughness2D, EdgePreservingRoughness3D, TotalGeneralizedVariation2D, TotalGeneralizedVariation3D
-export HardThreshold, SparsityLimit, PlugAndPlay
+export L0Image, L0Wavelet2D, L0Wavelet3D, PlugAndPlay
 # Established second names for two of the terms above (NAMING.md rule 2.1)
 export Tikhonov, LLR
 
@@ -135,7 +135,7 @@ include("regularization/low_rank_reg.jl")
 include("regularization/locally_low_rank_reg.jl")
 include("regularization/multi_scale_low_rank_reg.jl")
 include("regularization/joint_sparsity_reg.jl")
-include("regularization/hard_threshold_reg.jl")
+include("regularization/l0_reg.jl")
 include("regularization/constraint_reg.jl")
 include("regularization/reference_prior_reg.jl")
 include("regularization/plug_and_play_reg.jl")
