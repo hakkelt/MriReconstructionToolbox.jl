@@ -7,9 +7,15 @@ solve, solution extraction, and inverse scaling. `build(𝒜, y; x₀)` must ret
 auxiliaries)` as `build_model_with_variables`/`build_model` do; `vars` is either a single `Variable`
 (single-variable path) or a `Tuple` of them (component path), and every step below that differs by
 shape dispatches on that (`_scale_x0`, `_inv_scale`, `_max_abs`, `_n_vars`, `_extract_solution`).
+
+`present(x)` turns a raw solver iterate — already inverse-scaled here — into the value the caller
+would have got back from `reconstruct`: it applies the signal model and the `NamedDimsArray` /
+`DecomposedImage` wrapping that the two paths do differently. It is used only to build the
+`on_iteration` callback's `x`, so it is never called at all when no callback was supplied.
 """
 function _iterative_reconstruct_core(
-        𝒜, acq_data, x₀_or_x₀s, scale, method::IterativeReconstruction, config; build::Function
+        𝒜, acq_data, x₀_or_x₀s, scale, method::IterativeReconstruction, config;
+        build::Function, present::Function = identity,
     )
     if scale != 1
         @step "Scaling k-space data" config begin
@@ -56,6 +62,17 @@ function _iterative_reconstruct_core(
         R_type = real(eltype(_first_x0(x₀_or_x₀s)))
         Lf = should_estimate_L ? R_type(_n_vars(vars) * L^2) : nothing
         algorithm = patch_algorithm_with_default_values(method.algorithm, Lf; eltype_real = R_type)
+        # Only add `hook` to the keyword set when a callback was actually supplied: leaving it out
+        # keeps the algorithm's `hook` field `Nothing`-typed, and `ProximalAlgorithms._run_hook`
+        # then compiles to nothing at all inside the iteration loop.
+        if !isnothing(method.on_iteration)
+            hook = _iteration_hook(
+                method.on_iteration, present,
+                (!config.disable_inverse_scale_output && scale != 1) ? scale : nothing,
+                config.slice_id,
+            )
+            solver_kwargs = (; solver_kwargs..., hook)
+        end
         try
             # For a small single-slab solve, threading every operator is a ~1.4x net loss: no one
             # layer dominates (FFT-plan threading is ≈neutral at 128², a threaded BLAS-1 CG loop
@@ -122,6 +139,85 @@ _n_vars(vars::Tuple) = length(vars)
 # is ~0.21% of total solve allocation, well below the 2% threshold, protecting against aliasing bugs).
 _extract_solution(x_var::Variable) = copy(~x_var)
 _extract_solution(vars::Tuple) = map(v -> copy(~v), vars)
+
+"""
+    _iteration_hook(on_iteration, present, scale, slice_id) -> Function
+
+The `hook(k, alg, iter, state)` handed to `ProximalAlgorithms`, wrapping the user's
+`on_iteration` callback.
+
+The iterate the solver holds is in the solver's own (scaled) units and is a bare array that the
+solver keeps writing into, so it is copied, inverse-scaled and put through `present` before the
+callback sees it — a callback that received the internal buffer could neither compare against a
+reference image nor keep it. `scale === nothing` means the caller asked for no inverse scaling
+(the `disable_inverse_scale_output` path), and then the copy comes from `present` alone.
+
+The wall clock is `time_ns`, which is monotonic; `t₀` is read when the hook is built, immediately
+before `solve`, so `elapsed_ns` measures solver time and excludes the operator build and the
+operator-norm estimate.
+"""
+function _iteration_hook(on_iteration, present::Function, scale, slice_id)
+    t₀ = time_ns()
+    return function (k, alg, iter, state)
+        raw = alg.solution(iter, state)
+        x = present(isnothing(scale) ? _copy_iterate(raw) : _inv_scale(raw, scale))
+        base = (; iteration = k, x = x, elapsed_ns = time_ns() - t₀)
+        info = merge(base, _iteration_metrics(iter, state))
+        on_iteration(isnothing(slice_id) ? info : merge(info, (; slice = slice_id)))
+        return nothing
+    end
+end
+
+_copy_iterate(x::AbstractArray) = copy(x)
+_copy_iterate(xs::Tuple) = map(copy, xs)
+
+"""
+    _iteration_metrics(iter, state) -> NamedTuple
+
+The algorithm-specific part of an `on_iteration` callback's payload, read off the solver state.
+A field is present only where the algorithm computes the quantity: the generic fallback is the
+empty `NamedTuple`, so an algorithm without convergence metrics simply contributes none rather
+than a payload full of `nothing`s. The names mirror the columns `Verbose` prints, translated to
+the vocabulary of `docs/src/high-level/algorithms.md`.
+"""
+_iteration_metrics(iter, state) = (;)
+
+function _iteration_metrics(
+        ::Union{
+            ProximalAlgorithms.ForwardBackwardIteration,
+            ProximalAlgorithms.FastForwardBackwardIteration,
+        }, state,
+    )
+    return (;
+        objective = state.f_x + state.g_z,
+        smooth_value = state.f_x,
+        nonsmooth_value = state.g_z,
+        stepsize = state.gamma,
+        fixed_point_residual = norm(state.res, Inf) / state.gamma,
+    )
+end
+
+function _iteration_metrics(iter::ProximalAlgorithms.DouglasRachfordIteration, state)
+    return (;
+        objective = state.f_y + state.g_z,
+        smooth_value = state.f_y,
+        nonsmooth_value = state.g_z,
+        fixed_point_residual = norm(state.res, Inf) / iter.gamma,
+    )
+end
+
+# `rᵏ_norm` / `sᵏ_norm` are per-block vectors (one entry per splitting block); reducing them with
+# `maximum` keeps the payload's field types the same whatever the problem's block structure is,
+# which is what lets a trace of these be collected into a concrete vector.
+function _iteration_metrics(::ProximalAlgorithms.ADMMIteration, state)
+    return (;
+        primal_residual = maximum(state.rᵏ_norm),
+        dual_residual = maximum(state.sᵏ_norm),
+        iterate_change = state.Δx_norm,
+    )
+end
+
+_iteration_metrics(::ProximalAlgorithms.AbstractCGIteration, state) = (; residual_norm = sqrt(state.r²))
 
 function get_reasonable_freq(maxit)
     reasonable_freqs = [1, 5, 10, 20, 50, 100]
