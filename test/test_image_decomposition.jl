@@ -55,6 +55,90 @@ end
     @test sum(values(components(img))) ≈ total_image(img)
     @test Array(img) ≈ a + b
     @test_throws ErrorException img[1, 1] = 1.0
+
+    # `similar`/`copy` must keep going through `.total`, unaffected by the `getproperty` overload.
+    @test similar(img, Float64, (4, 4)) isa typeof(a)
+    @test copy(img) ≈ a + b
+end
+
+@testitem "DecomposedImage: property access forwards to components" tags = [:components] begin
+    using Test
+    using MriReconstructionToolbox
+
+    a = rand(4, 4)
+    b = rand(4, 4)
+    img = MriReconstructionToolbox.DecomposedImage(a + b, (lowrank = a, sparse = b))
+
+    # Shorthand `img.lowrank` must be identical to the long form `img.components.lowrank`.
+    @test img.lowrank == a
+    @test img.sparse == b
+    @test img.lowrank === img.components.lowrank
+    @test img.sparse === img.components.sparse
+
+    # Real struct fields resolve first and are never shadowed.
+    @test img.total ≈ a + b
+    @test img.components === (lowrank = a, sparse = b)
+
+    # propertynames lists both the real fields and the component names.
+    @test Set(propertynames(img)) == Set((:total, :components, :lowrank, :sparse))
+
+    # An unknown name errors with a message naming both the real fields and the components.
+    err = try
+        img.nonexistent
+        nothing
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    msg = sprint(showerror, err)
+    @test occursin("total", msg)
+    @test occursin("components", msg)
+    @test occursin("lowrank", msg)
+    @test occursin("sparse", msg)
+end
+
+@testitem "DecomposedImage: getproperty is type-stable for a literal Symbol" tags = [:components, :jet] begin
+    using Test
+    using JET
+    using MriReconstructionToolbox
+
+    a = rand(4, 4)
+    b = rand(4, 4)
+    img = MriReconstructionToolbox.DecomposedImage(a + b, (lowrank = a, sparse = b))
+
+    get_lowrank(img) = img.lowrank
+    get_total(img) = img.total
+    get_components(img) = img.components
+
+    @test (@inferred get_lowrank(img)) == a
+    @test (@inferred get_total(img)) ≈ a + b
+    @test (@inferred get_components(img)) === img.components
+
+    # JET confirms no dynamic-dispatch/runtime-dispatch report for a literal-Symbol access, since a
+    # constant Symbol is what every call site in the package and in user code actually writes
+    # (`img.lowrank`, not `getproperty(img, name_variable)`).
+    @test_opt target_modules = (MriReconstructionToolbox,) get_lowrank(img)
+    @test_opt target_modules = (MriReconstructionToolbox,) get_total(img)
+    @test_opt target_modules = (MriReconstructionToolbox,) get_components(img)
+end
+
+@testitem "DecomposedImage: a component named like a struct field is rejected" tags = [:components] begin
+    using Test
+    using MriReconstructionToolbox
+
+    a = rand(4, 4)
+    b = rand(4, 4)
+
+    # Direct construction with a reserved component name.
+    @test_throws ArgumentError MriReconstructionToolbox.DecomposedImage(a + b, (total = a, sparse = b))
+    @test_throws ArgumentError MriReconstructionToolbox.DecomposedImage(a + b, (components = a, sparse = b))
+
+    # The same collision caught earlier, at Component-tuple validation time.
+    c1 = Component(:total, L1Image(0.1))
+    c2 = Component(:sparse, L1Image(0.1))
+    @test_throws ArgumentError MriReconstructionToolbox.check_components((c1, c2))
+    c3 = Component(:components, L1Image(0.1))
+    @test_throws ArgumentError MriReconstructionToolbox.check_components((c3, c2))
 end
 
 @testitem "build_model: two-component model matches hand-computed objective" tags = [:components, :minimizer] begin
@@ -120,8 +204,8 @@ end
     error_norm = norm(Array(img_recon) - img_true) / norm(img_true)
     @test error_norm < 0.5
 
-    smooth_component = img_recon.components.smooth
-    sparse_component = img_recon.components.sparse
+    smooth_component = img_recon.smooth
+    sparse_component = img_recon.sparse
     @test all(isfinite, smooth_component) && all(isfinite, sparse_component)
     @test Array(img_recon) ≈ smooth_component .+ sparse_component
 end
@@ -204,7 +288,7 @@ end
     components = (Component(:smooth, L2Image(0.005)), Component(:sparse, L1Image(0.005)))
 
     img_decomposed = reconstruct(acq_ms, IterativeReconstruction(components...; maxit = 30); verbosity = Silent())
-    img_joint = reconstruct(acq_ms, IterativeReconstruction(components...; maxit = 30); disable_problem_decomposition = true, verbosity = Silent())
+    img_joint = reconstruct(acq_ms, IterativeReconstruction(components...; maxit = 30); disable_task_splitting = true, verbosity = Silent())
 
     @test img_decomposed isa DecomposedImage
     @test size(img_decomposed) == (nx, ny, nslices)
@@ -266,8 +350,8 @@ end
     @test dimnames(img_recon) == (:x, :y, :time)
     @test haskey(img_recon.components, :lowrank)
     @test haskey(img_recon.components, :sparse)
-    @test all(isfinite, img_recon.components.lowrank)
-    @test all(isfinite, img_recon.components.sparse)
+    @test all(isfinite, img_recon.lowrank)
+    @test all(isfinite, img_recon.sparse)
 end
 
 @testitem "reconstruct: components with problem decomposition and NamedDimsArray" tags = [:components, :integration] begin
@@ -299,7 +383,7 @@ end
     @test bound[1].regularizations[1].time_dim == 4
     @test bound[2].regularizations[1].time_dim == 4
 
-    plan = MriReconstructionToolbox.get_problem_decomposition_plan(acq_data, IterativeReconstruction(bound...), ReconstructionConfig(; verbosity = Silent()))
+    plan = MriReconstructionToolbox.get_task_splitting_plan(acq_data, IterativeReconstruction(bound...), ReconstructionConfig(; verbosity = Silent()))
     @test plan !== nothing
     @test plan.variable_batch_dims == (3,)  # slice over :z
 end
