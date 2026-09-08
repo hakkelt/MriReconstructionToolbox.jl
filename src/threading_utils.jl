@@ -60,7 +60,7 @@ const _SERIAL_BLAS_THRESHOLD_BYTES = Ref(DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES)
 
 Per-work-item size below which a threaded BLAS — and, with it, threading the solve at all —
 costs more than it returns. Consulted by [`with_serial_blas`](@ref),
-`maybe_disable_undecomposed_threading` and `slice_threading`.
+`maybe_disable_unsplit_threading` and `slice_threading`.
 
 Defaults to [`DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES`](@ref), overridable per process with
 [`set_serial_blas_threshold_bytes!`](@ref) or the `MRT_SERIAL_BLAS_THRESHOLD_BYTES`
@@ -206,7 +206,7 @@ resolves its own `threaded` flag through `AbstractOperators._blas_threaded`, out
 
 The tables above say the decision really depends on two quantities — item size *and* whether
 enough slabs are in flight to saturate the cores — but `_iterative_reconstruct_core` only ever
-sees one work item; it cannot see how many slabs the caller has in flight, and the decomposition
+sees one work item; it cannot see how many slabs the caller has in flight, and the task-splitting
 executor that does know is several frames up. The two quantities disagree only for a wide batch
 of large items, and there the gate opens BLAS while the outer loop is already using the machine
 — i.e. the budget wins over this scope in exactly the case the gate gets wrong. Preferring the
@@ -240,7 +240,7 @@ Every counted pool (`BLAS`, `MKL`, `FFTW`, `NFFT`, ...) is always set to the sam
 budget by `NestedThreading._apply!`, so BLAS already being serial means the whole scope would
 be a no-op: entering it would still pay the enter/exit bookkeeping and the Polyester guard for
 every registered pool, just to re-set values that already match. That is dead weight when the
-caller is already serial — the decomposed `MultiThreadingExecutor` path, or a `-t 1` process —
+caller is already serial — the task-split `MultiThreadingExecutor` path, or a `-t 1` process —
 which is exactly when `_iterative_reconstruct_core` reaches for this instead of
 `with_restricted_threads` directly.
 """
@@ -253,9 +253,9 @@ end
     _should_thread_work_item(config, bytes) -> Bool
 
 Whether a work item of `bytes` bytes is worth threading, given `config`. The single predicate
-behind both [`maybe_disable_undecomposed_threading`](@ref) (an undecomposed whole-problem
-variable) and `decomposition/execution.jl`'s per-slice `slice_threading` (one slice of a decomposed
-problem): `config.threaded` must be on *and* the item must be at least
+behind both [`maybe_disable_unsplit_threading`](@ref) (an unsplit whole-problem
+variable) and `task_splitting/execution.jl`'s per-slice `slice_threading` (one slice of a
+task-split problem): `config.threaded` must be on *and* the item must be at least
 [`serial_blas_threshold_bytes`](@ref). See `with_serial_blas`'s docstring for the measurements
 the threshold comes from.
 """
@@ -263,9 +263,9 @@ _should_thread_work_item(config, bytes) =
     config.threaded && bytes >= serial_blas_threshold_bytes()
 
 """
-    maybe_disable_undecomposed_threading(config, method, acq_data) -> ReconstructionConfig
+    maybe_disable_unsplit_threading(config, method, acq_data) -> ReconstructionConfig
 
-When a reconstruction has no batch dimensions to decompose over, `config.threaded` would
+When a reconstruction has no batch dimensions to split over, `config.threaded` would
 otherwise open every thread pool (BLAS, FFTW, NFFT, Polyester) to full capacity for a single
 problem. Below [`serial_blas_threshold_bytes`](@ref) per variable that is a net loss: no single
 layer dominates (an FFT plan threads a transform too small to benefit, the CG inner loop is
@@ -275,7 +275,7 @@ fork/join and budget enter/exit overhead of a few hundred small threaded ops per
 forced off in that case, leaving larger single-volume problems (where a threaded 3-D FFT
 genuinely pays) untouched.
 """
-function maybe_disable_undecomposed_threading(config, method, acq_data)
+function maybe_disable_unsplit_threading(config, method, acq_data)
     config.threaded || return config
     bytes = prod(variable_size(method, acq_data)) * sizeof(eltype(acq_data.kspace_data))
     return _should_thread_work_item(config, bytes) ? config : ReconstructionConfig(config; threaded = false)

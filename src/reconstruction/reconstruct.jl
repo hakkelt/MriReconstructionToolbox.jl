@@ -16,9 +16,9 @@ Performs MRI reconstruction from k-space data using the specified reconstruction
 - `scaling::Scaling = BartScaling()`: scaling applied to operators/data (see also `NoScaling`, `MeasurementBasedScaling`, `FixedScaling`)
 - `verbosity::Verbosity = Verbose()`: output mode — [`Silent`](@ref), [`ProgressBar`](@ref) or [`Verbose`](@ref)
 - `threaded::Bool = (Threads.nthreads() > 1)`: enable threaded execution when available
-- `decomposition_executor::Union{Nothing,ReconstructionExecutor} = nothing`: override executor for decomposition
+- `task_executor::Union{Nothing,ReconstructionExecutor} = nothing`: override executor for task splitting
 - `disable_inverse_scale_output::Bool = false`: skip rescaling the final output
-- `disable_problem_decomposition::Bool = false`: disable automatic problem decomposition
+- `disable_task_splitting::Bool = false`: disable automatic task splitting
 
 Iteration control is *not* accepted here: `maxit`, `tol` and `algorithm` are properties of the
 method and are passed to its constructor, e.g.
@@ -60,13 +60,13 @@ function _reconstruct_dispatch(acq_data, method::IterativeReconstruction, x₀, 
 end
 
 function _reconstruct_dispatch_plain(acq_data, method::ReconstructionMethod, x₀, config)
-    decomposition_plan = get_problem_decomposition_plan(acq_data, method, config)
-    x = if isnothing(decomposition_plan)
-        # Undecomposed: this is where the one progress bar per `reconstruct` call is opened.
+    task_splitting_plan = get_task_splitting_plan(acq_data, method, config)
+    x = if isnothing(task_splitting_plan)
+        # Unsplit: this is where the one progress bar per `reconstruct` call is opened.
         # `progress_total` decides whether it is a determinate bar over the method's own loop or
         # the indeterminate stage indicator driven by the `@step` brackets.
         with_progress(config.verbosity, progress_total(method, acq_data)) do verbosity
-            conf = maybe_disable_undecomposed_threading(
+            conf = maybe_disable_unsplit_threading(
                 ReconstructionConfig(config; verbosity), method, acq_data
             )
             reconstruction_result = nothing
@@ -77,16 +77,16 @@ function _reconstruct_dispatch_plain(acq_data, method::ReconstructionMethod, x�
         end
     else
         if !isnothing(x₀)
-            @argcheck size(x₀) == decomposition_plan.variable_size "Size of x₀ ($(size(x₀))) must match the variable size ($(decomposition_plan.variable_size))"
+            @argcheck size(x₀) == task_splitting_plan.variable_size "Size of x₀ ($(size(x₀))) must match the variable size ($(task_splitting_plan.variable_size))"
         end
         result = if method isa DirectMethod
             # Direct reconstruction needs no scaling; keep slices identical to the
-            # non-decomposed result instead of normalizing each slice separately. A *new*
+            # unsplit result instead of normalizing each slice separately. A *new*
             # binding, not a reassignment of `config`: rebinding it would box the variable that
             # the `with_progress` closure above captures.
             unscaled_config = ReconstructionConfig(config; scaling = NoScaling())
-            execute(decomposition_plan, acq_data, unscaled_config) do idx, local_acq, local_conf
-                local_x₀ = isnothing(x₀) ? nothing : get_x₀_slice(x₀, decomposition_plan, idx)
+            execute(task_splitting_plan, acq_data, unscaled_config) do idx, local_acq, local_conf
+                local_x₀ = isnothing(x₀) ? nothing : get_x₀_slice(x₀, task_splitting_plan, idx)
                 _reconstruct(local_acq, method, local_x₀, local_conf)
             end
         else
@@ -94,7 +94,7 @@ function _reconstruct_dispatch_plain(acq_data, method::ReconstructionMethod, x�
             # first solved with its own scale to size λ correctly (via scale_regularization),
             # then the actual solve and the final image use one shared scale across all
             # slices so the output intensities are consistent slice-to-slice.
-            execute_regularized(decomposition_plan, acq_data, config, method, x₀)
+            execute_regularized(task_splitting_plan, acq_data, config, method, x₀)
         end
         if acq_data.kspace_data isa NamedDimsArray
             result = NamedDimsArray{output_dims(method, acq_data)}(unname(result))
@@ -147,17 +147,17 @@ function _reconstruct(
 end
 
 function _reconstruct_dispatch_components(acq_data, method::IterativeReconstruction, x₀, config)
-    decomposition_plan = get_problem_decomposition_plan(acq_data, method, config)
+    task_splitting_plan = get_task_splitting_plan(acq_data, method, config)
     components = method.regularization
-    img = if isnothing(decomposition_plan)
-        # The decomposition branch below validates x₀ against the plan's image size; this branch has
+    img = if isnothing(task_splitting_plan)
+        # The task-splitting branch below validates x₀ against the plan's image size; this branch has
         # no plan, so it validates against the acquisition's own image size. Both must check, or a
-        # mistyped component name is only caught when the problem happens to be decomposed.
+        # mistyped component name is only caught when the task happens to be split.
         if !isnothing(x₀)
             check_x₀_components_size(x₀, components, get_image_size(acq_data))
         end
         with_progress(config.verbosity, progress_total(method, acq_data)) do verbosity
-            conf = maybe_disable_undecomposed_threading(
+            conf = maybe_disable_unsplit_threading(
                 ReconstructionConfig(config; verbosity), method, acq_data
             )
             result = nothing
@@ -168,9 +168,9 @@ function _reconstruct_dispatch_components(acq_data, method::IterativeReconstruct
         end
     else
         if !isnothing(x₀)
-            check_x₀_components_size(x₀, components, decomposition_plan.variable_size)
+            check_x₀_components_size(x₀, components, task_splitting_plan.variable_size)
         end
-        execute_regularized_components(decomposition_plan, acq_data, config, method, x₀)
+        execute_regularized_components(task_splitting_plan, acq_data, config, method, x₀)
     end
     if acq_data.kspace_data isa NamedDimsArray && !(total_image(img) isa NamedDimsArray)
         img_dimnames = output_dims(method, acq_data)
@@ -195,7 +195,7 @@ function _reconstruct_components(
         end
     end
     # `x₀s` lets a caller that has already formed the per-component initial guesses skip the adjoint
-    # that would produce them. The decomposition path computes them in its first phase to derive the
+    # that would produce them. The task-splitting path computes them in its first phase to derive the
     # per-slice scales, and without this would recompute 𝒜'y per slice only to discard it.
     scale = if isnothing(x₀s)
         x̂, s = _direct_reconstruct_components(𝒜, acq_data, method, config; scale_override)

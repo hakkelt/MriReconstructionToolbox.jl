@@ -54,7 +54,7 @@ const PINNED_DATASET = ("M4RAW", "multicoil_train/2022062402_T203")
 # `load_real_dynamic`.
 #   3D knee   — Stanford fully-sampled 3D FSE knee, subject 1: 320×320 kx/ky, 256 kz partitions,
 #               8-channel, 3 T. Reconstructed as a stack of 2D slices (IFFT along kz) so the
-#               problem decomposes over the slice batch dim — the case where 8 threads should
+#               the task is split over the slice batch dim — the case where 8 threads should
 #               beat 1.
 #   dynamic   — OCMR fully-sampled cine fs_0001_1_5T: 15-channel, 19 cardiac phases, 208 PE,
 #               1.5 T. Retrospectively 2×-undersampled for the low-rank / temporal-TV rows.
@@ -189,7 +189,7 @@ with `kspace :: NamedDimsArray{(:kx, :ky, :coil, :z)}`,
 `smaps :: NamedDimsArray{(:x, :y, :coil, :z)}` (per-slice ESPIRiT),
 `reference :: Array{Float64,3}` (per-slice RSS), `image_size == (nkx, nky, nslices)`.
 
-Each slice is an independent 2D problem; `reconstruct` decomposes over `:z`.
+Each slice is an independent 2D problem; `reconstruct` splits the task over `:z`.
 """
 function load_real_case_3d(;
         nslices = 24,

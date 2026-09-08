@@ -18,7 +18,7 @@ of in the image itself.
   scaling is used (see [`BartScaling`](@ref) and friends), the reference is rescaled together with the
   regularization parameter.
 - Because the reference has the size of the full image, this term blocks
-  [problem decomposition](../high-level/decomposition.md) over batch dimensions.
+  [task splitting](../high-level/task_splitting.md) over batch dimensions.
 - To combine a reference prior with ordinary sparsity, add both terms
   (e.g. `(ReferencePrior(λ₁, x_ref), L1Wavelet2D(λ₂))`), which reproduces the convex combination used by
   PICCS-style reconstructions.

@@ -156,7 +156,7 @@ end
     end
     @test unname(y) ≈ man
 
-    # 2. full reconstruction over an extra batch dim (problem decomposition + shape-changing model)
+    # 2. full reconstruction over an extra batch dim (task splitting + shape-changing model)
     rec = reconstruct(acq, method; verbosity = Silent())
     @test size(rec) == (Nx, Ny, Nt, Nsl)
     @test dimnames(rec) == (:x, :y, :time, :slice)

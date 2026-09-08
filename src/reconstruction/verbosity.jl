@@ -27,7 +27,7 @@ Show a single progress bar and no textual log.
 Exactly one bar is opened per `reconstruct` call. Its granularity is decided by
 `progress_total`:
 
-- A decomposed problem gets a bar over slices (this outranks everything else).
+- A split task gets a bar over slices (this outranks everything else).
 - A method with a countable loop (`IterativeReconstruction`, `POCS`, `SPIRiT`,
   `PhaseConstrained`, `GRAPPA`) gets a determinate bar over that loop.
 - Everything else (`DirectReconstruction`, `Homodyne`) gets an indeterminate stage indicator
@@ -167,7 +167,7 @@ end
 """
     slice_verbosity(v::Verbosity, id; freq = -1) -> Verbosity
 
-The verbosity used *inside* one slice of a decomposed reconstruction. `Verbose` keeps the
+The verbosity used *inside* one slice of a task-split reconstruction. `Verbose` keeps the
 solver output at `freq` and prefixes every line with the slice id, but drops its own phase
 messages; every other mode goes `Silent`, since the slice-level bar owns the display.
 """

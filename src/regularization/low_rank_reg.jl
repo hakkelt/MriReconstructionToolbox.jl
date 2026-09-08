@@ -99,7 +99,7 @@ end
 
 function get_affected_dims(reg::Union{LowRank, RankLimit}, ::Nothing, image_dims)
     # get_time_dim returns an index; return the corresponding entries of image_dims so
-    # that named dimensions stay Symbols (needed for problem-decomposition setdiff).
+    # that named dimensions stay Symbols (needed for task-splitting setdiff).
     time_dim = get_time_dim(reg.time_dim, image_dims)
     return image_dims[1:time_dim]
 end

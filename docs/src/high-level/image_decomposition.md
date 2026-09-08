@@ -3,10 +3,10 @@
 Image decomposition models the reconstructed image as a sum of additive
 components, each with its own regularizer — the canonical example being
 low-rank + sparse (L+S) decomposition of dynamic MRI. This is a different
-concept from [Problem Decomposition](decomposition.md), which splits a
+concept from [Task Splitting](task_splitting.md), which splits a
 *single-image* problem over independent batch dimensions (e.g. slices); the
-two can be combined (see [Interaction with Problem Decomposition](@ref
-image-decomposition-problem-decomposition) below).
+two can be combined (see [Interaction with Task Splitting](@ref
+image-decomposition-task-splitting) below).
 
 See [Theoretical Background](../theory.md#Additive-Image-Decomposition) for the
 underlying optimization model.
@@ -214,11 +214,11 @@ errors.
   of `Lf = 1` for a single image). Overriding `Lf` explicitly on the algorithm
   bypasses this default.
 
-## [Interaction with Problem Decomposition](@id image-decomposition-problem-decomposition)
+## [Interaction with Task Splitting](@id image-decomposition-task-splitting)
 
-Image decomposition composes with [Problem Decomposition](decomposition.md):
+Image decomposition composes with [Task Splitting](task_splitting.md):
 if the data has batch dimensions (e.g. slices) that none of the components'
-regularizations couple, `reconstruct` still decomposes the problem over those
+regularizations couple, `reconstruct` still splits the task over those
 dimensions automatically, solving each slice's image-decomposition problem
 independently and stacking both the total image and each component:
 

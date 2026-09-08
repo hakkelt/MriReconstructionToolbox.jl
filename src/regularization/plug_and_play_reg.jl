@@ -124,7 +124,7 @@ get_operator(::PlugAndPlay, x::AbstractArray; threaded::Bool = true) = identity_
 _pnp_spatial_dims(reg::PlugAndPlay, n::Int) = reg.spatial_dims === nothing ? min(n, 2) : min(reg.spatial_dims, n)
 
 function get_affected_dims(reg::PlugAndPlay, ::Nothing, image_dims)
-    # The denoiser sees the leading dimensions jointly; the rest are looped over and stay decomposable.
+    # The denoiser sees the leading dimensions jointly; the rest are looped over and stay splittable.
     return image_dims[1:_pnp_spatial_dims(reg, length(image_dims))]
 end
 

@@ -132,7 +132,7 @@ function IterativeReconstruction(
 end
 
 # Rebuild `method` with a different regularization tuple, every other field carried over. The
-# decomposition path needs this per slice (λ is scale-compensated there); going through the
+# task-splitting path needs this per slice (λ is scale-compensated there); going through the
 # keyword constructor keeps that call site from having to be edited every time a field is added.
 function _with_regularization(method::IterativeReconstruction, regs::Tuple)
     return IterativeReconstruction(;

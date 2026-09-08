@@ -7,7 +7,7 @@
 # No constant has to be redefined to ask that. The threshold has exactly two effects, and both
 # are all-or-nothing per solve:
 #
-#   * below it, `maybe_disable_undecomposed_threading` (and, since C6.1, `slice_threading`)
+#   * below it, `maybe_disable_unsplit_threading` (and, since C6.1, `slice_threading`)
 #     forces `threaded = false` for the whole solve;
 #   * above it, `solve_core.jl` takes the `with_serial_blas` branch, which then also declines to
 #     narrow anything because the item is over the same threshold — i.e. fully threaded.
@@ -59,7 +59,7 @@ using .Phantoms
 # One case = one undersampled TV solve at a given image size, so the work item the gate sees is
 # `N^2 * Nt * sizeof(ComplexF32)`. Static cases sweep N; dynamic cases sweep the time extent
 # with a regularizer that couples time, so the whole volume stays a single work item (a
-# separable regularizer would decompose it into per-frame slices, which is a different question).
+# separable regularizer would split it into per-frame slices, which is a different question).
 struct Case
     label::String
     bytes::Int
