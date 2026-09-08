@@ -49,7 +49,7 @@ function radial_trajectory(
     @argcheck nsamples > 0 "nsamples must be positive"
     @argcheck nspokes > 0 "nspokes must be positive"
     @argcheck 0 < extent <= 0.5 "extent must be in (0, 0.5]"
-    angles = _spoke_angles(nspokes, ordering, tiny_index)
+    angles = _radial_spoke_angles(nspokes, ordering, tiny_index)
     r = _open_range(-extent, extent, nsamples)
     traj = Array{Float32}(undef, 2, nsamples, nspokes)
     for (s, θ) in enumerate(angles)
@@ -59,7 +59,7 @@ function radial_trajectory(
     return NamedDimsArray{(:coord, :sample, :spoke)}(traj)
 end
 
-function _spoke_angles(nspokes::Integer, ordering::Symbol, tiny_index::Integer)
+function _radial_spoke_angles(nspokes::Integer, ordering::Symbol, tiny_index::Integer)
     if ordering === :linear
         return range(0, π; length = nspokes + 1)[1:nspokes]
     elseif ordering === :golden_angle
@@ -132,7 +132,7 @@ end
 
 """
     spiral_trajectory(nsamples::Int, ninterleaves::Int;
-        variant::Symbol = :archimedean, nturns::Real = 8, density_exponent::Real = 0.5,
+        variant::Symbol = :archimedean, nturns::Real = 8, density_exponent::Real = 2.0,
         extent::Real = 0.5)
     -> NamedDimsArray{(:coord, :sample, :interleave)}
 
@@ -140,20 +140,22 @@ end
 at `nsamples` points from the k-space center out to `extent` (interleave `i` is the base arm
 rotated by `2π(i-1)/ninterleaves`).
 
-`variant` selects the radial growth law (`t` runs linearly over `[0, 1]` along the arm):
+`variant` selects the radial growth law (`t` runs linearly over `[0, 1]` along the arm, and
+sample density near radius `ρ` scales with `1/(dρ/dt)` there):
 
 - `:archimedean` (default): constant angular velocity, `ρ(t) = extent · t` — the classic
-  Archimedean spiral.
-- `:variable_density`: `ρ(t) = extent · t^density_exponent`. `density_exponent < 1` slows the
-  initial radial growth, oversampling the k-space center relative to the Archimedean spiral
-  (a common compressed-sensing spiral design); `density_exponent = 1` reduces to the
-  Archimedean case.
+  Archimedean spiral, uniform radial sample density.
+- `:variable_density`: `ρ(t) = extent · t^density_exponent`. `density_exponent > 1` makes
+  `dρ/dt → 0` as `t → 0`, i.e. slower initial radial growth, oversampling the k-space center
+  relative to the Archimedean spiral (a common compressed-sensing spiral design) at the cost of
+  undersampling the periphery; `density_exponent = 1` reduces to the Archimedean case;
+  `density_exponent < 1` does the reverse (denser periphery, sparser center).
 
 Returned as a `NamedDimsArray` with dimension names `(:coord, :sample, :interleave)`.
 """
 function spiral_trajectory(
         nsamples::Int, ninterleaves::Int;
-        variant::Symbol = :archimedean, nturns::Real = 8, density_exponent::Real = 0.5,
+        variant::Symbol = :archimedean, nturns::Real = 8, density_exponent::Real = 2.0,
         extent::Real = 0.5,
     )
     @argcheck nsamples > 1 "nsamples must be > 1"

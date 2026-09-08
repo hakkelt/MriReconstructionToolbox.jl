@@ -194,10 +194,11 @@ end
 
     @testset "variable density oversamples the center relative to archimedean" begin
         arch = unname(spiral_trajectory(64, 1; variant = :archimedean, nturns = 8))
-        vd = unname(spiral_trajectory(64, 1; variant = :variable_density, density_exponent = 0.5, nturns = 8))
+        vd = unname(spiral_trajectory(64, 1; variant = :variable_density, density_exponent = 2.0, nturns = 8))
         r_arch = sqrt.(arch[1, :, 1] .^ 2 .+ arch[2, :, 1] .^ 2)
         r_vd = sqrt.(vd[1, :, 1] .^ 2 .+ vd[2, :, 1] .^ 2)
-        # variable-density spiral grows its radius more slowly at the start of the arm
+        # variable-density (density_exponent > 1) spiral grows its radius more slowly at the
+        # start of the arm, packing more samples near the center than the Archimedean spiral.
         @test r_vd[8] < r_arch[8]
     end
 
