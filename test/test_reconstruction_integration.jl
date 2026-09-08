@@ -195,7 +195,7 @@ end
     using StructuredOptimization
 
     @testset "Multi-slice 2D Reconstruction" begin
-        @testset "Multi-slice with decomposition" begin
+        @testset "Multi-slice with task splitting" begin
             nx, ny, nslices, nc = 32, 32, 3, 4
 
             img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
@@ -220,7 +220,7 @@ end
             @test error_norm < 1.0e-3
         end
 
-        @testset "Multi-slice with regularization and decomposition" begin
+        @testset "Multi-slice with regularization and task splitting" begin
             nx, ny, nslices, nc = 16, 16, 3, 2
 
             smaps = coil_sensitivities(nx, ny, nc)
@@ -229,15 +229,15 @@ end
             ksp_ms = rand(ComplexF32, nx, ny, nc, nslices)
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
-            # L2Image regularization + multislice exercises problem decomposition with regularization
+            # L2Image regularization + multislice exercises task splitting with regularization
             img_recon = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 5); verbosity = Silent()))
             @test size(img_recon) == (nx, ny, nslices)
         end
 
-        @testset "Regularized decomposition with varying slice intensities" begin
-            # Slices with wildly different signal levels: regularized decomposition solves each
+        @testset "Regularized task splitting with varying slice intensities" begin
+            # Slices with wildly different signal levels: regularized task splitting solves each
             # slice normalized by its own scale (so λ is applied consistently) but uses one shared
-            # scale to convert every slice back to image units, matching a joint (non-decomposed)
+            # scale to convert every slice back to image units, matching a joint (unsplit)
             # solve of the whole stack. See scale_regularization.
             nx, ny, nc = 16, 16, 2
             img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
@@ -255,22 +255,22 @@ end
             end
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
-            img_decomp = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.05); maxit = 20); disable_problem_decomposition = false, verbosity = Silent())
-            img_no_decomp = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.05); maxit = 20); disable_problem_decomposition = true, verbosity = Silent())
+            img_split = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.05); maxit = 20); disable_task_splitting = false, verbosity = Silent())
+            img_no_split = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.05); maxit = 20); disable_task_splitting = true, verbosity = Silent())
 
-            # Decomposed vs jointly-solved must agree closely regardless of the intensity spread.
-            @test norm(img_decomp - img_no_decomp) / norm(img_no_decomp) < 1.0e-3
+            # Split vs jointly-solved must agree closely regardless of the intensity spread.
+            @test norm(img_split - img_no_split) / norm(img_no_split) < 1.0e-3
 
             # Regularization strength must stay consistent across slices: relative error against
             # the true image should not blow up for the low- or high-intensity slices.
             rel_errors = [
-                norm(img_decomp[:, :, s] - img_true_ms[:, :, s]) / norm(img_true_ms[:, :, s])
+                norm(img_split[:, :, s] - img_true_ms[:, :, s]) / norm(img_true_ms[:, :, s])
                     for s in eachindex(intensities)
             ]
             @test maximum(rel_errors) / minimum(rel_errors) < 1.1
         end
 
-        @testset "Regularized decomposition with an all-zero slice" begin
+        @testset "Regularized task splitting with an all-zero slice" begin
             # A slice whose own scale estimate is (near) zero must not have its regularization
             # collapse to zero (which would leave noise unregularized); safe_scale_ratio guards this.
             nx, ny, nc = 16, 16, 2
@@ -288,7 +288,7 @@ end
             end
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
-            img_recon = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.05); maxit = 15); disable_problem_decomposition = false, verbosity = Silent())
+            img_recon = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.05); maxit = 15); disable_task_splitting = false, verbosity = Silent())
             @test all(isfinite, img_recon)
             @test norm(img_recon[:, :, 2]) / norm(img_recon[:, :, 1]) < 0.1
         end
@@ -409,7 +409,7 @@ end
             @test eltype(img_recon) == ComplexF32
         end
 
-        @testset "NamedDims with problem decomposition" begin
+        @testset "NamedDims with task splitting" begin
             nx, ny, nslices, nc = 16, 16, 3, 2
 
             ksp = NamedDimsArray{(:kx, :ky, :coil, :z)}(rand(ComplexF32, nx, ny, nc, nslices))
@@ -458,7 +458,7 @@ end
             @test size(img_norm) == size(img_unnorm)
         end
 
-        @testset "Problem decomposition control" begin
+        @testset "Task splitting control" begin
             nx, ny, nslices, nc = 32, 32, 2, 4
 
             img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
@@ -476,24 +476,24 @@ end
 
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
-            img_decomp = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms; disable_problem_decomposition = false, verbosity = Silent()))
-            img_no_decomp = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms; disable_problem_decomposition = true, verbosity = Silent()))
+            img_split = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms; disable_task_splitting = false, verbosity = Silent()))
+            img_no_split = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_ms; disable_task_splitting = true, verbosity = Silent()))
 
             # The two paths are the same computation in a different summation order, so they can
             # only agree to Float32 precision (eps ≈ 1.2e-7), and the order the reductions actually
             # take depends on threading. 1e-10 was below what the element type can deliver and made
             # this assertion flaky; 1e-5 still catches any real divergence between the paths.
-            @test norm(img_decomp - img_no_decomp) / norm(img_decomp) < 1.0e-5
+            @test norm(img_split - img_no_split) / norm(img_split) < 1.0e-5
 
             # Regularized case: slices are identical, so the per-slice median scale equals
             # the global scale and both paths must converge to the same solution.
-            img_decomp_reg = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 30); disable_problem_decomposition = false, verbosity = Silent())
-            img_no_decomp_reg = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 30); disable_problem_decomposition = true, verbosity = Silent())
+            img_split_reg = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 30); disable_task_splitting = false, verbosity = Silent())
+            img_no_split_reg = reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 30); disable_task_splitting = true, verbosity = Silent())
 
-            @test norm(img_decomp_reg - img_no_decomp_reg) / norm(img_no_decomp_reg) < 1.0e-3
+            @test norm(img_split_reg - img_no_split_reg) / norm(img_no_split_reg) < 1.0e-3
         end
 
-        @testset "x₀ with problem decomposition" begin
+        @testset "x₀ with task splitting" begin
             nx, ny, nslices, nc = 16, 16, 3, 2
             smaps = coil_sensitivities(nx, ny, nc)
             smaps_ms = repeat(smaps, 1, 1, 1, nslices)
@@ -511,7 +511,7 @@ end
             # component path handed the arrays straight to `Variable`, which stores them by
             # reference, so `solve`'s final write-back landed in the caller's arrays -- visible
             # whenever `scale == 1` skips the reallocating rescale, and through the `@view`s the
-            # decomposition path passes down.
+            # task-splitting path passes down.
             x₀_keep = rand(ComplexF32, nx, ny, nslices)
             x₀_ref = copy(x₀_keep)
             reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 5); x₀ = x₀_keep, scaling = NoScaling(), verbosity = Silent())
@@ -520,7 +520,7 @@ end
     end
 end
 
-@testitem "Verbose and MultiThreading Decomposition" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
+@testitem "Verbose and MultiThreading Task Splitting" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
@@ -543,18 +543,18 @@ end
         @test length(take!(output)) > 0
     end
 
-    @testset "MultiThreadingExecutor decomposition" begin
+    @testset "MultiThreadingExecutor task splitting" begin
         nx, ny, nslices, nc = 16, 16, 4, 2
         smaps = coil_sensitivities(nx, ny, nc)
         smaps_ms = repeat(smaps, 1, 1, 1, nslices)
         ksp_ms = rand(ComplexF32, nx, ny, nc, nslices)
         acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
-        # Force MultiThreadingExecutor to cover that path in decomposition/execution.jl
+        # Force MultiThreadingExecutor to cover that path in task_splitting/execution.jl
         executor = MriReconstructionToolbox.MultiThreadingExecutor()
         img_recon = test_type_stable(
             Array{ComplexF32, 3},
-            reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 5); decomposition_executor = executor, verbosity = Silent()),
+            reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 5); task_executor = executor, verbosity = Silent()),
         )
         @test size(img_recon) == (nx, ny, nslices)
     end
@@ -571,7 +571,7 @@ end
     method = IterativeReconstruction(L2Image(0.01f0); maxit = 5)
 
     config = ReconstructionConfig(; threaded = true, verbosity = Silent())
-    plan = MRT.get_problem_decomposition_plan(acq, method, config)
+    plan = MRT.get_task_splitting_plan(acq, method, config)
     @test plan !== nothing
 
     # Two slices on an 8-thread process take the sequential executor, and one 128² slice is far
@@ -585,7 +585,7 @@ end
     # A slice large enough to pay for threading keeps it -- but only under the sequential
     # executor, and only when `config.threaded` is on.
     big_size = (2048, 2048, nslices)
-    big = MRT.ProblemDecompositionPlan(
+    big = MRT.TaskSplittingPlan(
         big_size, (3,), (2048, 2048, nc, nslices), (4,), false, big_size
     )
     @test MRT.slice_bytes(big, acq) >= MRT.serial_blas_threshold_bytes()

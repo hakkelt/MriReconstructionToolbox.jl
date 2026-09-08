@@ -48,17 +48,17 @@ using TestItems
         @test dims_named == (:x, :y, :time)
     end
 
-    @testset "LowRank prevents decomposition across time" begin
+    @testset "LowRank prevents task splitting across time" begin
         nx, ny, nt = 8, 8, 5
         ksp = NamedDimsArray{(:kx, :ky, :time)}(rand(ComplexF32, nx, ny, nt))
         acq = AcquisitionInfo(ksp)
         config = ReconstructionConfig(; verbosity = Silent())
 
-        plan_noreg = MriReconstructionToolbox.get_problem_decomposition_plan(acq, DirectReconstruction(), config)
+        plan_noreg = MriReconstructionToolbox.get_task_splitting_plan(acq, DirectReconstruction(), config)
         @test !isnothing(plan_noreg) # :time is a batch dim without regularization
 
         reg = LowRank(0.1; time_dim = :time)
-        plan = MriReconstructionToolbox.get_problem_decomposition_plan(acq, IterativeReconstruction(reg), config)
+        plan = MriReconstructionToolbox.get_task_splitting_plan(acq, IterativeReconstruction(reg), config)
         @test isnothing(plan) # LowRank couples the time dimension
     end
 end

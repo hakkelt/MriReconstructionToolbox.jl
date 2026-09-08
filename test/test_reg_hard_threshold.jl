@@ -87,7 +87,7 @@ end
         @test maximum(abs, vec(x)[dropped]) <= minimum(abs, vec(x)[kept])
     end
 
-    @testset "the budget blocks problem decomposition" begin
+    @testset "the budget blocks task splitting" begin
         @test MriReconstructionToolbox.get_affected_dims(SparsityLimit(4), nothing, (:x, :y, :slice)) ==
             (:x, :y, :slice)
     end

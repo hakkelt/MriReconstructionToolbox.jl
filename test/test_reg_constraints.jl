@@ -32,7 +32,7 @@ using TestItems
         info = AcquisitionInfo(ksp; image_size = (4, 4))
         @test MriReconstructionToolbox.get_affected_dims(NonNegative(), info, 1:2) == ()
         @test MriReconstructionToolbox.get_affected_dims(BoxConstraint(0.0, 1.0), info, 1:2) == ()
-        # array-valued bounds have the size of the full image, so decomposition must be blocked
+        # array-valued bounds have the size of the full image, so task splitting must be blocked
         @test MriReconstructionToolbox.get_affected_dims(
             BoxConstraint(zeros(4, 4), ones(4, 4)), info, 1:2
         ) == (1, 2)
