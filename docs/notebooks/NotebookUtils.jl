@@ -32,16 +32,8 @@ export nrmse, side_by_side, difference_image
 jim(:yflip, false)
 
 # --------------------------------------------------------------------------------------------
-# 2. GKS glyph warnings: GR (the Plots.jl backend used in these notebooks) prints
-#    `GKS: glyph missing from current font: 119964` (and similar) once per plot whose title or
-#    axis label contains a MATHEMATICAL SCRIPT/CALLIGRAPHIC letter such as `𝒜`, `𝒮`, `𝒫`, `𝒲`,
-#    `𝒞` — the operator-name convention used throughout the docs (`𝒜 = 𝒫 𝒮 ℱ`, etc.). No font
-#    on this HPC login node (checked with `fc-list`) covers the Mathematical Alphanumeric
-#    Symbols block, and a notebook should not depend on installing one.
-#    There is no helper for this: write plot titles and axis labels in plain ASCII, e.g.
-#        jim(x; title = "Direct reconstruction of Ax")
-#    Keep the script letters where they render correctly and carry meaning — in markdown prose
-#    and as Julia variable names (`𝒜`, `𝒫`) — since only the GR plotting backend lacks the font.
+# 2. Write plot titles and axis labels in plain ASCII (`title = "Ax"`, not `title = "𝒜x"`).
+#    Script letters stay in markdown prose and as Julia variable names.
 #
 # --------------------------------------------------------------------------------------------
 # 3. Shared helpers the notebooks otherwise redefine ad hoc (surveyed across all 11 notebooks
