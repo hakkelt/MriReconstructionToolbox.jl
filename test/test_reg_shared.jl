@@ -166,7 +166,7 @@ end
 
 @testitem "scale_regularization" tags = [:regularization] setup = [RegTestSetup] begin
     # L1-homogeneous terms: λ scales linearly with the factor (used by regularized problem
-    # decomposition to compensate for solving all slices with one shared data scale).
+    # task splitting to compensate for solving all slices with one shared data scale).
     @testset "L1-type terms scale λ linearly" begin
         factor = 3.5
         @test MriReconstructionToolbox.scale_regularization(L1Image(0.1), factor).λ ≈ 0.1 * factor

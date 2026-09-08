@@ -185,7 +185,7 @@ end
     @test_throws ArgumentError reconstruct(acq_with_data, IterativeReconstruction(components...; algorithm = FISTA(), maxit = 20); verbosity = Silent())
 end
 
-@testitem "reconstruct: components interact with problem decomposition" tags = [:components, :integration] begin
+@testitem "reconstruct: components interact with task splitting" tags = [:components, :integration] begin
     using Test
     using GeometricMedicalPhantoms
     using StructuredOptimization
@@ -203,12 +203,12 @@ end
 
     components = (Component(:smooth, L2Image(0.005)), Component(:sparse, L1Image(0.005)))
 
-    img_decomposed = reconstruct(acq_ms, IterativeReconstruction(components...; maxit = 30); verbosity = Silent())
-    img_joint = reconstruct(acq_ms, IterativeReconstruction(components...; maxit = 30); disable_problem_decomposition = true, verbosity = Silent())
+    img_split = reconstruct(acq_ms, IterativeReconstruction(components...; maxit = 30); verbosity = Silent())
+    img_joint = reconstruct(acq_ms, IterativeReconstruction(components...; maxit = 30); disable_task_splitting = true, verbosity = Silent())
 
-    @test img_decomposed isa DecomposedImage
-    @test size(img_decomposed) == (nx, ny, nslices)
-    @test isapprox(Array(img_decomposed), Array(img_joint); rtol = 0.1)
+    @test img_split isa DecomposedImage
+    @test size(img_split) == (nx, ny, nslices)
+    @test isapprox(Array(img_split), Array(img_joint); rtol = 0.1)
 
     # Per-component `x₀`s must not be written through either: `build_model` hands them to
     # `Variable`, which stores by reference, and `solve` writes the solution back through it.
@@ -270,7 +270,7 @@ end
     @test all(isfinite, img_recon.components.sparse)
 end
 
-@testitem "reconstruct: components with problem decomposition and NamedDimsArray" tags = [:components, :integration] begin
+@testitem "reconstruct: components with task splitting and NamedDimsArray" tags = [:components, :integration] begin
     using Test
     using NamedDims
     using MriReconstructionToolbox
@@ -283,7 +283,7 @@ end
     ksp = simulate_acquisition(img_true, acq).kspace_data
     acq_data = AcquisitionInfo(acq, kspace_data = ksp)
 
-    # Both components affect only :time, so :z stays a batch dimension: the problem-decomposition
+    # Both components affect only :time, so :z stays a batch dimension: the task-splitting
     # planner must resolve the symbol `time_dim` against the named image dims and pick :z to slice.
     components = (
         Component(:fourier, L1TemporalFourier(0.01; time_dim = :time)),
@@ -299,7 +299,7 @@ end
     @test bound[1].regularizations[1].time_dim == 4
     @test bound[2].regularizations[1].time_dim == 4
 
-    plan = MriReconstructionToolbox.get_problem_decomposition_plan(acq_data, IterativeReconstruction(bound...), ReconstructionConfig(; verbosity = Silent()))
+    plan = MriReconstructionToolbox.get_task_splitting_plan(acq_data, IterativeReconstruction(bound...), ReconstructionConfig(; verbosity = Silent()))
     @test plan !== nothing
     @test plan.variable_batch_dims == (3,)  # slice over :z
 end

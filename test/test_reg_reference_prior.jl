@@ -36,7 +36,7 @@ using TestItems
         @test get_operator(ReferencePrior(0.1, x), x; threaded = false) isa Eye
         ksp = randn(ComplexF32, 4, 4)
         info = AcquisitionInfo(ksp; image_size = (4, 4))
-        # the reference has the size of the full image, so problem decomposition must be blocked
+        # the reference has the size of the full image, so task splitting must be blocked
         @test MriReconstructionToolbox.get_affected_dims(ReferencePrior(0.1, x), info, 1:2) == (1, 2)
     end
 
