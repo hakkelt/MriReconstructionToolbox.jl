@@ -9,8 +9,8 @@ synthetic phantoms and on real scanner data.
 | `02_acquisition_info.ipynb` | `AcquisitionInfo`: named dimensions, sensitivity maps, sampling patterns, FFT-shift conventions, validation, Cartesian vs. non-Cartesian |
 | `03_simulation.ipynb` | Phantoms, coil sensitivities, every sampling-pattern generator, `simulate_acquisition`, noise, dynamic series |
 | `04_regularization.ipynb` | Every spatial regularizer: ℓ₂/ℓ₁, wavelets, contourlets, TV, second-order TV, TGV, Huber, hard thresholding, plug-and-play, joint sparsity, reference priors, constraints |
-| `05_algorithms_and_configuration.ipynb` | CG/CGNR, ISTA/FISTA, ADMM, Douglas–Rachford; `maxit`/`tol`, verbosity, `ReconstructionConfig`, scaling, warm starts, operator-norm options |
-| `06_reconstruction_methods.ipynb` | Coil combination, partial Fourier (Homodyne, phase-constrained, POCS), GRAPPA, SPIRiT, data-fidelity choices, `TemporalBasis` and `KSpaceToImage` signal models |
+| `05_reconstruction_methods.ipynb` | Coil combination, partial Fourier (Homodyne, phase-constrained, POCS), GRAPPA, SPIRiT, data-fidelity choices, `TemporalBasis` and `KSpaceToImage` signal models |
+| `06_algorithms_and_configuration.ipynb` | CG/CGNR, ISTA/FISTA, ADMM, Douglas–Rachford; `maxit`/`tol`, verbosity, `ReconstructionConfig`, scaling, warm starts, operator-norm options |
 | `07_dynamic_and_decomposition.ipynb` | Temporal and low-rank regularizers, image decomposition (L+S), problem decomposition over batch dimensions, threading |
 | `08_non_cartesian.ipynb` | Radial and spiral trajectories, NFFT encoding, Pipe–Menon and Voronoi density compensation, gradient-delay correction, gridding accuracy vs. speed |
 | `09_low_level_interface.ipynb` | Operators by hand, `build_model`, `StructuredOptimization` problems, proximal operators, writing a regularizer of your own |
@@ -76,6 +76,85 @@ reconstruction. A full run of one notebook takes roughly:
 
 The notebooks are shipped without stored outputs; every code cell has been executed against this
 environment, so "Run All" should complete without errors.
+
+## Shared preamble
+
+Every notebook's first code cell starts with:
+
+```julia
+include("NotebookUtils.jl")
+using .NotebookUtils
+```
+
+`docs/notebooks/NotebookUtils.jl` is the single place that:
+
+- fixes MIRTjim's `jim` vertical-flip default (`jim(:yflip, false)`) so the phantoms render right
+  side up in every notebook — do not pass `yflip` at individual call sites, and do not flip the
+  underlying arrays;
+- documents why plot titles and axis labels must be written in plain ASCII (`title = "Ax"`, not
+  `title = "𝒜x"`): GR has no font on this system for the script-style operator names, and each
+  such label costs a `GKS: glyph missing from current font: ...` warning per plot. Keep `𝒜`, `𝒫`
+  and friends in markdown prose and as Julia variable names, where they render correctly;
+- ships `nrmse(x̂, x)`, `side_by_side(images...; titles, clim)` (shared color scale across panels)
+  and `difference_image(x̂, x; scale)` (its own color scale) so notebooks stop redefining these ad
+  hoc.
+
+Do not re-fix the flip or the font warning locally — extend `NotebookUtils.jl` instead if a new
+case doesn't fit the existing helpers.
+
+## Editing workflow (jupytext)
+
+The `.ipynb` files are PAIRED with plain-text Julia scripts under `docs/notebooks/src/*.jl`
+(percent format, one script per notebook, same base name) via
+[jupytext](https://jupytext.readthedocs.io). The scripts are the files to edit — raw `.ipynb` JSON
+diffs are unreviewable and unmergeable across parallel worktrees; the paired `.jl` script is not.
+
+Install jupytext once (already available in this environment via `pip install --user jupytext`):
+
+```sh
+python3 -m pip install --user jupytext
+```
+
+Workflow:
+
+1. Edit `docs/notebooks/src/NN_name.jl` (a normal Julia file with `# %%` / `# %% [markdown]` cell
+   markers — readable and runnable top-to-bottom outside Jupyter too).
+2. Regenerate the paired `.ipynb` from it:
+   ```sh
+   python3 -m jupytext --sync docs/notebooks/src/NN_name.jl
+   ```
+   (`--sync` reads whichever side is newer; run it after editing either file, though the `.jl`
+   script is the intended source of truth.) This does NOT execute the notebook — cell outputs are
+   never written by `--sync`.
+3. To actually run the notebook (e.g. to sanity-check it, or before an HTML export), open it in
+   Jupyter/JupyterLab with the `julia-1.12` kernel, or use `export.jl` (below), then strip outputs
+   again before committing — `export.jl` never writes outputs back into the source `.ipynb`, but a
+   manual "Run All" in Jupyter will, so re-run `jupytext --sync` (or `Kernel > Restart & Clear
+   Output`) before committing if you executed interactively.
+4. Commit BOTH the `.ipynb` and the `.jl` script; they must stay in sync (CI/reviewers should treat
+   a mismatch as a bug).
+
+A new notebook is paired the same way: create the `.ipynb`, then
+`python3 -m jupytext --set-formats ipynb,src//jl:percent NN_name.ipynb`.
+
+## Exporting to HTML
+
+`docs/notebooks/export.jl` executes one or all notebooks and renders them to HTML (via
+`python3 -m nbconvert --to html --execute` against the `julia-1.12` kernel), writing to the
+gitignored `docs/notebooks/build/` and leaving the source `.ipynb` files output-free:
+
+```sh
+# one notebook, by number or by name fragment
+julia --project=docs/notebooks docs/notebooks/export.jl 05
+julia --project=docs/notebooks docs/notebooks/export.jl regularization
+
+# all eleven, with a custom per-notebook timeout (seconds)
+julia --project=docs/notebooks docs/notebooks/export.jl all --timeout=900
+```
+
+It prints a pass/fail summary and exits non-zero if any notebook failed; requires
+`python3 -m nbconvert` (`pip install --user nbconvert`) on `PATH` and the `julia-1.12` Jupyter
+kernel (`Pkg.build("IJulia")`, see Setup above).
 
 ## Data licensing
 
