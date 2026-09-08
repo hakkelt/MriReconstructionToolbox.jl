@@ -36,7 +36,7 @@ include("NotebookUtils.jl")
 using .NotebookUtils
 
 using MriReconstructionToolbox
-using MriReconstructionToolbox: get_encoding_operator, NonCartesianAcquisitionInfo
+using MriReconstructionToolbox: get_encoding_operator
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
 using MIRTjim: jim
 using Plots
@@ -51,7 +51,7 @@ Random.seed!(0)
 #
 # `MriReconstructionToolbox` ships generators for the common non-Cartesian sampling patterns.
 # All of them return a `NamedDimsArray` with the coordinate axis first (`:coord`, one of the two
-# names `NonCartesianAcquisitionInfo` accepts), normalized to `[-0.5, 0.5)` (the NFFT.jl
+# names `AcquisitionInfo` accepts for non-Cartesian data), normalized to `[-0.5, 0.5)` (the NFFT.jl
 # convention):
 #
 # - `radial_trajectory(nsamples, nspokes; ordering)` — 2D radial spokes through the k-space
@@ -290,12 +290,12 @@ plot(
 # reconstruction that (wrongly) assumes the nominal, delay-biased trajectory shows the artefact.
 
 # %%
-acq_gd_true = NonCartesianAcquisitionInfo(;
+acq_gd_true = AcquisitionInfo(;
     trajectory = NamedDimsArray{(:coord, :kx, :ky)}(traj_gd_true), image_size = (nxg, nyg)
 )
 data_gd = simulate_acquisition(x_gd_true, acq_gd_true)
 
-acq_gd_naive = NonCartesianAcquisitionInfo(
+acq_gd_naive = AcquisitionInfo(
     data_gd.kspace_data;
     trajectory = NamedDimsArray{(:coord, :kx, :ky)}(traj_gd_wrong), image_size = (nxg, nyg)
 )
@@ -311,7 +311,7 @@ for s in 1:Nspokes
     shift_s = delay_true[1] * cos(angles[s]) + delay_true[2] * sin(angles[s])
     ksp_calib[:, s] = exp.(-50.0f0 .* (r .- shift_s) .^ 2)
 end
-calib_acq = NonCartesianAcquisitionInfo(
+calib_acq = AcquisitionInfo(
     NamedDimsArray{(:kx, :ky)}(ksp_calib);
     trajectory = NamedDimsArray{(:coord, :kx, :ky)}(traj_gd_wrong), image_size = (nxg, nyg)
 )
@@ -324,7 +324,7 @@ calib_corrected = correct_gradient_delays(calib_acq; method = OpposingSpokes())
 corrected_traj = calib_corrected.trajectory
 println("residual trajectory error vs. true: ", round(norm(unname(corrected_traj) - traj_gd_true), digits = 4))
 
-acq_gd_fixed = NonCartesianAcquisitionInfo(data_gd.kspace_data; trajectory = corrected_traj, image_size = (nxg, nyg))
+acq_gd_fixed = AcquisitionInfo(data_gd.kspace_data; trajectory = corrected_traj, image_size = (nxg, nyg))
 x_gd_fixed = reconstruct(density_compensation(acq_gd_fixed; method = PipeMenonDCF(maxit = 15)); verbosity = Silent())
 
 function aligned_nrmse_gd(x̂)
@@ -352,7 +352,7 @@ for s in 1:Nspokes
     traj_ring_wrong[2, :, s] .+= shift * sin(θ)
     ksp_ring[:, s] = exp.(-50.0f0 .* (r .- shift) .^ 2)
 end
-acq_ring = NonCartesianAcquisitionInfo(
+acq_ring = AcquisitionInfo(
     NamedDimsArray{(:kx, :ky)}(ksp_ring);
     trajectory = NamedDimsArray{(:coord, :kx, :ky)}(traj_ring_wrong), image_size = (nxg, nyg)
 )
