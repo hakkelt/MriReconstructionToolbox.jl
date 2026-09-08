@@ -13,3 +13,6 @@ docs/notebooks/cache/
 # per-section/per-group benchmark fragments (merged into benchmark_<backend>_<n>threads.json)
 benchmark/comparison/results/*__*.json
 benchmark/hpc/results/*__*.json
+
+# agent scaffolding and worktrees
+.claude/

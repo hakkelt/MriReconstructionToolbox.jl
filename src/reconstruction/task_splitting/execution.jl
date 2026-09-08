@@ -8,13 +8,13 @@ function execute(f::Function, plan, acq_data, config)
 end
 
 function execute(f::Function, plan, acq_data, config, executor::ReconstructionExecutor)
-    maybe_print_decomposition_info(plan, config)
+    maybe_print_task_splitting_info(plan, config)
     batch_sizes = plan.variable_size[collect(plan.variable_batch_dims)]
     slices = collect(get_slices(plan, acq_data))
     slice_threaded = slice_threading(plan, acq_data, config, executor)
     scales = Array{real(eltype(acq_data.kspace_data))}(undef, batch_sizes)
 
-    # A decomposed run's bar counts slices, not iterations: it is the only granularity that is
+    # A split run's bar counts slices, not iterations: it is the only granularity that is
     # meaningful across every method, and `slice_verbosity` silences the slices so no inner bar
     # can open underneath it. `ProgressMeter.next!` is lock-guarded, so the threaded executor
     # ticking from several slices at once is safe.
@@ -56,7 +56,7 @@ function run_slices!(
     return nothing
 end
 
-# Regularized decomposition: regularization strength (λ) is scale-dependent, so each slice
+# Regularized task splitting: regularization strength (λ) is scale-dependent, so each slice
 # must be normalized before the regularization term is applied. But if each slice used its own
 # scale for the final output too, slice-to-slice intensity would vary with noisy per-slice scale
 # estimates instead of the true (similar) signal levels. So: estimate each slice's own scale first
@@ -115,7 +115,7 @@ end
 # scale, with its regularization compensated by `ratio`, reusing that cached operator.
 function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Function)
     executor = suggest_executor(plan, config)
-    maybe_print_decomposition_info(plan, config)
+    maybe_print_task_splitting_info(plan, config)
     batch_sizes = plan.variable_size[collect(plan.variable_batch_dims)]
     slices = collect(get_slices(plan, acq_data))
 
@@ -213,7 +213,7 @@ end
 """
     slice_threading(plan, acq_data, config, executor) -> Bool
 
-Whether the work *inside* one slice of a decomposed reconstruction may thread.
+Whether the work *inside* one slice of a task-split reconstruction may thread.
 
 Two independent reasons to say no:
 
@@ -222,7 +222,7 @@ Two independent reasons to say no:
   - A [`SequentialExecutor`](@ref) runs slices one at a time, but a slice is by construction
     smaller than the whole problem, and below [`serial_blas_threshold_bytes`](@ref) threading a
     work item that small is a net loss — the same predicate
-    `maybe_disable_undecomposed_threading` applies to an undecomposed problem, here applied per
+    `maybe_disable_unsplit_threading` applies to an unsplit problem, here applied per
     slice. Without this the outer scope is serial only around the *solve*
     (`with_restricted_threads` in `solve_core.jl`), leaving the per-slice operator build, the
     adjoint and the operator-norm estimate threaded over a work item too small to pay for it.
@@ -252,8 +252,8 @@ function slice_bytes(plan, acq_data)
 end
 
 function suggest_executor(plan, config)
-    if !isnothing(config.decomposition_executor)
-        return config.decomposition_executor
+    if !isnothing(config.task_executor)
+        return config.task_executor
     elseif config.threaded && length(plan) > nthreads()
         return MultiThreadingExecutor()
     else

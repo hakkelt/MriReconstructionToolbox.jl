@@ -40,7 +40,7 @@ using TestItems
         dims = MriReconstructionToolbox.get_affected_dims(reg, info, 1:3)
         @test dims == (3,)
 
-        # Named image dims must yield Symbols so that problem decomposition can
+        # Named image dims must yield Symbols so that task splitting can
         # setdiff them against Symbol batch dims.
         reg_named = L1TemporalFourier(0.1f0; time_dim = :time)
         dims_named = MriReconstructionToolbox.get_affected_dims(reg_named, info, (:x, :y, :time))

@@ -534,7 +534,7 @@ end
         end
     end
 
-    @testset "decomposed run gets a slice-level bar" begin
+    @testset "task-split run gets a slice-level bar" begin
         nslices = 3
         ksp_ms = repeat(unname(acq.kspace_data), 1, 1, 1, nslices)
         smaps_ms = repeat(smaps, 1, 1, 1, nslices)
