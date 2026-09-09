@@ -673,11 +673,20 @@ BoxConstraint
 - Quantitative maps with a physically meaningful range (proton density, relaxation rates, diffusion coefficients)
 - Magnitude-only or phase-resolved real-valued reconstructions
 
-Both are defined for real-valued images only; applying them to complex data throws an `ArgumentError`.
+By default, applying either to complex data throws an `ArgumentError` — the plain non-negative
+orthant and box are only ordered for real numbers. Pass `complex_handling = :real` to project a
+complex image onto the real orthant/box instead (imaginary part discarded, real part clamped),
+following RegularizedLeastSquares.jl's `PositiveRegularization` convention.
 
 **Example:**
 ```julia
+# real-valued image (e.g. a magnitude reconstruction)
 img = reconstruct(acq_real, IterativeReconstruction(TotalVariation2D(1e-3), NonNegative()))
+
+# complex image, projected onto the real non-negative orthant each iteration
+img = reconstruct(
+    acq, IterativeReconstruction(TotalVariation2D(1e-3), NonNegative(; complex_handling = :real))
+)
 ```
 
 ## Combining Multiple Regularizers
