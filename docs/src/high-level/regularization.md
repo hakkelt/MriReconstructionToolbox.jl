@@ -511,6 +511,18 @@ components = Tuple(
 
 Cost grows linearly with the number of scales, so two or three are usually enough.
 
+`λ` may also be a vector with one entry per scale, giving coarse and fine scales independent
+thresholds instead of the single value applied everywhere:
+
+```julia
+MultiScaleLowRank([2e-2, 5e-2, 1e-1]; block_sizes = (4, 8, 16), time_dim = 3)
+```
+
+This is a different knob from `weights`: `λⱼ` is scale `j`'s own nuclear-norm threshold, while
+`weights` is the convex combination the proximal average takes across the (already-thresholded)
+scales. Doubling `weights[j]` changes how much scale `j`'s penalty counts toward the reported
+average; doubling `λⱼ` changes what scale `j`'s prox actually shrinks toward.
+
 #### Structured Low Rank k-Space (SAKE / LORAKS-C)
 
 Promotes low rank of the **block-Hankel matrix** built from sliding windows over multi-coil
