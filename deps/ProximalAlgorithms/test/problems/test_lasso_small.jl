@@ -117,6 +117,17 @@ using ProximalAlgorithms:
         @test x0 == x0_backup
     end
 
+    @testset "POGM (fixed step)" begin
+        x0 = zeros(T, n)
+        x0_backup = copy(x0)
+        solver = ProximalAlgorithms.POGM(tol = TOL)
+        x, it = @inferred solver(x0 = x0, f = fA_autodiff, g = g, Lf = Lf)
+        @test eltype(x) == T
+        @test norm(x - x_star, Inf) <= TOL
+        @test it < 400
+        @test x0 == x0_backup
+    end
+
     @testset "FastForwardBackward (custom extrapolation)" begin
         x0 = zeros(T, n)
         x0_backup = copy(x0)
