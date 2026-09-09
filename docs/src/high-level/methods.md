@@ -113,6 +113,19 @@ reconstructed image comes back in those units too.
     $L = $ `AbstractOperators.estimate_opnorm(𝒜)` (and the image comes back $L$ times smaller,
     i.e. in the data's units).
 
+The default warm start is one Landweber step, $x_0 = \mathcal{A}^*y/L^2$, rather than the bare
+adjoint $\mathcal{A}^*y$: the adjoint alone is only on the image's scale when
+$\mathcal{A}^*\mathcal{A} \approx I$, which holds for an orthonormal Cartesian FFT but not for an
+uncompensated non-Cartesian (e.g. radial NFFT) operator, where $\mathcal{A}^*y$ can be off by
+several orders of magnitude and a finite-`maxit`/`tol` solve never fully corrects it — CG-SENSE is
+the case that motivated this: run on radial data, it used to be *worse* than the plain adjoint.
+For every proximal algorithm this reuses the same $L$ computed above at no extra cost; a pure
+unregularized CG/CGNR solve does not otherwise need $L$ (it derives its own step size), so this is
+the one case that pays for `estimate_opnorm` solely for the warm start, worth it because a
+badly-scaled starting point costs far more in iterations than the estimate does. Either way it is
+skipped (keeping the bare adjoint) only when `disable_operator_normalization = true` is passed
+explicitly.
+
 #### Signal Models (`ℳ`)
 
 Signal models map low-dimensional subspace or parameter representations to dynamic/multi-contrast image series $\mathcal{M}: \mathbb{C}^K \to \mathbb{C}^{N_{\text{frames}}}$, composing with the physical encoding operator as $\mathcal{A}_{\text{eff}} = \mathcal{A} \mathcal{M}$.
