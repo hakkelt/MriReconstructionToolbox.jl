@@ -211,6 +211,33 @@ end
     end
 end
 
+@testitem "CGNR on radial data beats the plain adjoint" tags = [:reconstruction, :nfft, :quality] begin
+    using Test
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, NonCartesianAcquisitionInfo
+    using LinearAlgebra
+
+    nx, ny = 32, 32
+    img = zeros(ComplexF32, nx, ny)
+    img[10:22, 10:22] .= 1
+    traj = radial_trajectory(64, 64; ordering=:golden_angle)
+    smaps = coil_sensitivities(nx, ny, 4)
+    acq = NonCartesianAcquisitionInfo(nothing; trajectory=traj, image_size=(nx, ny), sensitivity_maps=smaps)
+    data = simulate_acquisition(img, acq)
+
+    𝒜 = get_encoding_operator(data)
+    nrmse(rec) = norm(rec .- img) / norm(img)
+    nrmse_adjoint = nrmse(𝒜' * data.kspace_data)
+
+    # The bare adjoint `𝒜'y` is an un-normalized-NFFT-scale warm start (off by orders of
+    # magnitude), which a finite-`maxit` CG-SENSE solve does not correct on its own -- it used to
+    # score *worse* than the plain adjoint. The scale-correct `𝒜'y/‖𝒜‖²` warm start
+    # (`_direct_reconstruct`) fixes that.
+    method = IterativeReconstruction(; algorithm=CGNR(maxit=20, tol=1.0e-6), fidelity=L2Loss())
+    rec = reconstruct(data, method; verbosity=Silent())
+    @test nrmse(rec) < nrmse_adjoint
+end
+
 @testitem "POGM matches FISTA on a single L1 regularizer" tags = [:minimizer, :reconstruction] begin
     using Test
     using MriReconstructionToolbox

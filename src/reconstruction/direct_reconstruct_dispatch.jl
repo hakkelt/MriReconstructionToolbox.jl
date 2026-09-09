@@ -1,13 +1,21 @@
-function _direct_reconstruct_components(𝒜, acq_data, method::ReconstructionMethod, config; scale_override = nothing)
+function _direct_reconstruct_components(𝒜, acq_data, method::ReconstructionMethod, config; scale_override=nothing)
     @step "Getting initial estimate" config begin
         x̂ = 𝒜' * acq_data.kspace_data
     end
     scale_input = if method isa IterativeReconstruction && method.signal_model !== nothing
-        get_encoding_operator(acq_data; threaded = config.threaded)' * acq_data.kspace_data
+        get_encoding_operator(acq_data; threaded=config.threaded)' * acq_data.kspace_data
     else
         x̂
     end
-    return x̂, _resolve_scale(acq_data, scale_input, config, scale_override)
+    scale = _resolve_scale(acq_data, scale_input, config, scale_override)
+    # `𝒜'y` is only on the image's scale when `𝒜'𝒜 ≈ I`; a raw FFT/NFFT is not. `L`, already
+    # needed as the algorithm's step-size estimate (below, or by the caller when this warm start
+    # feeds a later `_iterative_reconstruct_core` call), makes `x̂/‖𝒜‖²` (one Landweber step) the
+    # scale-correct warm start at no extra cost. Computed from the pre-rescale `x̂` so `scale`
+    # above stays exactly as before.
+    L = _warm_start_needs_operator_norm(method) ? _operator_norm_for_stepsize(𝒜, method, config) : nothing
+    isnothing(L) || (x̂ = _scale_x0(x̂, L^2))
+    return x̂, scale, L
 end
 
 # The scale is either imposed by the caller (task splitting uses one shared scale for every slice),
@@ -78,14 +86,14 @@ function _direct_reconstruct_coil_combined(acq_data::CartesianAcquisitionInfo, m
     # (`_compose_with_sensitivity`); rebuild the bare (sensitivity-free) encoding operator so
     # per-coil images stay correctly zero-filled/gridded even for a Cartesian-subsampled
     # acquisition, then dispatch the combination explicitly.
-    ℬ = isnothing(smaps) ? 𝒜 : get_encoding_operator(CartesianAcquisitionInfo(acq_data; sensitivity_maps = nothing))
+    ℬ = isnothing(smaps) ? 𝒜 : get_encoding_operator(CartesianAcquisitionInfo(acq_data; sensitivity_maps=nothing))
     coil_imgs = unname(ℬ' * acq_data.kspace_data)
 
     img_out, coil_reduced = if method.coil_combination isa AdjointSensitivity
         @argcheck !isnothing(smaps) "AdjointSensitivity coil combination requires sensitivity maps."
-        sum(coil_imgs .* conj.(unname(smaps)); dims = c_dim), true
+        sum(coil_imgs .* conj.(unname(smaps)); dims=c_dim), true
     elseif method.coil_combination isa RootSumSquares
-        sqrt.(sum(abs2, coil_imgs; dims = c_dim)), true
+        sqrt.(sum(abs2, coil_imgs; dims=c_dim)), true
     elseif method.coil_combination isa NoCoilCombination
         coil_imgs, false
     else
@@ -98,7 +106,7 @@ function _direct_reconstruct_coil_combined(acq_data::NonCartesianAcquisitionInfo
     return 𝒜' * acq_data.kspace_data
 end
 
-function _direct_reconstruct(𝒜, acq_data, x₀, method::ReconstructionMethod, config; scale_override = nothing)
+function _direct_reconstruct(𝒜, acq_data, x₀, method::ReconstructionMethod, config; scale_override=nothing)
     direct_recon_only = method isa DirectMethod
     if !isnothing(x₀) && direct_recon_only
         log_message(
@@ -107,23 +115,34 @@ function _direct_reconstruct(𝒜, acq_data, x₀, method::ReconstructionMethod,
         )
         x₀ = nothing
     end
+    is_default_iterative_adjoint = false
     if isnothing(x₀)
         @step (direct_recon_only ? "Reconstructing image" : "Getting initial estimate") config begin
             if method isa DirectReconstruction
                 x₀ = _direct_reconstruct_coil_combined(acq_data, method, 𝒜)
             elseif !(method isa DirectMethod)
                 x₀ = 𝒜' * acq_data.kspace_data
+                is_default_iterative_adjoint = true
             else
                 x₀ = _direct_reconstruct(
-                    acq_data, method; progress = progress_tick(config.verbosity)
+                    acq_data, method; progress=progress_tick(config.verbosity)
                 )
             end
         end
     end
     scale_input = if method isa IterativeReconstruction && method.signal_model !== nothing
-        get_encoding_operator(acq_data; threaded = config.threaded)' * acq_data.kspace_data
+        get_encoding_operator(acq_data; threaded=config.threaded)' * acq_data.kspace_data
     else
         x₀
     end
-    return x₀, _resolve_scale(acq_data, scale_input, config, scale_override)
+    scale = _resolve_scale(acq_data, scale_input, config, scale_override)
+    # Same fix as `_direct_reconstruct_components`, restricted to the case that actually produced
+    # a fresh default adjoint here (not a caller-supplied x₀, and not a pure direct method's own
+    # reconstruction, which is already correctly scaled).
+    L = nothing
+    if is_default_iterative_adjoint && _warm_start_needs_operator_norm(method)
+        L = _operator_norm_for_stepsize(𝒜, method, config)
+        x₀ = _scale_x0(x₀, L^2)
+    end
+    return x₀, scale, L
 end

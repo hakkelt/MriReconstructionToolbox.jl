@@ -15,7 +15,7 @@ would have got back from `reconstruct`: it applies the signal model and the `Nam
 """
 function _iterative_reconstruct_core(
     𝒜, acq_data, x₀_or_x₀s, scale, method::IterativeReconstruction, config;
-    build::Function, present::Function=identity,
+    build::Function, present::Function=identity, precomputed_L=nothing,
 )
     if scale != 1
         @step "Scaling k-space data" config begin
@@ -30,7 +30,12 @@ function _iterative_reconstruct_core(
     # large — and only the first was intended. See `docs/src/high-level/methods.md`, "Operator
     # norm, step size and λ".
     should_estimate_L = _should_estimate_operator_norm(method)
-    L = should_estimate_L ? _operator_norm_for_stepsize(𝒜, method, config) : nothing
+    # `precomputed_L` lets a caller that already estimated `‖𝒜‖` for the warm start
+    # (`_direct_reconstruct`/`_direct_reconstruct_components`) hand it in instead of paying for
+    # `estimate_opnorm` a second time here.
+    L = should_estimate_L ?
+        (isnothing(precomputed_L) ? _operator_norm_for_stepsize(𝒜, method, config) : precomputed_L) :
+        nothing
     # `@printing_step`, not `@step`: `@step`'s verbose path runs its body inside `@spawn`, so the
     # `model` / `vars` bindings would live only in that task's closure — the solve closures below
     # capture them, and neither inference (JET) nor a reader can then see they are defined.
@@ -258,9 +263,23 @@ function _should_estimate_operator_norm(method::IterativeReconstruction)
     return !is_pure_cg
 end
 
-# `‖𝒜‖`, for use as `Lf = n‖𝒜‖²`. `estimate_opnorm`'s power iteration converges from below, so
-# this is a slight under-estimate of the true norm; `AbstractOperators.powerit`'s docstring
-# records that, and `exact_opnorm = true` swaps in the converged `opnorm` for callers who mind.
+"""
+    _warm_start_needs_operator_norm(method) -> Bool
+
+Whether the default warm start `𝒜'y` needs the `‖𝒜‖²` correction (`_direct_reconstruct` /
+`_direct_reconstruct_components`) to be on the image's scale. Unlike
+[`_should_estimate_operator_norm`](@ref), this does **not** auto-skip pure Krylov solvers: a
+Krylov method derives its own step size regardless of warm-start scale, but a badly-scaled warm
+start still costs it iterations before `maxit`/`tol` are reached (the CG-SENSE case this fixes).
+Only an explicit `disable_operator_normalization = true` skips it, preserving today's behavior for
+callers who deliberately opted out of the operator-norm estimate altogether.
+"""
+_warm_start_needs_operator_norm(method::IterativeReconstruction) = method.disable_operator_normalization !== true
+
+# `‖𝒜‖`, for use as `Lf = n‖𝒜‖²` and/or to scale-correct the default warm start. `estimate_opnorm`'s
+# power iteration converges from below, so this is a slight under-estimate of the true norm;
+# `AbstractOperators.powerit`'s docstring records that, and `exact_opnorm = true` swaps in the
+# converged `opnorm` for callers who mind.
 function _operator_norm_for_stepsize(𝒜, method::IterativeReconstruction, config)
     local L
     # `@printing_step`, not `@step`: the latter runs its body in a `@spawn`, so `L` would be
