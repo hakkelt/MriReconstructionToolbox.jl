@@ -142,8 +142,8 @@ side_by_side(x_true, x_direct, x_cs; titles = ("Ground truth", "Direct", "CS"), 
 # | `03_simulation.ipynb` | phantoms, coil maps, sampling patterns, noise |
 # | `04_regularization.ipynb` | every regularizer in the package |
 # | `05_reconstruction_methods.ipynb` | GRAPPA, SPIRiT, partial Fourier, signal models |
-# | `06_algorithms_and_configuration.ipynb` | solvers, tolerances, scaling, verbosity |
-# | `07_dynamic_and_decomposition.ipynb` | dynamic imaging, L+S, problem decomposition |
+# | `06_algorithms_and_configuration.ipynb` | solvers, tolerances, scaling, verbosity, task splitting |
+# | `07_dynamic_and_decomposition.ipynb` | dynamic imaging, L+S, image decomposition |
 # | `08_non_cartesian.ipynb` | radial/spiral trajectories, NFFT, density compensation |
 # | `09_low_level_interface.ipynb` | operators, `StructuredOptimization`, custom terms |
 # | `10_real_data_cartesian.ipynb` | real 0.3 T brain data end to end |
