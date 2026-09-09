@@ -163,6 +163,48 @@ img = reconstruct(data, IterativeReconstruction(L1Wavelet2D(5e-3); algorithm = F
 nothing # hide
 ```
 
+### Optimized Gradient Method (POGM)
+
+This algorithm solves the same problem class as FISTA,
+
+    minimize f(x) + g(x),
+
+where `f` is smooth, using Kim & Fessler's optimized gradient method with Gu et al.'s adaptive
+restart in place of FISTA's fixed momentum sequence.
+
+**Best for:** Single non-smooth regularizer, same problems FISTA targets, when a worst-case
+convergence rate twice as tight as FISTA's is wanted.
+
+**Properties:**
+- Accelerated gradient method with a provably optimal worst-case rate among first-order methods
+- Adaptive restart avoids the oscillation fixed-momentum methods show near convergence
+- Not in `DEFAULT_ALGORITHMS`; select it explicitly with `algorithm = POGM()`
+
+**Parameters:** the same `mf`, `Lf`, `gamma`, `adaptive`, `minimum_gamma`, `reduce_gamma`,
+`increase_gamma` as FISTA.
+
+**References:**
+1. Kim, Fessler, "Optimized First-order Methods for Smooth Convex Minimization", Mathematical
+   Programming, vol. 159, pp. 81-107 (2016).
+2. Gu, Bo, Kim, Yin, Fessler, "Optimized Gradient Method with Adaptive Restart for Faster
+   Smooth Convex Minimization" (2018).
+
+**Pros:**
+- ✅ Tighter worst-case convergence rate than FISTA
+- ✅ Adaptive restart improves practical convergence near the optimum
+
+**Cons:**
+- ❌ Only one regularizer, same as FISTA
+- ❌ Requires Lipschitz constant (usually auto-estimated)
+
+**Example:**
+```@example imports
+reconstruct(data, IterativeReconstruction(L1Wavelet2D(5e-3); algorithm = POGM(), maxit = 2); verbosity = Silent()) # hide
+GC.gc() # hide
+img = reconstruct(data, IterativeReconstruction(L1Wavelet2D(5e-3); algorithm = POGM(), maxit = 100));
+nothing # hide
+```
+
 ### Alternating Direction Method of Multipliers (ADMM)
 
 This algorithm solves optimization problems of the form
@@ -362,7 +404,7 @@ the sort:
 
 | algorithm | additional fields |
 |---|---|
-| `FISTA`, `ISTA` | `objective`, `smooth_value`, `nonsmooth_value`, `stepsize`, `fixed_point_residual` |
+| `FISTA`, `ISTA`, `POGM` | `objective`, `smooth_value`, `nonsmooth_value`, `stepsize`, `fixed_point_residual` |
 | `DouglasRachford` | `objective`, `smooth_value`, `nonsmooth_value`, `fixed_point_residual` |
 | `ADMM` | `primal_residual`, `dual_residual`, `iterate_change` |
 | `CG`, `CGNR` | `residual_norm` |

@@ -13,7 +13,7 @@ using NamedDims
 using StructuredOptimization
 using NFFTOperators: NFFTOp, NFFT
 
-using NestedThreading: @budgeted_threads, with_full_threads, with_restricted_threads
+using NestedThreading: @budgeted_threads, with_full_threads, with_restricted_threads, with_thread_budget
 using WaveletOperators: WaveletOp, WT, wavelet
 using ContourletOperators: ContourletOp, NSCTOp, ContourletParams, parabolic_levels
 using FFTWOperators: FFTWOperators, DFT, fftshift_op, ifftshift_op, alternate_sign!
@@ -31,6 +31,7 @@ const ADMM = ProximalAlgorithms.ADMM
 const DouglasRachford = ProximalAlgorithms.DouglasRachford
 const CG = ProximalAlgorithms.CG
 const CGNR = ProximalAlgorithms.CGNR
+const POGM = ProximalAlgorithms.POGM
 
 # Exported names target a non-expert user assembling a reconstruction from the built-in pieces.
 # The extension surface (abstract supertypes, interface functions) is `public` but not exported.
@@ -50,7 +51,7 @@ export build_model, reconstruct, ReconstructionConfig, SequentialExecutor, Multi
 export Silent, ProgressBar, Verbose
 export IterationTrace
 export BartScaling, FixedScaling, MeasurementBasedScaling, NoScaling
-export ISTA, FISTA, ADMM, DouglasRachford, CG, CGNR
+export ISTA, FISTA, POGM, ADMM, DouglasRachford, CG, CGNR
 
 # Reconstruction methods
 export DirectReconstruction, IterativeReconstruction
