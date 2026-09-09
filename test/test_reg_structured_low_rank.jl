@@ -2,6 +2,7 @@ using TestItems
 
 @testitem "StructuredLowRank regularization" tags = [:regularization] setup = [RegTestSetup, ProxOf] begin
     using LinearAlgebra
+    using FFTW: fft, fftshift
     import Random
     Random.seed!(0)
 
@@ -126,6 +127,102 @@ using TestItems
         v = calculate(StructuredLowRank(λ = λ, window = w), x; threaded = false)
         H = AbstractOperators.Hankel(ComplexF64, (gx, gy), w; nchannels = nc, channels = true)
         @test v ≈ λ * sum(svdvals(H * x))
+    end
+
+    @testset "weights: constructor validation" begin
+        @test StructuredLowRank(λ = 0.1, window = (5, 5)).weights === nothing
+        @test StructuredLowRank(λ = 0.1, window = (5, 5), weights = :tv).weights === :tv
+        @test_throws ArgumentError StructuredLowRank(λ = 0.1, window = (5, 5), weights = :haar)
+        # one dimension per k-space encoding dimension
+        @test_throws ArgumentError StructuredLowRank(λ = 0.1, window = (5, 5), weights = randn(8, 8, 8))
+        @test_throws ArgumentError StructuredLowRank(λ = 0.1, window = (5, 5), weights = ())
+        @test_throws ArgumentError StructuredLowRank(λ = 0.1, window = (5, 5), weights = (:tv,))
+        # scale_regularization carries the weights through
+        @test scale_regularization(StructuredLowRank(λ = 0.2, window = (4, 3), weights = :tv), 3.0).weights === :tv
+    end
+
+    @testset "weights: the built-in models" begin
+        gx, gy = 12, 10
+        tv = MriReconstructionToolbox._slr_weights(
+            StructuredLowRank(λ = 0.1, window = (4, 3), weights = :tv), (gx, gy), ComplexF64
+        )
+        # the approximation band plus one first difference per encoding dimension
+        @test length(tv) == 3
+        @test all(size(w) == (gx, gy, 1) for w in tv)
+        @test all(isone, tv[1])
+        # a first difference vanishes at DC, which on MRT's centered grid is index N ÷ 2 + 1
+        @test tv[2][gx ÷ 2 + 1, 1, 1] == 0
+        @test tv[3][1, gy ÷ 2 + 1, 1] == 0
+        # the pyramid adds the step-2 detail band per dimension
+        wav = MriReconstructionToolbox._slr_weights(
+            StructuredLowRank(λ = 0.1, window = (4, 3), weights = :wavelet), (gx, gy), ComplexF64
+        )
+        @test length(wav) == 5
+        # several weights are averaged, a single one is used directly
+        avg = MriReconstructionToolbox.StructuredOptimization.extract_functions(
+            materialize(StructuredLowRank(λ = 0.1, window = (4, 3), weights = :tv), Variable(randn(ComplexF64, gx, gy, 2)); threaded = false)
+        )
+        @test avg isa MriReconstructionToolbox.ProximalAverage
+        one_w = MriReconstructionToolbox.StructuredOptimization.extract_functions(
+            materialize(
+                StructuredLowRank(λ = 0.1, window = (4, 3), weights = ones(ComplexF64, gx, gy)),
+                Variable(randn(ComplexF64, gx, gy, 2)); threaded = false,
+            )
+        )
+        @test one_w isa MriReconstructionToolbox.HankelLowRankProx
+    end
+
+    @testset "weighted prox == weighted-Cadzow reference" begin
+        gx, gy, nc = 12, 10, 3
+        win = (4, 3)
+        x = randn(ComplexF64, gx, gy, nc)
+        γ, λ = 0.7, 0.15
+        weight = randn(ComplexF64, gx, gy) .+ 2.0        # no zeros: the plain weighted formula
+        y, _ = prox_of(StructuredLowRank(λ = λ, window = win, weights = weight), x, γ)
+
+        H = AbstractOperators.Hankel(ComplexF64, (gx, gy), win; nchannels = nc, channels = true)
+        W = reshape(weight, gx, gy, 1)
+        F = svd(H * (W .* x))
+        S = max.(0.0, F.S .- λ * γ)
+        adjoint_lift = H' * (F.U * Diagonal(S) * F.Vt)
+        mult = real.(AbstractOperators.diag_AcA(H))
+        # `(𝓗∘diag(w))ᴴ(𝓗∘diag(w)) = diag(|w|² ⊙ mult)`
+        @test y ≈ conj.(W) .* adjoint_lift ./ (abs2.(W) .* mult)
+        # and the value is the nuclear norm of the *weighted* lift
+        @test calculate(StructuredLowRank(λ = λ, window = win, weights = weight), x; threaded = false) ≈
+            λ * sum(svdvals(H * (W .* x)))
+    end
+
+    @testset "a vanishing weight leaves its sample alone" begin
+        gx, gy, nc = 12, 10, 2
+        win = (4, 3)
+        x = randn(ComplexF64, gx, gy, nc)
+        weight = ones(ComplexF64, gx, gy)
+        weight[3, 4] = 0
+        weight[7, 1] = 0
+        y, _ = prox_of(StructuredLowRank(λ = 0.15, window = win, weights = weight), x, 0.7)
+        # the weighted term says nothing about a sample it zeroes out, so the prox is the identity
+        # there -- not zero, which is what the raw least-squares formula would give
+        @test y[3, 4, :] ≈ x[3, 4, :]
+        @test y[7, 1, :] ≈ x[7, 1, :]
+        @test !isapprox(y[5, 5, :], x[5, 5, :])
+    end
+
+    @testset "the ALOHA structure: weighting drops the lifted rank" begin
+        # A step image has a two-spike x-difference, so the x-weighted k-space is annihilated by a
+        # short filter and its block-Hankel lift is rank-deficient -- while the unweighted lift of
+        # the same single-channel k-space is not. That gap is what `weights` exploits.
+        N = 32
+        img = zeros(ComplexF64, N, N)
+        img[10:20, :] .= 1.0
+        ksp = reshape(fftshift(fft(img)) / N, N, N, 1)
+        H = AbstractOperators.Hankel(ComplexF64, (N, N), (5, 5); nchannels = 1, channels = true)
+        w = MriReconstructionToolbox._slr_weights(
+            StructuredLowRank(λ = 0.1, window = (5, 5), weights = :tv), (N, N), ComplexF64
+        )[2]                                             # the x first difference
+        numrank(σ) = count(>(1.0e-8 * σ[1]), σ)
+        @test numrank(svdvals(H * ksp)) == 25            # full: 5 × 5 window, one channel
+        @test numrank(svdvals(H * (w .* ksp))) < 15
     end
 
     @testset "calculate: the rank form is an indicator" begin
