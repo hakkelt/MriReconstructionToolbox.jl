@@ -32,7 +32,8 @@
 # > *OCMR (v1.0) — Open-Access Multi-Coil k-Space Dataset for Cardiovascular Magnetic Resonance
 # > Imaging*, arXiv:2008.03410 (2020). The first run downloads ~200 MB.
 #
-# > **Runtime.** This is by far the slowest notebook in the set: **around an hour** end to end,
+# > **Runtime.** This is by far the slowest notebook in the set: **about forty minutes** end to end
+# > (measured: 39 min with `JULIA_NUM_THREADS=4` on a shared node),
 # > most of it in the λ sweep of section 5 (fifty-six reconstructions of a 256 × 208 × 19 cine)
 # > and the rest in the timing table of section 7. Drop entries from `sweeps`, or lower `maxit`,
 # > if you want it faster — the conclusions in section 9 survive a coarser sweep, they just stop
@@ -321,8 +322,8 @@ jim(
 # inside it — you can check that yourself in the sweep numbers printed by the next cell.
 # **Always check it**: an optimum at the edge of your sweep is not a result.
 #
-# This cell is the expensive one — fifty-six reconstructions, the better part of an hour on a
-# shared node. Everything after it is cheap.
+# This cell is the expensive one — fifty-six reconstructions, around twenty-five minutes on a
+# shared node with four threads. Everything after it is cheap except the timing table.
 
 # %%
 sweeps = (
