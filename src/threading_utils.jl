@@ -4,31 +4,13 @@
 Run `expr` with every registered thread pool opened up when `threaded` is true, and with all
 of them pinned to one thread when it is false.
 
-!!! warning "The permitted branch raises BLAS, and cannot currently be told not to"
-    `with_full_threads` sets every *counted* pool to `NestedThreading.capacity()`
-    (`Threads.threadpoolsize()`), BLAS included, even past a lower count the caller chose —
-    documented behaviour, and the reason `AbstractOperators._with_blas_threading` refuses to
-    open a full-throttle scope of its own.
-
-    The obvious guard, `with_full_threads(exclude = (:blas, :mkl))`, **does not work**:
-    `exclude` is consulted only in `NestedThreading._run_guarded`, which walks
-    `GUARDED_POOLS`. Counted pools go through `_enter!` / `_apply!`, which take no `exclude`
-    at all, so `:blas`, `:mkl`, `:fftw` and `:nfft` cannot be excluded from anything.
-    `:polyester` is the only registered guarded pool, hence the only name `exclude` can
-    actually name. Unknown names are accepted silently. Measured, `-t 8`, starting from
-    `BLAS.set_num_threads(2)`:
-
-    ```
-    outside                                  = 2
-    with_full_threads()                      = 8
-    with_full_threads(exclude=(:blas,:mkl))  = 8   # no effect
-    with_restricted_threads(exclude=(:blas,))= 1   # no effect
-    ```
-
-    So the BLAS budget has to be narrowed from inside instead — see [`with_serial_blas`](@ref),
-    which the iterative solve opens around itself. If NestedThreading grows an allowlist
-    (`only = (:blas, :mkl)`) or extends `exclude` to counted pools, this branch should use it
-    and the inner scope can go away.
+The permitted branch raises every counted pool (BLAS included) to `NestedThreading.capacity()` —
+that is `with_full_threads`' documented behaviour, and is the reason
+`AbstractOperators._with_blas_threading` refuses to open a full-throttle scope of its own. Before
+NestedThreading 0.1.1, `exclude` could not narrow a counted pool at all (only the guarded
+`:polyester` pool), so the iterative solve had to narrow BLAS from inside its own scope instead —
+see [`with_serial_blas`](@ref), which now does exactly that via `with_thread_budget(f, 1; only =
+(:blas, :mkl))`, NestedThreading 0.1.1's allowlist.
 """
 macro conditionally_enable_threading(threaded, expr)
     return quote
@@ -215,14 +197,8 @@ threaded BLAS-1 is within noise either way), so this is left keyed on the item a
 plumbed through.
 """
 function with_serial_blas(f::F) where {F}
-    prev = LinearAlgebra.BLAS.get_num_threads()
-    prev == 1 && return f()
-    LinearAlgebra.BLAS.set_num_threads(1)
-    try
-        return f()
-    finally
-        LinearAlgebra.BLAS.set_num_threads(prev)
-    end
+    LinearAlgebra.BLAS.get_num_threads() == 1 && return f()
+    return with_thread_budget(f, 1; only=(:blas, :mkl))
 end
 
 function with_serial_blas(f::F, x) where {F}
@@ -278,7 +254,7 @@ genuinely pays) untouched.
 function maybe_disable_unsplit_threading(config, method, acq_data)
     config.threaded || return config
     bytes = prod(variable_size(method, acq_data)) * sizeof(eltype(acq_data.kspace_data))
-    return _should_thread_work_item(config, bytes) ? config : ReconstructionConfig(config; threaded = false)
+    return _should_thread_work_item(config, bytes) ? config : ReconstructionConfig(config; threaded=false)
 end
 
 _work_item_bytes(x::AbstractArray) = length(x) * sizeof(eltype(x))

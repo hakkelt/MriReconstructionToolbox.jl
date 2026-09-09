@@ -39,7 +39,6 @@ DSPOperators = {path = "deps/AbstractOperators/DSPOperators"}
 FFTWOperators = {path = "deps/AbstractOperators/FFTWOperators"}
 NFFTOperators = {path = "deps/AbstractOperators/NFFTOperators"}
 WaveletOperators = {path = "deps/AbstractOperators/WaveletOperators"}
-NestedThreading = {url = "https://github.com/hakkelt/NestedThreading.jl"}
 OperatorCore = {url = "https://github.com/hakkelt/OperatorCore.jl"}
 ProximalAlgorithms = {path = "deps/ProximalAlgorithms"}
 ProximalCore = {url = "https://github.com/hakkelt/ProximalCore.jl"}
@@ -60,7 +59,7 @@ MKL = "0.6 - 0.9"
 MRIBase = "0.4"
 NFFTOperators = "0.1"
 NamedDims = "1.2"
-NestedThreading = "0.1"
+NestedThreading = "0.1.1"
 OperatorCore = "0.1"
 Printf = "1"
 ProgressMeter = "1.10"
