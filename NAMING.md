@@ -35,10 +35,24 @@ The rule is satisfied when the *penalty* is legible, by whatever means:
 - by an explicit norm prefix — `L1Image`, `L2Image`, `L1Wavelet2D`, `L1Contourlet`,
   `L1TemporalFourier`, `L0Image`, `L0Wavelet2D`, `L0Wavelet3D`;
 - by a penalty name that is itself standard — `TotalVariation2D`, `TotalGeneralizedVariation2D`,
-  `JointSparsity`, `LowRank`, `LocallyLowRank`, `EdgePreservingRoughness2D`, `ReferencePrior`,
-  `PlugAndPlay`.
+  `JointSparsity`, `LowRank`, `LocallyLowRank`, `MultiScaleLowRank`, `StructuredLowRank`,
+  `EdgePreservingRoughness2D`, `ReferencePrior`, `PlugAndPlay`.
 
-A name that states only a transform (`Wavelet2D`, `TemporalFourier`) fails the rule.
+A name that states only a transform (`Wavelet2D`, `TemporalFourier`) fails the rule. A qualifier in
+front of a standard penalty name is fine as long as the penalty survives: `LocallyLowRank`,
+`MultiScaleLowRank` and `StructuredLowRank` all say *low rank*, and only differ in what is made
+low-rank.
+
+**Rule 1.1a — Prefer the family term over a single paper's acronym when one type covers several
+papers.** `StructuredLowRank` is named for "structured low-rank matrix completion", which is the
+field's own umbrella term (it is the title phrase of Shin et al., MRM 2014) and which covers both
+forms the type provides: `max_rank` is SAKE's hard rank constraint and `λ` is LORAKS' C-matrix
+nuclear-norm penalty. Naming the type `SAKE` or `LORAKS` would break Rule 1.4's spirit rather than
+follow it: those acronyms name whole reconstruction pipelines — LORAKS in particular is a family
+with S- and G-matrix variants that are *not* implemented here — so a type called `LORAKS` would
+overclaim, and two types would duplicate one operator and one prox for no gain. The papers are cited
+in the docstring and in `docs/src/high-level/regularization.md`; the keyword tells the reader which
+one they are running.
 
 **Rule 1.3 — Constraints read as constraints.** A hard constraint (an indicator function) is named
 for the set, not for a norm: `RankLimit`, `NonNegative`, `BoxConstraint`, `HardConsistency`. Where a
@@ -49,7 +63,10 @@ operators on the *same* sparsifying transform (nothing else differs — same ope
 them into one type taking `threshold` (penalty) XOR `count` (constraint) as mutually-exclusive
 keywords instead of minting a second type name: `L0Image(; threshold, count)`,
 `L0Wavelet2D(; threshold, count)`, `L0Wavelet3D(; threshold, count)` (there is no separate
-`SparsityLimit`).
+`SparsityLimit`). `StructuredLowRank(; λ, max_rank)` follows the same pattern: the lift, the
+`get_affected_dims` shape and the prox pipeline are identical, and only the singular-value step
+differs (soft-threshold vs truncate), so it is one type with two mutually-exclusive keywords rather
+than a `StructuredLowRank` / `StructuredRankLimit` pair.
 
 **Rule 1.4 — Acronyms are kept when they are the field's own.** `GRAPPA`, `SPIRiT`, `ESPIRiT`,
 `POCS`, `RING`, `SVDCompression`, `GeometricCompression`, `PipeMenonDCF`, `VoronoiDCF`,
@@ -154,7 +171,7 @@ override or call it. Test that by asking: *is there a caller this package does n
 by this test: `lower`, `variable_dims`, `variable_size`, `output_dims` (overridden only on the
 closed signal-model axis, which is not an open extension point), and every proximal-operator
 implementation detail (`hard_consistency_prox`, `DenoiserProx`, `BlockNuclearNorm`,
-`SPIRiTConsistencyOp`, `StackedNSCTOp`).
+`HankelLowRankProx`, `SPIRiTConsistencyOp`, `StackedNSCTOp`).
 
 **Rule 6.4 — Do not blanket-reexport a dependency.** `@reexport using SomePackage` drops that
 package's whole namespace on the user and causes real collisions (an `@reexport using
@@ -186,10 +203,14 @@ there in commit `274b63a`; `ProximalAverage` (the proximal-average calculus rule
 followed. A proximal function that only makes sense given an image layout
 (spatial dims, frames, coils) stays here; where possible, split it into a generic core upstream and
 a thin layout wrapper in MRT. `BlockNuclearNorm` is the case that stays: it is defined against the
-`(spatial…, frames, batch)` image layout throughout, so there is no generic core to lift out.
+`(spatial…, frames, batch)` image layout throughout, so there is no generic core to lift out;
+`HankelLowRankProx` (behind `StructuredLowRank`) is the same case for the
+`(k-space grid…, channels, batch)` layout.
 `hard_consistency_prox` is the case that split cleanly: the CG projection went upstream, and only
 the `is_AAc_diagonal`/`diag_AAc` shortcut — which is knowledge about MRI encoding operators — stayed.
 
 **Rule 7.3** — A **linear operator** never belongs in `ProximalOperators`. It goes to
 `AbstractOperators` (or the relevant `*Operators` fork) so that both packages and any third party
-can use it.
+can use it. Precedent: the block-Hankel lift used by `StructuredLowRank` went upstream as
+`AbstractOperators.Hankel` — it is the generic sliding-window embedding, with no MRI content —
+while the MRI-layout Cadzow prox around it stayed in MRT.

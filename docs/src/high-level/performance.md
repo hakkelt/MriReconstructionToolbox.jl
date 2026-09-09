@@ -44,7 +44,8 @@ the same way here; this is not a bug in either.
 - **Splits work across slices** and tells the libraries underneath to stay single-threaded.
 - **Skips threading for small FFTs**, where it would cost more than it saves.
 - **Pins BLAS to one thread during the iterative solve** — except for large problems, and except
-  for low-rank regularizers (`LowRank`, `LocallyLowRank`, `MultiScaleLowRank`), whose SVDs
+  for low-rank regularizers (`LowRank`, `LocallyLowRank`, `MultiScaleLowRank`,
+  `StructuredLowRank`), whose SVDs
   genuinely do benefit from threading. See [`with_serial_blas`](@ref).
 - **Applies the same size rule to one slice of a task-split problem.** When there are few enough
   slices that they are reconstructed one at a time, the work *inside* a slice threads only if
