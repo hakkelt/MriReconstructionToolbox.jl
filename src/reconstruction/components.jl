@@ -71,6 +71,11 @@ function materialize_with_auxiliaries(c::Component, x::Variable; threaded::Bool)
     return reduce(+, term_list), auxiliaries
 end
 
+# `total` and `components` are the struct's real fields; a component sharing either name would
+# otherwise be shadowed by `getproperty` below (or shadow the field itself), so both
+# `check_components` and the constructor below reject the collision up front.
+const _DECOMPOSED_IMAGE_RESERVED_NAMES = (:total, :components)
+
 """
     DecomposedImage(total, components::NamedTuple) <: AbstractArray
 
@@ -91,11 +96,6 @@ img.components.lowrank  # low-rank part (equivalent long form)
 Array(img)               # plain Array of the sum
 ```
 """
-# `total` and `components` are the struct's real fields; a component sharing either name would
-# otherwise be shadowed by `getproperty` below (or shadow the field itself), so both
-# `check_components` and the constructor below reject the collision up front.
-const _DECOMPOSED_IMAGE_RESERVED_NAMES = (:total, :components)
-
 struct DecomposedImage{T, N, A <: AbstractArray{T, N}, C <: NamedTuple} <: AbstractArray{T, N}
     total::A
     components::C

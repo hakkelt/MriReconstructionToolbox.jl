@@ -95,25 +95,23 @@ $\|[\mathcal{A} \dots \mathcal{A}]\|^2 = n\|\mathcal{A}\|^2$). The problem solve
 so `λ` weights the regularizer against the data term directly, in the data's own units, and the
 reconstructed image comes back in those units too.
 
-!!! warning "Changed behaviour: λ and the reconstructed amplitude"
-    MRT previously rescaled the operator to unit norm and solved
-    $\tfrac12\|(\mathcal{A}/L)x - y\|^2 + \mathcal{R}(x)$ instead. Substituting $x = Lv$ shows what
-    that did: it is $L^2\left[\tfrac12\|\mathcal{A}v - y\|^2 + L\,\lambda\|\Psi v\|_1\right]$ for a
-    degree-one homogeneous regularizer. So the weight actually applied was $\lambda L$, not
-    $\lambda$, **and the returned image was $L$ times larger than the data's units** — exactly $L$
-    as $\lambda \to 0$ (measured: $\|x\|/\|x_\text{true}\| = 1.5214$ against $L = 1.5214$). Every
-    benchmark used amplitude-aligned NRMSE, which hid it.
+!!! note "Why the encoding operator is not rescaled to unit norm"
+    A common alternative is to normalize the operator and solve
+    $\tfrac12\|(\mathcal{A}/L)x - y\|^2 + \mathcal{R}(x)$ with $L = \|\mathcal{A}\|$. MRT does not,
+    because that quietly changes both of the quantities a user reads. Substituting $x = Lv$ turns
+    it into $L^2\left[\tfrac12\|\mathcal{A}v - y\|^2 + L\,\lambda\|\Psi v\|_1\right]$ for a
+    degree-one homogeneous regularizer: the weight actually applied is $\lambda L$, not $\lambda$,
+    **and the returned image is $L$ times larger than the data's units** — exactly $L$ as
+    $\lambda \to 0$ (measured: $\|x\|/\|x_\text{true}\| = 1.5214$ against $L = 1.5214$). An
+    amplitude-aligned NRMSE hides both effects, which is why this is easy to miss.
 
-    Two consequences when upgrading:
-
-    - Reconstructed images are no longer scaled by $\|\mathcal{A}\|$. If you were dividing it out,
-      stop.
-    - A `λ` tuned against the old behaviour reproduces it as `λ * L`, with
-      $L = $ `AbstractOperators.estimate_opnorm(𝒜)`. $L$ is insensitive to matrix size and
-      undersampling factor but scales linearly with the sensitivity maps' own scaling and varies
-      with coil count (measured on a 128² brain phantom: $L = 1.5250$ with 8 coils, $1.0872$ with
-      4). That coupling is what the change removes: `λ` no longer depends on how the coil
-      sensitivities happen to be normalized.
+    $L$ is insensitive to matrix size and undersampling factor, but it scales linearly with the
+    sensitivity maps' own scaling and varies with coil count (measured on a 128² brain phantom:
+    $L = 1.5250$ with 8 coils, $1.0872$ with 4). Solving the unscaled problem is what keeps `λ`
+    independent of how the coil sensitivities happen to be normalized. A `λ` tuned against a
+    toolbox that does normalize reproduces the same solution here as `λ * L`, with
+    $L = $ `AbstractOperators.estimate_opnorm(𝒜)` (and the image comes back $L$ times smaller,
+    i.e. in the data's units).
 
 #### Signal Models (`ℳ`)
 
