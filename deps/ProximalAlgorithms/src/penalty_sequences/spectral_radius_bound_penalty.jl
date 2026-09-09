@@ -8,6 +8,8 @@ Adaptive penalty parameter strategy based on spectral radius bound. Updates pena
 - `rho::R`: Initial penalty parameters (one per regularizer block)
 - `tau::T=10`: Scaling factor for the penalty update (default is 10)
 - `eta::T=100`: Negative exponent of damping factor ωₙ := 2ˢ where s = -n/eta (default is 100)
+- `rho_min::T=1e-6`: Lower bound the spectral-radius estimate is projected into before blending (Theorem 5.1/3.1 require a fixed bounded interval for convergence)
+- `rho_max::T=1e6`: Upper bound the spectral-radius estimate is projected into before blending
 - `adp_freq::Int=1`: Frequency of adaptation (every adp_freq iterations)
 - `adp_start_iter::Int=2`: Iteration to start adaptation
 - `adp_end_iter::Int=typemax(Int)`: Iteration to end adaptation
@@ -25,6 +27,8 @@ Adaptive penalty parameter strategy based on spectral radius bound. Updates pena
     rho::R = nothing
     tau::T = nothing
     eta::T2 = nothing
+    rho_min::T = nothing
+    rho_max::T = nothing
     adp_freq::Int = 1
     adp_start_iter::Int = 2
     adp_end_iter::Int = typemax(Int)
@@ -33,6 +37,8 @@ Adaptive penalty parameter strategy based on spectral radius bound. Updates pena
         rho::R,
         tau::T,
         eta::T2,
+        rho_min::T,
+        rho_max::T,
         adp_freq::Int,
         adp_start_iter::Int,
         adp_end_iter::Int,
@@ -46,6 +52,8 @@ Adaptive penalty parameter strategy based on spectral radius bound. Updates pena
             isnothing(rho) ? nothing : copy(rho),
             isnothing(tau) ? nothing : copy(tau),
             isnothing(eta) ? nothing : copy(eta),
+            isnothing(rho_min) ? nothing : copy(rho_min),
+            isnothing(rho_max) ? nothing : copy(rho_max),
             adp_freq,
             adp_start_iter,
             adp_end_iter,
@@ -55,8 +63,8 @@ Adaptive penalty parameter strategy based on spectral radius bound. Updates pena
 end
 
 # Constructors
-function SpectralRadiusBoundPenalty(rho::R, tau::T, eta::T2, args...) where {R,T,T2}
-    SpectralRadiusBoundPenalty{R,T,T2}(rho, tau, eta, args...)
+function SpectralRadiusBoundPenalty(rho::R, tau::T, eta::T2, rho_min::T, rho_max::T, args...) where {R,T,T2}
+    SpectralRadiusBoundPenalty{R,T,T2}(rho, tau, eta, rho_min, rho_max, args...)
 end
 function SpectralRadiusBoundPenalty(rho::Union{AbstractVector,Number}; kwargs...)
     SpectralRadiusBoundPenalty(; rho=rho, kwargs...)
@@ -71,11 +79,17 @@ function reinstantiate_penalty_sequence(
     tau_vec = ensure_correct_value(seq.tau, R, default_tau)
 	default_eta = fill(R(100.0), n_blocks)
 	eta_vec = ensure_correct_value(seq.eta, R, default_eta)
+    default_rho_min = fill(R(1e-6), n_blocks)
+    rho_min_vec = ensure_correct_value(seq.rho_min, R, default_rho_min)
+    default_rho_max = fill(R(1e6), n_blocks)
+    rho_max_vec = ensure_correct_value(seq.rho_max, R, default_rho_max)
     T = typeof(final_rho)
     SpectralRadiusBoundPenalty{T,T,T}(;
         rho=final_rho,
         tau=tau_vec,
         eta=eta_vec,
+        rho_min=rho_min_vec,
+        rho_max=rho_max_vec,
         adp_freq=seq.adp_freq,
         adp_start_iter=seq.adp_start_iter,
         adp_end_iter=seq.adp_end_iter,
@@ -94,6 +108,7 @@ function get_next_rho!(
         for i in eachindex(iter.g)
             # Current penalty parameter for this block
             ρ, τ, η = seq.rho[i], seq.tau[i], seq.eta[i]
+            ρ_min, ρ_max = seq.rho_min[i], seq.rho_max[i]
 
             # Spectral radius bound
             y_norm = ρ * norm(state.u[i])
@@ -106,7 +121,11 @@ function get_next_rho!(
             elseif y_norm > 0 && z_norm > 0
                 n = seq.current_iter # - seq.adp_start_iter) ÷ seq.adp_freq
                 ω = 2^(-n / η)
-                ρ = (1 - ω) * ρ + ω * y_norm / z_norm
+                # project the spectral-radius estimate into [ρ_min, ρ_max] before
+                # blending, per Lorenz & Tran-Dinh (2019) Theorem 5.1 eq. (25);
+                # without this the convergence guarantee (Theorem 3.1) does not hold
+                ratio = clamp(y_norm / z_norm, ρ_min, ρ_max)
+                ρ = (1 - ω) * ρ + ω * ratio
             end # if y_norm ≈ 0 && z_norm ≈ 0 -> ρ remains unchanged
 
             if ρ != seq.rho[i]
