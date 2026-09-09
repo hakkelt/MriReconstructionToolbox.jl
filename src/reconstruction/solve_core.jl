@@ -240,8 +240,12 @@ function get_reasonable_freq(maxit)
     return isnothing(freq_i) ? 100 : reasonable_freqs[freq_i]
 end
 
-_is_krylov_solver(::ProximalAlgorithms.IterativeAlgorithm{<:Union{ProximalAlgorithms.CGIteration,ProximalAlgorithms.CGNRIteration}}) = true
-_is_krylov_solver(::Union{Type{<:ProximalAlgorithms.CGIteration},Type{<:ProximalAlgorithms.CGNRIteration}}) = true
+# `AbstractCGIteration`, not the two concrete unpreconditioned types: `PCGIteration` and
+# `PCGNRIteration` (`CG(; P)` / `CGNR(; P)`) are Krylov methods too, and naming only the plain
+# pair silently sent every preconditioned solve down the proximal path -- paying `estimate_opnorm`
+# for an `Lf` hint that a Krylov subspace never reads.
+_is_krylov_solver(::ProximalAlgorithms.IterativeAlgorithm{<:ProximalAlgorithms.AbstractCGIteration}) = true
+_is_krylov_solver(::Type{<:ProximalAlgorithms.AbstractCGIteration}) = true
 _is_krylov_solver(algs::Tuple) = all(_is_krylov_solver, algs)
 _is_krylov_solver(::Any) = false
 
