@@ -32,6 +32,12 @@
 # > *OCMR (v1.0) — Open-Access Multi-Coil k-Space Dataset for Cardiovascular Magnetic Resonance
 # > Imaging*, arXiv:2008.03410 (2020). The first run downloads ~200 MB.
 #
+# > **Runtime.** This is by far the slowest notebook in the set: **around an hour** end to end,
+# > most of it in the λ sweep of section 5 (fifty-six reconstructions of a 256 × 208 × 19 cine)
+# > and the rest in the timing table of section 7. Drop entries from `sweeps`, or lower `maxit`,
+# > if you want it faster — the conclusions in section 9 survive a coarser sweep, they just stop
+# > being defensible to the decimal place.
+#
 # **Contents**
 # 1. From ISMRMRD file to `AcquisitionInfo` in one call
 # 2. Readout oversampling, coil compression and the reference
@@ -304,25 +310,47 @@ jim(
 # measures how lucky those choices were. So: a four-point log-spaced sweep per method, per
 # pattern, and each method is reported at the λ that minimizes its **dynamic** error.
 #
-# Four points is coarse, and deliberately so — this has to run in a couple of minutes. The best
-# λ is therefore accurate to a factor of ~3, which is enough to stop a method being shown at a
-# grossly wrong setting but not enough to split hairs between two methods that land within a
-# percent of each other.
+# Four points is coarse: the best λ is accurate to a factor of ~3, which is enough to stop a
+# method being shown at a grossly wrong setting but not enough to split hairs between two methods
+# that land within a percent of each other. The brackets below are not arbitrary — they are the
+# third iteration. The first pass used one shared decade per family, and five of the seven methods
+# came back with their optimum sitting on an *end point* of their own grid, which means the search
+# never bracketed the minimum and the number it reported was a bound, not an optimum. Each grid was
+# recentred on that result; two of them (`L2Image` and `L1TemporalFourier`) came back on an end
+# point a second time and had to be moved again. Every grid below now has its minimum strictly
+# inside it — you can check that yourself in the sweep numbers printed by the next cell.
+# **Always check it**: an optimum at the edge of your sweep is not a result.
+#
+# This cell is the expensive one — fifty-six reconstructions, the better part of an hour on a
+# shared node. Everything after it is cheap.
 
 # %%
 sweeps = (
     "L2Image (per frame)" =>
-        (Float32[1.0e-4, 1.0e-3, 5.0e-3, 2.0e-2], λ -> IterativeReconstruction(L2Image(λ); maxit = 20)),
+        (Float32[2.0e-2, 8.0e-2, 3.0e-1, 1.0], λ -> IterativeReconstruction(L2Image(λ); maxit = 20)),
     "L1Wavelet2D (per frame)" =>
-        (Float32[1.0e-3, 3.0e-3, 1.0e-2, 3.0e-2], λ -> IterativeReconstruction(L1Wavelet2D(λ); maxit = 30)),
+        (Float32[1.0e-4, 3.0e-4, 1.0e-3, 3.0e-3], λ -> IterativeReconstruction(L1Wavelet2D(λ); maxit = 30)),
     "L1TemporalFourier" =>
-        (Float32[3.0e-3, 1.0e-2, 3.0e-2, 1.0e-1], λ -> IterativeReconstruction(L1TemporalFourier(λ; time_dim = :time); maxit = 30)),
+        (Float32[1.0e-4, 3.0e-4, 1.0e-3, 3.0e-3], λ -> IterativeReconstruction(L1TemporalFourier(λ; time_dim = :time); maxit = 30)),
     "TemporalTotalVariation" =>
-        (Float32[3.0e-3, 1.0e-2, 3.0e-2, 1.0e-1], λ -> IterativeReconstruction(TemporalTotalVariation(λ; time_dim = :time); maxit = 30)),
+        (Float32[3.0e-4, 1.0e-3, 3.0e-3, 1.0e-2], λ -> IterativeReconstruction(TemporalTotalVariation(λ; time_dim = :time); maxit = 30)),
     "LowRank" =>
-        (Float32[1.0e-2, 3.0e-2, 1.0e-1, 3.0e-1], λ -> IterativeReconstruction(LowRank(λ; time_dim = :time); maxit = 30)),
+        (Float32[3.0e-2, 1.0e-1, 3.0e-1, 1.0], λ -> IterativeReconstruction(LowRank(λ; time_dim = :time); maxit = 30)),
     "LocallyLowRank" =>
-        (Float32[1.0e-2, 3.0e-2, 1.0e-1, 3.0e-1], λ -> IterativeReconstruction(LocallyLowRank(λ; block_size = 8, time_dim = :time); maxit = 30)),
+        (Float32[1.0e-3, 3.0e-3, 1.0e-2, 3.0e-2], λ -> IterativeReconstruction(LocallyLowRank(λ; block_size = 8, time_dim = :time); maxit = 30)),
+    # L+S has two knobs, not one. Sweeping both would be sixteen reconstructions per pattern, so
+    # the sparse weight is tied to the low-rank one at the ratio Otazo et al. use (the sparse part
+    # is the weaker penalty) and the pair is swept as a single parameter. That is a coarser search
+    # than the others get — worth remembering when reading its row in the table.
+    "L+S (LowRank+TemporalTV)" =>
+        (
+            Float32[1.0e-2, 3.0e-2, 1.0e-1, 3.0e-1],
+            λ -> IterativeReconstruction(
+                Component(:lowrank, LowRank(λ; time_dim = :time)),
+                Component(:sparse, TemporalTotalVariation(λ / 5; time_dim = :time));
+                maxit = 30
+            ),
+        ),
 )
 
 function sweep(acq)
@@ -387,7 +415,24 @@ jim(
         jim(abs.(unname(r.x))[:, :, frame]; title = label)
             for (label, r) in best_interleaved
     )...;
-    layout = (2, 4), size = (1700, 850)
+    layout = (3, 3), size = (1350, 1300)
+)
+
+# %% [markdown]
+# L+S is the one entry that reconstructs *two* images. It is worth opening up, because the split
+# is the whole point of the model: the low-rank part should hold the static chest wall and the
+# slowly varying background, and the sparse part should hold only what moves. If `S` looks like a
+# faint copy of the whole anatomy rather than an outline of the heart, the two weights are wrong.
+
+# %%
+r_ls = best_interleaved[findfirst(((l, _),) -> startswith(l, "L+S"), best_interleaved)][2]
+x_ls = r_ls.x
+L, S = x_ls.components.lowrank, x_ls.components.sparse
+jim(
+    jim(abs.(unname(L))[:, :, frame]; title = "L (low-rank background)"),
+    jim(abs.(unname(S))[:, :, frame]; title = "S (sparse dynamics)"),
+    jim(abs.(unname(x_ls))[:, :, frame]; title = "L + S");
+    layout = (1, 3), size = (1350, 430)
 )
 
 # %% [markdown]
@@ -396,12 +441,13 @@ jim(
 # A bare `@elapsed` around the first call to a reconstruction measures Julia compiling it, which
 # on this problem is comparable to the solve itself. Warm the method up on a two-iteration run
 # first, then time it; and because this notebook may well be running on a shared machine, take
-# the **best of three** rather than a single number — wall-clock timings on a loaded node swing
+# the **best of two** rather than a single number — wall-clock timings on a loaded node swing
 # by tens of percent, and the minimum is the least contaminated estimate of the work actually
-# done.
+# done. (`BenchmarkTools.@benchmark` does all of this properly and would be the right tool if
+# these were microseconds; at tens of seconds per sample its statistics are unaffordable here.)
 
 # %%
-function best_of(f, n = 3)
+function best_of(f, n = 2)
     f()                                        # warm-up: compile everything
     return minimum(@elapsed(f()) for _ in 1:n)
 end
@@ -409,7 +455,7 @@ end
 for (label, r) in best_interleaved
     (_, build) = sweeps[findfirst(((l, _),) -> l == label, sweeps)][2]
     t = best_of(() -> reconstruct(acq_interleaved, build(r.λ); verbosity = Silent()))
-    @printf("%-24s %6.2f s  (best of 3, after warm-up)\n", label, t)
+    @printf("%-24s %6.2f s  (best of 2, after warm-up)\n", label, t)
 end
 
 # %% [markdown]
@@ -430,7 +476,7 @@ end
 col = argmax(vec(sum(motion; dims = 1)))
 println("profiling column ", col)
 
-profile_methods = ("L1Wavelet2D (per frame)", "TemporalTotalVariation", "LowRank")
+profile_methods = ("L1Wavelet2D (per frame)", "TemporalTotalVariation", "L+S (LowRank+TemporalTV)")
 profiles = (
     "reference" => reference[:, col, :],
     "zero-filled" => abs.(unname(x_zf_interleaved))[:, col, :],
@@ -462,4 +508,49 @@ plot!()
 # %% [markdown]
 # ## 9. What actually wins, and when
 #
-# (Filled in from the numbers above.)
+# The numbers this notebook produced on `fs_0001_1_5T` at R ≈ 2.6 (dynamic-region error, each
+# method at its own best λ):
+#
+# | method | fixed | interleaved |
+# |---|---|---|
+# | zero-filled | 0.2104 | 0.3836 |
+# | `L2Image` (per frame) | 0.0849 | 0.1009 |
+# | `L1Wavelet2D` (per frame) | 0.0740 | 0.0773 |
+# | `L1TemporalFourier` | 0.0624 | 0.0597 |
+# | `TemporalTotalVariation` | 0.0619 | **0.0520** |
+# | `LowRank` | 0.0736 | 0.0677 |
+# | `LocallyLowRank` | **0.0566** | 0.0543 |
+# | `L+S` (`LowRank` + `TemporalTV`) | 0.0729 | 0.0700 |
+#
+# Four things are worth taking away, and one of them is a caveat about this notebook itself.
+#
+# **The sampling pattern decides the ranking, not the regularizer.** Interleaving makes the
+# *zero-filled* image much worse (0.2104 → 0.3836): the aliasing is no longer a single coherent
+# ghost. It makes both per-frame methods worse for the same reason — they see each frame alone,
+# and each frame is now harder. Every temporal and low-rank model gets *better*, because what it
+# lost in per-frame conditioning it gained in something to exploit along time. That crossing is
+# the whole argument for time-varying sampling, and it is visible here as a table rather than as
+# an assertion.
+#
+# **Global error hides all of this.** Compare the two columns of the summary tables: global error
+# is dominated by the static chest wall, which every method reconstructs well, and it compresses
+# the spread between methods to a few thousandths. The dynamic-region column is where the models
+# actually differ. Reporting only a whole-image NRMSE would have made this comparison look like a
+# tie.
+#
+# **The best method is not the most expensive one.** `LocallyLowRank` wins the fixed pattern and
+# comes within 5% of the winner on the interleaved one, for a fraction of the time
+# `TemporalTotalVariation` takes (section 7 — read the numbers your own machine printed, not the
+# ones in this sentence). `L+S`, the most elaborate model here, is the slowest and is beaten by
+# both. Against all of them, per-frame `L1Wavelet2D` runs in a few seconds and lands 30–50% behind
+# the winner: a real gap at this acceleration, but not a decisive one. If a hundred slices have to
+# be reconstructed by tomorrow, the wavelet is the rational choice. The temporal models earn their
+# cost when the acceleration is high enough that the per-frame problem is not solvable at all —
+# which is a claim about R = 6–10, and not something this notebook measured.
+#
+# **The caveat: `L+S` is under-tuned here, on purpose.** Its two weights were tied at a fixed
+# ratio and swept as one parameter (section 5), because sweeping them independently is sixteen
+# reconstructions per pattern rather than four. A model with two knobs given a one-knob search is
+# not being shown at its best, and the honest reading of its row is "no better than the simpler
+# temporal models *at this budget*", not "worse". This is the same trap the notebook opens with,
+# one level up: an under-tuned method looks like a bad method.
