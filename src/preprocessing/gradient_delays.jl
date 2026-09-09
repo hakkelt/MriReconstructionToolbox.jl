@@ -29,12 +29,12 @@ Estimates trajectory gradient delays from non-Cartesian k-space data and returns
 `NonCartesianAcquisitionInfo` with the corrected sampling trajectory.
 """
 function correct_gradient_delays(
-        acq::NonCartesianAcquisitionInfo;
-        method::GradientDelay = OpposingSpokes(),
-    )
+    acq::NonCartesianAcquisitionInfo;
+    method::GradientDelay=OpposingSpokes(),
+)
     delays = estimate_gradient_delays(acq; method)
     traj_corr = _apply_gradient_delays(acq.trajectory, delays)
-    return NonCartesianAcquisitionInfo(acq; trajectory = traj_corr)
+    return NonCartesianAcquisitionInfo(acq; trajectory=traj_corr)
 end
 
 function correct_gradient_delays(acq::CartesianAcquisitionInfo; kwargs...)
@@ -48,9 +48,9 @@ Estimates the gradient delay parameters. Returns `(dx, dy)` for `OpposingSpokes(
 `(dx = Sxx, dy = Syy, dxy = Sxy)` for `RING()`.
 """
 function estimate_gradient_delays(
-        acq::NonCartesianAcquisitionInfo;
-        method::GradientDelay = OpposingSpokes(),
-    )
+    acq::NonCartesianAcquisitionInfo;
+    method::GradientDelay=OpposingSpokes(),
+)
     traj = unname(acq.trajectory)
     ksp = unname(acq.kspace_data)
     @argcheck size(traj, 1) >= 2 "Trajectory must have at least 2 spatial dimensions (got $(size(traj, 1)))"
@@ -78,22 +78,36 @@ function _extract_spoke_angles_and_shifts(traj::AbstractArray, ksp::AbstractArra
 
     ksp_mag = if ndims(ksp) >= 3
         coil_dims = Tuple(3:ndims(ksp))
-        dropdims(sqrt.(sum(abs2, ksp; dims = coil_dims)); dims = coil_dims)
+        dropdims(sqrt.(sum(abs2, ksp; dims=coil_dims)); dims=coil_dims)
     else
         abs.(ksp)
     end
     ksp_mag_2d = reshape(ksp_mag, Nsamples, Nspokes)
 
-    r0 = range(-0.5, 0.5, length = Nsamples)
-    dr = step(r0)
+    # Sample spacing of the readout, taken from the trajectory itself rather than an assumed
+    # ±0.5 span: a readout that does not span the full k-space half-width (e.g. ±0.45) previously
+    # had every estimate off by exactly 0.5/actual_extent, invisible only because every test
+    # happened to use ±0.5. `dr` is measured as the distance between consecutive samples on a
+    # spoke, not as the trajectory's maximum radius: a constant per-spoke delay offset cancels
+    # out of a *difference* of two samples but not out of a *magnitude*, so this stays exact even
+    # though `traj` is itself the delay-corrupted trajectory whose offset is what's being
+    # estimated. A single extent shared by every spoke (not a per-spoke projection onto the
+    # trajectory) matters too, for the same reason: projecting the delay-corrupted trajectory
+    # onto its own direction would double-count the offset instead of measuring it.
+    dr = sum(
+        hypot(traj[1, i+1, s] - traj[1, i, s], traj[2, i+1, s] - traj[2, i, s])
+        for s in 1:Nspokes, i in 1:(Nsamples-1)
+    ) / (Nspokes * (Nsamples - 1))
+    r_extent = dr * (Nsamples - 1) / 2
+    r0 = range(-r_extent, r_extent, length=Nsamples)
 
     shifts = zeros(Float64, Nspokes)
     for s in 1:Nspokes
-        peak_idx = argmax(ksp_mag_2d[:, s])
+        peak_idx = argmax(@view ksp_mag_2d[:, s])
         if 1 < peak_idx < Nsamples
-            y1 = Float64(ksp_mag_2d[peak_idx - 1, s])
+            y1 = Float64(ksp_mag_2d[peak_idx-1, s])
             y2 = Float64(ksp_mag_2d[peak_idx, s])
-            y3 = Float64(ksp_mag_2d[peak_idx + 1, s])
+            y3 = Float64(ksp_mag_2d[peak_idx+1, s])
             denom = y1 - 2.0 * y2 + y3
             delta = abs(denom) > 1.0e-12 ? 0.5 * (y1 - y3) / denom : 0.0
             shifts[s] = r0[peak_idx] + delta * dr
@@ -115,10 +129,10 @@ function _estimate_delays_core(traj::AbstractArray, ksp::AbstractArray, ::RING)
     angles, shifts = _extract_spoke_angles_and_shifts(traj, ksp)
     A = [cos.(angles) .^ 2 sin.(angles) .^ 2 (2.0 .* cos.(angles) .* sin.(angles))]
     p = A \ shifts
-    return (dx = p[1], dy = p[2], dxy = p[3])
+    return (dx=p[1], dy=p[2], dxy=p[3])
 end
 
-function _apply_gradient_delays(traj::AbstractArray, delays::Tuple{Real, Real})
+function _apply_gradient_delays(traj::AbstractArray, delays::Tuple{Real,Real})
     dx, dy = delays
     traj_corr = copy(traj)
     Nspokes = size(traj, 3)
