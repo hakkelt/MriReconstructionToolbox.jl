@@ -228,8 +228,10 @@ x_extended = reconstruct(
     data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = (ISTA(), ADMM()), maxit = 60); verbosity = Silent()
 )
 println("restricted to ADMM      NRMSE ", round(nrmse1(x_forced), digits = 4))
-println("extended with ISTA      NRMSE ", round(nrmse1(x_extended), digits = 4),
-    "  (equals ISTA: ", x_extended ≈ x_ista, ")")
+println(
+    "extended with ISTA      NRMSE ", round(nrmse1(x_extended), digits = 4),
+    "  (equals ISTA: ", x_extended ≈ x_ista, ")"
+)
 
 # %% [markdown]
 # ## 3. `maxit`, `tol` and early stopping
@@ -404,8 +406,10 @@ for scaling in (NoScaling(), BartScaling(), MeasurementBasedScaling())
         data, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40);
         scaling = scaling, verbosity = Silent()
     )
-    println(rpad(string(typeof(scaling).name.name), 24), " NRMSE ", round(nrmse1(x̂), digits = 4),
-        "   max|x| ", round(maximum(abs, x̂), digits = 3))
+    println(
+        rpad(string(typeof(scaling).name.name), 24), " NRMSE ", round(nrmse1(x̂), digits = 4),
+        "   max|x| ", round(maximum(abs, x̂), digits = 3)
+    )
 end
 
 # %% [markdown]
@@ -423,8 +427,10 @@ for factor in (1.0f0, 1.0f3)
             data_scaled, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40);
             scaling = scaling, verbosity = Silent()
         )
-        println("k-space × ", rpad(factor, 8), rpad(string(typeof(scaling).name.name), 14),
-            " NRMSE ", round(nrmse1(x̂ ./ factor), digits = 5))
+        println(
+            "k-space × ", rpad(factor, 8), rpad(string(typeof(scaling).name.name), 14),
+            " NRMSE ", round(nrmse1(x̂ ./ factor), digits = 5)
+        )
     end
 end
 
@@ -491,8 +497,10 @@ println("the 20-step estimate costs ", round(1000 * t_estimate, digits = 1), " m
 for kwargs in ((;), (; disable_operator_normalization = true))
     m = IterativeReconstruction(TotalVariation2D(5.0f-4); algorithm = ADMM(), maxit = 30, kwargs...)
     x̂ = reconstruct(data, m; verbosity = Silent())
-    println(rpad(isempty(kwargs) ? "ADMM, default" : "ADMM, no estimate", 20),
-        " NRMSE ", round(nrmse1(x̂), digits = 5))
+    println(
+        rpad(isempty(kwargs) ? "ADMM, default" : "ADMM, no estimate", 20),
+        " NRMSE ", round(nrmse1(x̂), digits = 5)
+    )
 end
 
 # %% [markdown]
@@ -770,8 +778,10 @@ for (label, alg) in (("ISTA", ISTA()), ("FISTA", FISTA()), ("ADMM", ADMM()))
         verbosity = Silent()
     )
     traces[label] = trace
-    println(rpad(label, 6), " ", length(trace.values), " iterations in ",
-        round(trace.times[end], digits = 2), " s   final NRMSE ", round(trace.values[end], digits = 4))
+    println(
+        rpad(label, 6), " ", length(trace.values), " iterations in ",
+        round(trace.times[end], digits = 2), " s   final NRMSE ", round(trace.values[end], digits = 4)
+    )
 end
 
 # %% [markdown]
