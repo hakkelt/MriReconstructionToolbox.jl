@@ -160,7 +160,7 @@ end
     build_encoding_operator(acq::AcquisitionInfo, method::ReconstructionMethod; threaded::Bool = true, fast_planning::Bool = false)
 
 Builds the encoding operator mapping the reconstruction optimization variable to the measured
-k-space, dispatching on the method's signal model (see [`model_encoding_operator`](@ref)).
+k-space, dispatching on the method's signal model (via the internal `model_encoding_operator`).
 """
 function build_encoding_operator(
         acq::AcquisitionInfo,

@@ -39,7 +39,7 @@ const CGNR = ProximalAlgorithms.CGNR
 # Regularization terms
 export L2Image, L1Image, L1Wavelet2D, L1Wavelet3D, L1Contourlet, TotalVariation2D, TotalVariation3D, L1TemporalFourier, LowRank, RankLimit
 export TemporalTotalVariation, JointSparsity, LocallyLowRank, ReferencePrior, NonNegative, BoxConstraint
-export SecondOrderTotalVariation2D, SecondOrderTotalVariation3D, MultiScaleLowRank
+export SecondOrderTotalVariation2D, SecondOrderTotalVariation3D, MultiScaleLowRank, StructuredLowRank
 export EdgePreservingRoughness2D, EdgePreservingRoughness3D, TotalGeneralizedVariation2D, TotalGeneralizedVariation3D
 export L0Image, L0Wavelet2D, L0Wavelet3D, PlugAndPlay
 # Established second names for two of the terms above (NAMING.md rule 2.1)
@@ -137,6 +137,7 @@ include("regularization/total_generalized_variation_reg.jl")
 include("regularization/low_rank_reg.jl")
 include("regularization/locally_low_rank_reg.jl")
 include("regularization/multi_scale_low_rank_reg.jl")
+include("regularization/structured_low_rank_reg.jl")
 include("regularization/joint_sparsity_reg.jl")
 include("regularization/l0_reg.jl")
 include("regularization/constraint_reg.jl")
