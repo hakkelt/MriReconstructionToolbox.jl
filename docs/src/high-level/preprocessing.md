@@ -56,6 +56,19 @@ estimate_sensitivities
 - `AdaptiveCombine(; kernel_size = 5)`: Local array correlation matrix eigenanalysis (Walsh et al. 2000). Needs no dedicated calibration scan and provides SNR-optimal coil combination.
 - `ESPIRiT(; calib_size = 24, kernel_size = 6)`: Calibration matrix null-space / subspace eigenanalysis (Uecker et al. 2014) yielding sensitivity maps with compact spatial support.
 
+### FFT-shift convention
+
+Sensitivity maps live in the image domain, so they must sit on the same image grid as the
+reconstruction that multiplies them. Every estimator inverts centered k-space into MRT's *default*
+convention (image origin at index 1), so the raw-array method
+`estimate_sensitivities(kspace; ...)` returns maps in that convention. The `AcquisitionInfo`
+method `estimate_sensitivities(acq; ...)` additionally `fftshift`s the maps onto whatever axes the
+acquisition declares in `shifted_image_dims` — which raw scanner data always declares, see
+[FFT-shift derivation](@ref). Prefer passing the `AcquisitionInfo`: maps estimated by hand from a
+bare k-space array and attached to a shifted acquisition are rolled by half the FOV relative to
+every image they multiply, which does not merely displace the reconstruction — it makes it wrong
+everywhere.
+
 ## Non-Cartesian Gradient Delay Correction
 
 Eddy currents and gradient hardware timing delays displace non-Cartesian trajectory samples from their nominal positions, causing blurring and ring artifacts in radial and spiral acquisitions.

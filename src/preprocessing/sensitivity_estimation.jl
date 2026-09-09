@@ -61,18 +61,48 @@ Estimates coil sensitivity maps from multi-coil k-space data using the specified
 When passed an `AcquisitionInfo`, returns a new `AcquisitionInfo` with the `sensitivity_maps` field populated,
 sized to match `acq.image_size` (the k-space is zero-padded, centered, if it only covers the measured extent
 of a subsampled acquisition). Passing `image_size` explicitly has the same effect for the raw-array method.
+
+## FFT-shift convention
+
+Every estimator inverts centered k-space into MRT's *default* image convention — image origin at
+index 1, the plain-DFT one — so the raw-array method returns maps in that convention. An
+acquisition that declares `shifted_image_dims` reconstructs **centered** images instead (scanner
+data always does; see `AcquisitionInfo(::MRIBase.RawAcquisitionData)`), so the
+`AcquisitionInfo` method `fftshift`s the maps onto those axes before attaching them. Without
+that the maps are rolled by half the FOV relative to every image they multiply, and every
+sensitivity-weighted reconstruction from real data is nonsense — not visibly shifted, just wrong.
+Maps estimated by hand from a raw array must be shifted the same way before being attached to a
+shifted acquisition.
 """
 function estimate_sensitivities(
         acq::AcquisitionInfo;
         method::SensitivityEstimation = SelfCalibrating(),
     )
+    is3D = acq isa CartesianAcquisitionInfo ? acq.is3D : false
     sens = estimate_sensitivities(
         acq.kspace_data;
         method,
-        is3D = acq isa CartesianAcquisitionInfo ? acq.is3D : false,
+        is3D,
         image_size = acq.image_size,
     )
+    if acq isa CartesianAcquisitionInfo && !isempty(acq.shifted_image_dims)
+        sens = _shift_sensitivity_maps(sens, acq.shifted_image_dims, acq.kspace_data, is3D)
+    end
     return AcquisitionInfo(acq; sensitivity_maps = sens)
+end
+
+# `shifted_image_dims` names *spatial* image axes (`:x`, `:y`, `:z`, or 1/2/3); the maps carry
+# those axes in the same order as the k-space they were estimated from, with the coil axis
+# wherever it sat there. Resolve the one to the other, then `fftshift`.
+function _shift_sensitivity_maps(sens, shifted_image_dims, kspace, is3D::Bool)
+    spatial_indices = _normalize_shifted_dims(
+        shifted_image_dims, is3D, kspace, "shifted_image_dims", (:x, :y, :z)
+    )
+    c_idx = _resolve_coil_dim(sens, nothing; fallback = is3D ? 4 : 3)
+    spatial_axes = [i for i in 1:ndims(sens) if i != c_idx]
+    axes_to_shift = Tuple(spatial_axes[i] for i in spatial_indices)
+    shifted = fftshift(unname(sens), axes_to_shift)
+    return sens isa NamedDimsArray ? NamedDimsArray{dimnames(sens)}(shifted) : shifted
 end
 
 function estimate_sensitivities(

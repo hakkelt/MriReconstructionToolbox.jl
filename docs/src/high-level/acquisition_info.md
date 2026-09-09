@@ -145,6 +145,23 @@ AcquisitionInfo(
 )
 ```
 
+```@example acqinfo
+# One pattern PER BATCH ELEMENT: an array of specs, shaped like the batch dimensions it spans.
+# A dynamic acquisition that shifts its ky lines from frame to frame is the usual case — the
+# aliasing is then incoherent along time, which is what a temporal or low-rank regularizer needs.
+# Every element must retain the same number of samples, since `kspace_data` is one dense array.
+base = falses(64)
+base[1:3:64] .= true
+masks = [circshift(base, t - 1) for t in 1:8]   # 8 frames
+
+AcquisitionInfo(
+    nothing;
+    is3D=false,
+    image_size=(64, 64),
+    subsampling=[(:, m) for m in masks]
+)
+```
+
 ### FFT Shift Conventions
 
 The provided k-space data is assumed to follow standard FFT conventions (DC at center). Sometimes, data may be pre-shifted (DC at first index) or require image-space shifts. Use `shifted_kspace_dims` and `shifted_image_dims` to specify these dimensions:
@@ -214,10 +231,20 @@ from 0, with the true k=0 line/sample at `encoding_limits.center` / `head.center
 need not be the geometric middle of the encoded axis (partial-Fourier and asymmetric-echo
 acquisitions in particular). Consistent with "FFT Shift Conventions" above (DC at
 `N ÷ 2 + 1`), this constructor places every sample at `raw_index - center + N ÷ 2` along its axis
-before construction, so the result already satisfies that convention — no `shifted_kspace_dims`,
-`shifted_image_dims` or manual `fftshift` are needed afterwards. Naively placing sample/line `i`
-at raw position `i + 1` (ignoring `center`) is exactly the bug this avoids: it silently shifts the
-reconstructed image by `center - N ÷ 2` samples along the affected axis.
+before construction, so the result already satisfies that convention and no `shifted_kspace_dims`
+is needed. Naively placing sample/line `i` at raw position `i + 1` (ignoring `center`) is exactly
+the bug this avoids: it silently shifts the reconstructed image by `center - N ÷ 2` samples along
+the affected axis.
+
+The *image* domain needs the matching half of the convention, and the constructor sets that too:
+`shifted_image_dims` is `(:x, :y)`, or `(:x, :y, :z)` when `is3D`. MRT's own default is the
+plain-DFT one — image origin at index 1 — which round-trips consistently for k-space that MRT
+itself simulated, but is not how a scanner stores data: an ISMRMRD acquisition images an object
+**centred in the FOV**. Without `shifted_image_dims` every reconstruction from raw data comes out
+rolled by half the FOV along each spatial axis. With it, no manual `fftshift` is needed anywhere,
+and `estimate_sensitivities(acq)` returns maps on the same (centred) image grid — see
+[Coil Sensitivity Estimation](@ref). Maps estimated by hand from a bare k-space array are in MRT's
+*default* convention and must be `fftshift`ed before being attached to such an acquisition.
 
 Non-Cartesian raw data (`raw.params["trajectory"] != "cartesian"`) builds a
 `NonCartesianAcquisitionInfo` from `MRIBase.trajectory`/`MRIBase.rawdata` for one `slice`/

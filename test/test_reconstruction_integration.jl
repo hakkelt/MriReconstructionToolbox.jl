@@ -627,3 +627,71 @@ end
 
     @test_throws Exception MRT.set_serial_blas_threshold_bytes!(-1)
 end
+
+@testitem "Per-frame subsampling: one ky mask per frame" tags = [:reconstruction, :integration] begin
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator
+    using AbstractOperators: get_normal_op
+    using NamedDims: NamedDimsArray, dimnames, unname
+    using LinearAlgebra: mul!
+    using Random: Xoshiro, randn!
+
+    # `subsampling` may be an array of specs, one per batch element, rather than one spec shared
+    # by the whole acquisition — a different ky mask per cardiac phase, which is what makes the
+    # aliasing incoherent across time and gives a temporal regularizer something to exploit.
+    #
+    # `nkx * nky * ncoil` is deliberately above `AbstractOperators.MIN_BATCH_WORK_FOR_PARALLEL`
+    # (2^10): only above it does the batch operator take its thread-safe form, whose normal
+    # operator used to be built with the subsampled codomain size.
+    rng = Xoshiro(0)
+    nkx, nky, ncoil, nframes = 16, 24, 3, 4
+    base = falses(nky)
+    base[1:3:nky] .= true
+    masks = [circshift(base, t - 1) for t in 1:nframes]
+    nlines = sum(base)
+    @test all(m -> sum(m) == nlines, masks) # a fixed-shape k-space array needs a fixed line count
+
+    smaps = NamedDimsArray{(:x, :y, :coil)}(randn(rng, ComplexF32, nkx, nky, ncoil))
+    truth = NamedDimsArray{(:x, :y, :time)}(randn(rng, ComplexF32, nkx, nky, nframes))
+    empty_ksp = NamedDimsArray{(:kx, :ky, :coil, :time)}(
+        zeros(ComplexF32, nkx, nlines, ncoil, nframes)
+    )
+
+    acq = AcquisitionInfo(
+        empty_ksp; is3D = false, image_size = (nkx, nky),
+        subsampling = [(:, m) for m in masks], sensitivity_maps = smaps,
+    )
+    @test occursin("subsampling=$(nframes)×(:, Vector{Bool}<$nky>)", string(acq))
+
+    𝒜 = get_encoding_operator(acq)
+    @test size(𝒜) == ((nkx, nlines, ncoil, nframes), (nkx, nky, nframes))
+    # 𝒜ᴴ𝒜 maps the image domain to itself. A normal operator that claims the *subsampled*
+    # codomain shape instead makes `Compose` size the buffer between the two halves wrongly,
+    # and every `estimate_opnorm`/CG step on such an operator throws a `DimensionMismatch`.
+    @test size(get_normal_op(𝒜)) == (size(𝒜, 2), size(𝒜, 2))
+
+    y = NamedDimsArray{(:kx, :ky, :coil, :time)}(similar(unname(empty_ksp)))
+    mul!(y, 𝒜, truth)
+    acq = AcquisitionInfo(acq; kspace_data = y)
+
+    # `:time` is a batch dimension for an unregularized solve, so task splitting must hand each
+    # frame the mask that actually produced it — not the whole array of specs.
+    x_adj = reconstruct(acq; verbosity = Silent())
+    @test dimnames(x_adj) == (:x, :y, :time)
+    for t in 1:nframes
+        acq_t = AcquisitionInfo(
+            NamedDimsArray{(:kx, :ky, :coil)}(unname(y)[:, :, :, t]); is3D = false,
+            image_size = (nkx, nky), subsampling = (:, masks[t]), sensitivity_maps = smaps,
+        )
+        @test unname(reconstruct(acq_t; verbosity = Silent())) ≈ unname(x_adj)[:, :, t]
+    end
+
+    # A temporal regularizer keeps `:time` in the variable, so the whole spec array reaches the
+    # operator instead: the other half of the contract.
+    x_cs = reconstruct(
+        acq, IterativeReconstruction(L1TemporalFourier(1.0f-3; time_dim = :time); maxit = 5);
+        verbosity = Silent()
+    )
+    @test size(x_cs) == (nkx, nky, nframes)
+    @test all(isfinite, unname(x_cs))
+end
