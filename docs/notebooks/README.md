@@ -9,8 +9,8 @@ synthetic phantoms and on real scanner data.
 | `02_acquisition_info.ipynb` | `AcquisitionInfo`: named dimensions, sensitivity maps, sampling patterns, FFT-shift conventions, validation, Cartesian vs. non-Cartesian |
 | `03_simulation.ipynb` | Phantoms, coil sensitivities, every sampling-pattern generator, `simulate_acquisition`, noise, dynamic series |
 | `04_regularization.ipynb` | Every spatial regularizer: ℓ₂/ℓ₁, wavelets, contourlets, TV, second-order TV, TGV, Huber, hard thresholding, plug-and-play, joint sparsity, reference priors, constraints |
-| `05_reconstruction_methods.ipynb` | Coil combination, partial Fourier (Homodyne, phase-constrained, POCS), GRAPPA, SPIRiT, data-fidelity choices, `TemporalBasis` and `KSpaceToImage` signal models |
-| `06_algorithms_and_configuration.ipynb` | CG/CGNR, ISTA/FISTA, ADMM, Douglas–Rachford; `maxit`/`tol`, verbosity, `ReconstructionConfig`, scaling, warm starts, operator-norm options |
+| `05_reconstruction_methods.ipynb` | Coil combination, partial Fourier (Homodyne, phase-constrained, POCS), GRAPPA, SPIRiT, calibrationless structured low-rank (SAKE / LORAKS-C), data-fidelity choices, `TemporalBasis` and `KSpaceToImage` signal models |
+| `06_algorithms_and_configuration.ipynb` | CG/CGNR, ISTA/FISTA, ADMM, Douglas–Rachford; `maxit`/`tol`, verbosity, `ReconstructionConfig`, scaling, warm starts, operator-norm options, task splitting |
 | `07_dynamic_and_decomposition.ipynb` | Temporal and low-rank regularizers, image decomposition (L+S), infimal-convolution TV |
 | `08_non_cartesian.ipynb` | Radial and spiral trajectories, NFFT encoding, Pipe–Menon and Voronoi density compensation, gradient-delay correction, gridding accuracy vs. speed |
 | `09_low_level_interface.ipynb` | Operators by hand, `build_model`, `StructuredOptimization` problems, proximal operators, writing a regularizer of your own |
@@ -61,19 +61,29 @@ Julia.
 
 ## Runtime
 
-The notebooks are written to run end to end on a laptop: the phantoms are 128² or smaller, the
+Notebooks 1–9 are written to run end to end on a laptop: the phantoms are 128² or smaller, the
 dynamic series is 64² × 16 frames, and the iteration counts are chosen for a few seconds per
-reconstruction. A full run of one notebook takes roughly:
+reconstruction. Measured with `export.jl` on 2026-09-09 (Julia 1.12.7, `JULIA_NUM_THREADS=4`,
+shared login node), one full run of each takes:
 
-| Notebook | Approx. wall time |
-|---|---|
-| 01, 02, 03 | under a minute each |
-| 04, 06, 09 | 1–3 minutes |
-| 05 | ~4 minutes (the subspace section reconstructs a 24-echo series four times) |
-| 07 | ~4 minutes |
-| 08 | ~1 minute (plus NFFT precompilation on the first call) |
-| 10 | ~2 minutes after the download |
-| 11 | ~5 minutes after the download |
+| Notebook | Wall time | Notes |
+|---|---|---|
+| `01_getting_started` | 3m 23s | |
+| `02_acquisition_info` | 0m 40s | |
+| `03_simulation` | 1m 55s | |
+| `04_regularization` | 5m 44s | every regularizer, several reconstructions each |
+| `05_reconstruction_methods` | 4m 28s | the subspace section reconstructs a 24-echo series four times |
+| `06_algorithms_and_configuration` | 4m 53s | |
+| `07_dynamic_and_decomposition` | 5m 21s | |
+| `08_non_cartesian` | 1m 57s | plus NFFT precompilation on the first call |
+| `09_low_level_interface` | 2m 18s | |
+| `10_real_data_cartesian` | 4m 20s | after the ~12 MB download |
+| `11_real_data_dynamic` | 38m 47s | after the ~200 MB download; the λ sweep is ~25 min of it |
+
+Each number is one measurement and includes roughly a minute of first-call compilation, so treat
+them as an order of magnitude rather than a benchmark. Notebook 11 is deliberately the expensive
+one: it sweeps λ for seven methods across two sampling patterns so that no method is shown at a
+setting somebody guessed. Drop entries from its `sweeps` tuple if you want it faster.
 
 The notebooks are shipped without stored outputs; every code cell has been executed against this
 environment, so "Run All" should complete without errors.
@@ -154,6 +164,14 @@ julia --project=docs/notebooks docs/notebooks/export.jl all --timeout=900
 It prints a pass/fail summary and exits non-zero if any notebook failed; requires
 `python3 -m nbconvert` (`pip install --user nbconvert`) on `PATH` and the `julia-1.12` Jupyter
 kernel (`Pkg.build("IJulia")`, see Setup above).
+
+The rendered HTML is self-contained (figures are embedded), so a file from `build/` is what to
+send someone who should see the notebook with its output without running Julia.
+
+If notebook 10 or 11 fails at its first `AcquisitionInfo(raw)` call with *"is3D must be provided
+when non-NamedDimsArray k-space is used"*, this environment's `Manifest.toml` predates the
+`MriReconstructionToolboxMRIBaseExt` package extension and is silently not loading it. Run
+`julia --project=docs/notebooks -e 'using Pkg; Pkg.resolve()'` and re-run.
 
 ## Data licensing
 
