@@ -11,7 +11,7 @@ synthetic phantoms and on real scanner data.
 | `04_regularization.ipynb` | Every spatial regularizer: ℓ₂/ℓ₁, wavelets, contourlets, TV, second-order TV, TGV, Huber, hard thresholding, plug-and-play, joint sparsity, reference priors, constraints |
 | `05_reconstruction_methods.ipynb` | Coil combination, partial Fourier (Homodyne, phase-constrained, POCS), GRAPPA, SPIRiT, data-fidelity choices, `TemporalBasis` and `KSpaceToImage` signal models |
 | `06_algorithms_and_configuration.ipynb` | CG/CGNR, ISTA/FISTA, ADMM, Douglas–Rachford; `maxit`/`tol`, verbosity, `ReconstructionConfig`, scaling, warm starts, operator-norm options |
-| `07_dynamic_and_decomposition.ipynb` | Temporal and low-rank regularizers, image decomposition (L+S), problem decomposition over batch dimensions, threading |
+| `07_dynamic_and_decomposition.ipynb` | Temporal and low-rank regularizers, image decomposition (L+S), infimal-convolution TV |
 | `08_non_cartesian.ipynb` | Radial and spiral trajectories, NFFT encoding, Pipe–Menon and Voronoi density compensation, gradient-delay correction, gridding accuracy vs. speed |
 | `09_low_level_interface.ipynb` | Operators by hand, `build_model`, `StructuredOptimization` problems, proximal operators, writing a regularizer of your own |
 | `10_real_data_cartesian.ipynb` | Real 0.3 T brain data (M4Raw) end to end: assembly, prewhitening, coil compression, ESPIRiT, retrospective undersampling, CS and parallel imaging, pseudo-replica noise analysis |
