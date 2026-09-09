@@ -511,6 +511,55 @@ components = Tuple(
 
 Cost grows linearly with the number of scales, so two or three are usually enough.
 
+#### Structured Low Rank k-Space (SAKE / LORAKS-C)
+
+Promotes low rank of the **block-Hankel matrix** built from sliding windows over multi-coil
+k-space, with the coils stacked as extra columns. This is a *calibrationless* parallel-imaging
+prior: it recovers the missing samples of an undersampled multi-coil acquisition without
+sensitivity maps and without an ACS-calibrated kernel. The structure it exploits is the same
+linear predictability GRAPPA and SPIRiT use, except that it is estimated from the undersampled
+data itself.
+
+```@docs
+StructuredLowRank
+```
+
+**When to use:**
+- Undersampled multi-coil Cartesian data with **no** sensitivity maps and **no** (or too small) calibration region
+- As a complement to, or replacement for, GRAPPA/SPIRiT when calibration lines are unavailable
+- Moderate acceleration (R ≈ 2-4); higher factors need a calibration region or a warm-started `x₀`
+
+**Parameters:**
+- Exactly one of `λ` (nuclear-norm penalty, the convex LORAKS-C form) or `max_rank` (hard rank
+  constraint, the SAKE form) — they are mutually exclusive, as for [`L0Image`](@ref).
+- `window` is the sliding-window size over the k-space encoding dimensions, typically `(5, 5)` or `(6, 6)` in 2D and `(4, 4, 4)` in 3D.
+
+**Example:**
+```julia
+# calibrationless: acq holds multi-coil k-space, no sensitivity_maps
+rec = reconstruct(
+    acq,
+    IterativeReconstruction(
+        StructuredLowRank(; λ = 0.03, window = (6, 6));
+        signal_model = KSpaceToImage(RootSumSquares()),
+        algorithm = ADMM(),
+        maxit = 100,
+    ),
+)
+```
+
+!!! warning "The `max_rank` form is non-convex"
+    A hard rank cap is a projection onto a non-convex set, and it is applied to the *lifted*
+    matrix rather than to k-space itself, so any splitting algorithm using it is a heuristic:
+    the result depends on the starting estimate and convergence is not guaranteed. Use the `λ`
+    form when you want a convex problem.
+
+**Practical tip:** The optimization variable is the full multi-channel k-space, so pair the term
+with `signal_model = KSpaceToImage(...)` (as `SPIRiT(; iterative = true)` does). Each iteration
+costs one economy SVD of a `prod(gridsize .- window .+ 1) × (prod(window) * ncoils)` matrix per
+batch slab, so keep `window` small. Only `structure = :c` (plain block-Hankel) is implemented;
+the LORAKS S-matrix and the ALOHA transform-domain weighting are not yet available.
+
 ### Hard Thresholding
 
 Penalizes or constrains the *number* of non-zero coefficients rather than their magnitude. One type per
@@ -673,6 +722,7 @@ The regularization parameter λ controls the trade-off between data fidelity and
 - LowRank: `1e-2` to `1`
 - LocallyLowRank: `1e-2` to `5e-1`
 - MultiScaleLowRank: `1e-2` to `5e-1`, as for LocallyLowRank
+- StructuredLowRank, `λ` form: `1e-2` to `1e-1`, relative to the k-space scale; `max_rank` form: no λ, set the rank from the singular-value spectrum of `𝓗 k` on the zero-filled data
 - L0Image/L0Wavelet2D/L0Wavelet3D, `threshold` form: `1e-4` to `1e-2`, but note the `sqrt(2γλ)` threshold — retune rather than reusing an ℓ₁ λ
 - L0Image/L0Wavelet2D/L0Wavelet3D, `count` form: no λ; set the coefficient budget from the expected sparsity
 - PlugAndPlay: `strength` `1e-2` to `1e-1`, in the units of the image intensity
@@ -705,6 +755,7 @@ The regularization parameter λ controls the trade-off between data fidelity and
 | A high-quality prior image exists | [`ReferencePrior`](@ref) | + [`L1Wavelet2D`](@ref) |
 | Real-valued images, physical range known | [`NonNegative`](@ref) / [`BoxConstraint`](@ref) | + any penalty |
 | Parallel imaging without sparsity assumptions | [`L2Image`](@ref) | — |
+| Multi-coil data with no sensitivity maps and no calibration region | [`StructuredLowRank`](@ref) | + [`TotalVariation2D`](@ref) on the combined image |
 
 ## References
 
@@ -729,6 +780,9 @@ Low-rank models:
 - Zhang, T., Pauly, J. M., & Levesque, I. R. (2015). *Accelerating parameter mapping with a locally low rank constraint.* Magnetic Resonance in Medicine, 73(2), 655-661.
 - Ong, F., & Lustig, M. (2016). *Beyond low rank + sparse: Multiscale low rank matrix decomposition.* IEEE Journal of Selected Topics in Signal Processing, 10(4), 672-687. — [`MultiScaleLowRank`](@ref).
 - Bauschke, H. H., Goebel, R., Lucet, Y., & Wang, X. (2008). *The proximal average: Basic theory.* SIAM Journal on Optimization, 19(2), 766-785. — the construction [`MultiScaleLowRank`](@ref) uses to combine the scales.
+- Shin, P. J., Larson, P. E. Z., Ohliger, M. A., et al. (2014). *Calibrationless parallel imaging reconstruction based on structured low-rank matrix completion.* Magnetic Resonance in Medicine, 72(4), 959-970. — SAKE, the `max_rank` form of [`StructuredLowRank`](@ref).
+- Haldar, J. P. (2014). *Low-rank modeling of local k-space neighborhoods (LORAKS) for constrained MRI.* IEEE Transactions on Medical Imaging, 33(3), 668-681. — LORAKS, whose C-matrix penalty is the `λ` form of [`StructuredLowRank`](@ref).
+- Jin, K. H., Lee, D., & Ye, J. C. (2016). *A general framework for compressed sensing and parallel MRI using annihilating filter based low-rank Hankel matrix.* IEEE Transactions on Computational Imaging, 2(4), 480-495. — ALOHA (transform-domain weighting; not yet implemented).
 
 Joint sparsity and prior images:
 - Majumdar, A., & Ward, R. K. (2011). *Joint reconstruction of multiecho MR images using correlated sparsity.* Magnetic Resonance Imaging, 29(7), 899-906. — [`JointSparsity`](@ref).
@@ -747,7 +801,7 @@ Algorithms:
 
 The following terms appear in the literature and in other reconstruction packages but are not implemented here, because they need building blocks the package does not yet have:
 
-- **Structured low-rank k-space methods** (SAKE, LORAKS, ALOHA): need a block-Hankel lifting operator with an adjoint, whose normal operator has to weight each k-space sample by how many Hankel entries it appears in.
+- **LORAKS S/G matrices and ALOHA transform-domain weighting**: the plain block-Hankel form (SAKE and LORAKS-C) is available as [`StructuredLowRank`](@ref); the conjugate-symmetric S-matrix, the phase/gradient-weighted G-matrix and ALOHA's sparsifying-transform weighting are not implemented.
 - **Learned reconstruction networks** (unrolled networks, end-to-end variational networks): these replace the reconstruction, not the regularizer. A trained *denoiser* can be used today through [`PlugAndPlay`](@ref).
 
 Note that [`PlugAndPlay`](@ref) supplies the mechanism but no denoisers: any callable
