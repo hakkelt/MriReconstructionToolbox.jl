@@ -151,6 +151,18 @@ SPIRiT
 SPIRiTConsistency
 ```
 
+!!! note "What GRAPPA needs from the sampling pattern"
+    GRAPPA fits one kernel per missing-line offset `t = 1 … R-1` and applies it everywhere, so it
+    requires a *regular* phase-encoding pattern: a fixed stride $R$, fully sampled readout lines,
+    and a contiguous ACS block long enough for the kernel. `check_applicable(GRAPPA(), acq)` — which
+    `reconstruct` calls for you — rejects everything else, including the random and
+    variable-density masks used for compressed sensing. There is no GRAPPA kernel for an irregular
+    pattern; use `IterativeReconstruction` (CG-SENSE, optionally regularized) instead.
+
+    `SPIRiT` has no such restriction: its consistency operator acts on the whole multi-channel
+    k-space at once, so it also runs on irregular patterns — it only needs a fully sampled central
+    region large enough to calibrate `kernel_size` on.
+
 ### Method, Signal-Model, Fidelity and Coil-Combination Types
 
 [`DirectReconstruction`](@ref) and [`IterativeReconstruction`](@ref) are documented on the
