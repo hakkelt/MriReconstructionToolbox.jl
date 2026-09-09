@@ -299,3 +299,90 @@ end
     @test occursin("DouglasRachford", err.msg)
     @test occursin("L2Loss", err.msg)
 end
+
+@testitem "Preconditioned CGNR: λ is honoured and convergence accelerates" tags = [:minimizer, :reconstruction] begin
+    using Test
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator
+    using AbstractOperators: DiagOp
+    using LinearAlgebra
+    using Random
+
+    PA = MriReconstructionToolbox.ProximalAlgorithms
+
+    @testset "the preconditioned iterations solve the regularized system" begin
+        # `PCGIteration`/`PCGNRIteration` used to drop the λ term from both the initial residual
+        # and the `Ap` update, so a `CGNR(; P, λ)` solve silently returned the *unregularized*
+        # minimizer -- a wrong answer, not an error.
+        Random.seed!(1)
+        n, m = 20, 30
+        A = randn(m, n)
+        b = randn(m)
+        λ = 0.5
+        x_reg = (A'A + λ * I) \ (A'b)
+        x_unreg = (A'A) \ (A'b)
+        @test norm(x_reg - x_unreg) > 1.0e-2  # the two references are far apart, so the test can tell
+
+        P = Diagonal(diag(A'A) .+ λ)
+        function run_iter(iter)
+            state = nothing
+            for s in Iterators.take(iter, 200)
+                state = s
+            end
+            return state.x
+        end
+
+        x_pcgnr = run_iter(PA.PCGNRIteration(; x0=zeros(n), A=A, b=b, P=P, λ=λ))
+        @test isapprox(x_pcgnr, x_reg; atol=1.0e-10)
+
+        x_pcg = run_iter(PA.PCGIteration(; x0=zeros(n), A=A'A, b=A'b, P=P, λ=λ))
+        @test isapprox(x_pcg, x_reg; atol=1.0e-10)
+    end
+
+    @testset "CGNR(; P) through reconstruct" begin
+        nx, ny = 32, 32
+        Random.seed!(5)
+        x_true = ComplexF32.(rand(Float32, nx, ny))
+        smaps = unname(coil_sensitivities(nx, ny, 4))
+        # A smooth intensity ramp makes the coil coverage Σ|S_c|² span two orders of magnitude,
+        # which is exactly what a diagonal image-domain preconditioner is for.
+        smaps = ComplexF32.(smaps .* reshape(range(0.05f0, 1.0f0, length=nx), nx, 1, 1))
+        sub = create_sampling_pattern(VariableDensitySampling(GaussianDistribution(), 2.0), (nx, ny))
+        acq = CartesianAcquisitionInfo(
+            is3D=false, image_size=(nx, ny), sensitivity_maps=smaps, subsampling=sub
+        )
+        data = simulate_acquisition(x_true, acq)
+
+        λ = 1.0f-3
+        coverage = real(sum(abs2, smaps; dims=3)[:, :, 1])
+        # An `AbstractOperator` supports `mul!` but not `ldiv!`, so the *inverse* preconditioner is
+        # what is passed, with `P_is_inverse = true`.
+        Pinv = DiagOp(ComplexF32.(1 ./ (coverage .+ λ)))
+
+        nrmse(r) = norm(r .- x_true) / norm(x_true)
+        solve_at(k; kwargs...) = nrmse(
+            reconstruct(
+                data,
+                IterativeReconstruction(
+                    L2Image(λ); algorithm=CGNR(; tol=1.0e-14, kwargs...), maxit=k, tol=nothing,
+                    fidelity=L2Loss(),
+                );
+                verbosity=Silent(),
+            )
+        )
+
+        plain_32 = solve_at(32)
+        pc_8 = solve_at(8; P=Pinv, P_is_inverse=true)
+        # Same error in a quarter of the iterations: the point of the preconditioner is convergence
+        # speed, not a different answer.
+        @test pc_8 <= plain_32
+        @test solve_at(8; P=Pinv, P_is_inverse=true) < solve_at(8)
+    end
+
+    @testset "a preconditioned solver is still recognized as Krylov" begin
+        @test MriReconstructionToolbox._is_krylov_solver(CGNR(P=Diagonal(ones(4)), P_is_inverse=true))
+        @test MriReconstructionToolbox._is_krylov_solver(CG(P=Diagonal(ones(4)), P_is_inverse=true))
+        @test MriReconstructionToolbox._is_krylov_solver(CGNR())
+        @test !MriReconstructionToolbox._is_krylov_solver(FISTA())
+    end
+end

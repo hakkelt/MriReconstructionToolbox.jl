@@ -113,6 +113,34 @@ img = reconstruct(data, IterativeReconstruction(L2Image(1e-4); algorithm = CGNR(
 nothing # hide
 ```
 
+#### Preconditioning
+
+Passing `P` to `CG` or `CGNR` switches the solve to the preconditioned variant, which converges in
+fewer iterations whenever `𝒜ᴴ𝒜` is badly conditioned. It changes the *path*, not the solution: both
+variants minimize the same objective, so the thing to measure is the iteration count at a given
+error, not the error at convergence.
+
+`P` is applied as `z = P \ r` by default. An `AbstractOperator` supports `mul!` but not `ldiv!`, so
+pass the **inverse** preconditioner and set `P_is_inverse = true`; a `Diagonal`, a factorization, or
+anything else that implements `ldiv!` can be passed directly with `P_is_inverse = false`.
+
+The natural choice for SENSE is the diagonal image-domain approximation of `𝒜ᴴ𝒜`, the coil coverage
+`Σ_c |S_c|² + λ`:
+
+```@example imports
+using AbstractOperators: DiagOp
+coverage = real(sum(abs2, unname(smaps); dims = 3)[:, :, 1])
+P⁻¹ = DiagOp(ComplexF32.(1 ./ (coverage .+ 1.0f-4)))
+img_pc = reconstruct(
+    data,
+    IterativeReconstruction(
+        L2Image(1e-4); algorithm = CGNR(; P = P⁻¹, P_is_inverse = true), maxit = 20
+    );
+    verbosity = Silent(),
+);
+nothing # hide
+```
+
 ### Fast Iterative Shrinkage-Thresholding Algorithm (FISTA)
 
 This algorithm solves convex optimization problems of the form
