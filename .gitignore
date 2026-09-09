@@ -17,6 +17,6 @@ benchmark/hpc/results/*__*.json
 # agent scaffolding and worktrees
 .claude/
 
-# MRITestData download-path preference is per-machine state
-LocalPreferences.toml
-!docs/notebooks/LocalPreferences.toml
+# Written by the test environment when MRITestData caches a download; per-machine state.
+# (The tracked docs/notebooks/ and benchmark/comparison/ LocalPreferences.toml are deliberate.)
+/test/LocalPreferences.toml
