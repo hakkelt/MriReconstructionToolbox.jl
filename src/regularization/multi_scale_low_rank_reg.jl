@@ -6,8 +6,12 @@ Create a multi-scale locally low-rank regularization term: the same block-wise n
 dynamics and large, globally correlated dynamics are penalized by the same term.
 
 # Arguments
-- `λ`: Regularization parameter, must be a scalar. Applied to every scale; use `weights` to bias the scales
-  relative to each other.
+- `λ`: Regularization parameter: a scalar (the same threshold at every scale) or a vector with one
+  entry per scale (`block_sizes`). `λ` and `weights` are not interchangeable: `λⱼ` is the nuclear-norm
+  threshold *of* scale `j`'s block-decomposed term, while `weights` is the convex combination the
+  proximal average takes *across* scales (see Notes) -- scaling one does not have the same effect as
+  scaling the other. Use a per-scale `λ` to give coarse/fine scales different thresholds directly;
+  use `weights` to bias the average toward one scale while keeping every scale's own threshold equal.
 - `block_sizes`: Collection of block edge lengths, one entry per scale. Each entry is either an `Integer`
   (same edge in every spatial dimension) or a tuple with one entry per spatial dimension. A geometric
   progression such as `(4, 8, 16)` is the usual choice.
@@ -31,7 +35,7 @@ dynamics and large, globally correlated dynamics are penalized by the same term.
 - With a single entry in `block_sizes` and weight 1, the term reduces exactly to [`LocallyLowRank`](@ref).
 - Cost is the sum of the per-scale costs: one SVD per block per scale and iteration.
 """
-struct MultiScaleLowRank{T, B, D, W, RNG} <: Regularization
+struct MultiScaleLowRank{T,B,D,W,RNG} <: Regularization
     λ::T
     block_sizes::B
     time_dim::D
@@ -39,11 +43,14 @@ struct MultiScaleLowRank{T, B, D, W, RNG} <: Regularization
     shift::Symbol
     rng::RNG
     function MultiScaleLowRank(
-            λ::T; block_sizes::B, time_dim::D = nothing, weights::W = nothing,
-            shift::Symbol = :none, rng::RNG = Random.default_rng()
-        ) where {T, B, D, W, RNG}
-        @argcheck λ isa Real "MultiScaleLowRank requires a scalar λ"
+        λ::T; block_sizes::B, time_dim::D=nothing, weights::W=nothing,
+        shift::Symbol=:none, rng::RNG=Random.default_rng()
+    ) where {T,B,D,W,RNG}
+        @argcheck λ isa Real || λ isa AbstractVector{<:Real} "MultiScaleLowRank requires λ to be a scalar or a vector of reals, one per scale"
         @argcheck !isempty(block_sizes) "block_sizes must contain at least one scale"
+        if λ isa AbstractVector
+            @argcheck length(λ) == length(block_sizes) "one λ is required per scale when λ is a vector, got $(length(λ)) for $(length(block_sizes)) scales"
+        end
         for block_size in block_sizes
             @argcheck block_size isa Integer || block_size isa Tuple{Vararg{Integer}} "every entry of block_sizes must be an Integer or a tuple of Integers"
             @argcheck all(block_size .> 0) "block sizes must be positive"
@@ -53,41 +60,48 @@ struct MultiScaleLowRank{T, B, D, W, RNG} <: Regularization
         end
         @argcheck shift in (:none, :fixed, :random) "shift must be :none, :fixed or :random, got :$shift"
         _check_dim_spec(time_dim, "time_dim")
-        return new{T, B, D, W, RNG}(λ, block_sizes, time_dim, weights, shift, rng)
+        return new{T,B,D,W,RNG}(λ, block_sizes, time_dim, weights, shift, rng)
     end
 end
 
-get_operator(::MultiScaleLowRank, x::AbstractArray; threaded::Bool = true) = identity_operator(x)
+get_operator(::MultiScaleLowRank, x::AbstractArray; threaded::Bool=true) = identity_operator(x)
 
 function get_affected_dims(reg::MultiScaleLowRank, ::Nothing, image_dims)
     # As for LocallyLowRank, the blocks couple every dimension up to and including the temporal one.
     return image_dims[1:get_time_dim(reg.time_dim, image_dims)]
 end
 
-# Each scale is a nuclear norm, homogeneous of degree 1, and so is their average: λ scales linearly.
+# Each scale is a nuclear norm, homogeneous of degree 1, and so is their average: λ scales linearly
+# (elementwise when λ is a per-scale vector).
 function scale_regularization(reg::MultiScaleLowRank, factor::Real)
     return MultiScaleLowRank(
-        reg.λ * factor;
-        block_sizes = reg.block_sizes, time_dim = reg.time_dim, weights = reg.weights,
-        shift = reg.shift, rng = reg.rng
+        reg.λ .* factor;
+        block_sizes=reg.block_sizes, time_dim=reg.time_dim, weights=reg.weights,
+        shift=reg.shift, rng=reg.rng
     )
 end
 
 function bind_dimensions(reg::MultiScaleLowRank, image_dims)
     return MultiScaleLowRank(
         reg.λ;
-        block_sizes = reg.block_sizes,
-        time_dim = get_time_dim(reg.time_dim, image_dims),
-        weights = reg.weights,
-        shift = reg.shift,
-        rng = reg.rng,
+        block_sizes=reg.block_sizes,
+        time_dim=get_time_dim(reg.time_dim, image_dims),
+        weights=reg.weights,
+        shift=reg.shift,
+        rng=reg.rng,
     )
 end
 
-function _mslr_weights(reg::MultiScaleLowRank, ::Type{R}) where {R <: Real}
+function _mslr_weights(reg::MultiScaleLowRank, ::Type{R}) where {R<:Real}
     n = length(reg.block_sizes)
     reg.weights === nothing && return fill(R(1 / n), n)
     return R.(collect(reg.weights))
+end
+
+# One λ per scale: a scalar `reg.λ` is the same threshold at every scale, a vector is used as given.
+function _mslr_lambdas(reg::MultiScaleLowRank, ::Type{R}) where {R<:Real}
+    reg.λ isa AbstractVector && return R.(collect(reg.λ))
+    return fill(R(reg.λ), length(reg.block_sizes))
 end
 
 function materialize(reg::MultiScaleLowRank, x::Variable{T}; threaded::Bool) where {T}
@@ -95,20 +109,20 @@ function materialize(reg::MultiScaleLowRank, x::Variable{T}; threaded::Bool) whe
     dims = dims_of(x_val)
     time_dim = get_time_dim(reg.time_dim, dims)
     @argcheck time_dim > 1 "MultiScaleLowRank needs at least one spatial dimension before the temporal one"
-    spatial_size = NTuple{time_dim - 1, Int}(size(x_val)[1:(time_dim - 1)])
-    num_batch = prod(size(x_val)[(time_dim + 1):end]; init = 1)
-    λ = real(T)(reg.λ)
+    spatial_size = NTuple{time_dim - 1,Int}(size(x_val)[1:(time_dim-1)])
+    num_batch = prod(size(x_val)[(time_dim+1):end]; init=1)
+    λs = _mslr_lambdas(reg, real(T))
     scales = Tuple(
         BlockNuclearNorm(
-                λ, _llr_block_size(block_size, spatial_size),
-                spatial_size, size(x_val, time_dim), num_batch, threaded;
-                shift = reg.shift, rng = reg.rng
-            ) for block_size in reg.block_sizes
+            λ_j, _llr_block_size(block_size, spatial_size),
+            spatial_size, size(x_val, time_dim), num_batch, threaded;
+            shift=reg.shift, rng=reg.rng
+        ) for (λ_j, block_size) in zip(λs, reg.block_sizes)
     )
     f = ProximalAverage(scales, _mslr_weights(reg, real(T)))
     op = get_operator(reg, x_val; threaded)
-    sizes_repr = join((string(s.block_size) for s in scales), ", ")
-    repr = @sprintf "%g ⋅ avg_{b ∈ {%s}} ∑ ‖𝓧_b(%s)‖_*" λ sizes_repr get_name(x)
+    scale_repr = join((@sprintf("%g@%s", λ_j, string(s.block_size)) for (λ_j, s) in zip(λs, scales)), ", ")
+    repr = @sprintf "avg_{(λ,b) ∈ {%s}} ∑ λ ⋅ ‖𝓧_b(%s)‖_*" scale_repr get_name(x)
     return StructuredOptimization.Term(1, f, op * x, repr)
 end
 
