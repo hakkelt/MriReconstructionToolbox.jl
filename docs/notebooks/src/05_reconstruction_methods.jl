@@ -40,7 +40,7 @@
 # **Contents**
 # 1. Direct reconstruction and coil combination
 # 2. Partial Fourier — Homodyne, phase-constrained, POCS
-# 3. GRAPPA and SPIRiT
+# 3. GRAPPA and SPIRiT — and, without a calibration region, `StructuredLowRank`
 # 4. Data fidelity — `L2Loss`, `HardConsistency`, `NoFidelity`
 # 5. Signal models — `TemporalBasis`, `KSpaceToImage`
 # 6. Checking applicability
@@ -54,6 +54,7 @@ using GeometricMedicalPhantoms:
     create_shepp_logan_phantom, create_torso_phantom, MRISheppLoganIntensities, TissueMask
 using MIRTjim: jim
 using Plots
+using AbstractOperators: Hankel
 using NamedDims
 using FFTW
 using LinearAlgebra
@@ -306,6 +307,127 @@ x_spirit_it = reconstruct(
 )
 println("SPIRiT (fixed point) ", round(nrmse(x_spirit, img_pi), digits = 4))
 println("SPIRiT (iterative)   ", round(nrmse(x_spirit_it, img_pi), digits = 4))
+
+# %% [markdown]
+# ### 3.1 No calibration region at all: structured low-rank k-space
+#
+# Both methods above need an ACS block. Take it away — an irregular sampling pattern with no
+# fully-sampled centre — and GRAPPA has nothing to fit its kernel to and SPIRiT has nothing to
+# calibrate $G$ from. This happens in practice more often than it sounds: prospectively
+# undersampled scans that never acquired a calibration region, patterns where motion corrupted
+# the centre, and acquisitions where the ACS lines would cost too much time.
+#
+# The way out is to notice that the *same* relation GRAPPA and SPIRiT calibrate — every k-space
+# sample is a linear combination of its neighbours across coils — can be read off the undersampled
+# data itself, without ever writing the kernel down. Stack every sliding window of multi-coil
+# k-space as a row of one big matrix (a **block-Hankel** matrix, with the coils stacked as extra
+# columns) and that matrix is low rank exactly when such linear relations exist. So: fill in the
+# missing samples by asking for the matrix to be low rank. No sensitivity maps, no ACS —
+# *calibrationless* parallel imaging.
+#
+# `StructuredLowRank` is that regularizer, in two forms:
+#
+# - `StructuredLowRank(; λ, window = ...)` — the nuclear norm of the lifted matrix, i.e. its
+#   convex relaxation. This is LORAKS' C-matrix penalty (Haldar 2014).
+# - `StructuredLowRank(; max_rank, window = ...)` — a hard cap on the rank, imposed by truncating
+#   the SVD of the lifted matrix each iteration. This is SAKE (Shin et al. 2014), and it is the
+#   Cadzow alternating-projection idea applied to MRI.
+#
+# The penalty lives on k-space, not on the image, so the reconstruction is set up with
+# `signal_model = KSpaceToImage(...)` — the same trick `SPIRiT(; iterative = true)` uses above.
+
+# %%
+# Calibrationless data: irregular ky sampling at R = 2, and no dense centre (the second argument
+# of `UniformRandomSampling` is the fraction of fully-sampled central lines — here, none).
+mask_cl = create_sampling_pattern(UniformRandomSampling(2.0, 0.0), (Nx, Ny))
+println("sampled ky lines: ", sum(mask_cl[2]), " / ", Ny, "  (no ACS block)")
+
+acq_cl_maps = add_noise(
+    simulate_acquisition(
+        img_pi,
+        CartesianAcquisitionInfo(;
+            is3D = false, image_size = (Nx, Ny), subsampling = mask_cl, sensitivity_maps = sens
+        )
+    );
+    snr_db = 30
+)
+
+# The reconstruction is handed the coil data and nothing else -- rebuilding the acquisition
+# without `sensitivity_maps` is what makes this calibrationless.
+acq_cl = CartesianAcquisitionInfo(
+    acq_cl_maps.kspace_data; is3D = false, image_size = (Nx, Ny), subsampling = mask_cl
+)
+
+# Without maps, `DirectReconstruction` returns the individual coil images, so combine them here.
+rss(x) = sqrt.(dropdims(sum(abs2, unname(x); dims = 3); dims = 3))
+x_zf = rss(reconstruct(acq_cl, DirectReconstruction(); verbosity = Silent()))
+println("zero-filled RSS  ", round(nrmse(x_zf, img_pi), digits = 4))
+
+# %% [markdown]
+# Before reconstructing, it is worth looking at the object the whole method rests on. Lift the
+# zero-filled multi-coil k-space into its block-Hankel matrix and look at the singular values: if
+# the low-rank story is true, they should fall off a cliff. The index at which they do is the
+# `max_rank` to ask for.
+
+# %%
+ksp_grid = zeros(ComplexF32, Nx, Ny, Nc)
+ksp_grid[:, mask_cl[2], :] .= unname(acq_cl.kspace_data)
+
+H_cl = Hankel(ComplexF32, (Nx, Ny), (5, 5); nchannels = Nc, channels = true)
+σ_cl = svdvals(H_cl * ksp_grid)
+println("lifted matrix: ", size(H_cl)[1][1], " x ", size(H_cl)[1][2])
+
+plot(
+    1:length(σ_cl), σ_cl ./ σ_cl[1];
+    yscale = :log10, lw = 2, label = "",
+    xlabel = "index", ylabel = "singular value / largest",
+    title = "Block-Hankel spectrum, 5x5 window, 8 coils", size = (650, 330)
+)
+vline!([25]; ls = :dash, lw = 2, label = "max_rank = 25")
+
+# %%
+slr(reg) = reconstruct(
+    acq_cl,
+    IterativeReconstruction(
+        reg; signal_model = KSpaceToImage(RootSumSquares()), algorithm = ADMM(), maxit = 40
+    );
+    verbosity = Silent()
+)
+
+x_loraks = slr(StructuredLowRank(; λ = 1.0f-2, window = (5, 5)))     # convex, LORAKS-C
+x_sake = slr(StructuredLowRank(; max_rank = 25, window = (5, 5)))    # non-convex, SAKE
+
+println("zero-filled RSS      ", round(nrmse(x_zf, img_pi), digits = 4))
+println("LORAKS-C (nuclear)   ", round(nrmse(x_loraks, img_pi), digits = 4))
+println("SAKE (rank 25)       ", round(nrmse(x_sake, img_pi), digits = 4))
+
+side_by_side(
+    x_zf, unname(x_loraks), unname(x_sake), abs.(unname(img_pi));
+    titles = ("zero-filled RSS", "LORAKS-C", "SAKE", "ground truth"), size = (1400, 350)
+)
+
+# %% [markdown]
+# Both forms turn an unusable zero-filled image into a usable one from data that GRAPPA and
+# SPIRiT cannot touch, and the hard-rank form is the more accurate of the two here — which is the
+# usual finding, and the reason SAKE is stated as a rank constraint in the first place. The
+# nuclear norm shrinks *every* singular value, including the ones carrying signal, so it pays a
+# bias for its convexity.
+#
+# !!! warning "`max_rank` gives up convexity"
+#     A rank cap is a projection onto a non-convex set, and it is applied to the lifted matrix
+#     rather than to k-space itself, so a splitting algorithm using it is a heuristic: there is no
+#     convergence guarantee, and the answer depends on where the iteration starts. The `λ` form is
+#     convex and will not surprise you. Treat a good SAKE result as "this initialization worked",
+#     not as "this is the global optimum".
+#
+# Two practical notes:
+#
+# - Cost is one economy SVD of the lifted matrix per iteration — here a
+#   $(N_x - 4)(N_y - 4) \times 25 N_c$ matrix — so the `window` is the knob that decides whether
+#   this is affordable. `(5, 5)` or `(6, 6)` in 2D, `(4, 4, 4)` in 3D.
+# - Only the plain block-Hankel structure is implemented (`structure = :c`). LORAKS' S- and
+#   G-matrices, which additionally impose conjugate symmetry and phase constraints, and ALOHA's
+#   transform-domain weighting, are not available.
 
 # %% [markdown]
 # ## 4. Data fidelity
@@ -813,6 +935,10 @@ println("GRAPPA is applicable to the R = 2 + ACS acquisition")
 #   (GRAPPA)*, Magn. Reson. Med. 47:1202–1210 (2002).
 # - Lustig M., Pauly J. M., *SPIRiT: Iterative self-consistent parallel imaging reconstruction from
 #   arbitrary k-space*, Magn. Reson. Med. 64:457–471 (2010).
+# - Shin P. J. *et al.*, *Calibrationless parallel imaging reconstruction based on structured
+#   low-rank matrix completion*, Magn. Reson. Med. 72:959–970 (2014). — SAKE.
+# - Haldar J. P., *Low-rank modeling of local k-space neighborhoods (LORAKS) for constrained MRI*,
+#   IEEE Trans. Med. Imaging 33:668–681 (2014). — LORAKS.
 # - Noll D. C., Nishimura D. G., Macovski A., *Homodyne detection in magnetic resonance imaging*,
 #   IEEE Trans. Med. Imaging 10:154–163 (1991).
 # - Liang Z.-P., *Spatiotemporal imaging with partially separable functions*, ISBI 2007, 988–991.
