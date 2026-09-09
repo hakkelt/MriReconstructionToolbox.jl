@@ -182,6 +182,54 @@ end
     @test size(unpadded) == (Nx, measured, Nc)
 end
 
+@testitem "Sensitivity estimation follows the acquisition's shifted_image_dims" tags = [:preprocessing, :acquisition, :reconstruction] setup = [SyntheticCoils] begin
+    using Test
+    using MriReconstructionToolbox
+    using NamedDims: NamedDimsArray, unname
+    using FFTW: fft, fftshift, ifftshift
+    using LinearAlgebra: norm
+
+    # Scanner data reconstructs in the CENTERED image convention (`shifted_image_dims`), while
+    # every estimator inverts k-space into MRT's plain-DFT default. Maps handed back for such an
+    # acquisition must therefore be shifted onto the same grid — otherwise they are rolled by half
+    # the FOV relative to the images they multiply, and the reconstruction is not merely displaced
+    # but wrong everywhere.
+    Nx, Ny, Nc = 48, 48, 4
+    truth = zeros(ComplexF32, Nx, Ny)
+    truth[14:22, 20:32] .= 1                     # off-centre, so a half-FOV roll is unambiguous
+    truth[18, 26] = 3
+    sens_true = synthetic_sensitivities(ComplexF32, Nx, Ny, Nc)
+
+    coil_images = sens_true .* reshape(truth, Nx, Ny, 1)
+    # Centred image, centred k-space: the scanner's convention on both sides.
+    ksp = NamedDimsArray{(:kx, :ky, :coil)}(
+        ComplexF32.(fftshift(fft(ifftshift(coil_images, (1, 2)), (1, 2)), (1, 2)))
+    )
+
+    acq_plain = CartesianAcquisitionInfo(ksp; is3D = false)
+    acq_shifted = CartesianAcquisitionInfo(ksp; is3D = false, shifted_image_dims = (:x, :y))
+
+    for method in (SelfCalibrating(calib_size = 24), ESPIRiT(calib_size = 24, kernel_size = 6))
+        plain = unname(estimate_sensitivities(acq_plain; method).sensitivity_maps)
+        shifted = unname(estimate_sensitivities(acq_shifted; method).sensitivity_maps)
+        # Same k-space, same estimator: the only difference is which image grid the maps live on.
+        @test shifted ≈ fftshift(plain, (1, 2))
+        @test !(shifted ≈ plain)                 # the shift is not a no-op at this size
+
+        # And the maps must actually explain the coil images they were estimated from.
+        ρ = dropdims(sum(conj.(shifted) .* coil_images; dims = 3); dims = 3)
+        residual = norm(shifted .* reshape(ρ, Nx, Ny, 1) - coil_images) / norm(coil_images)
+        @test residual < 0.15
+    end
+
+    # End to end: the object must come back where it was put.
+    acq = estimate_sensitivities(acq_shifted; method = SelfCalibrating(calib_size = 24))
+    x = abs.(unname(reconstruct(acq; verbosity = Silent())))
+    @test Tuple(argmax(x)) == (18, 26)
+    α = sum(x .* abs.(truth)) / sum(abs2, x)
+    @test norm(α .* x - abs.(truth)) / norm(abs.(truth)) < 0.15
+end
+
 @testitem "Sensitivity estimation: coil axis need not be trailing" tags = [:preprocessing] begin
     using Test
     using MriReconstructionToolbox

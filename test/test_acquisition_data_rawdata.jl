@@ -101,6 +101,18 @@ end
         @test size(info.kspace_data) == (4, 4, 1)
         @test isnothing(info.subsampling)
         @test info.image_size == (4, 4)
+        @test info.shifted_image_dims == (:x, :y)
+    end
+
+    @testset "3D sets shifted_image_dims on all three spatial axes" begin
+        profiles = Profile[
+            make_profile(ComplexF32[i + c * 1im for i in 1:4, c in 1:1]; step1, step2, center_sample = 2)
+                for step1 in 0:3, step2 in 0:2
+        ]
+        raw = make_raw(
+            vec(profiles); encoded_size = (4, 4, 3), lim1 = Limit(0, 3, 2), lim2 = Limit(0, 2, 1)
+        )
+        @test AcquisitionInfo(raw).shifted_image_dims == (:x, :y, :z)
     end
 
     @testset "irregular undersampled ky -> boolean mask" begin
@@ -156,6 +168,38 @@ end
     end
 end
 
+@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — object stays centred in the FOV" tags = [:acquisition, :reconstruction] setup = [RawAcqHelpers] begin
+    using MriReconstructionToolbox
+    using NamedDims: unname
+    using FFTW: fft, fftshift, ifftshift
+
+    # A scanner images an object centred in the FOV and stores k-space with DC at the centre.
+    # MRT's plain-DFT default puts the image origin at index 1, so without `shifted_image_dims`
+    # the reconstruction of such data comes out rolled by half the FOV along every spatial axis
+    # (the whole object lands in the four corners). The constructor must set it for us.
+    n = 16
+    img = zeros(ComplexF32, n, n)
+    img[6:9, 7:10] .= 1              # an off-centre blob, so a half-FOV roll is unambiguous
+    img[7, 8] = 3
+    # The scanner's DFT runs over CENTRED coordinates on both sides: k and x both range over
+    # -n÷2 : n÷2-1. That is `fftshift ∘ fft ∘ ifftshift`, not a bare `fft` — a bare `fft` would
+    # treat array index 1 as the spatial origin, which is MRT's own (unshifted) default.
+    ksp_true = fftshift(fft(ifftshift(img)))    # DC at index n ÷ 2 + 1 = 9, as ISMRMRD stores it
+
+    profiles = Profile[
+        make_profile(ComplexF32.(reshape(ksp_true[:, j], n, 1)); step1 = j - 1, center_sample = n ÷ 2)
+            for j in 1:n
+    ]
+    raw = make_raw(profiles; encoded_size = (n, n, 1), lim1 = Limit(0, n - 1, n ÷ 2))
+
+    info = AcquisitionInfo(raw)
+    @test info.shifted_image_dims == (:x, :y)
+
+    rec = abs.(unname(reconstruct(info; verbosity = Silent()))[:, :, 1])
+    @test Tuple(argmax(rec)) == (7, 8)                       # not (15, 16), the half-FOV-rolled peak
+    @test rec ≈ (rec[7, 8] / 3) .* abs.(img)                 # whole image, not just the peak
+end
+
 @testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — non-Cartesian dispatch" tags = [:acquisition, :nfft] setup = [RawAcqHelpers] begin
     using MriReconstructionToolbox
     using MriReconstructionToolbox: NonCartesianAcquisitionInfo
@@ -197,7 +241,8 @@ end
         @test info.is3D == false
         @test dimnames(info.kspace_data) == (:kx, :ky, :coil, :z)
         @test size(info.kspace_data) == (256, 256, 4, 18)
-        @test isnothing(info.subsampling) # M4Raw is fully sampled and already centered
+        @test isnothing(info.subsampling) # M4Raw stores every encoded ky line (some are all-zero)
+        @test info.shifted_image_dims == (:x, :y)
 
         # Must reproduce the notebook's hand-rolled single-slice assembly exactly (no extra
         # `fftshift` needed — see the constructor's docstring on the FFT-shift convention).

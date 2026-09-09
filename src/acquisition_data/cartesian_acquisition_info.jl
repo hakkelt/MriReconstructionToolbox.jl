@@ -127,7 +127,10 @@ CartesianAcquisitionInfo(;
 
 
 function _check_smaps(smaps, ksp, subs, is3D, img_size)
-    ksp_dims_count = isnothing(subs) ? (is3D ? 3 : 2) : length(subs)
+    # `length(subs)` is only the number of subsampled k-space axes when `subs` is the per-axis
+    # tuple; a per-batch-element subsampling (a Vector of specs, one ky mask per frame) has
+    # `length == nframes`. `_get_subsampled_dims_count` handles both.
+    ksp_dims_count = isnothing(subs) ? (is3D ? 3 : 2) : _get_subsampled_dims_count(subs)
     if ksp isa NamedDimsArray
         @argcheck smaps isa NamedDimsArray "sensitivity maps must be NamedDimsArray when k-space is NamedDimsArray"
         @argcheck :coil ∈ dimnames(ksp) ":coil dimension required in k-space when sensitivity maps are provided"
@@ -166,7 +169,9 @@ function _check_smaps(smaps, ksp, subs, is3D, img_size)
 end
 
 function _subsample_item_to_str(item)
-    if item isa Integer || item isa AbstractRange
+    if item isa Tuple
+        return "($(join(map(_subsample_item_to_str, item), ", ")))"
+    elseif item isa Integer || item isa AbstractRange
         return string(item)
     elseif item isa AbstractVector
         return "Vector{$(eltype(item))}<$(join(size(item), "×"))>"
@@ -178,6 +183,17 @@ function _subsample_item_to_str(item)
         return "?"
     end
 end
+
+# The per-axis tuple form, `(:, mask)`.
+function _subsampling_to_str(subs::Tuple)
+    strs = map(_subsample_item_to_str, subs)
+    return length(strs) == 1 ? strs[1] : "($(join(strs, ", ")))"
+end
+_subsampling_to_str(subs::AbstractArray{Bool}) = _subsample_item_to_str(subs)
+# One spec per batch element (e.g. a different ky mask per frame): summarize as `19×(:, ...)`
+# instead of printing all nineteen.
+_subsampling_to_str(subs::AbstractArray) =
+    "$(join(size(subs), "×"))×$(_subsampling_to_str(_normalize_subsampling(first(subs))))"
 
 function _get_acq_info_meta(info::CartesianAcquisitionInfo)
     meta = String[]
@@ -196,13 +212,7 @@ function _get_acq_info_meta(info::CartesianAcquisitionInfo)
         push!(meta, "sensitivity_maps=$(eltype(info.sensitivity_maps))<$(join(size(info.sensitivity_maps), "×"))>")
     end
     if !isnothing(info.subsampling)
-        subsampling = [_subsample_item_to_str(subs) for subs in info.subsampling]
-        if length(subsampling) == 1
-            subsampling = subsampling[1]
-        else
-            subsampling = "($(join(subsampling, ", ")))"
-        end
-        push!(meta, "subsampling=$subsampling")
+        push!(meta, "subsampling=$(_subsampling_to_str(info.subsampling))")
     end
     if !isempty(info.shifted_kspace_dims)
         if length(info.shifted_kspace_dims) == 1
