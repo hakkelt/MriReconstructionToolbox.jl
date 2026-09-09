@@ -109,8 +109,9 @@ function get_next_rho!(seq::WohlbergPenalty, ::ADMMIteration, state::ADMMState)
 				seq.tau[i] = sqrt(rᵏ_norm / sᵏ_norm)
 			elseif 1/seq.tau_max ≤ sqrt(rᵏ_norm / sᵏ_norm) < 1
 				seq.tau[i] = sqrt(sᵏ_norm / rᵏ_norm)
+			else
+				seq.tau[i] = seq.tau_max
 			end
-			# Otherwise, tau[i] remains unchanged (residuals are reasonably balanced)
 
             if seq.normalized
                 rᵏ_norm /= state.ϵᵖʳⁱ[i]

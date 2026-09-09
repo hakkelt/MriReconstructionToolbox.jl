@@ -165,10 +165,10 @@ function get_next_rho!(
 			# To enhance numerical stability, the per-theory implementation is commented out
 			# and replaced with a more robust check
 			ϵᶜᵒʳ = seq.eps_cor
-			# αᶜᵒʳ = BΔx_Δŷ / (BΔx² * Δŷ²)
-			# βᶜᵒʳ = Δy² / (Δz² * Δy²)
-			α̂_is_reliable = BΔx_Δŷ > ϵᶜᵒʳ * (BΔx² * Δŷ²) && abs(α̂) > ϵ && isfinite(α̂) # αᶜᵒʳ > ϵᶜᵒʳ
-			β̂_is_reliable = Δy² > ϵᶜᵒʳ * (Δz² * Δy²) && abs(β̂) > ϵ && isfinite(β̂) # βᶜᵒʳ > ϵᶜᵒʳ
+			# αᶜᵒʳ = BΔx_Δŷ / sqrt(BΔx² * Δŷ²)
+			# βᶜᵒʳ = Δz_Δy / sqrt(Δz² * Δy²)
+			α̂_is_reliable = BΔx_Δŷ > ϵᶜᵒʳ * sqrt(BΔx² * Δŷ²) && abs(α̂) > ϵ && isfinite(α̂) # αᶜᵒʳ > ϵᶜᵒʳ
+			β̂_is_reliable = Δz_Δy > ϵᶜᵒʳ * sqrt(Δz² * Δy²) && abs(β̂) > ϵ && isfinite(β̂) # βᶜᵒʳ > ϵᶜᵒʳ
 			if α̂_is_reliable && β̂_is_reliable
 				ρ = sqrt(α̂ * β̂)
 			elseif α̂_is_reliable
