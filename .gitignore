@@ -16,3 +16,7 @@ benchmark/hpc/results/*__*.json
 
 # agent scaffolding and worktrees
 .claude/
+
+# MRITestData download-path preference is per-machine state
+LocalPreferences.toml
+!docs/notebooks/LocalPreferences.toml

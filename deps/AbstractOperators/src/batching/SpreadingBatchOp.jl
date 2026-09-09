@@ -815,8 +815,13 @@ function get_normal_op(
         L::SpreadingBatchOpThreadSafe{dT, cT, dM, cM, sD, N, M, opT}
     ) where {dT, cT, dM, cM, sD, N, M, opT}
     new_ops = get_normal_op.(L.operators)
-    return SpreadingBatchOpThreadSafe{dT, cT, dM, dM, sD, N, N, typeof(new_ops[1])}(
-        new_ops, L.domain_size, L.codomain_size, L.batch_indices
+    # A normal operator maps the domain to itself, so BOTH sizes (and both element types) are the
+    # domain's — as every other `get_normal_op(::SpreadingBatchOp*)` method below does. Passing
+    # `L.codomain_size` here made the normal operator claim the *subsampled* codomain shape, so
+    # `Compose` sized the buffer between LᴴL's halves wrongly whenever the operators differ per
+    # batch element (e.g. one ky mask per frame) and the thread-safe variant was selected.
+    return SpreadingBatchOpThreadSafe{dT, dT, dM, dM, sD, N, N, typeof(new_ops[1])}(
+        new_ops, L.domain_size, L.domain_size, L.batch_indices
     )
 end
 function get_normal_op(
