@@ -222,7 +222,7 @@ This document presents a review of the state of computational MRI reconstruction
   - Setsompop, K., et al. (2012). *Blipped-controlled aliasing in parallel imaging for simultaneous multislice echo planar imaging with reduced g-factor penalty.* Magnetic Resonance in Medicine, 67(5), 1210–1224. [DOI: 10.1002/mrm.23097](https://doi.org/10.1002/mrm.23097).
   - Cauley, S. F., et al. (2014). *Interslice leakage artifact reduction technique for simultaneous multislice acquisitions.* Magnetic Resonance in Medicine, 72(1), 93–102. [DOI: 10.1002/mrm.24898](https://doi.org/10.1002/mrm.24898).
 * **Concept:** Excite several slices simultaneously and separate them using coil sensitivity differences, enhanced by blipped-CAIPI inter-slice shifts. Split slice-GRAPPA additionally suppresses inter-slice signal leakage.
-* **Missing in MRT:** SMS encoding model and slice-GRAPPA kernels. Notably, SMS interacts badly with MRT's automatic problem decomposition over slices (§5.8) — slices are no longer separable subproblems, and the decomposition planner would need to know this.
+* **Missing in MRT:** SMS encoding model and slice-GRAPPA kernels. Notably, SMS interacts badly with MRT's automatic task splitting over slices (§5.8) — slices are no longer separable subproblems, and the task-splitting planner would need to know this.
 
 #### 4. g-Factor & Noise Propagation (Pseudo-Replica)
 * **Seminal Papers:**
@@ -565,7 +565,7 @@ natural_domain(::InKSpace)      = KSpaceDomain()
 **Restriction (finding V4).** "Any image prior auto-wraps" is *false*. `materialize` returns an
 opaque `Term`; the only composable seam is `get_operator`, which several terms lack in a usable
 form (`PlugAndPlay` has a custom prox, `TotalGeneralizedVariation2D` introduces auxiliary
-variables, `MultiScaleLowRank` is a `ProximalAverage`, `RankLimit`/`HardThreshold` are
+variables, `MultiScaleLowRank` is a `ProximalAverage`, `RankLimit`/`L0Image` are
 prox-of-`x` forms). Auto-wrap is therefore **opt-in** via a trait
 `is_operator_composable(reg) -> Bool`, `true` only for the wavelet / TV / L1 / LLR family; every
 other term under `KSpaceDomain` errors informatively and names `InKSpace(reg)`. `natural_domain`
