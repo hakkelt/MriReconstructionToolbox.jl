@@ -66,28 +66,29 @@ Julia.
 
 Notebooks 1–8, 11 and 12 are written to run end to end on a laptop: the phantoms are 128² or
 smaller, the dynamic series is 64² × 16 frames, and the iteration counts are chosen for a few
-seconds per reconstruction. Measured with `export.jl` on 2026-09-09 (Julia 1.12.7,
-`JULIA_NUM_THREADS=4`, shared login node), before the renumbering below moved and split some of
-this content — **stale, and marked `PENDING` where the split makes an old number no longer
-apply; refilled at the next `export.jl` run on a dedicated node (Phase 4)**:
+seconds per reconstruction. Measured with `export.jl` on 2026-09-10 (Julia 1.13.0,
+`JULIA_NUM_THREADS=8`, one dedicated compute node per notebook, packages precompiled beforehand
+by `run_precompile_slurm.sh`). These are not comparable with the previous table, which was
+measured on a shared login node:
 
 | Notebook | Wall time | Notes |
 |---|---|---|
-| `01_getting_started` | 3m 23s | |
-| `02_acquisition_info` | 0m 40s | |
-| `03_simulation` | 1m 55s | |
-| `04_reconstruction_methods` | PENDING | was `05_reconstruction_methods`, minus the data-fidelity/signal-model sections now in `11` |
-| `05_regularization` | 5m 44s | was `04_regularization`; every regularizer, several reconstructions each |
-| `06_algorithms_and_configuration` | 4m 53s | |
-| `07_dynamic_and_decomposition` | 5m 21s | |
-| `08_non_cartesian` | 1m 57s | plus NFFT precompilation on the first call |
-| `09_real_data_cartesian` | 4m 20s | was `10_real_data_cartesian`; after the ~12 MB download |
-| `10_real_data_dynamic` | 38m 47s | was `11_real_data_dynamic`; after the ~200 MB download; the λ sweep is ~25 min of it |
-| `11_advanced_reconstruction` | PENDING | new — data fidelity, signal models and structured low-rank k-space, split out of the old `05_reconstruction_methods` |
-| `12_low_level_interface` | 2m 18s | was `09_low_level_interface` |
+| `01_getting_started` | 1m 15s | |
+| `02_acquisition_info` | 0m 53s | |
+| `03_simulation` | 1m 28s | |
+| `04_reconstruction_methods` | 1m 32s | |
+| `05_regularization` | 4m 05s | every regularizer, several reconstructions each |
+| `06_algorithms_and_configuration` | 3m 46s | |
+| `07_dynamic_and_decomposition` | 4m 52s | |
+| `08_non_cartesian` | 1m 28s | plus NFFT precompilation on the first call |
+| `09_real_data_cartesian` | 3m 19s | after the ~12 MB download |
+| `10_real_data_dynamic` | 24m 42s | after the ~200 MB download; the λ sweep is most of it |
+| `11_advanced_reconstruction` | 3m 56s | |
+| `12_low_level_interface` | 1m 50s | |
 
-Each number is one measurement and includes roughly a minute of first-call compilation, so treat
-them as an order of magnitude rather than a benchmark. `10_real_data_dynamic` is deliberately the
+Each number is one measurement and includes first-call compilation of whatever the notebook
+touches first, so treat them as an order of magnitude rather than a benchmark.
+`10_real_data_dynamic` is deliberately the
 expensive one: it sweeps λ for seven methods across two sampling patterns so that no method is
 shown at a setting somebody guessed. Drop entries from its `sweeps` tuple if you want it faster.
 
