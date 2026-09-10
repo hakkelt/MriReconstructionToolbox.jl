@@ -206,26 +206,6 @@ function with_serial_blas(f::F, x) where {F}
 end
 
 """
-    with_restricted_threads_if_needed(f)
-
-Run `f()` restricted to a single thread on every registered pool, like
-`NestedThreading.with_restricted_threads`, but skip entering the scope at all when BLAS is
-already serial — mirroring [`with_serial_blas`](@ref)'s own early-out.
-
-Every counted pool (`BLAS`, `MKL`, `FFTW`, `NFFT`, ...) is always set to the same applied
-budget by `NestedThreading._apply!`, so BLAS already being serial means the whole scope would
-be a no-op: entering it would still pay the enter/exit bookkeeping and the Polyester guard for
-every registered pool, just to re-set values that already match. That is dead weight when the
-caller is already serial — the task-split `MultiThreadingExecutor` path, or a `-t 1` process —
-which is exactly when `_iterative_reconstruct_core` reaches for this instead of
-`with_restricted_threads` directly.
-"""
-function with_restricted_threads_if_needed(f::F) where {F}
-    LinearAlgebra.BLAS.get_num_threads() == 1 && return f()
-    return with_restricted_threads(f)
-end
-
-"""
     _should_thread_work_item(config, bytes) -> Bool
 
 Whether a work item of `bytes` bytes is worth threading, given `config`. The single predicate

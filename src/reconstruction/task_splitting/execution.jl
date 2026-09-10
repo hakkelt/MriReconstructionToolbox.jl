@@ -27,9 +27,11 @@ function execute(f::Function, plan, acq_data, config, executor::ReconstructionEx
         # the first slice runs outside the (possibly threaded) loop to learn it, and `results` is
         # then allocated concretely instead of as `Array{AbstractArray}`.
         first_idx, first_id, first_local_acq = slices[1]
-        first_r, first_s = execute_single_slice(
-            f, first_idx, first_id, first_local_acq, conf; threaded=slice_threaded
-        )
+        first_r, first_s = run_first_item(@view(slices[2:end]), conf, executor; threaded=slice_threaded) do
+            execute_single_slice(
+                f, first_idx, first_id, first_local_acq, conf; threaded=slice_threaded
+            )
+        end
         isnothing(tick) || tick()
         results = Array{typeof(first_r)}(undef, batch_sizes)
         results[first_idx] = first_r
@@ -49,7 +51,7 @@ function run_slices!(
 )
     for_each_item!(slices, config, executor; threaded) do (idx, id, local_acq)
         r, s = execute_single_slice(f, idx, id, local_acq, config; threaded)
-        results[idx] = r
+        store_item!(results, idx, r, id)
         scales[idx] = s
         isnothing(tick) || tick()
     end
@@ -140,14 +142,17 @@ function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Fun
         # learn it; `prelim` is then allocated concretely instead of as `Array{Any}`, keeping the phase-2
         # unpacking below type-stable.
         first_idx, first_id, first_local_acq = slices[1]
-        first_warm_start, first_scale, first_𝒜, first_L = prepare(first_idx, first_local_acq, slice_config(first_id))
+        first_warm_start, first_scale, first_𝒜, first_L =
+            run_first_item(@view(slices[2:end]), conf, executor; threaded=slice_threaded) do
+                prepare(first_idx, first_local_acq, slice_config(first_id))
+            end
         isnothing(tick) || tick()
         first_prelim = (first_id, first_local_acq, first_warm_start, first_scale, first_𝒜, first_L)
         prelim = Array{typeof(first_prelim)}(undef, batch_sizes)
         prelim[first_idx] = first_prelim
         for_each_item!(@view(slices[2:end]), conf, executor; threaded=slice_threaded) do (idx, id, local_acq)
             warm_start, scale, 𝒜, L = prepare(idx, local_acq, slice_config(id))
-            prelim[idx] = (id, local_acq, warm_start, scale, 𝒜, L)
+            store_item!(prelim, idx, (id, local_acq, warm_start, scale, 𝒜, L), id)
             isnothing(tick) || tick()
         end
 
@@ -160,17 +165,19 @@ function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Fun
         first_result_idx = indices[1]
         first_res_id, first_res_acq, first_res_warm_start, first_res_scale, first_res_𝒜, first_res_L = prelim[first_result_idx]
         first_res_ratio = safe_scale_ratio(first_res_scale, global_scale)
-        first_result = solve(
-            first_res_acq, first_res_warm_start, first_res_ratio, global_scale,
-            slice_config(first_res_id), first_res_𝒜, first_res_L,
-        )
+        first_result = run_first_item(@view(indices[2:end]), conf, executor; threaded=slice_threaded) do
+            solve(
+                first_res_acq, first_res_warm_start, first_res_ratio, global_scale,
+                slice_config(first_res_id), first_res_𝒜, first_res_L,
+            )
+        end
         isnothing(tick) || tick()
         results = Array{typeof(first_result)}(undef, batch_sizes)
         results[first_result_idx] = first_result
         for_each_item!(@view(indices[2:end]), conf, executor; threaded=slice_threaded) do idx
             id, local_acq, warm_start, scale, 𝒜, L = prelim[idx]
             ratio = safe_scale_ratio(scale, global_scale)
-            results[idx] = solve(local_acq, warm_start, ratio, global_scale, slice_config(id), 𝒜, L)
+            store_item!(results, idx, solve(local_acq, warm_start, ratio, global_scale, slice_config(id), 𝒜, L), id)
             isnothing(tick) || tick()
         end
 
@@ -198,6 +205,41 @@ function for_each_item!(
     @budgeted_threads for item in items
         f!(item)
     end
+    return nothing
+end
+
+# Both schemes below run the first item outside the loop to learn its concrete result type. That
+# item must still see the threading scope `for_each_item!` opens around the rest, or it runs at a
+# different budget from every other item: unrestricted where the sequential loop restricts every
+# pool, or without NFFT's guarded pool where the loop enables it. `loop_items` is the collection
+# the loop will iterate (the remaining items), because that is what `@budgeted_threads` derives
+# its per-worker budget from; the first item's own work is `f()`.
+function run_first_item(f::Function, loop_items, config, ::SequentialExecutor; threaded=config.threaded)
+    return @conditionally_enable_threading threaded f()
+end
+
+function run_first_item(f::Function, loop_items, config, ::MultiThreadingExecutor; threaded=false)
+    return with_thread_budget(f, budget_for(loop_items))
+end
+
+"""
+    store_item!(dest, idx, value, id)
+
+Write one item's result into the concretely-typed array the hoisted first item sized. The array's
+element type is `typeof(first_result)`, so a later item producing a different concrete type would
+otherwise surface as a bare `convert`/`MethodError` from inside a threaded loop. Check it here so
+the error names the slice and both types instead.
+"""
+function store_item!(dest::AbstractArray{T}, idx, value, id) where {T}
+    value isa T || throw(
+        ArgumentError(
+            "slice $id produced a $(typeof(value)), but the first slice produced a $T. Task " *
+                "splitting allocates its result array from the first slice's concrete type, so " *
+                "every slice must agree; a slice-dependent k-space, warm-start or operator-norm " *
+                "type is the usual cause."
+        )
+    )
+    dest[idx] = value
     return nothing
 end
 
