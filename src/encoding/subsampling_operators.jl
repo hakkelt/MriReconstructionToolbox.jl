@@ -474,10 +474,7 @@ end
 function _full_kspace_template(subsampled_ksp::PartitionedKSpace, img_size, subsampling)
     @argcheck 2 ≤ length(img_size) ≤ 3 "img_size must be either length 2 or 3"
     batch_dims_start = _get_subsampled_dims_count(subsampling) + 1
-    batch_sizes = ntuple(
-        i -> size(subsampled_ksp, batch_dims_start + i - 1),
-        ndims(subsampled_ksp) - batch_dims_start + 1,
-    )
+    batch_sizes = _ksp_trailing_size(subsampled_ksp, batch_dims_start)
     ksp = similar(unname(first(parts(subsampled_ksp))), (img_size..., batch_sizes...))
     if !isnothing(subsampled_ksp.dimnames)
         batch_dim_names = dimnames(subsampled_ksp)[batch_dims_start:end]
