@@ -96,7 +96,7 @@ function _reconstruct_dispatch_plain(acq_data, method::ReconstructionMethod, x�
             # slices so the output intensities are consistent slice-to-slice.
             execute_regularized(task_splitting_plan, acq_data, config, method, x₀)
         end
-        if acq_data.kspace_data isa NamedDimsArray
+        if _has_dimnames(acq_data.kspace_data)
             result = NamedDimsArray{output_dims(method, acq_data)}(unname(result))
         end
         result
@@ -155,7 +155,7 @@ end
 # to every intermediate iterate.
 function _present_image(x, method::IterativeReconstruction, acq_data, config)
     x = apply_signal_model(method.signal_model, x, acq_data; threaded=config.threaded)
-    if acq_data.kspace_data isa NamedDimsArray && !(x isa NamedDimsArray)
+    if _has_dimnames(acq_data.kspace_data) && !(x isa NamedDimsArray)
         x = NamedDimsArray{output_dims(method, acq_data)}(x)
     end
     return x
@@ -187,7 +187,7 @@ function _reconstruct_dispatch_components(acq_data, method::IterativeReconstruct
         end
         execute_regularized_components(task_splitting_plan, acq_data, config, method, x₀)
     end
-    if acq_data.kspace_data isa NamedDimsArray && !(total_image(img) isa NamedDimsArray)
+    if _has_dimnames(acq_data.kspace_data) && !(total_image(img) isa NamedDimsArray)
         img_dimnames = output_dims(method, acq_data)
         img = DecomposedImage(
             NamedDimsArray{img_dimnames}(unname(total_image(img))),
@@ -238,7 +238,7 @@ end
 function _present_components(xs, names, method::IterativeReconstruction, acq_data)
     xs = _component_parts(xs)
     total_x = broadcast(+, xs...)
-    if acq_data.kspace_data isa NamedDimsArray
+    if _has_dimnames(acq_data.kspace_data)
         img_dimnames = output_dims(method, acq_data)
         total_x = NamedDimsArray{img_dimnames}(total_x)
         xs = map(x -> NamedDimsArray{img_dimnames}(x), xs)

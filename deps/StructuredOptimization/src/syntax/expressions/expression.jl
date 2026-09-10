@@ -7,7 +7,12 @@ struct Expression{N,A<:AbstractOperator} <: AbstractExpression
     # assumes a single-block codomain array), but an `is_eye` operator is a
     # provable no-op — x flows through unchanged — so a block-identity like
     # DCAT(Eye, Eye) over a joint multi-variable domain is safe to allow.
-    ndoms(L,1) > 1 && !is_eye(L) && throw(ArgumentError(
+    # A codomain stored as one `ArrayPartition` is also safe: it is a single array object --
+    # broadcast, `norm`, `dot`, `similar` and `mul!` all treat it as one -- so every Term
+    # assumption about a single-block codomain array holds. That is the shape a `VCAT` of
+    # per-block operators produces (an MRI acquisition whose frames select different numbers of
+    # samples, for instance), and rejecting it would leave that model unexpressible.
+    ndoms(L,1) > 1 && !is_eye(L) && !(codomain_array_type(L) <: ArrayPartition) && throw(ArgumentError(
       "Cannot create expression with LinearOperator with `ndoms(L,1) > 1`"
      ))
     #checks on x

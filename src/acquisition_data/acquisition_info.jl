@@ -28,6 +28,10 @@ Smart constructor that dispatches to either `CartesianAcquisitionInfo` or
 
 For non-Cartesian acquisitions, `dcf` may be provided as an optional density
 compensation array and `subsampling` is not allowed.
+
+`kspace_data` is normally an `AbstractArray` (plain or `NamedDimsArray`). For a Cartesian
+acquisition whose frames select *different numbers of samples* it is a [`PartitionedKSpace`](@ref)
+instead, one array per frame — a dense array cannot hold a ragged sample axis.
 """
 function AcquisitionInfo(
         kspace_data = nothing;

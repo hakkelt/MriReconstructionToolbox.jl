@@ -149,7 +149,7 @@ AcquisitionInfo(
 # One pattern PER BATCH ELEMENT: an array of specs, shaped like the batch dimensions it spans.
 # A dynamic acquisition that shifts its ky lines from frame to frame is the usual case — the
 # aliasing is then incoherent along time, which is what a temporal or low-rank regularizer needs.
-# Every element must retain the same number of samples, since `kspace_data` is one dense array.
+# When every element retains the same number of samples, `kspace_data` stays one dense array.
 base = falses(64)
 base[1:3:64] .= true
 masks = [circshift(base, t - 1) for t in 1:8]   # 8 frames
@@ -160,6 +160,46 @@ AcquisitionInfo(
     image_size=(64, 64),
     subsampling=[(:, m) for m in masks]
 )
+```
+
+#### Unequal sample counts per frame
+
+A dense `kspace_data` array has one length along its sample axis, so it can only hold a per-frame
+pattern when every frame selects the same number of samples. When the counts genuinely differ —
+a variable-density dynamic acquisition, rather than a shifted mask of fixed size — the measurement
+is held one frame at a time in a [`PartitionedKSpace`](@ref) instead. `simulate_acquisition`
+produces one automatically:
+
+```@example acqinfo
+counts_vary = [copy(base) for _ in 1:4]
+counts_vary[2][2] = true            # one extra line in frame 2
+counts_vary[3][[5, 7]] .= true      # two extra in frame 3
+
+acq_ragged = AcquisitionInfo(
+    nothing;
+    is3D=false,
+    image_size=(64, 64),
+    subsampling=[(:, m) for m in counts_vary]
+)
+```
+
+The frames' full k-space grids are identical, so the encoding operator is a `VCAT` of one
+`GetIndex` per frame — no new operator type — and its codomain is an `ArrayPartition`, one block per
+frame. Reconstruction is otherwise unchanged: task splitting hands each frame its own slice and its
+own spec, a temporal regularizer keeps the whole partitioned operator, and **`reconstruct` still
+returns an ordinary dense array**, because the *image* size is the same for every frame.
+
+`PartitionedKSpace` is deliberately not an `AbstractArray`: dimension `ragged_dim` has no single
+size, and `size(ksp)` says so rather than inventing a number. Ask for `size(ksp, d)` of a
+non-ragged dimension, or reach the frames through `parts(ksp)`. Preprocessing and analysis that
+needs a rectangle — prewhitening, coil compression, sensitivity estimation, `pseudo_replica`,
+partial-Fourier band detection, GRAPPA/SPIRiT, the `KSpaceToImage` signal model — throws a clear
+error for a partitioned acquisition instead of quietly reading the wrong samples. `add_noise`
+works, since noise is well defined per frame.
+
+```@docs
+PartitionedKSpace
+MriReconstructionToolbox.is_partitioned
 ```
 
 ### FFT Shift Conventions

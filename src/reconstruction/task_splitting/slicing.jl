@@ -3,7 +3,7 @@ function get_slices(plan, acq_data)
     get_index_max_width = d -> length(string(size(acq_data.kspace_data, d)))
     slice_idx_widths = map(get_index_max_width, plan.kspace_batch_dims)
     slice_ids = map(idx -> get_slice_id(plan, idx, slice_idx_widths), indices)
-    slices = eachslice(acq_data.kspace_data; dims = plan.kspace_batch_dims)
+    slices = _ksp_eachslice(acq_data.kspace_data, plan.kspace_batch_dims)
     ssm = plan.slices_sensitivity_maps
     local_acq = (
         get_acquisition_info_slice(acq_data, plan, idx, ksp_slice, ssm) for
@@ -34,7 +34,7 @@ function slice_subsampling(subsampling::AbstractArray, kspace_data, kspace_batch
     # Which k-space dimensions the spec array spans: the same alignment `get_subsampling_operator`
     # performs, against the non-Fourier k-space dimensions (coil and batch).
     fourier_dims = _get_subsampled_dims_count(subsampling)
-    nonfourier = size(kspace_data)[(fourier_dims + 1):end]
+    nonfourier = _ksp_trailing_size(kspace_data, fourier_dims + 1)
     n = ndims(subsampling)
     start = findfirst(
         s -> nonfourier[s:(s + n - 1)] == size(subsampling),

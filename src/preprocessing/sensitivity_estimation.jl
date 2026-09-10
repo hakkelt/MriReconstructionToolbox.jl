@@ -78,6 +78,7 @@ function estimate_sensitivities(
         acq::AcquisitionInfo;
         method::SensitivityEstimation = SelfCalibrating(),
     )
+    _reject_partitioned(acq.kspace_data, "sensitivity estimation")
     is3D = acq isa CartesianAcquisitionInfo ? acq.is3D : false
     sens = estimate_sensitivities(
         acq.kspace_data;

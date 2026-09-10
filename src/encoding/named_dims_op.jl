@@ -74,6 +74,10 @@ end
 function codomain_array_type(L::NamedDimsOp{D, C}) where {D, C}
     return NamedDimsArray{C, codomain_type(L.L), codomain_array_type(L.L)}
 end
+# `C === nothing` means the codomain carries no dimension names — the partitioned k-space of an
+# unequal-per-frame acquisition, whose blocks are separate arrays rather than axes of one array.
+# Wrapping such a codomain in a `NamedDimsArray` is not possible, so the inner type passes through.
+codomain_array_type(L::NamedDimsOp{D, nothing}) where {D} = codomain_array_type(L.L)
 function allocate_in_domain(L::NamedDimsOp{D, C}, dims...) where {D, C}
     return NamedDimsArray{D}(allocate_in_domain(L.L, dims...))
 end
@@ -81,6 +85,7 @@ allocate_in_domain(L::AdjointOperator{<:NamedDimsOp}, dims...) = allocate_in_cod
 function allocate_in_codomain(L::NamedDimsOp{D, C}, dims...) where {D, C}
     return NamedDimsArray{C}(allocate_in_codomain(L.L, dims...))
 end
+allocate_in_codomain(L::NamedDimsOp{D, nothing}, dims...) where {D} = allocate_in_codomain(L.L, dims...)
 allocate_in_codomain(L::AdjointOperator{<:NamedDimsOp}, dims...) = allocate_in_domain(L.A, dims...)
 
 function remove_displacement(L::NamedDimsOp{D, C}) where {D, C}
@@ -130,6 +135,7 @@ parent(L::NamedDimsOp) = L.L
 parent(L::AdjointOperator{<:NamedDimsOp}) = L.A.L'
 unname(L::NamedDimsOp) = L.L
 unname(L::AdjointOperator{<:NamedDimsOp}) = L.A.L'
+
 
 Base.:*(L::NamedDimsOp, R::NamedDimsOp) =
     NamedDimsOp{dimnames(R, 2), dimnames(L, 1)}(unname(L) * unname(R))

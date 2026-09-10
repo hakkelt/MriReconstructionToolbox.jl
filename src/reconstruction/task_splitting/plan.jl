@@ -1,7 +1,10 @@
-struct TaskSplittingPlan{N, M, K, L}
+struct TaskSplittingPlan{N, M, K <: Tuple, L}
     variable_size::NTuple{N, Int}
     variable_batch_dims::NTuple{M, Int}
-    kspace_size::NTuple{K, Int}
+    # Not `NTuple{K, Int}`: a partitioned k-space has no size along its ragged dimension, and
+    # carries a `Colon` there instead. Every dimension task splitting actually indexes — the batch
+    # dimensions — is an `Int` in both layouts.
+    kspace_size::K
     kspace_batch_dims::NTuple{L, Int}
     slices_sensitivity_maps::Bool
     # Size of the *reconstructed image* per non-batch layout. Equals `variable_size` unless a
@@ -52,7 +55,7 @@ function get_task_splitting_plan(acq_data, method::ReconstructionMethod, config)
         out_size = ntuple(d -> d in aff_idx ? img_size[d] : var_size[d], length(var_size))
     end
 
-    kspace_size = size(acq_data.kspace_data)
+    kspace_size = _ksp_plan_size(acq_data.kspace_data)
 
     # Calculate how the variable batch dimensions map to k-space batch dimensions
     kspace_fourier_dims = get_fourier_kspace_dims(acq_data)

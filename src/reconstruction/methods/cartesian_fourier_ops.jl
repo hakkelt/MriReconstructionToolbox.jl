@@ -35,6 +35,9 @@ function _kspace_to_image(
         sens::Union{Nothing, AbstractArray},
         acq::CartesianAcquisitionInfo,
     )
+    # GRAPPA/SPIRiT fill a dense k-space grid and read the acquisition's layout back off `acq`;
+    # neither step has a meaning when the frames hold different numbers of samples.
+    _reject_partitioned(acq.kspace_data, "GRAPPA/SPIRiT k-space-to-image reconstruction")
     kplain = unname(ksp)
     op = _cartesian_fourier_op(acq, kplain)
     # `op` is `BACKWARD`-normalized (forward = plain fft, adjoint = fully N-normalized ifft), so
@@ -57,7 +60,7 @@ function _kspace_to_image(
     combined = !(coil_combine isa NoCoilCombination)
     combined && (img_out = dropdims(img_out; dims = c_dim))
 
-    if acq.kspace_data isa NamedDimsArray
+    if _has_dimnames(acq.kspace_data)
         out_d = combined ? filter(!=(:coil), get_image_dims(acq)) : get_image_dims(acq)
         return NamedDimsArray{out_d}(img_out)
     else

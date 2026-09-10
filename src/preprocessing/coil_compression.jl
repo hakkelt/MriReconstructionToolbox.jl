@@ -108,6 +108,7 @@ function compress_coils(
         method::CoilCompression = SVDCompression(),
         coil_dim = nothing,
     )
+    _reject_partitioned(acq.kspace_data, "coil compression")
     compressed_ksp, C = compress_coils(acq.kspace_data, n_virtual; method, coil_dim)
     compressed_sens = if !isnothing(acq.sensitivity_maps)
         first(compress_coils_with_matrix(acq.sensitivity_maps, C; coil_dim))

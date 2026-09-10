@@ -649,7 +649,9 @@ end
     base[1:3:nky] .= true
     masks = [circshift(base, t - 1) for t in 1:nframes]
     nlines = sum(base)
-    @test all(m -> sum(m) == nlines, masks) # a fixed-shape k-space array needs a fixed line count
+    # Equal line counts keep the dense path: one k-space array, one `BatchOp` of `GetIndex`es.
+    # Unequal counts are supported too, through `PartitionedKSpace` — see the next testitem.
+    @test all(m -> sum(m) == nlines, masks)
 
     smaps = NamedDimsArray{(:x, :y, :coil)}(randn(rng, ComplexF32, nkx, nky, ncoil))
     truth = NamedDimsArray{(:x, :y, :time)}(randn(rng, ComplexF32, nkx, nky, nframes))
@@ -694,4 +696,108 @@ end
     )
     @test size(x_cs) == (nkx, nky, nframes)
     @test all(isfinite, unname(x_cs))
+end
+
+@testitem "Per-frame subsampling: unequal sample counts per frame" tags = [:reconstruction, :integration] begin
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, parts, nparts, is_partitioned,
+        to_array_partition
+    using NamedDims: NamedDimsArray, dimnames, unname
+    using Random: Xoshiro
+
+    # When the per-frame masks select *different* numbers of lines, the measurement no longer fits
+    # in a rectangle: the sample axis would need one length per frame. `PartitionedKSpace` holds it
+    # one frame at a time instead, and the subsampling operator becomes a `VCAT` of per-frame
+    # `GetIndex`es whose codomain is an `ArrayPartition`.
+    rng = Xoshiro(2)
+    nkx, nky, ncoil, nframes = 16, 24, 3, 4
+    base = falses(nky)
+    base[1:3:nky] .= true
+    masks = [circshift(base, t - 1) for t in 1:nframes]
+    masks[2][2] = true
+    masks[3][5] = true
+    masks[3][7] = true
+    counts = sum.(masks)
+    @test !all(==(first(counts)), counts) # the point of this testitem
+
+    specs = [(:, m) for m in masks]
+    smaps = NamedDimsArray{(:x, :y, :coil)}(randn(rng, ComplexF32, nkx, nky, ncoil))
+    truth = NamedDimsArray{(:x, :y, :time)}(randn(rng, ComplexF32, nkx, nky, nframes))
+
+    acq_empty = CartesianAcquisitionInfo(;
+        is3D = false, image_size = (nkx, nky), sensitivity_maps = smaps, subsampling = specs,
+    )
+    acq = simulate_acquisition(truth, acq_empty)
+    ksp = acq.kspace_data
+    @test is_partitioned(ksp)
+    @test nparts(ksp) == nframes
+    @test map(p -> size(p, 2), parts(ksp)) == counts
+    @test dimnames(ksp) == (:kx, :ky, :coil, :time)
+    # Dimension 2 is ragged, so there is no honest `size` for it — asking is a bug in the caller,
+    # not something to answer with a number.
+    @test_throws ArgumentError size(ksp)
+    @test size(ksp, 3) == ncoil
+    @test size(ksp, 4) == nframes
+    @test occursin("ky: {$(join(counts, ","))}", string(acq))
+
+    𝒜 = get_encoding_operator(acq)
+    @test size(𝒜, 2) == (nkx, nky, nframes)
+    @test size(𝒜, 1) == Tuple((nkx, counts[t], ncoil) for t in 1:nframes)
+
+    y = 𝒜 * truth
+    # An `ArrayPartition`, without naming the type: `RecursiveArrayTools` is not a test dependency.
+    @test typeof(y) === typeof(to_array_partition(ksp))
+    @test y ≈ to_array_partition(ksp)
+    # The forward model is per-frame: one block per frame, each with that frame's sample count.
+    @test all(t -> size(y.x[t]) == (nkx, counts[t], ncoil), 1:nframes)
+
+    # The adjoint lands back on a single dense image-sized array, which is why `reconstruct` can
+    # return an ordinary `Array` even though the measurement is partitioned.
+    x_adj = reconstruct(acq; verbosity = Silent())
+    @test dimnames(x_adj) == (:x, :y, :time)
+    @test unname(x_adj) isa Array{ComplexF32, 3}
+    @test size(x_adj) == (nkx, nky, nframes)
+
+    # Task splitting hands each frame its own slice and its own spec: the result must equal a
+    # per-frame reconstruction of that frame alone.
+    for t in 1:nframes
+        acq_t = CartesianAcquisitionInfo(
+            NamedDimsArray{(:kx, :ky, :coil)}(unname(parts(ksp)[t])); is3D = false,
+            image_size = (nkx, nky), subsampling = specs[t], sensitivity_maps = smaps,
+        )
+        @test unname(reconstruct(acq_t; verbosity = Silent())) ≈ unname(x_adj)[:, :, t]
+    end
+
+    # ... and so must an iterative solve with a separable regularizer. `NoScaling` because a shared
+    # scale across frames is what otherwise separates the joint solve from the per-frame ones.
+    method = IterativeReconstruction(L2Image(1.0f-2); maxit = 300, tol = 1.0f-12)
+    x_l2 = reconstruct(acq, method; verbosity = Silent(), scaling = NoScaling())
+    for t in 1:nframes
+        acq_t = CartesianAcquisitionInfo(
+            NamedDimsArray{(:kx, :ky, :coil)}(unname(parts(ksp)[t])); is3D = false,
+            image_size = (nkx, nky), subsampling = specs[t], sensitivity_maps = smaps,
+        )
+        x_t = reconstruct(acq_t, method; verbosity = Silent(), scaling = NoScaling())
+        @test unname(x_t) ≈ unname(x_l2)[:, :, t]
+    end
+
+    # A temporal regularizer keeps `:time` in the variable, so the partitioned operator is used
+    # whole rather than sliced — the other half of the contract.
+    x_cs = reconstruct(
+        acq, IterativeReconstruction(L1TemporalFourier(1.0f-3; time_dim = :time); maxit = 5);
+        verbosity = Silent()
+    )
+    @test size(x_cs) == (nkx, nky, nframes)
+    @test unname(x_cs) isa Array{ComplexF32, 3}
+    @test all(isfinite, unname(x_cs))
+
+    # Noise is well defined per frame, so `add_noise` works; the paths that need a dense grid say
+    # so instead of returning a plausible wrong answer.
+    noisy = add_noise(acq; noise_std = 1.0f-3)
+    @test is_partitioned(noisy.kspace_data)
+    @test map(p -> size(p, 2), parts(noisy.kspace_data)) == counts
+    @test_throws ArgumentError prewhiten(acq, [1.0f0 + 0im;;])
+    @test_throws ArgumentError estimate_sensitivities(acq)
+    @test_throws ArgumentError compress_coils(acq, 2)
+    @test_throws ArgumentError partial_fourier_band(acq)
 end

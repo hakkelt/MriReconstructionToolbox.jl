@@ -22,6 +22,7 @@ function pseudo_replica(
         rng::AbstractRNG = Random.default_rng(),
         kwargs...,
     )
+    _reject_partitioned(acq.kspace_data, "the pseudo-replica analysis")
     @argcheck replicas >= 2 "Number of pseudo-replicas must be at least 2"
 
     config_kwargs = Dict{Symbol, Any}(kwargs)
