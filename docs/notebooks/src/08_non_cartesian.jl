@@ -58,6 +58,11 @@ Random.seed!(0)
 #   center. `ordering` is `:linear` (uniform angle step), `:golden_angle` (successive spokes
 #   rotated by ≈111.25°, so any prefix of the sequence covers k-space near-uniformly), or
 #   `:tiny_golden_angle` (a smaller member of the golden-angle family, useful for view sharing).
+#   A full golden-angle step swings the readout gradients through a large angle between any two
+#   consecutive spokes, and each swing drives its own eddy currents in the gradient coils; tiny
+#   golden angles keep successive spokes close together in angle, so the gradient waveform
+#   changes little from one spoke to the next and eddy currents stay suppressed, at the cost of
+#   less-uniform coverage for any short prefix of the sequence.
 # - `stack_of_stars_trajectory(nsamples, nspokes, npartitions)` — the 2D radial pattern repeated
 #   at Cartesian partition-encoding (`kz`) positions.
 # - `kooshball_trajectory(nsamples, nspokes)` — full 3D radial, spoke directions distributed
@@ -69,10 +74,12 @@ Random.seed!(0)
 traj_linear = radial_trajectory(96, 13; ordering = :linear)
 traj_golden = radial_trajectory(96, 13; ordering = :golden_angle)
 traj_tiny = radial_trajectory(96, 13; ordering = :tiny_golden_angle, tiny_index = 3)
-traj_sos = stack_of_stars_trajectory(96, 13, 1; ordering = :golden_angle)
+traj_sos = stack_of_stars_trajectory(96, 13, 6; ordering = :golden_angle)
 traj_koosh = kooshball_trajectory(64, 89)
-traj_spiral_a = spiral_trajectory(512, 6; variant = :archimedean)
-traj_spiral_vd = spiral_trajectory(512, 6; variant = :variable_density, density_exponent = 2.0)
+# Fewer arms than a real acquisition would use, so the density difference between the two
+# variants is visible arm by arm rather than smeared into a filled disc.
+traj_spiral_a = spiral_trajectory(512, 2; variant = :archimedean)
+traj_spiral_vd = spiral_trajectory(512, 2; variant = :variable_density, density_exponent = 2.0)
 
 function traj_scatter(traj; title = "", kwargs...)
     t = unname(traj)
@@ -84,15 +91,32 @@ function traj_scatter(traj; title = "", kwargs...)
     )
 end
 
+function traj_scatter3d(traj; title = "", kwargs...)
+    t = reshape(unname(traj), size(traj, 1), :)   # flatten sample/spoke/partition axes
+    return scatter(
+        t[1, :], t[2, :], t[3, :];
+        markersize = 1.0, markerstrokewidth = 0, legend = false,
+        xlabel = "kx", ylabel = "ky", zlabel = "kz", title, kwargs...
+    )
+end
+
 plot(
     traj_scatter(traj_linear; title = "radial, linear"),
     traj_scatter(traj_golden; title = "radial, golden angle"),
     traj_scatter(traj_tiny; title = "radial, tiny golden angle"),
-    traj_scatter(traj_sos[[1, 2], :, :, 1]; title = "stack of stars (1 partition)"),
-    traj_scatter(traj_koosh[[1, 2], :, :]; title = "kooshball (kx-ky projection)"),
     traj_scatter(traj_spiral_a; title = "spiral, archimedean"),
     traj_scatter(traj_spiral_vd; title = "spiral, variable density");
-    layout = (2, 4), size = (1400, 700)
+    layout = (1, 5), size = (1650, 350)
+)
+
+# %%
+# The two fully 3D families, shown in 3D rather than projected onto kx-ky: stack-of-stars is
+# radial in-plane and Cartesian through-plane (the discrete kz "shells"), while kooshball spokes
+# point quasi-uniformly over the whole sphere.
+plot(
+    traj_scatter3d(traj_sos; title = "stack of stars (6 partitions)"),
+    traj_scatter3d(traj_koosh; title = "kooshball");
+    layout = (1, 2), size = (1000, 480)
 )
 
 # %% [markdown]
@@ -176,18 +200,26 @@ x_nodcf = reconstruct(data_radial; verbosity = Silent())
 x_pipe = reconstruct(acq_pipe; verbosity = Silent())
 x_voronoi = reconstruct(acq_voronoi; verbosity = Silent())
 
+function aligned_scale(x̂)
+    a = abs.(unname(x̂))
+    return sum(a .* abs.(x_true)) / sum(abs2, a)
+end
 function aligned_nrmse(x̂)
     a = abs.(unname(x̂))
-    α = sum(a .* abs.(x_true)) / sum(abs2, a)
-    return norm(α .* a - abs.(x_true)) / norm(abs.(x_true))
+    return norm(aligned_scale(x̂) .* a - abs.(x_true)) / norm(abs.(x_true))
 end
 
 println("adjoint, no DCF   ", round(aligned_nrmse(x_nodcf), digits = 4))
 println("adjoint, Pipe     ", round(aligned_nrmse(x_pipe), digits = 4))
 println("adjoint, Voronoi  ", round(aligned_nrmse(x_voronoi), digits = 4))
 
+# The no-DCF adjoint is ~10^5x the scale of the DCF-corrected ones (§3): a shared color scale
+# across all three would render the corrected panels solid black. Bring each panel to the
+# truth's own scale with the same least-squares factor aligned_nrmse uses, so the comparison
+# is about structure, not units.
 side_by_side(
-    x_nodcf, x_pipe, x_voronoi;
+    aligned_scale(x_nodcf) .* unname(x_nodcf), aligned_scale(x_pipe) .* unname(x_pipe),
+    aligned_scale(x_voronoi) .* unname(x_voronoi);
     titles = ("no DCF", "Pipe-Menon", "Voronoi (clipped)"), size = (1050, 350)
 )
 
