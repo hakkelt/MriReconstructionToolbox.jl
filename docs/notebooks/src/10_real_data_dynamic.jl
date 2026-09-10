@@ -15,7 +15,7 @@
 # ---
 
 # %% [markdown]
-# # 11 — Real dynamic data: cardiac cine
+# # 10 — Real dynamic data: cardiac cine
 #
 # The dynamic machinery of notebook 7 on real scanner data: a fully sampled 1.5 T cardiac cine
 # from [OCMR](https://ocmr.info), retrospectively undersampled and reconstructed with temporal,
@@ -555,3 +555,9 @@ plot!()
 # not being shown at its best, and the honest reading of its row is "no better than the simpler
 # temporal models *at this budget*", not "worse". This is the same trap the notebook opens with,
 # one level up: an under-tuned method looks like a bad method.
+
+# %% [markdown]
+# ## Environment
+
+# %%
+print_versions()

@@ -333,3 +333,9 @@ data_dyn_varying = map(1:nt) do t
     simulate_acquisition(series[:, :, t], acq_t)
 end
 println([size(d.kspace_data) for d in data_dyn_varying])
+
+# %% [markdown]
+# ## Environment
+
+# %%
+print_versions()

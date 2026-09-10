@@ -26,7 +26,7 @@ Pkg.add(url="https://github.com/hakkelt/MriReconstructionToolbox.jl")
 
 ## Notebooks
 
-`docs/notebooks/` holds eleven Jupyter notebooks (Julia kernel) that work through the package
+`docs/notebooks/` holds twelve Jupyter notebooks (Julia kernel) that work through the package
 feature by feature — from a first reconstruction to regularizers, solvers, non-Cartesian
 trajectories, the low-level interface, and two notebooks on real scanner data (a 0.3 T brain
 acquisition and a 1.5 T cardiac cine, downloaded on demand). See

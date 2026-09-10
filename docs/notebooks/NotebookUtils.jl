@@ -7,7 +7,7 @@ cell does:
     include("NotebookUtils.jl")
     using .NotebookUtils
 
-This module exists so the 11 notebooks do not each re-fix the same two display glitches, and do
+This module exists so the 12 notebooks do not each re-fix the same two display glitches, and do
 not each re-implement the same three or four tiny plotting helpers. See docs/notebooks/README.md
 for how it fits into the notebook workflow.
 =#
@@ -16,8 +16,10 @@ module NotebookUtils
 using MIRTjim: jim, jim!
 using Plots: Plot
 using LinearAlgebra: norm
+using Pkg: Pkg
+using InteractiveUtils: versioninfo
 
-export nrmse, side_by_side, difference_image
+export nrmse, side_by_side, difference_image, print_versions
 
 # --------------------------------------------------------------------------------------------
 # 1. jim orientation: MIRTjim's `yflip` default is `minimum(y) >= 0`, which is `true` for the
@@ -36,7 +38,7 @@ jim(:yflip, false)
 #    Script letters stay in markdown prose and as Julia variable names.
 #
 # --------------------------------------------------------------------------------------------
-# 3. Shared helpers the notebooks otherwise redefine ad hoc (surveyed across all 11 notebooks
+# 3. Shared helpers the notebooks otherwise redefine ad hoc (surveyed across all 12 notebooks
 #    before writing these): a one- or two-line `nrmse(x̂) = norm(abs.(x̂) - abs.(x_true)) /
 #    norm(abs.(x_true))` closure-over-x_true appears in notebooks 04/05/09 (`nrmse`), 07
 #    (`nrmse_dyn`) and 08 (`aligned_nrmse`); side-by-side `jim` panels built by hand from
@@ -97,6 +99,42 @@ function difference_image(x̂, x; title = "Error", scale = 1, kwargs...)
     d = scale .* abs.(x̂ .- x)
     displayed_title = scale == 1 ? title : "$title (×$scale)"
     return jim(d; title = displayed_title, kwargs...)
+end
+
+# --------------------------------------------------------------------------------------------
+# 4. Version cell: the last cell of every notebook, so an exported HTML page records exactly
+#    what produced it. Read from the active manifest via `Pkg.dependencies()` rather than
+#    hardcoded, so it can't go stale the way a copy-pasted version string would.
+
+const DEV_PATHED_DEPS = (
+    "AbstractOperators", "FFTWOperators", "NFFTOperators", "WaveletOperators", "DSPOperators",
+    "ContourletOperators", "StructuredOptimization", "ProximalOperators", "ProximalAlgorithms",
+    "OperatorCore", "NestedThreading",
+)
+
+"""
+    print_versions()
+
+Print `versioninfo()`, `MriReconstructionToolbox`'s own version, and the version of every
+dev-pathed fork under `deps/` (`AbstractOperators`, `NestedThreading`, and friends — see
+`DEV_PATHED_DEPS`), each tagged `(dev)` when it is resolved to a local path rather than a
+registry release. Intended as the final cell of every notebook.
+"""
+function print_versions()
+    versioninfo()
+    println()
+    deps = Pkg.dependencies()
+    by_name = Dict(info.name => info for info in values(deps))
+    for name in ("MriReconstructionToolbox", DEV_PATHED_DEPS...)
+        info = get(by_name, name, nothing)
+        if info === nothing
+            println(rpad(name, 24), "not loaded")
+            continue
+        end
+        tag = info.is_tracking_path ? " (dev)" : ""
+        println(rpad(name, 26), something(info.version, "unversioned"), tag)
+    end
+    return nothing
 end
 
 end # module

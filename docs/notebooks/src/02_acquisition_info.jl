@@ -276,3 +276,9 @@ y = 𝒜 * img
 x̂ = 𝒜' * y
 println("𝒜  (forward): ", size(img), " → ", size(y))
 println("𝒜' (adjoint): ", size(y), " → ", size(x̂))
+
+# %% [markdown]
+# ## Environment
+
+# %%
+print_versions()

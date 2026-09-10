@@ -15,7 +15,7 @@
 # ---
 
 # %% [markdown]
-# # 9 — The low-level interface
+# # 12 — The low-level interface
 #
 # `reconstruct` is a convenience layer over three packages that can be driven directly:
 # `AbstractOperators.jl` (linear operators), `ProximalOperators.jl` (proximal maps) and
@@ -355,3 +355,9 @@ jim(
 # across batch dimensions because `get_affected_dims` says it couples nothing.
 println("value at x_true: ", round(calculate(MaskedL1(5.0f-3, weights), x_true), digits = 4))
 println("affected dims:   ", get_affected_dims(MaskedL1(5.0f-3, weights), nothing, (:x, :y, :slice)))
+
+# %% [markdown]
+# ## Environment
+
+# %%
+print_versions()
