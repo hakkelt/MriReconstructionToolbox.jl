@@ -666,6 +666,9 @@ end
                 @test all(==(first_seen), @view(rest_seen[2:end]))
             end
 
+            # Pinned to 1 first so only a scope that actively widens to full capacity can pass
+            # this assertion -- at capacity already, a no-op scope would pass it too.
+            FFTW.set_num_threads(1)
             first_seen = MRT.run_first_item(rest, config, MRT.MultiThreadingExecutor(); threaded = false) do
                 FFTW.get_num_threads()
             end
