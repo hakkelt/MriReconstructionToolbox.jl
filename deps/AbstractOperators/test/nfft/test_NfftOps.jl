@@ -183,3 +183,25 @@ end
     @test c.plan !== op.plan
     @test c * image ≈ ksp
 end
+
+@testitem "NFFTOp copy_operator preserves the gridding operating point" tags = [:nfft, :NFFTOp] setup = [TestUtils] begin
+    using AbstractOperators, NFFTOperators, LinearAlgebra, NFFT, Random
+    Random.seed!(0)
+
+    # A storage-backend change rebuilds the plan from the trajectory. `m`, `σ` and `precompute`
+    # are not recoverable from the trajectory, so they have to be carried over from the old plan:
+    # rebuilding at the constructor defaults would give the copy a different transform from the
+    # one the caller set up, silently.
+    trajectory = rand(2, 24, 8) .- 0.5
+    image_size = (16, 16)
+    image = rand(ComplexF64, image_size)
+    op = NFFTOp(image_size, trajectory; threaded = false, m = 3, σ = 1.25, precompute = NFFT.TENSOR)
+    @test op.plan.params.m == 3
+
+    c = copy_operator(op; storage_type = Array)
+    @test c.plan !== op.plan
+    @test c.plan.params.m == op.plan.params.m
+    @test c.plan.params.σ == op.plan.params.σ
+    @test c.plan.params.precompute == op.plan.params.precompute
+    @test c * image ≈ op * image
+end

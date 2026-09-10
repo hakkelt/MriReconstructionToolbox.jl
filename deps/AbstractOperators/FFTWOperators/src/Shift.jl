@@ -305,39 +305,58 @@ function _alternate_sign!(
     if isempty(dirs)
         return x
     end
-    n1 = size(x, 1)
     in1 = 1 in dirs
-    sign1 = [(in1 && iseven(i)) ? -1 : 1 for i in 1:n1]
-    rest_mask = [(k + 1) in dirs for k in 1:(N - 1)]
+    rest_mask = ntuple(k -> (k + 1) in dirs, Val(N - 1))
     rest_range = CartesianIndices(Base.tail(size(x)))
-    if N > 1 && threaded && Threads.nthreads() > 1
+    use_threads = threaded && Threads.nthreads() > 1
+    if use_threads && length(rest_range) > 1
         @inbounds @batch for J in rest_range
-            _alternate_sign_column!(x, sign1, rest_mask, J)
+            _alternate_sign_column!(x, in1, rest_mask, J)
+        end
+    elseif use_threads && size(x, 1) > 1
+        # A single trailing column (a vector, or an `n×1`): the column loop has nothing to
+        # spread across workers, so thread dimension 1 itself rather than run the whole pass
+        # sequentially.
+        J = first(rest_range)
+        Jt = Tuple(J)
+        column_sign = _column_sign(rest_mask, J)
+        @inbounds @batch for i in axes(x, 1)
+            x[i, Jt...] *= column_sign * _dim1_sign(in1, i)
         end
     else
         @inbounds for J in rest_range
-            _alternate_sign_column!(x, sign1, rest_mask, J)
+            _alternate_sign_column!(x, in1, rest_mask, J)
         end
     end
     return x
+end
+
+# Dimension 1's own alternation, and the parity contribution of dimensions 2:N for one column.
+# Both were materialized as heap `Vector`s per call; `N` is a static type parameter and the dim-1
+# sign is a two-line predicate, so neither needs to be.
+@inline _dim1_sign(in1::Bool, i::Integer) = (in1 && iseven(i)) ? -1 : 1
+
+@inline function _column_sign(rest_mask::NTuple{K, Bool}, J::CartesianIndex) where {K}
+    Jt = Tuple(J)
+    rest_flips = 0
+    @inbounds for k in 1:K
+        if rest_mask[k] && iseven(Jt[k])
+            rest_flips += 1
+        end
+    end
+    return isodd(rest_flips) ? -1 : 1
 end
 
 # The parity contribution from dims 2:N is loop-invariant across dim 1, so it is computed once
 # per column ("per-slab base parity") and the inner loop over dim 1 — the only dimension that
 # can alternate every element — vectorizes with `@simd`.
 @inline function _alternate_sign_column!(
-        x::AbstractArray, sign1::AbstractVector{Int}, rest_mask::AbstractVector{Bool}, J::CartesianIndex
-    )
+        x::AbstractArray, in1::Bool, rest_mask::NTuple{K, Bool}, J::CartesianIndex
+    ) where {K}
     Jt = Tuple(J)
-    rest_flips = 0
-    @inbounds for k in eachindex(rest_mask)
-        if rest_mask[k] && iseven(Jt[k])
-            rest_flips += 1
-        end
-    end
-    column_sign = isodd(rest_flips) ? -1 : 1
-    @inbounds @simd for i in eachindex(sign1)
-        x[i, Jt...] *= column_sign * sign1[i]
+    column_sign = _column_sign(rest_mask, J)
+    @inbounds @simd for i in axes(x, 1)
+        x[i, Jt...] *= column_sign * _dim1_sign(in1, i)
     end
     return
 end
@@ -384,36 +403,38 @@ function _alternate_sign!(
         y .= x
         return y
     end
-    n1 = size(x, 1)
     in1 = 1 in dirs
-    sign1 = [(in1 && iseven(i)) ? -1 : 1 for i in 1:n1]
-    rest_mask = [(k + 1) in dirs for k in 1:(N - 1)]
+    rest_mask = ntuple(k -> (k + 1) in dirs, Val(N - 1))
     rest_range = CartesianIndices(Base.tail(size(x)))
-    if N > 1 && threaded && Threads.nthreads() > 1
+    use_threads = threaded && Threads.nthreads() > 1
+    if use_threads && length(rest_range) > 1
         @inbounds @batch for J in rest_range
-            _alternate_sign_column!(y, x, sign1, rest_mask, J)
+            _alternate_sign_column!(y, x, in1, rest_mask, J)
+        end
+    elseif use_threads && size(x, 1) > 1
+        # See the in-place variant: a single trailing column leaves the column loop with nothing
+        # to spread, so thread dimension 1 instead.
+        J = first(rest_range)
+        Jt = Tuple(J)
+        column_sign = _column_sign(rest_mask, J)
+        @inbounds @batch for i in axes(x, 1)
+            y[i, Jt...] = column_sign * _dim1_sign(in1, i) * x[i, Jt...]
         end
     else
         @inbounds for J in rest_range
-            _alternate_sign_column!(y, x, sign1, rest_mask, J)
+            _alternate_sign_column!(y, x, in1, rest_mask, J)
         end
     end
     return y
 end
 
 @inline function _alternate_sign_column!(
-        y::AbstractArray, x::AbstractArray, sign1::AbstractVector{Int}, rest_mask::AbstractVector{Bool}, J::CartesianIndex
-    )
+        y::AbstractArray, x::AbstractArray, in1::Bool, rest_mask::NTuple{K, Bool}, J::CartesianIndex
+    ) where {K}
     Jt = Tuple(J)
-    rest_flips = 0
-    @inbounds for k in eachindex(rest_mask)
-        if rest_mask[k] && iseven(Jt[k])
-            rest_flips += 1
-        end
-    end
-    column_sign = isodd(rest_flips) ? -1 : 1
-    @inbounds @simd for i in eachindex(sign1)
-        y[i, Jt...] = column_sign * sign1[i] * x[i, Jt...]
+    column_sign = _column_sign(rest_mask, J)
+    @inbounds @simd for i in axes(x, 1)
+        y[i, Jt...] = column_sign * _dim1_sign(in1, i) * x[i, Jt...]
     end
     return
 end
