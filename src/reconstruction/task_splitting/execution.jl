@@ -211,18 +211,21 @@ function for_each_item!(
     return nothing
 end
 
-# Both schemes below run the first item outside the loop to learn its concrete result type. That
-# item must still see the threading scope `for_each_item!` opens around the rest, or it runs at a
-# different budget from every other item: unrestricted where the sequential loop restricts every
-# pool, or without NFFT's guarded pool where the loop enables it. `loop_items` is the collection
-# the loop will iterate (the remaining items), because that is what `@budgeted_threads` derives
-# its per-worker budget from; the first item's own work is `f()`.
+# Both schemes below run the first item outside the loop to learn its concrete result type. Under
+# `SequentialExecutor`, that item must see the same restricted/full scope `for_each_item!` opens
+# around the rest, or it runs unrestricted where the loop restricts every pool (or without NFFT's
+# guarded pool where the loop enables it).
+#
+# Under `MultiThreadingExecutor`, the hoisted item is not one of `loop_items`: it runs alone,
+# before the loop opens, so `budget_for(loop_items)` -- the budget the *n-1* not-yet-started loop
+# items would each get once the loop is running concurrently -- understates its actual
+# concurrency by a factor of the loop's worker count. It gets the full process capacity instead.
 function run_first_item(f::Function, loop_items, config, ::SequentialExecutor; threaded = config.threaded)
     return @conditionally_enable_threading threaded f()
 end
 
 function run_first_item(f::Function, loop_items, config, ::MultiThreadingExecutor; threaded = false)
-    return with_thread_budget(f, budget_for(loop_items))
+    return with_thread_budget(f, capacity())
 end
 
 """
