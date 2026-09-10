@@ -210,9 +210,13 @@ or go back to the old high-accuracy default with `m = 5, sigma = 2.0`.
   1.4x *win* on MKL. 16 MiB is the value that is safe on both. Move it with
   `MriReconstructionToolbox.set_serial_blas_threshold_bytes!` or the
   `MRT_SERIAL_BLAS_THRESHOLD_BYTES` environment variable if you know your backend and hardware.
-- `NestedThreading`'s `exclude` keyword only affects Polyester. Passing `:blas`, `:mkl`, `:fftw`
-  or `:nfft` is accepted silently and does nothing, which is why MRT narrows the BLAS budget from
-  the inside instead.
+- `NestedThreading`'s `exclude` keyword honours counted pools since 0.1.1, and `only` gives the
+  allowlist form; `with_serial_blas` is `with_thread_budget(f, 1; only = (:blas, :mkl))`. Before
+  that release `exclude` affected Polyester alone and naming `:blas`/`:mkl`/`:fftw`/`:nfft` did
+  nothing silently, which is why the BLAS budget used to be narrowed from the inside instead.
+- Restricting BLAS is not the same as restricting the process: `with_restricted_threads` also
+  narrows FFTW and NFFT and switches Polyester off, so `BLAS.get_num_threads() == 1` is never
+  evidence that entering the scope would be a no-op.
 - `with_full_threads` raises thread counts to capacity, overriding a lower count you set
   deliberately. Don't wrap one around hand-tuned settings.
 - `--gcthreads` does not help the residual `-t 8` cost (GC growing from ~10 ms to ~35-46 ms per

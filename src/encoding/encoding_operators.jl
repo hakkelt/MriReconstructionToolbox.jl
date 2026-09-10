@@ -33,8 +33,10 @@ Create the main MRI encoding operator for data acquisition modeling.
 - `threaded::Bool=true`: Whether to use multi-threading for operator construction and FFTs.
 - `fast_planning::Bool=false`: Whether to use fast FFTW planning (reduces setup time, may affect performance).
 - `m`, `sigma`, `precompute`: Non-Cartesian only. NFFT gridding operating point, forwarded to
-  `get_fourier_operator`/`NFFTOp`; `nothing` (the default) leaves NFFT.jl's own defaults in
-  place. See "Non-Cartesian accuracy / speed trade-off" in `docs/src/high-level/performance.md`.
+  `get_fourier_operator`/`NFFTOp`; `nothing` (the default) substitutes MRT's own defaults
+  (`DEFAULT_NFFT_M`, `DEFAULT_NFFT_SIGMA`, `DEFAULT_NFFT_PRECOMPUTE`),
+  which are faster than NFFT.jl's at an accuracy that is still far below the noise floor. See
+  "Non-Cartesian accuracy / speed trade-off" in `docs/src/high-level/performance.md`.
 
 # Returns
 - Encoding operator modeling the full MRI acquisition process, including Fourier transform, sensitivity map encoding, and subsampling (if present).
