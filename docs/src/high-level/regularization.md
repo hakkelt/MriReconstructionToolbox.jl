@@ -712,6 +712,12 @@ orthant and box are only ordered for real numbers. Pass `complex_handling = :rea
 complex image onto the real orthant/box instead (imaginary part discarded, real part clamped),
 following RegularizedLeastSquares.jl's `PositiveRegularization` convention.
 
+**Elsewhere:** BART exposes the non-negative constraint as `pics -R S:0:0:0`, and constrains the
+image to be real-valued with the separate `pics -c` flag. SigPy has
+`sigpy.prox.BoxConstraint(shape, lower, upper)`, with `lower = 0` for non-negativity.
+RegularizedLeastSquares.jl (used by MRIReco.jl) has `PositiveRegularization` and
+`RealRegularization`, which take the real part the way `complex_handling = :real` does.
+
 **Example:**
 ```julia
 # real-valued image (e.g. a magnitude reconstruction)
