@@ -331,10 +331,15 @@ println("SPIRiT (iterative)   ", round(nrmse(x_spirit_it, img_pi), digits = 4))
 # %%
 using MriReconstructionToolbox: check_applicable
 
-# The variable-density pattern from §4: it even has a fully sampled centre, but its acquired lines
-# are not on any lattice.
+# A variable-density pattern (notebook 03 §3): it even has a fully sampled centre, but its
+# acquired lines are not on any lattice.
+pattern_vd = create_sampling_pattern(VariableDensitySampling(PolynomialDistribution(3), R), (Nx, Ny))
+data_vd = simulate_acquisition(
+    img_pi,
+    AcquisitionInfo(; is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens, subsampling = pattern_vd)
+)
 try
-    check_applicable(GRAPPA(), data_us)
+    check_applicable(GRAPPA(), data_vd)
 catch e
     println(sprint(showerror, e))
 end
