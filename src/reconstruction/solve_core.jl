@@ -14,12 +14,12 @@ would have got back from `reconstruct`: it applies the signal model and the `Nam
 `on_iteration` callback's `x`, so it is never called at all when no callback was supplied.
 """
 function _iterative_reconstruct_core(
-    𝒜, acq_data, x₀_or_x₀s, scale, method::IterativeReconstruction, config;
-    build::Function, present::Function=identity, precomputed_L=nothing,
-)
+        𝒜, acq_data, x₀_or_x₀s, scale, method::IterativeReconstruction, config;
+        build::Function, present::Function = identity, precomputed_L = nothing,
+    )
     if scale != 1
         @step "Scaling k-space data" config begin
-            acq_data = AcquisitionInfo(acq_data; kspace_data=_scale_kspace(acq_data.kspace_data, scale))
+            acq_data = AcquisitionInfo(acq_data; kspace_data = _scale_kspace(acq_data.kspace_data, scale))
             # Solver iterates in scaled units, so warm start and tolerance must match.
             x₀_or_x₀s = _scale_x0(x₀_or_x₀s, scale)
         end
@@ -40,7 +40,7 @@ function _iterative_reconstruct_core(
     # `model` / `vars` bindings would live only in that task's closure — the solve closures below
     # capture them, and neither inference (JET) nor a reader can then see they are defined.
     @printing_step "Building optimization model" config begin
-        model, vars, _auxiliaries = build(𝒜, _measurement(acq_data.kspace_data); x₀=x₀_or_x₀s)
+        model, vars, _auxiliaries = build(𝒜, _measurement(acq_data.kspace_data); x₀ = x₀_or_x₀s)
     end
     @printing_step "Reconstructing image" config begin
         verbose, freq, display = solver_output(config.verbosity, something(method.maxit, 100))
@@ -51,7 +51,7 @@ function _iterative_reconstruct_core(
         ϵ = eps(real(eltype(_first_x0(x₀_or_x₀s))))
         solver_kwargs = (; freq, verbose, display)
         if !isnothing(method.maxit)
-            solver_kwargs = (; solver_kwargs..., maxit=method.maxit)
+            solver_kwargs = (; solver_kwargs..., maxit = method.maxit)
         end
         if !isnothing(method.tol)
             # MRT's `tol` is relative to the initial estimate; ProximalAlgorithms' is absolute.
@@ -66,7 +66,7 @@ function _iterative_reconstruct_core(
         # own step size instead of overriding it.
         R_type = real(eltype(_first_x0(x₀_or_x₀s)))
         Lf = should_estimate_L ? R_type(_n_vars(vars) * L^2) : nothing
-        algorithm = patch_algorithm_with_default_values(method.algorithm, Lf; eltype_real=R_type)
+        algorithm = patch_algorithm_with_default_values(method.algorithm, Lf; eltype_real = R_type)
         # Only add `hook` to the keyword set when a callback was actually supplied: leaving it out
         # keeps the algorithm's `hook` field `Nothing`-typed, and `ProximalAlgorithms._run_hook`
         # then compiles to nothing at all inside the iteration loop.
@@ -89,13 +89,10 @@ function _iterative_reconstruct_core(
             if uses_blas3(method.regularization)
                 solve(model, algorithm; solver_kwargs...)
             elseif _work_item_bytes(_first_x0(x₀_or_x₀s)) < serial_blas_threshold_bytes()
-                # No early-out on `BLAS.get_num_threads() == 1` here, tempting as it looks:
-                # `with_restricted_threads` narrows every counted pool *and* switches off the
-                # Polyester guard, so a serial BLAS says nothing about FFTW, NFFT or Polyester,
-                # each of which would then run at full width for the whole solve. The scope is
-                # entered once per solve, so its bookkeeping is not worth a guard that can be
-                # wrong. `with_serial_blas`'s own early-out stays valid because that helper
-                # restricts `only = (:blas, :mkl)` and nothing else.
+                # No early-out on `BLAS.get_num_threads() == 1` here: this scope narrows every
+                # counted pool *and* switches off the Polyester guard, so a serial BLAS says
+                # nothing about FFTW, NFFT or Polyester. (`with_serial_blas` may keep that
+                # early-out — it restricts `only = (:blas, :mkl)` and nothing else.)
                 with_restricted_threads() do
                     solve(model, algorithm; solver_kwargs...)
                 end
@@ -173,9 +170,9 @@ function _iteration_hook(on_iteration, present::Function, scale, slice_id)
     return function (k, alg, iter, state)
         raw = alg.solution(iter, state)
         x = present(isnothing(scale) ? _copy_iterate(raw) : _inv_scale(raw, scale))
-        base = (; iteration=k, x=x, elapsed_ns=time_ns() - t₀)
+        base = (; iteration = k, x = x, elapsed_ns = time_ns() - t₀)
         info = merge(base, _iteration_metrics(iter, state))
-        on_iteration(isnothing(slice_id) ? info : merge(info, (; slice=slice_id)))
+        on_iteration(isnothing(slice_id) ? info : merge(info, (; slice = slice_id)))
         return nothing
     end
 end
@@ -195,26 +192,27 @@ the vocabulary of `docs/src/high-level/algorithms.md`.
 _iteration_metrics(iter, state) = (;)
 
 function _iteration_metrics(
-    ::Union{
-        ProximalAlgorithms.ForwardBackwardIteration,
-        ProximalAlgorithms.FastForwardBackwardIteration,
-    }, state,
-)
+        ::Union{
+            ProximalAlgorithms.ForwardBackwardIteration,
+            ProximalAlgorithms.FastForwardBackwardIteration,
+            ProximalAlgorithms.POGMIteration,
+        }, state,
+    )
     return (;
-        objective=state.f_x + state.g_z,
-        smooth_value=state.f_x,
-        nonsmooth_value=state.g_z,
-        stepsize=state.gamma,
-        fixed_point_residual=norm(state.res, Inf) / state.gamma,
+        objective = state.f_x + state.g_z,
+        smooth_value = state.f_x,
+        nonsmooth_value = state.g_z,
+        stepsize = state.gamma,
+        fixed_point_residual = norm(state.res, Inf) / state.gamma,
     )
 end
 
 function _iteration_metrics(iter::ProximalAlgorithms.DouglasRachfordIteration, state)
     return (;
-        objective=state.f_y + state.g_z,
-        smooth_value=state.f_y,
-        nonsmooth_value=state.g_z,
-        fixed_point_residual=norm(state.res, Inf) / iter.gamma,
+        objective = state.f_y + state.g_z,
+        smooth_value = state.f_y,
+        nonsmooth_value = state.g_z,
+        fixed_point_residual = norm(state.res, Inf) / iter.gamma,
     )
 end
 
@@ -223,23 +221,13 @@ end
 # which is what lets a trace of these be collected into a concrete vector.
 function _iteration_metrics(::ProximalAlgorithms.ADMMIteration, state)
     return (;
-        primal_residual=maximum(state.rᵏ_norm),
-        dual_residual=maximum(state.sᵏ_norm),
-        iterate_change=state.Δx_norm,
+        primal_residual = maximum(state.rᵏ_norm),
+        dual_residual = maximum(state.sᵏ_norm),
+        iterate_change = state.Δx_norm,
     )
 end
 
-_iteration_metrics(::ProximalAlgorithms.AbstractCGIteration, state) = (; residual_norm=sqrt(state.r²))
-
-function _iteration_metrics(::ProximalAlgorithms.POGMIteration, state)
-    return (;
-        objective=state.f_x + state.g_z,
-        smooth_value=state.f_x,
-        nonsmooth_value=state.g_z,
-        stepsize=state.gamma,
-        fixed_point_residual=norm(state.res, Inf) / state.gamma,
-    )
-end
+_iteration_metrics(::ProximalAlgorithms.AbstractCGIteration, state) = (; residual_norm = sqrt(state.r²))
 
 function get_reasonable_freq(maxit)
     reasonable_freqs = [1, 5, 10, 20, 50, 100]
