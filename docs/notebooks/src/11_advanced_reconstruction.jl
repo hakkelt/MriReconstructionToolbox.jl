@@ -631,12 +631,53 @@ side_by_side(
 
 
 # %% [markdown]
+# ### 2.4 ALOHA: transform-domain weighting
+#
+# Plain structured low-rank asks only that k-space samples relate linearly across a small
+# neighbourhood and across coils. ALOHA (Jin, Lee & Ye, 2016) adds a second piece of structure:
+# if a **transform of the image** is sparse — a finite difference (edges), a wavelet band — then
+# the Fourier-domain counterpart of that transform, applied to k-space *before* the Hankel lift,
+# makes the lifted matrix even lower rank. Concretely, ALOHA lifts $w \odot \hat k$ instead of
+# $\hat k$, where $w$ is the weight the transform's sparsity model implies (a difference weight
+# for TV-type sparsity, a band weight for wavelets) — the same block-Hankel machinery, on a
+# reweighted k-space.
+#
+# `weights = :tv` selects the first-difference weight model (image-domain TV sparsity);
+# `weights = :wavelet` selects a pyramidal band-weight model, combined across scales through the
+# same `ProximalAverage` construction `MultiScaleLowRank` uses. Everything else — `window`,
+# `max_rank` vs. `λ`, `structure = :c` — is unchanged.
+
+# %%
+x_aloha_tv = slr(StructuredLowRank(; max_rank = 25, window = (5, 5), weights = :tv))
+
+println("zero-filled RSS      ", round(nrmse(x_zf, img_pi), digits = 4))
+println("SAKE (unweighted)    ", round(nrmse(x_sake, img_pi), digits = 4))
+println("ALOHA (weights=:tv)  ", round(nrmse(x_aloha_tv, img_pi), digits = 4))
+
+side_by_side(
+    unname(x_sake), unname(x_aloha_tv), abs.(unname(img_pi));
+    titles = ("SAKE (unweighted)", "ALOHA (weights=:tv)", "ground truth"), size = (1050, 350)
+)
+
+# %% [markdown]
+# On this particular phantom and sampling pattern, unweighted SAKE is already the more accurate
+# of the two — the TV-sparsity assumption the weighting encodes is not the dominant structure
+# here, so the extra constraint mostly adds bias rather than resolving power. The weighting is
+# also not free: it roughly doubles the work per iteration (each weight in the collection
+# contributes its own lift and SVD, combined through a proximal average). Reach for `weights` when
+# a plain structured-low-rank result is not accurate enough *and* the object plausibly has the
+# transform-domain sparsity being assumed — not as a default upgrade.
+
+# %% [markdown]
 # ## References
 #
 # - Shin P. J. *et al.*, *Calibrationless parallel imaging reconstruction based on structured
 #   low-rank matrix completion*, Magn. Reson. Med. 72:959–970 (2014). — SAKE.
 # - Haldar J. P., *Low-rank modeling of local k-space neighborhoods (LORAKS) for constrained MRI*,
 #   IEEE Trans. Med. Imaging 33:668–681 (2014). — LORAKS.
+# - Jin K. H., Lee D., Ye J. C., *A general framework for compressed sensing and parallel MRI
+#   using annihilating filter based low-rank Hankel matrix*, IEEE Trans. Comput. Imaging
+#   2(4):480–495 (2016). — ALOHA, the `weights` argument.
 # - Liang Z.-P., *Spatiotemporal imaging with partially separable functions*, ISBI 2007, 988–991.
 # - Pedersen H. *et al.*, *k-t PCA: temporally constrained k-t BLAST reconstruction using principal
 #   component analysis*, Magn. Reson. Med. 62:706–716 (2009).
