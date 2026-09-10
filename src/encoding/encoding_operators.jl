@@ -73,7 +73,11 @@ function _compose_with_sensitivity(ℱ, info::AcquisitionInfo; threaded::Bool)
     smaps = info.sensitivity_maps
     return if isnothing(smaps)
         ℱ
-    elseif smaps isa NamedDimsArray
+    elseif smaps isa NamedDimsArray && _has_dimnames(info.kspace_data)
+        # Named maps only give named batch dimensions when the acquisition itself is named:
+        # with unnamed k-space `get_image_dims` answers with integer positions, and building a
+        # `NamedTuple` from those is a `TypeError`, not a useful error message. Fall through to
+        # the positional branch instead, which is what the rest of the model uses in that case.
         image_size = get_image_size(info)
         image_dims = get_image_dims(info)
         # `smaps` has one more dimension than it consumes from the image domain (the :coil axis
@@ -86,9 +90,10 @@ function _compose_with_sensitivity(ℱ, info::AcquisitionInfo; threaded::Bool)
         𝒮 = get_sensitivity_map_operator(smaps; batch_dims, threaded)
         ℱ * 𝒮
     else
-        batch_dims_start = ndims(smaps) + 1
+        plain_smaps = smaps isa NamedDimsArray ? unname(smaps) : smaps
+        batch_dims_start = ndims(plain_smaps) + 1
         batch_dims = size(ℱ, 2)[batch_dims_start:end]
-        𝒮 = get_sensitivity_map_operator(smaps, info.is3D; batch_dims, threaded)
+        𝒮 = get_sensitivity_map_operator(plain_smaps, info.is3D; batch_dims, threaded)
         ℱ * 𝒮
     end
 end

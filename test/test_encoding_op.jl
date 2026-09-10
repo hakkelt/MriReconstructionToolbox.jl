@@ -729,3 +729,35 @@ end
         @test plain' * k ≈ ifft(k, (1, 2))
     end
 end
+
+@testitem "named sensitivity maps with an unnamed acquisition" tags = [:encoding] begin
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator
+    using NamedDims
+
+    # An acquisition built without named k-space reports positional image dimensions. Named
+    # sensitivity maps used to send that combination down the named-batch-dimension path, where
+    # `NamedTuple{1:2}` raised a bare `TypeError` from inside the operator build.
+    nx, ny, nc = 16, 16, 4
+    maps = NamedDimsArray{(:x, :y, :coil)}(randn(ComplexF32, nx, ny, nc))
+    mask = trues(ny)
+    mask[2:2:end] .= false
+
+    acq = AcquisitionInfo(
+        nothing; is3D = false, image_size = (nx, ny), sensitivity_maps = maps, subsampling = (:, mask)
+    )
+    img = randn(ComplexF32, nx, ny)
+    data = simulate_acquisition(img, acq)
+    @test size(data.kspace_data, 1) == nx
+
+    𝒜 = get_encoding_operator(data)
+    @test size(𝒜, 2) == (nx, ny)
+
+    # The same acquisition with the maps unnamed must give the same forward data.
+    acq_plain = AcquisitionInfo(
+        nothing; is3D = false, image_size = (nx, ny),
+        sensitivity_maps = unname(maps), subsampling = (:, mask)
+    )
+    data_plain = simulate_acquisition(img, acq_plain)
+    @test unname(data.kspace_data) ≈ unname(data_plain.kspace_data)
+end
