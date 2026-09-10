@@ -10,6 +10,11 @@
     )
 
 Configuration container for Cartesian MRI acquisition and encoding settings.
+
+`subsampling` may be a single pattern shared by the whole acquisition, or an *array of patterns*,
+one per batch element (a different ky mask per frame). In the latter case `kspace_data` is a dense
+array as long as every frame selects the same number of samples; when the counts differ it is a
+[`PartitionedKSpace`](@ref) instead, holding one array per frame.
 """
 struct CartesianAcquisitionInfo{K, I, S, Sub, SD, ID} <: AcquisitionInfo
     kspace_data::K
@@ -53,7 +58,7 @@ struct CartesianAcquisitionInfo{K, I, S, Sub, SD, ID} <: AcquisitionInfo
         end
         @argcheck !isnothing(img_size) "image_size must be provided or inferable from subsampling or sensitivity maps"
 
-        if ksp isa NamedDimsArray
+        if _has_dimnames(ksp)
             _check_ksp_dimnames(dimnames(ksp), subs, is3D, img_size)
         end
 
@@ -70,7 +75,7 @@ struct CartesianAcquisitionInfo{K, I, S, Sub, SD, ID} <: AcquisitionInfo
                 if d isa Integer
                     @argcheck d ∈ 1:ndims(ksp) "shifted_kspace_dims out of range"
                 else
-                    @argcheck ksp isa NamedDimsArray "shifted_kspace_dims as Symbol requires NamedDimsArray k-space"
+                    @argcheck _has_dimnames(ksp) "shifted_kspace_dims as Symbol requires NamedDimsArray k-space"
                     @argcheck d ∈ dimnames(ksp) "shifted_kspace_dims Symbol not found in k-space dimnames"
                 end
             end
@@ -84,7 +89,7 @@ struct CartesianAcquisitionInfo{K, I, S, Sub, SD, ID} <: AcquisitionInfo
                 if d isa Integer
                     @argcheck d ∈ 1:length(img_size) "shifted_image_dims out of range"
                 else
-                    @argcheck ksp isa NamedDimsArray "shifted_image_dims as Symbol requires NamedDimsArray k-space"
+                    @argcheck _has_dimnames(ksp) "shifted_image_dims as Symbol requires NamedDimsArray k-space"
                     img_dimnames = (:x, :y, (is3D ? :z : ()), dimnames(ksp)[(is3D ? 4 : 3):end]...) |> filter(!=(()))
                     @argcheck d ∈ img_dimnames "shifted_image_dims Symbol not found in image dimnames"
                 end
@@ -131,7 +136,7 @@ function _check_smaps(smaps, ksp, subs, is3D, img_size)
     # tuple; a per-batch-element subsampling (a Vector of specs, one ky mask per frame) has
     # `length == nframes`. `_get_subsampled_dims_count` handles both.
     ksp_dims_count = isnothing(subs) ? (is3D ? 3 : 2) : _get_subsampled_dims_count(subs)
-    if ksp isa NamedDimsArray
+    if _has_dimnames(ksp)
         @argcheck smaps isa NamedDimsArray "sensitivity maps must be NamedDimsArray when k-space is NamedDimsArray"
         @argcheck :coil ∈ dimnames(ksp) ":coil dimension required in k-space when sensitivity maps are provided"
         if is3D
@@ -197,7 +202,11 @@ _subsampling_to_str(subs::AbstractArray) =
 
 function _get_acq_info_meta(info::CartesianAcquisitionInfo)
     meta = String[]
-    if !isnothing(info.kspace_data)
+    if info.kspace_data isa PartitionedKSpace
+        # Its own `show` is the honest summary: the ragged axis printed as its per-frame counts
+        # rather than as a single number it does not have.
+        push!(meta, "kspace_data=$(info.kspace_data)")
+    elseif !isnothing(info.kspace_data)
         if info.kspace_data isa NamedDimsArray
             dims = ["$dim: $s" for (dim, s) in zip(dimnames(info.kspace_data), size(info.kspace_data))]
             size_str = join(dims, ", ")

@@ -78,9 +78,12 @@ use `get_subsampled_fourier_operator`.
 	validated acquisition struct (must contain `image_size` and `subsampling`).
 
 # Returns
-- `𝒫`: A `GetIndex` or `BatchOp{GetIndex}`. For NamedDims inputs, a
+- `𝒫`: A `GetIndex` or `BatchOp{GetIndex}` — or, when `subsampling` is an array of per-frame specs
+  selecting *different numbers of samples*, a `VCAT` of per-frame `GetIndex`es whose codomain is an
+  `ArrayPartition` (see [`PartitionedKSpace`](@ref)). For NamedDims inputs, a
   `NamedDimsOp` wrapping the un-named 𝒫 is returned to preserve
-  dimension names.
+  dimension names; a partitioned codomain carries no names, since its blocks are separate arrays
+  rather than axes of one.
 
 # Details
 - For NamedDims input, validates that `dimnames(subsampled_ksp)` matches the
@@ -289,6 +292,15 @@ function _get_subsampling_operator(ksp, img_size, subsampling::AbstractArray)
     prefix_batch_dims = spreading_start - 1
     suffix_batch_dims = length(nonspatial_dims) - (spreading_start + spreading_dims - 1)
 
+    # A per-element spec array may select a *different number of samples* per element. A dense
+    # k-space array cannot hold that (the sample axis has one length for the whole array), so the
+    # measurement side becomes an `ArrayPartition` and the operator a `VCAT` of per-element
+    # `GetIndex`es rather than a `BatchOp`. Detected here, from the specs themselves, so the
+    # equal-count case keeps exactly the dense path it had.
+    if _has_unequal_sample_counts(ksp, img_size, subsampling)
+        return _get_partitioned_subsampling_operator(ksp, img_size, subsampling)
+    end
+
     op_indices = CartesianIndices(subsampling)
     first_index = first(op_indices)
 
@@ -332,6 +344,62 @@ function _get_subsampling_operator(ksp, img_size, subsampling::AbstractArray)
         n_out,
     )
     return BatchOp(operators, domain_mask => codomain_mask; threaded = true)
+end
+
+# How many samples one spec selects out of the full Fourier grid. Only the Fourier dimensions
+# matter: the coil and batch axes are shared by every element of the spec array.
+function _spec_sample_count(img_size, spec)
+    idx = _normalize_subsampling(spec)
+    return prod(AbstractOperators.get_dim_out(img_size, idx...))
+end
+
+function _has_unequal_sample_counts(ksp, img_size, subsampling::AbstractArray)
+    isempty(subsampling) && return false
+    counts = map(spec -> _spec_sample_count(img_size, spec), subsampling)
+    return !all(==(first(counts)), counts)
+end
+
+_has_unequal_sample_counts(ksp, img_size, subsampling) = false
+# A single spec that happens to be an array (a mask, an index vector) is one pattern for the whole
+# acquisition, not an array of per-frame patterns — the same distinction `_get_subsampling_operator`
+# makes by dispatching the 1D/2D/3D spec types ahead of the spec-array method.
+_has_unequal_sample_counts(ksp, img_size, ::_1D_subsampling_type) = false
+
+"""
+    _ragged_subsampling_dim(img_size, subsampling)
+
+Which k-space dimension the per-frame specs disagree on. Exactly one is allowed to vary: the frames
+share a k-space layout apart from how many samples they take along one axis, which is what makes the
+data a partition of same-shaped blocks rather than an unrelated collection.
+"""
+function _ragged_subsampling_dim(img_size, subsampling::AbstractArray)
+    shapes = map(spec -> AbstractOperators.get_dim_out(img_size, _normalize_subsampling(spec)...), subsampling)
+    reference = first(shapes)
+    differing = findall(d -> any(shape -> shape[d] != reference[d], shapes), 1:length(reference))
+    @argcheck length(differing) == 1 "per-frame subsampling specs may differ in exactly one k-space dimension; these differ in $(isempty(differing) ? "none" : differing)"
+    return only(differing)
+end
+
+# The unequal-count operator: one `GetIndex` per frame, reaching into the *full* dense k-space and
+# picking both that frame's slab and its own mask, stacked by a `VCAT`. Its codomain is an
+# `ArrayPartition` — one array per frame, each with its own sample count — which is exactly the
+# storage `PartitionedKSpace` holds. No new operator type is needed, and `BatchOp`'s equal-size
+# assertions stay in place, because this case never reaches `BatchOp`.
+function _get_partitioned_subsampling_operator(ksp, img_size, subsampling)
+    @argcheck subsampling isa AbstractVector "unequal per-frame sample counts are supported only for a Vector of subsampling specs, one per frame (got a $(ndims(subsampling))-dimensional spec array)"
+    fourier_dims = length(img_size)
+    nonspatial = size(ksp)[(fourier_dims + 1):end]
+    @argcheck !isempty(nonspatial) && nonspatial[end] == length(subsampling) "a Vector of subsampling specs with unequal sample counts must span the last k-space dimension (k-space non-Fourier dimensions $(nonspatial), $(length(subsampling)) specs)"
+    prefix_batch_dims = length(nonspatial) - 1
+    operators = map(enumerate(subsampling)) do (frame, spec)
+        idx = (
+            _normalize_subsampling(spec)...,
+            ntuple(_ -> Colon(), prefix_batch_dims)...,
+            frame,
+        )
+        GetIndex(ksp, idx)
+    end
+    return VCAT(operators...)
 end
 
 _get_subsampled_dims_count(::AbstractArray{Bool}) = 1
@@ -400,12 +468,40 @@ function _full_kspace_template(subsampled_ksp, img_size, subsampling)
     return ksp
 end
 
+# The *full* k-space is dense even when the measured one is not — every frame has the same full
+# grid; only the selected samples differ. So the template stays an ordinary array, and the ragged
+# dimension is never asked for.
+function _full_kspace_template(subsampled_ksp::PartitionedKSpace, img_size, subsampling)
+    @argcheck 2 ≤ length(img_size) ≤ 3 "img_size must be either length 2 or 3"
+    batch_dims_start = _get_subsampled_dims_count(subsampling) + 1
+    batch_sizes = ntuple(
+        i -> size(subsampled_ksp, batch_dims_start + i - 1),
+        ndims(subsampled_ksp) - batch_dims_start + 1,
+    )
+    ksp = similar(unname(first(parts(subsampled_ksp))), (img_size..., batch_sizes...))
+    if !isnothing(subsampled_ksp.dimnames)
+        batch_dim_names = dimnames(subsampled_ksp)[batch_dims_start:end]
+        full_dimnames = length(img_size) == 3 ?
+            (:kx, :ky, :kz, batch_dim_names...) :
+            (:kx, :ky, batch_dim_names...)
+        expected_subs_dimnames = _get_dimnames_from_subsampling(full_dimnames, img_size, subsampling)
+        @argcheck dimnames(subsampled_ksp) == expected_subs_dimnames
+        ksp = NamedDimsArray{full_dimnames}(ksp)
+    end
+    return ksp
+end
+
 function _build_subsampling_context(subsampled_ksp, img_size, subsampling)
     ksp = _full_kspace_template(subsampled_ksp, img_size, subsampling)
     if ksp isa NamedDimsArray
         𝒫_unwrapped = _get_subsampling_operator(unname(ksp), img_size, subsampling)
         D = dimnames(ksp)
-        new_dimnames = _get_dimnames_from_subsampling(D, img_size, subsampling)
+        # A partitioned codomain has no dimension names to carry: its blocks are separate arrays
+        # of different sizes, not axes of one array. `nothing` says so, rather than a name tuple
+        # that would describe a shape the codomain does not have.
+        new_dimnames = _has_unequal_sample_counts(ksp, img_size, subsampling) ?
+            nothing :
+            _get_dimnames_from_subsampling(D, img_size, subsampling)
         𝒫 = NamedDimsOp{D, new_dimnames}(𝒫_unwrapped)
     else
         𝒫 = _get_subsampling_operator(ksp, img_size, subsampling)

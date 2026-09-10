@@ -46,6 +46,20 @@ function add_noise(
     return kspace_data isa NamedDimsArray ? NamedDimsArray{dimnames(kspace_data)}(noisy) : noisy
 end
 
+# Partitioned k-space needs no special case beyond the bookkeeping: σ is resolved once over the
+# whole acquisition, so the SNR means the same thing it does for a dense array, and the noise is
+# then drawn per frame.
+function add_noise(
+        kspace_data::PartitionedKSpace;
+        snr_db::Union{Real, Nothing} = nothing,
+        noise_std::Union{Real, Nothing} = nothing,
+        rng::AbstractRNG = Random.default_rng(),
+    )
+    σ = _resolve_noise_std(kspace_data, snr_db, noise_std)
+    noisy = map(part -> add_noise(part; noise_std = σ, rng), parts(kspace_data))
+    return PartitionedKSpace(noisy, kspace_data.ragged_dim, kspace_data.dimnames)
+end
+
 function add_noise(
         acq_info::AcquisitionInfo;
         snr_db::Union{Real, Nothing} = nothing,
@@ -56,6 +70,9 @@ function add_noise(
     noisy_kspace = add_noise(acq_info.kspace_data; snr_db, noise_std, rng)
     return AcquisitionInfo(acq_info; kspace_data = noisy_kspace)
 end
+
+_resolve_noise_std(kspace_data::PartitionedKSpace, snr_db, noise_std) =
+    _resolve_noise_std(to_array_partition(kspace_data), snr_db, noise_std)
 
 function _resolve_noise_std(kspace_data, snr_db, noise_std)
     @argcheck !isnothing(snr_db) ⊻ !isnothing(noise_std) "exactly one of `snr_db` or `noise_std` must be provided"

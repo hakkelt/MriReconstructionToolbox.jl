@@ -27,6 +27,7 @@ partial Fourier acquisition dimension and returns a named tuple:
 `(dim, symmetric_range, acquired_range, total_size)`.
 """
 function partial_fourier_band(acq::CartesianAcquisitionInfo)
+    _reject_partitioned(acq.kspace_data, "partial-Fourier band detection")
     @argcheck !isnothing(acq.subsampling) "Acquisition has no subsampling mask"
     img_sz = get_image_size(acq)
     spatial_sz = (img_sz[1], img_sz[2])

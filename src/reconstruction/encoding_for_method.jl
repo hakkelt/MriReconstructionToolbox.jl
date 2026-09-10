@@ -71,7 +71,7 @@ function signal_model_operator(model::TemporalBasis, acq::AcquisitionInfo; threa
         ℳ = P_out * R_out * L * R_in' * P_in
     end
 
-    if acq.kspace_data isa NamedDimsArray
+    if _has_dimnames(acq.kspace_data)
         in_dimnames = ntuple(i -> i == time_dim_idx ? :coeff : img_dims[i], length(img_dims))
         out_dimnames = img_dims
         ℳ = NamedDimsOp{in_dimnames, out_dimnames}(ℳ)
@@ -102,6 +102,9 @@ function variable_size(model::TemporalBasis, acq::AcquisitionInfo)
     return ntuple(i -> i == t_idx ? size(model.Φ, 2) : img_size[i], length(img_size))
 end
 function variable_size(::KSpaceToImage, acq::AcquisitionInfo)
+    # `KSpaceToImage` optimizes over a *full, dense* k-space grid, which the partitioned layout is
+    # precisely not.
+    _reject_partitioned(acq.kspace_data, "the KSpaceToImage signal model")
     img_sz = get_image_size(acq)
     return (img_sz[1], img_sz[2], size(acq.kspace_data)[3:end]...)
 end
@@ -138,7 +141,7 @@ function model_encoding_operator(::KSpaceToImage, acq::AcquisitionInfo; threaded
     isnothing(acq.subsampling) || return get_subsampling_operator(acq)
     raw = unname(acq.kspace_data)
     P = Eye(eltype(raw), size(raw)...)
-    return acq.kspace_data isa NamedDimsArray ?
+    return _has_dimnames(acq.kspace_data) ?
         NamedDimsOp{dimnames(acq.kspace_data), dimnames(acq.kspace_data)}(P) : P
 end
 

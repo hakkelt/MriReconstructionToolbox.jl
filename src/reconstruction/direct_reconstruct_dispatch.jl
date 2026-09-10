@@ -1,9 +1,9 @@
 function _direct_reconstruct_components(𝒜, acq_data, method::ReconstructionMethod, config; scale_override=nothing)
     @step "Getting initial estimate" config begin
-        x̂ = 𝒜' * acq_data.kspace_data
+        x̂ = 𝒜' * _measurement(acq_data.kspace_data)
     end
     scale_input = if method isa IterativeReconstruction && method.signal_model !== nothing
-        get_encoding_operator(acq_data; threaded=config.threaded)' * acq_data.kspace_data
+        get_encoding_operator(acq_data; threaded=config.threaded)' * _measurement(acq_data.kspace_data)
     else
         x̂
     end
@@ -49,7 +49,7 @@ spatial dimensions (`3` for 2D, `4` for 3D) -- unlike `_pf_coil_dim`, which hard
 only ever used by the 2D-only partial-Fourier methods.
 """
 function _direct_coil_dim(acq::CartesianAcquisitionInfo)
-    if acq.kspace_data isa NamedDimsArray
+    if _has_dimnames(acq.kspace_data)
         idx = findfirst(==(:coil), dimnames(acq.kspace_data))
         return isnothing(idx) ? 0 : Int(idx)
     end
@@ -74,12 +74,12 @@ function _direct_reconstruct_coil_combined(acq_data::CartesianAcquisitionInfo, m
     if isnothing(smaps) && method.coil_combination isa AdjointSensitivity
         # Nothing to combine with under the default combination; preserve the historical
         # behavior of returning the bare per-coil (or single-channel) adjoint image.
-        return 𝒜' * acq_data.kspace_data
+        return 𝒜' * _measurement(acq_data.kspace_data)
     end
     c_dim = _direct_coil_dim(acq_data)
     if c_dim == 0
         # No coil axis at all: nothing for any combination choice to do.
-        return 𝒜' * acq_data.kspace_data
+        return 𝒜' * _measurement(acq_data.kspace_data)
     end
 
     # `𝒜` always bakes sensitivity composition in when `smaps` is present
@@ -87,7 +87,7 @@ function _direct_reconstruct_coil_combined(acq_data::CartesianAcquisitionInfo, m
     # per-coil images stay correctly zero-filled/gridded even for a Cartesian-subsampled
     # acquisition, then dispatch the combination explicitly.
     ℬ = isnothing(smaps) ? 𝒜 : get_encoding_operator(CartesianAcquisitionInfo(acq_data; sensitivity_maps=nothing))
-    coil_imgs = unname(ℬ' * acq_data.kspace_data)
+    coil_imgs = unname(ℬ' * _measurement(acq_data.kspace_data))
 
     img_out, coil_reduced = if method.coil_combination isa AdjointSensitivity
         @argcheck !isnothing(smaps) "AdjointSensitivity coil combination requires sensitivity maps."
@@ -103,7 +103,7 @@ function _direct_reconstruct_coil_combined(acq_data::CartesianAcquisitionInfo, m
 end
 function _direct_reconstruct_coil_combined(acq_data::NonCartesianAcquisitionInfo, method::DirectReconstruction, 𝒜)
     @argcheck method.coil_combination isa AdjointSensitivity "RootSumSquares/NoCoilCombination for DirectReconstruction is only implemented for Cartesian acquisitions; use AdjointSensitivity (the default)"
-    return 𝒜' * acq_data.kspace_data
+    return 𝒜' * _measurement(acq_data.kspace_data)
 end
 
 function _direct_reconstruct(𝒜, acq_data, x₀, method::ReconstructionMethod, config; scale_override=nothing)
@@ -121,7 +121,7 @@ function _direct_reconstruct(𝒜, acq_data, x₀, method::ReconstructionMethod,
             if method isa DirectReconstruction
                 x₀ = _direct_reconstruct_coil_combined(acq_data, method, 𝒜)
             elseif !(method isa DirectMethod)
-                x₀ = 𝒜' * acq_data.kspace_data
+                x₀ = 𝒜' * _measurement(acq_data.kspace_data)
                 is_default_iterative_adjoint = true
             else
                 x₀ = _direct_reconstruct(
@@ -131,7 +131,7 @@ function _direct_reconstruct(𝒜, acq_data, x₀, method::ReconstructionMethod,
         end
     end
     scale_input = if method isa IterativeReconstruction && method.signal_model !== nothing
-        get_encoding_operator(acq_data; threaded=config.threaded)' * acq_data.kspace_data
+        get_encoding_operator(acq_data; threaded=config.threaded)' * _measurement(acq_data.kspace_data)
     else
         x₀
     end

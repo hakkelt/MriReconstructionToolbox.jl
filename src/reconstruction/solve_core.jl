@@ -19,7 +19,7 @@ function _iterative_reconstruct_core(
 )
     if scale != 1
         @step "Scaling k-space data" config begin
-            acq_data = AcquisitionInfo(acq_data; kspace_data=acq_data.kspace_data ./ scale)
+            acq_data = AcquisitionInfo(acq_data; kspace_data=_scale_kspace(acq_data.kspace_data, scale))
             # Solver iterates in scaled units, so warm start and tolerance must match.
             x₀_or_x₀s = _scale_x0(x₀_or_x₀s, scale)
         end
@@ -40,7 +40,7 @@ function _iterative_reconstruct_core(
     # `model` / `vars` bindings would live only in that task's closure — the solve closures below
     # capture them, and neither inference (JET) nor a reader can then see they are defined.
     @printing_step "Building optimization model" config begin
-        model, vars, _auxiliaries = build(𝒜, acq_data.kspace_data; x₀=x₀_or_x₀s)
+        model, vars, _auxiliaries = build(𝒜, _measurement(acq_data.kspace_data); x₀=x₀_or_x₀s)
     end
     @printing_step "Reconstructing image" config begin
         verbose, freq, display = solver_output(config.verbosity, something(method.maxit, 100))

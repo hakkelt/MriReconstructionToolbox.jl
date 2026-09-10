@@ -148,7 +148,7 @@ Internal function to validate compatibility between k-space data and sensitivity
 function _check_smaps(ksp, smaps)
     @argcheck eltype(ksp) == eltype(smaps) "k-space array and sensitivity maps array must have the same element type"
     @argcheck 3 ≤ ndims(smaps) ≤ 4 "sensitivity maps array must be a 3D or 4D array"
-    return if ksp isa NamedDimsArray && :coil ∉ dimnames(ksp)
+    return if _has_dimnames(ksp) && :coil ∉ dimnames(ksp)
         @argcheck false "k-space array must have a dimension named :coil when sensitivity maps are provided"
     end
 end

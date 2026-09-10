@@ -11,6 +11,9 @@ Simulate MRI k-space acquisition from a given image using the specified acquisit
 - An updated acquisition object with the simulated k-space data stored in `kspace_data`.
 """
 function simulate_acquisition(image, acq_info::CartesianAcquisitionInfo)
+    if _has_unequal_sample_counts(nothing, acq_info.image_size, acq_info.subsampling)
+        return _simulate_partitioned_acquisition(image, acq_info)
+    end
     ksp_size = get_kspace_size(image, acq_info)
     ksp = similar(image, complex(eltype(image)), ksp_size)
     if image isa NamedDimsArray
@@ -100,6 +103,56 @@ function simulate_acquisition(image, acq_info::NonCartesianAcquisitionInfo)
     end
     mul!(ksp, E, image)
     return acq_info
+end
+
+"""
+    _simulate_partitioned_acquisition(image, acq_info)
+
+Simulation when the per-frame subsampling specs select different numbers of samples: the result
+cannot be one dense array, so each frame is simulated on its own and the frames are collected into
+a [`PartitionedKSpace`](@ref).
+
+Each frame goes through the ordinary dense path — one frame, one spec — so the samples are exactly
+what a per-frame acquisition would have produced, which is also what the partitioned encoding
+operator computes for the whole series at once.
+"""
+function _simulate_partitioned_acquisition(image, acq_info::CartesianAcquisitionInfo)
+    specs = acq_info.subsampling
+    nd = ndims(image)
+    spatial_dims = acq_info.is3D ? 3 : 2
+    @argcheck nd > spatial_dims "image must have a trailing dimension for the per-frame subsampling specs"
+    @argcheck size(image, nd) == length(specs) "the $(length(specs)) subsampling specs must span the image's last dimension (size $(size(image, nd)))"
+
+    frame_names = image isa NamedDimsArray ? dimnames(image)[1:(end - 1)] : nothing
+    raw_image = unname(image)
+    frame_acqs = map(specs) do spec
+        return CartesianAcquisitionInfo(;
+            is3D = acq_info.is3D,
+            image_size = acq_info.image_size,
+            sensitivity_maps = acq_info.sensitivity_maps,
+            subsampling = spec,
+            shifted_kspace_dims = acq_info.shifted_kspace_dims,
+            shifted_image_dims = acq_info.shifted_image_dims,
+        )
+    end
+    frame_ksps = map(enumerate(frame_acqs)) do (frame, frame_acq)
+        frame_image = collect(selectdim(raw_image, nd, frame))
+        if !isnothing(frame_names)
+            frame_image = NamedDimsArray{frame_names}(frame_image)
+        end
+        return simulate_acquisition(frame_image, frame_acq).kspace_data
+    end
+    ksp_names = if isnothing(frame_names)
+        nothing
+    else
+        (dimnames(first(frame_ksps))..., dimnames(image)[end])
+    end
+    ksp = PartitionedKSpace(
+        collect(frame_ksps);
+        ragged_dim = _ragged_subsampling_dim(acq_info.image_size, specs),
+        dimnames = ksp_names,
+    )
+    return CartesianAcquisitionInfo(acq_info; kspace_data = ksp)
 end
 
 function get_kspace_size(image, acq_info::CartesianAcquisitionInfo)

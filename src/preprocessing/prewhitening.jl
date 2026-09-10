@@ -31,6 +31,7 @@ Prewhitens multi-coil k-space data (and sensitivity maps if present) using the n
 Applies ``L^{-1}`` where ``\\Psi = L L^*`` is the Cholesky factorization of the noise covariance.
 """
 function prewhiten(acq::AcquisitionInfo, Ψ::AbstractMatrix; coil_dim = nothing)
+    _reject_partitioned(acq.kspace_data, "prewhitening")
     whitened_ksp = prewhiten(acq.kspace_data, Ψ; coil_dim)
     whitened_sens = isnothing(acq.sensitivity_maps) ? nothing : prewhiten(acq.sensitivity_maps, Ψ; coil_dim)
     return AcquisitionInfo(acq; kspace_data = whitened_ksp, sensitivity_maps = whitened_sens)

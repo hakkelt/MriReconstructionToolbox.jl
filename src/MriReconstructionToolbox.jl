@@ -63,7 +63,7 @@ export SPIRiT, SPIRiTConsistency
 export partial_fourier_band
 
 # Acquisition data and signal models
-export AcquisitionInfo, CartesianAcquisitionInfo
+export AcquisitionInfo, CartesianAcquisitionInfo, PartitionedKSpace
 export TemporalBasis, KSpaceToImage
 
 # Image decomposition
@@ -95,6 +95,7 @@ public NonCartesianAcquisitionInfo
 public Regularization, ReconstructionMethod, IterativeMethod, DirectMethod
 public Scaling, CoilCombination, DataFidelity, Verbosity, ReconstructionExecutor
 public Subsampling, VariableDensityDistribution, PartialFourierFilter
+public is_partitioned, parts, nparts, ragged_dim, to_array_partition
 public DensityCompensation, CoilCompression, SensitivityEstimation, GradientDelay
 public get_operator, materialize, materialize_with_auxiliaries, materialize_all
 public get_affected_dims, scale_regularization, bind_dimensions, calculate
@@ -102,6 +103,7 @@ public check_applicable
 public get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator
 public build_encoding_operator, signal_model_operator, NamedDimsOp, DFT, DEFAULT_ALGORITHMS
 
+include("acquisition_data/partitioned_kspace.jl")
 include("acquisition_data/acquisition_info.jl")
 include("acquisition_data/cartesian_acquisition_info.jl")
 include("acquisition_data/noncartesian_acquisition_info.jl")

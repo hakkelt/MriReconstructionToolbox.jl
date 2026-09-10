@@ -7,7 +7,7 @@ function get_image_size(info::AcquisitionInfo)
     @argcheck !isnothing(info.kspace_data) "kspace_data must be provided to infer output dimensions"
     transform_dims_count = _get_sample_dims_count(info)
     batch_dims_start = isnothing(info.sensitivity_maps) ? transform_dims_count + 1 : transform_dims_count + 2
-    batch_dims = size(info.kspace_data)[batch_dims_start:end]
+    batch_dims = _ksp_trailing_size(info.kspace_data, batch_dims_start)
     return (info.image_size..., batch_dims...)
 end
 
@@ -32,7 +32,7 @@ end
 function get_fourier_kspace_dims(acq_info::AcquisitionInfo)
     @argcheck !isnothing(acq_info.kspace_data) "kspace_data must be provided in AcquisitionInfo to determine Fourier transformed dimensions"
     transform_dims_count = _get_sample_dims_count(acq_info)
-    if acq_info.kspace_data isa NamedDimsArray
+    if _has_dimnames(acq_info.kspace_data)
         return dimnames(acq_info.kspace_data)[1:transform_dims_count]
     else
         return 1:transform_dims_count
@@ -41,7 +41,7 @@ end
 
 function get_fourier_image_dims(acq_info::AcquisitionInfo)
     @argcheck !isnothing(acq_info.kspace_data) "kspace_data must be provided in AcquisitionInfo to determine Fourier transformed dimensions"
-    if acq_info.kspace_data isa NamedDimsArray
+    if _has_dimnames(acq_info.kspace_data)
         return acq_info.is3D ? (:x, :y, :z) : (:x, :y)
     else
         return 1:(acq_info.is3D ? 3 : 2)
@@ -63,7 +63,7 @@ function get_nonfourier_kspace_dims(acq_info::AcquisitionInfo)
     if !isnothing(acq_info.sensitivity_maps)
         skipped_dims_count += 1
     end
-    if ksp isa NamedDimsArray
+    if _has_dimnames(ksp)
         return dimnames(ksp)[(skipped_dims_count + 1):end]
     else
         batch_dim_count = ndims(ksp) - skipped_dims_count
@@ -77,7 +77,7 @@ function get_image_dims(acq_data::AcquisitionInfo)
     ksp = acq_data.kspace_data
     spacial_dims = get_fourier_image_dims(acq_data)
     nonspacial_dims = get_nonfourier_kspace_dims(acq_data)
-    if ksp isa NamedDimsArray
+    if _has_dimnames(ksp)
         return (spacial_dims..., nonspacial_dims...)
     else
         return 1:(length(spacial_dims) + length(nonspacial_dims))
