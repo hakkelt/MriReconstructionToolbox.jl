@@ -148,7 +148,10 @@ using TestItems
         )
         # the approximation band plus one first difference per encoding dimension
         @test length(tv) == 3
-        @test all(size(w) == (gx, gy, 1) for w in tv)
+        # Stored separably -- a difference symbol varies along one encoding dimension only -- so
+        # what is pinned is the behaviour that matters: each weight broadcasts to the full grid
+        # with a singleton channel axis.
+        @test all(size(w .* zeros(ComplexF64, gx, gy, 1)) == (gx, gy, 1) for w in tv)
         @test all(isone, tv[1])
         # a first difference vanishes at DC, which on MRT's centered grid is index N ÷ 2 + 1
         @test tv[2][gx ÷ 2 + 1, 1, 1] == 0
