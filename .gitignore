@@ -2,6 +2,7 @@ docs/build
 *.cov
 Manifest.toml
 .serena/
+*slurm*
 benchmark/hpc/results/*.json
 
 # Jupyter/notebook build artifacts
