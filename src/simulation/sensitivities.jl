@@ -42,18 +42,22 @@ The sensitivity maps are constructed using:
 
 """
 function coil_sensitivities(nx::Int, ny::Int, nc::Int)
-    x = range(-1, 1; length = nx)
-    y = range(-1, 1; length = ny)
-    X = repeat(collect(x), 1, ny)
-    Y = repeat(collect(y)', nx, 1)
+    # Written as an explicit `Float32` loop rather than a chain of broadcasts over `Float64`
+    # coordinate matrices: the broadcast form left `mag`/`phase` inferred as `Any` (JET's
+    # `@test_opt` reports the runtime dispatch), and it also materialized two temporary
+    # `nx * ny` matrices per coil.
     smaps = Array{ComplexF32}(undef, nx, ny, nc)
-    centers = [(cos(2π * (i - 1) / nc), sin(2π * (i - 1) / nc)) for i in 1:nc]
-    for i in 1:nc
-        cx, cy = centers[i]
-        σ = 0.6f0
-        mag = @. exp(-((X - cx)^2 + (Y - cy)^2) / (2σ^2))
-        phase = @. exp(im * (0.5f0 * X + 0.3f0 * Y))
-        smaps[:, :, i] = ComplexF32.(mag .* phase)
+    xs = range(-1.0f0, 1.0f0; length = nx)
+    ys = range(-1.0f0, 1.0f0; length = ny)
+    σ = 0.6f0
+    for c in 1:nc
+        cx = Float32(cos(2π * (c - 1) / nc))
+        cy = Float32(sin(2π * (c - 1) / nc))
+        for j in 1:ny, i in 1:nx
+            X, Y = xs[i], ys[j]
+            mag = exp(-((X - cx)^2 + (Y - cy)^2) / (2σ^2))
+            smaps[i, j, c] = mag * cis(0.5f0 * X + 0.3f0 * Y)
+        end
     end
     denom = sqrt.(sum(abs2, smaps; dims = 3) .+ eps(Float32))
     smaps ./= denom
