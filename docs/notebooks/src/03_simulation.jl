@@ -35,6 +35,7 @@ include("NotebookUtils.jl")
 using .NotebookUtils
 
 using MriReconstructionToolbox
+using MriReconstructionToolbox: parts
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities,
     create_torso_phantom, generate_respiratory_signal
 using MIRTjim: jim
@@ -281,16 +282,17 @@ jim(recs...; layout = (1, 3), size = (1000, 320))
 # A batch dimension (here `:time`) is simulated exactly like anything else. For a realistic
 # dynamic series, `create_torso_phantom` from GeometricMedicalPhantoms.jl (already a dependency
 # of these notebooks) takes a `respiratory_signal` (in litres, from `generate_respiratory_signal`)
-# and returns a 4D `(nx, ny, nz, nt)` phantom breathing along with it; a single axial slice
-# gives a 2D dynamic series driven by real respiratory motion instead of a hand-rolled bolus.
+# and returns a 4D `(nx, ny, nz, nt)` phantom breathing along with it; a single coronal slice
+# (through the diaphragm, where respiratory motion is largest) gives a 2D dynamic series driven
+# by real respiratory motion instead of a hand-rolled bolus.
 
 # %%
 using NamedDims
 
 nt = 16
 t_resp, resp_liters = generate_respiratory_signal(nt * 1.0, 1.0, 15.0)   # nt samples, 15 breaths/min
-vol_dyn = create_torso_phantom(64, 64, 16; respiratory_signal = resp_liters[1:nt], eltype = ComplexF32)
-series = NamedDimsArray{(:x, :y, :time)}(vol_dyn[:, :, 8, :])            # one axial slice, all frames
+vol_dyn = create_torso_phantom(64, 64, 64; respiratory_signal = resp_liters[1:nt], eltype = ComplexF32)
+series = NamedDimsArray{(:x, :y, :time)}(vol_dyn[:, 32, :, :])           # one coronal slice, all frames
 
 jim(series[:, :, 1:5:16]; title = "dynamic frames 1, 6, 11, 16", nrow = 1, size = (1000, 280))
 
@@ -299,6 +301,10 @@ jim(series[:, :, 1:5:16]; title = "dynamic frames 1, 6, 11, 16", nrow = 1, size 
 #
 # The `(:, mask)`/index-expression idiom from section 5 applies unchanged to a series with a
 # `:time` batch dimension: one `subsampling` acquires the same phase encodes at every frame.
+# `AcquisitionInfo` also accepts a `Vector` of subsampling specs, one per frame, which
+# `simulate_acquisition` acquires all at once through a single `AcquisitionInfo` — this is
+# already the right idiom for "a different pattern per frame" when every frame selects the same
+# *number* of samples (see below).
 
 # %%
 smaps_dyn = coil_sensitivities(64, 64, 4)
@@ -314,25 +320,50 @@ println(dimnames(data_dyn_same.kspace_data), " ", size(data_dyn_same.kspace_data
 # #### A different pattern per frame
 #
 # The interesting case for temporal regularizers: incoherent aliasing across time, so that a
-# temporal-Fourier or low-rank penalty has something to exploit. Because the acquired sample
-# count then differs frame to frame, the pattern is expressed as a `Vector` of `subsampling`
-# tuples — one per frame — and each frame is simulated with its own `AcquisitionInfo` rather
-# than combined into a single fixed-shape array.
+# temporal-Fourier or low-rank penalty has something to exploit. One `AcquisitionInfo` still
+# does it — `subsampling` is simply a `Vector` of per-frame specs, each acquiring a *different*
+# but *equal-count* set of phase encodes (an equal-count requirement, since the simulated
+# k-space is one dense array).
 
 # %%
 ny_dyn = 64
-subsampling_per_frame = [(:, sort(union(t:2:ny_dyn, 26:38))) for t in 1:nt]
+# Alternate between two R=2 patterns (odd/even phase encodes) — incoherent frame to frame,
+# same number of samples every frame.
+subsampling_per_frame = [(:, isodd(t) ? (1:2:ny_dyn) : (2:2:ny_dyn)) for t in 1:nt]
 println("acquired phase encodes per frame: ", length.(getindex.(subsampling_per_frame, 2)))
 
-data_dyn_varying = map(1:nt) do t
-    acq_t = AcquisitionInfo(
-        nothing; is3D = false, image_size = (64, 64),
-        sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps_dyn),
-        subsampling = subsampling_per_frame[t],
-    )
-    simulate_acquisition(series[:, :, t], acq_t)
-end
-println([size(d.kspace_data) for d in data_dyn_varying])
+acq_dyn_varying = AcquisitionInfo(
+    nothing; is3D = false, image_size = (64, 64),
+    sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps_dyn),
+    subsampling = subsampling_per_frame,
+)
+data_dyn_varying = simulate_acquisition(series, acq_dyn_varying)
+println(dimnames(data_dyn_varying.kspace_data), " ", size(data_dyn_varying.kspace_data))
+
+# %% [markdown]
+# #### Unequal sample counts per frame
+#
+# When the per-frame specs select *different numbers* of samples — a more aggressive schedule
+# for later frames, say — the result can no longer be one dense array. `simulate_acquisition`
+# detects this automatically and returns a `PartitionedKSpace` instead, wrapping one dense
+# k-space array per frame. `reconstruct` still returns a plain `Array`: the partitioning is an
+# internal storage detail of the measurement, not something that propagates to the image.
+
+# %%
+subsampling_unequal = [(:, 1:(t + 1):ny_dyn) for t in 1:nt]      # acceleration increases with t
+println("acquired phase encodes per frame: ", length.(getindex.(subsampling_unequal, 2)))
+
+acq_dyn_unequal = AcquisitionInfo(
+    nothing; is3D = false, image_size = (64, 64),
+    sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps_dyn),
+    subsampling = subsampling_unequal,
+)
+data_dyn_unequal = simulate_acquisition(series, acq_dyn_unequal)
+println(typeof(data_dyn_unequal.kspace_data))
+println("per-frame k-space sizes: ", size.(parts(data_dyn_unequal.kspace_data)))
+
+rec_unequal = reconstruct(data_dyn_unequal; verbosity = Silent())
+println(typeof(rec_unequal), " ", size(rec_unequal))
 
 # %% [markdown]
 # ## Environment
