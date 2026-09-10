@@ -15,16 +15,33 @@ Usage (from the repository root, or from docs/notebooks/):
 per-notebook kill switch, so one stuck cell cannot hang the whole run past the budget).
 
 Output: rendered HTML files under docs/notebooks/build/ (gitignored — never committed). Each
-notebook is executed against a FRESH in-memory copy by nbconvert; the .ipynb source files on
-disk are never touched, so they stay output-free (verified again at the end as a safety check).
+notebook is executed against a FRESH in-memory copy by nbconvert; the .ipynb files this script
+regenerates from docs/notebooks/src/*.jl (see below) are never touched, so they stay
+output-free (verified again at the end as a safety check).
 
-Requires `python3 -m nbconvert` on PATH with the `julia-1.12` Jupyter kernel installed
-(`Pkg.build("IJulia")` from the docs/notebooks environment registers it — see README.md).
+`docs/notebooks/*.ipynb` is not tracked in git — `docs/notebooks/src/*.jl` (jupytext percent
+format) is the committed source. This script regenerates the .ipynb files from it via
+`python3 -m jupytext --to ipynb` before exporting, so a clean checkout is enough to run it.
+
+Requires `python3 -m nbconvert` and `python3 -m jupytext` on PATH, with the `julia-1.12` Jupyter
+kernel installed (`Pkg.build("IJulia")` from the docs/notebooks environment registers it — see
+README.md).
 =#
 
 const NOTEBOOK_DIR = @__DIR__
+const SRC_DIR = joinpath(NOTEBOOK_DIR, "src")
 const BUILD_DIR = joinpath(NOTEBOOK_DIR, "build")
 const DEFAULT_TIMEOUT = 600 # seconds, per notebook
+
+function regenerate_ipynb!()
+    scripts = sort(filter(f -> endswith(f, ".jl"), readdir(SRC_DIR)))
+    isempty(scripts) && error("no notebook scripts found under $SRC_DIR")
+    for script in scripts
+        out = joinpath(NOTEBOOK_DIR, replace(script, r"\.jl$" => ".ipynb"))
+        run(`python3 -m jupytext --to ipynb --output $out $(joinpath(SRC_DIR, script))`)
+    end
+    return nothing
+end
 
 function parse_args(args)
     selector = "all"
@@ -87,6 +104,7 @@ end
 
 function main()
     selector, timeout = parse_args(ARGS)
+    regenerate_ipynb!()
     notebooks = matching_notebooks(selector)
     if isempty(notebooks)
         println(stderr, "No notebook matches selector \"$selector\".")
