@@ -20,15 +20,15 @@
     # Estimate covariance
     Ψ_est = estimate_noise_covariance(noise_named)
     @test size(Ψ_est) == (Nc, Nc)
-    @test isapprox(Ψ_est, Ψ_true; rtol=0.1)
+    @test isapprox(Ψ_est, Ψ_true; rtol = 0.1)
 
     # Prewhiten acquisition
     img = NamedDimsArray{(:x, :y)}(randn(ComplexF32, Nx, Ny))
     sens = NamedDimsArray{(:x, :y, :coil)}(randn(ComplexF32, Nx, Ny, Nc))
     acq = CartesianAcquisitionInfo(
         NamedDimsArray{(:kx, :ky, :coil)}(zeros(ComplexF32, Nx, Ny, Nc));
-        is3D=false,
-        sensitivity_maps=sens,
+        is3D = false,
+        sensitivity_maps = sens,
     )
     acq_sim = simulate_acquisition(img, acq)
     # Add correlated noise to k-space
@@ -37,7 +37,7 @@
     ksp_noisy = NamedDimsArray{(:kx, :ky, :coil)}(
         permutedims(reshape(ksp_noisy_flat, Nc, Nx, Ny), (2, 3, 1))
     )
-    acq_noisy = CartesianAcquisitionInfo(acq_sim; kspace_data=ksp_noisy)
+    acq_noisy = CartesianAcquisitionInfo(acq_sim; kspace_data = ksp_noisy)
 
     acq_white = prewhiten(acq_noisy, Ψ_est)
     @test acq_white isa CartesianAcquisitionInfo
@@ -62,12 +62,12 @@ end
 
     acq = CartesianAcquisitionInfo(
         NamedDimsArray{(:kx, :ky, :coil)}(zeros(ComplexF32, Nx, Ny, Nc));
-        is3D=false,
-        sensitivity_maps=sens,
+        is3D = false,
+        sensitivity_maps = sens,
     )
     acq_sim = simulate_acquisition(img, acq)
 
-    acq_comp, C = compress_coils(acq_sim, Nv; method=SVDCompression())
+    acq_comp, C = compress_coils(acq_sim, Nv; method = SVDCompression())
     @test size(C) == (Nv, Nc)
     @test size(acq_comp.kspace_data, :coil) == Nv
     @test size(acq_comp.sensitivity_maps, :coil) == Nv
@@ -75,17 +75,17 @@ end
     @test dimnames(acq_comp.sensitivity_maps) == (:x, :y, :coil)
 
     # Direct reconstruction from compressed data
-    rec_orig = reconstruct(acq_sim, DirectReconstruction(); verbosity=Silent())
-    rec_comp = reconstruct(acq_comp, DirectReconstruction(); verbosity=Silent())
-    @test isapprox(rec_comp, rec_orig; rtol=0.05)
+    rec_orig = reconstruct(acq_sim, DirectReconstruction(); verbosity = Silent())
+    rec_comp = reconstruct(acq_comp, DirectReconstruction(); verbosity = Silent())
+    @test isapprox(rec_comp, rec_orig; rtol = 0.05)
 
     # GeometricCompression
-    acq_geom, C_geom = compress_coils(acq_sim, Nv; method=GeometricCompression())
+    acq_geom, C_geom = compress_coils(acq_sim, Nv; method = GeometricCompression())
     @test size(C_geom) == (Nv, Nc, Nx)
     @test size(acq_geom.kspace_data, :coil) == Nv
     @test size(acq_geom.sensitivity_maps, :coil) == Nv
-    rec_geom = reconstruct(acq_geom, DirectReconstruction(); verbosity=Silent())
-    @test isapprox(rec_geom, rec_orig; rtol=0.05)
+    rec_geom = reconstruct(acq_geom, DirectReconstruction(); verbosity = Silent())
+    @test isapprox(rec_geom, rec_orig; rtol = 0.05)
 end
 
 @testitem "Sensitivity map estimation: SelfCalibrating, AdaptiveCombine, ESPIRiT" tags = [:acquisition, :encoding, :simulation] setup = [SyntheticCoils] begin
@@ -102,25 +102,25 @@ end
 
     acq = CartesianAcquisitionInfo(
         NamedDimsArray{(:kx, :ky, :coil)}(zeros(ComplexF32, Nx, Ny, Nc));
-        is3D=false,
-        sensitivity_maps=sens_true,
+        is3D = false,
+        sensitivity_maps = sens_true,
     )
     acq_sim = simulate_acquisition(img, acq)
 
     # 1. SelfCalibrating
-    acq_selfcal = estimate_sensitivities(acq_sim; method=SelfCalibrating(calib_size=16))
+    acq_selfcal = estimate_sensitivities(acq_sim; method = SelfCalibrating(calib_size = 16))
     @test !isnothing(acq_selfcal.sensitivity_maps)
     @test size(acq_selfcal.sensitivity_maps) == (Nx, Ny, Nc)
     @test dimnames(acq_selfcal.sensitivity_maps) == (:x, :y, :coil)
 
     # 2. AdaptiveCombine
-    acq_adaptive = estimate_sensitivities(acq_sim; method=AdaptiveCombine(kernel_size=5))
+    acq_adaptive = estimate_sensitivities(acq_sim; method = AdaptiveCombine(kernel_size = 5))
     @test !isnothing(acq_adaptive.sensitivity_maps)
     @test size(acq_adaptive.sensitivity_maps) == (Nx, Ny, Nc)
     @test dimnames(acq_adaptive.sensitivity_maps) == (:x, :y, :coil)
 
     # 3. ESPIRiT
-    acq_espirit = estimate_sensitivities(acq_sim; method=ESPIRiT(calib_size=16, kernel_size=6))
+    acq_espirit = estimate_sensitivities(acq_sim; method = ESPIRiT(calib_size = 16, kernel_size = 6))
     @test !isnothing(acq_espirit.sensitivity_maps)
     @test size(acq_espirit.sensitivity_maps) == (Nx, Ny, Nc)
     @test dimnames(acq_espirit.sensitivity_maps) == (:x, :y, :coil)
@@ -128,7 +128,7 @@ end
     # Verify phase-aligned sensitivity map accuracy in object support
     mask = abs.(unname(img)) .> 0.5
     for sens_est in (acq_selfcal.sensitivity_maps, acq_adaptive.sensitivity_maps, acq_espirit.sensitivity_maps)
-        dot_prod = sum(unname(sens_est) .* conj(unname(sens_true)), dims=3)
+        dot_prod = sum(unname(sens_est) .* conj(unname(sens_true)), dims = 3)
         phase_diff = cis.(-angle.(dot_prod))
         aligned = unname(sens_est) .* phase_diff
         rel_err = norm(aligned[mask, :] - unname(sens_true)[mask, :]) / norm(unname(sens_true)[mask, :])
@@ -136,13 +136,13 @@ end
     end
 
     # Verify direct reconstruction magnitude with estimated maps
-    rec_selfcal = reconstruct(acq_selfcal, DirectReconstruction(); verbosity=Silent())
-    rec_adaptive = reconstruct(acq_adaptive, DirectReconstruction(); verbosity=Silent())
-    rec_espirit = reconstruct(acq_espirit, DirectReconstruction(); verbosity=Silent())
+    rec_selfcal = reconstruct(acq_selfcal, DirectReconstruction(); verbosity = Silent())
+    rec_adaptive = reconstruct(acq_adaptive, DirectReconstruction(); verbosity = Silent())
+    rec_espirit = reconstruct(acq_espirit, DirectReconstruction(); verbosity = Silent())
 
-    @test isapprox(abs.(unname(rec_selfcal))[mask], abs.(unname(img))[mask]; rtol=0.15)
-    @test isapprox(abs.(unname(rec_adaptive))[mask], abs.(unname(img))[mask]; rtol=0.15)
-    @test isapprox(abs.(unname(rec_espirit))[mask], abs.(unname(img))[mask]; rtol=0.15)
+    @test isapprox(abs.(unname(rec_selfcal))[mask], abs.(unname(img))[mask]; rtol = 0.15)
+    @test isapprox(abs.(unname(rec_adaptive))[mask], abs.(unname(img))[mask]; rtol = 0.15)
+    @test isapprox(abs.(unname(rec_espirit))[mask], abs.(unname(img))[mask]; rtol = 0.15)
 end
 
 @testitem "Sensitivity estimation: measured k-space smaller than image_size is zero-padded" tags = [:preprocessing, :acquisition] setup = [SyntheticCoils] begin
@@ -157,28 +157,28 @@ end
 
     acq = CartesianAcquisitionInfo(
         NamedDimsArray{(:kx, :ky, :coil)}(zeros(ComplexF32, Nx, Ny, Nc));
-        is3D=false, sensitivity_maps=sens_true,
+        is3D = false, sensitivity_maps = sens_true,
     )
     acq_sim = simulate_acquisition(img, acq)
 
     # Only the central `measured` phase-encode lines are kept, mirroring a real acquisition where
     # `kspace_data` stores just the measured extent rather than a zero-filled `image_size` grid.
     lo = (Ny - measured) ÷ 2 + 1
-    ksp_measured = unname(acq_sim.kspace_data)[:, lo:(lo+measured-1), :]
+    ksp_measured = unname(acq_sim.kspace_data)[:, lo:(lo + measured - 1), :]
     acq_measured = CartesianAcquisitionInfo(
-        NamedDimsArray{(:kx, :ky, :coil)}(ksp_measured); is3D=false, image_size=(Nx, Ny),
+        NamedDimsArray{(:kx, :ky, :coil)}(ksp_measured); is3D = false, image_size = (Nx, Ny),
     )
 
     # Previously threw an ArgCheck size-mismatch when re-attaching maps sized (Nx, measured, Nc).
-    acq_out = estimate_sensitivities(acq_measured; method=ESPIRiT(calib_size=24, kernel_size=6))
+    acq_out = estimate_sensitivities(acq_measured; method = ESPIRiT(calib_size = 24, kernel_size = 6))
     @test size(acq_out.sensitivity_maps) == (Nx, Ny, Nc)
 
     # The raw-array method accepts the same `image_size` keyword directly, and is a no-op without it.
     padded = estimate_sensitivities(
-        ksp_measured; method=ESPIRiT(calib_size=24, kernel_size=6), image_size=(Nx, Ny)
+        ksp_measured; method = ESPIRiT(calib_size = 24, kernel_size = 6), image_size = (Nx, Ny)
     )
     @test size(padded) == (Nx, Ny, Nc)
-    unpadded = estimate_sensitivities(ksp_measured; method=ESPIRiT(calib_size=24, kernel_size=6))
+    unpadded = estimate_sensitivities(ksp_measured; method = ESPIRiT(calib_size = 24, kernel_size = 6))
     @test size(unpadded) == (Nx, measured, Nc)
 end
 
@@ -206,10 +206,10 @@ end
         ComplexF32.(fftshift(fft(ifftshift(coil_images, (1, 2)), (1, 2)), (1, 2)))
     )
 
-    acq_plain = CartesianAcquisitionInfo(ksp; is3D=false)
-    acq_shifted = CartesianAcquisitionInfo(ksp; is3D=false, shifted_image_dims=(:x, :y))
+    acq_plain = CartesianAcquisitionInfo(ksp; is3D = false)
+    acq_shifted = CartesianAcquisitionInfo(ksp; is3D = false, shifted_image_dims = (:x, :y))
 
-    for method in (SelfCalibrating(calib_size=24), ESPIRiT(calib_size=24, kernel_size=6))
+    for method in (SelfCalibrating(calib_size = 24), ESPIRiT(calib_size = 24, kernel_size = 6))
         plain = unname(estimate_sensitivities(acq_plain; method).sensitivity_maps)
         shifted = unname(estimate_sensitivities(acq_shifted; method).sensitivity_maps)
         # Same k-space, same estimator: the only difference is which image grid the maps live on.
@@ -217,14 +217,14 @@ end
         @test !(shifted ≈ plain)                 # the shift is not a no-op at this size
 
         # And the maps must actually explain the coil images they were estimated from.
-        ρ = dropdims(sum(conj.(shifted) .* coil_images; dims=3); dims=3)
+        ρ = dropdims(sum(conj.(shifted) .* coil_images; dims = 3); dims = 3)
         residual = norm(shifted .* reshape(ρ, Nx, Ny, 1) - coil_images) / norm(coil_images)
         @test residual < 0.15
     end
 
     # End to end: the object must come back where it was put.
-    acq = estimate_sensitivities(acq_shifted; method=SelfCalibrating(calib_size=24))
-    x = abs.(unname(reconstruct(acq; verbosity=Silent())))
+    acq = estimate_sensitivities(acq_shifted; method = SelfCalibrating(calib_size = 24))
+    x = abs.(unname(reconstruct(acq; verbosity = Silent())))
     @test Tuple(argmax(x)) == (18, 26)
     α = sum(x .* abs.(truth)) / sum(abs2, x)
     @test norm(α .* x - abs.(truth)) / norm(abs.(truth)) < 0.15
@@ -239,13 +239,13 @@ end
     Nx, Ny, Nc = 32, 32, 4
     ksp = randn(ComplexF64, Nx, Ny, Nc)
 
-    s_trailing = estimate_sensitivities(ksp; method=SelfCalibrating(), coil_dim=3)
-    s_leading = estimate_sensitivities(permutedims(ksp, (3, 1, 2)); method=SelfCalibrating(), coil_dim=1)
+    s_trailing = estimate_sensitivities(ksp; method = SelfCalibrating(), coil_dim = 3)
+    s_leading = estimate_sensitivities(permutedims(ksp, (3, 1, 2)); method = SelfCalibrating(), coil_dim = 1)
     @test permutedims(s_leading, (2, 3, 1)) ≈ s_trailing
 
     # NamedDims with a non-trailing coil axis
     kn = NamedDimsArray{(:coil, :kx, :ky)}(permutedims(ksp, (3, 1, 2)))
-    sn = estimate_sensitivities(kn; method=SelfCalibrating())
+    sn = estimate_sensitivities(kn; method = SelfCalibrating())
     @test dimnames(sn) == (:coil, :x, :y)
     @test permutedims(unname(sn), (2, 3, 1)) ≈ s_trailing
 end
@@ -256,8 +256,8 @@ end
     using MriReconstructionToolbox: NonCartesianAcquisitionInfo
 
     Nsamples, Nspokes, Nc = 64, 30, 8
-    angles = range(0, 2π, length=Nspokes + 1)[1:Nspokes]
-    r = range(-0.5, 0.5, length=Nsamples)
+    angles = range(0, 2π, length = Nspokes + 1)[1:Nspokes]
+    r = range(-0.5, 0.5, length = Nsamples)
     traj = zeros(2, Nsamples, Nspokes)
     for s in 1:Nspokes
         traj[1, :, s] = r .* cos(angles[s])
@@ -274,10 +274,10 @@ end
         sh = delay_true[1] * cos(angles[s]) + delay_true[2] * sin(angles[s])
         ksp[:, s, c] = (0.8 + 0.4c / Nc) .* exp.(-50 .* (r .- sh) .^ 2)
     end
-    acq = NonCartesianAcquisitionInfo(ksp; trajectory=traj_d, image_size=(64, 64))
-    d = estimate_gradient_delays(acq; method=OpposingSpokes())
-    @test isapprox(d[1], delay_true[1]; atol=2.0e-3)
-    @test isapprox(d[2], delay_true[2]; atol=2.0e-3)
+    acq = NonCartesianAcquisitionInfo(ksp; trajectory = traj_d, image_size = (64, 64))
+    d = estimate_gradient_delays(acq; method = OpposingSpokes())
+    @test isapprox(d[1], delay_true[1]; atol = 2.0e-3)
+    @test isapprox(d[2], delay_true[2]; atol = 2.0e-3)
 end
 
 @testitem "Gradient delay correction in non-Cartesian MRI" tags = [:preprocessing, :acquisition, :nfft] begin
@@ -289,8 +289,8 @@ end
 
     Nsamples = 32
     Nspokes = 16
-    angles = range(0, 2π, length=Nspokes + 1)[1:Nspokes]
-    r = range(-0.5f0, 0.5f0, length=Nsamples)
+    angles = range(0, 2π, length = Nspokes + 1)[1:Nspokes]
+    r = range(-0.5f0, 0.5f0, length = Nsamples)
 
     traj_true = zeros(Float32, 2, Nsamples, Nspokes)
     for s in 1:Nspokes
@@ -314,23 +314,23 @@ end
 
     acq_noncart = NonCartesianAcquisitionInfo(
         NamedDimsArray{(:kx, :ky)}(ksp);
-        trajectory=NamedDimsArray{(:dim, :kx, :ky)}(traj_delayed),
-        image_size=(32, 32),
+        trajectory = NamedDimsArray{(:dim, :kx, :ky)}(traj_delayed),
+        image_size = (32, 32),
     )
 
     # 1. Validation test on Cartesian
     acq_cart = CartesianAcquisitionInfo(
         NamedDimsArray{(:kx, :ky)}(zeros(ComplexF32, 16, 16));
-        is3D=false,
+        is3D = false,
     )
     @test_throws ArgumentError correct_gradient_delays(acq_cart)
 
     # 2. Estimation and correction with OpposingSpokes
-    delays_est = estimate_gradient_delays(acq_noncart; method=OpposingSpokes())
-    @test isapprox(delays_est[1], delay_true[1]; atol=1.0e-3)
-    @test isapprox(delays_est[2], delay_true[2]; atol=1.0e-3)
+    delays_est = estimate_gradient_delays(acq_noncart; method = OpposingSpokes())
+    @test isapprox(delays_est[1], delay_true[1]; atol = 1.0e-3)
+    @test isapprox(delays_est[2], delay_true[2]; atol = 1.0e-3)
 
-    acq_corr = correct_gradient_delays(acq_noncart; method=OpposingSpokes())
+    acq_corr = correct_gradient_delays(acq_noncart; method = OpposingSpokes())
     @test acq_corr isa NonCartesianAcquisitionInfo
     @test norm(unname(acq_corr.trajectory) - traj_true) < 2.0e-3
 
@@ -351,16 +351,16 @@ end
     end
     acq_ring_data = NonCartesianAcquisitionInfo(
         NamedDimsArray{(:kx, :ky)}(ksp_ring);
-        trajectory=NamedDimsArray{(:dim, :kx, :ky)}(traj_ring),
-        image_size=(32, 32),
+        trajectory = NamedDimsArray{(:dim, :kx, :ky)}(traj_ring),
+        image_size = (32, 32),
     )
-    delays_ring = estimate_gradient_delays(acq_ring_data; method=RING())
+    delays_ring = estimate_gradient_delays(acq_ring_data; method = RING())
     @test delays_ring isa NamedTuple
-    @test isapprox(delays_ring.dx, Sxx; atol=1.0e-3)
-    @test isapprox(delays_ring.dy, Syy; atol=1.0e-3)
-    @test isapprox(delays_ring.dxy, Sxy; atol=1.0e-3)
+    @test isapprox(delays_ring.dx, Sxx; atol = 1.0e-3)
+    @test isapprox(delays_ring.dy, Syy; atol = 1.0e-3)
+    @test isapprox(delays_ring.dxy, Sxy; atol = 1.0e-3)
 
-    acq_ring_corr = correct_gradient_delays(acq_ring_data; method=RING())
+    acq_ring_corr = correct_gradient_delays(acq_ring_data; method = RING())
     @test acq_ring_corr isa NonCartesianAcquisitionInfo
     @test norm(unname(acq_ring_corr.trajectory) - traj_true) < 2.0e-3
 end
@@ -376,8 +376,8 @@ end
     # 0.5 / actual_extent -- invisible only because every other test here happens to use ±0.5.
     Nsamples, Nspokes = 64, 30
     r_extent = 0.45
-    angles = range(0, 2π, length=Nspokes + 1)[1:Nspokes]
-    r = range(-r_extent, r_extent, length=Nsamples)
+    angles = range(0, 2π, length = Nspokes + 1)[1:Nspokes]
+    r = range(-r_extent, r_extent, length = Nsamples)
     traj = zeros(2, Nsamples, Nspokes)
     for s in 1:Nspokes
         traj[1, :, s] = r .* cos(angles[s])
@@ -394,8 +394,8 @@ end
         sh = delay_true[1] * cos(angles[s]) + delay_true[2] * sin(angles[s])
         ksp[:, s] = exp.(-50 .* (r .- sh) .^ 2)
     end
-    acq = NonCartesianAcquisitionInfo(ksp; trajectory=traj_d, image_size=(64, 64))
-    d = estimate_gradient_delays(acq; method=OpposingSpokes())
-    @test isapprox(d[1], delay_true[1]; atol=2.0e-3)
-    @test isapprox(d[2], delay_true[2]; atol=2.0e-3)
+    acq = NonCartesianAcquisitionInfo(ksp; trajectory = traj_d, image_size = (64, 64))
+    d = estimate_gradient_delays(acq; method = OpposingSpokes())
+    @test isapprox(d[1], delay_true[1]; atol = 2.0e-3)
+    @test isapprox(d[2], delay_true[2]; atol = 2.0e-3)
 end

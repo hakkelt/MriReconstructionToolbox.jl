@@ -8,19 +8,19 @@ using TestItems
     end
 
     @testset "BoxConstraint" begin
-        @test MriReconstructionToolbox.calculate(BoxConstraint(0.0, 1.0), rand(4, 4); threaded=false) == 0
-        @test MriReconstructionToolbox.calculate(BoxConstraint(0.0, 1.0), [2.0 0.5]; threaded=false) == Inf
+        @test MriReconstructionToolbox.calculate(BoxConstraint(0.0, 1.0), rand(4, 4); threaded = false) == 0
+        @test MriReconstructionToolbox.calculate(BoxConstraint(0.0, 1.0), [2.0 0.5]; threaded = false) == Inf
         @test MriReconstructionToolbox.calculate(
-            BoxConstraint(zeros(1, 2), ones(1, 2)), [0.5 0.5]; threaded=false
+            BoxConstraint(zeros(1, 2), ones(1, 2)), [0.5 0.5]; threaded = false
         ) == 0
         @test_throws ArgumentError BoxConstraint(1.0, 0.0)
     end
 
     @testset "complex data is rejected by default" begin
         x = Variable(randn(ComplexF64, 4, 4))
-        @test_throws ArgumentError MriReconstructionToolbox.materialize(NonNegative(), x; threaded=false)
+        @test_throws ArgumentError MriReconstructionToolbox.materialize(NonNegative(), x; threaded = false)
         @test_throws ArgumentError MriReconstructionToolbox.materialize(
-            BoxConstraint(0.0, 1.0), x; threaded=false
+            BoxConstraint(0.0, 1.0), x; threaded = false
         )
     end
 
@@ -29,16 +29,16 @@ using TestItems
         x_complex = [1.0 - 2.0im 0.5 + 0.0im; -3.0 + 1.0im 2.0 + 0.0im]
         x_var = Variable(copy(x_complex))
 
-        reg_nn = NonNegative(; complex_handling=:real)
-        @test MriReconstructionToolbox.calculate(reg_nn, x_complex; threaded=false) == Inf
-        term_nn = MriReconstructionToolbox.materialize(reg_nn, x_var; threaded=false)
+        reg_nn = NonNegative(; complex_handling = :real)
+        @test MriReconstructionToolbox.calculate(reg_nn, x_complex; threaded = false) == Inf
+        term_nn = MriReconstructionToolbox.materialize(reg_nn, x_var; threaded = false)
         y_nn = similar(x_complex)
         v_nn = ProximalCore.prox!(y_nn, term_nn.f, x_complex, 1.0)
         @test v_nn == 0
         @test y_nn ≈ [1.0 0.5; 0.0 2.0]
 
-        reg_box = BoxConstraint(0.0, 1.0; complex_handling=:real)
-        term_box = MriReconstructionToolbox.materialize(reg_box, x_var; threaded=false)
+        reg_box = BoxConstraint(0.0, 1.0; complex_handling = :real)
+        term_box = MriReconstructionToolbox.materialize(reg_box, x_var; threaded = false)
         y_box = similar(x_complex)
         v_box = ProximalCore.prox!(y_box, term_box.f, x_complex, 1.0)
         @test v_box == 0
@@ -48,16 +48,16 @@ using TestItems
     end
 
     @testset "invalid complex_handling is rejected" begin
-        @test_throws ArgumentError NonNegative(; complex_handling=:bogus)
-        @test_throws ArgumentError BoxConstraint(0.0, 1.0; complex_handling=:bogus)
+        @test_throws ArgumentError NonNegative(; complex_handling = :bogus)
+        @test_throws ArgumentError BoxConstraint(0.0, 1.0; complex_handling = :bogus)
     end
 
     @testset "get_operator and get_affected_dims" begin
         x = randn(4, 4)
-        @test get_operator(NonNegative(), x; threaded=false) isa Eye
-        @test get_operator(BoxConstraint(0.0, 1.0), x; threaded=false) isa Eye
+        @test get_operator(NonNegative(), x; threaded = false) isa Eye
+        @test get_operator(BoxConstraint(0.0, 1.0), x; threaded = false) isa Eye
         ksp = randn(ComplexF32, 4, 4)
-        info = AcquisitionInfo(ksp; image_size=(4, 4))
+        info = AcquisitionInfo(ksp; image_size = (4, 4))
         @test MriReconstructionToolbox.get_affected_dims(NonNegative(), info, 1:2) == ()
         @test MriReconstructionToolbox.get_affected_dims(BoxConstraint(0.0, 1.0), info, 1:2) == ()
         # array-valued bounds have the size of the full image, so task splitting must be blocked
@@ -89,14 +89,14 @@ end
     # which would make the constraint's effect untestable)
     pdf = VariableDensitySampling(PolynomialDistribution(3), 4.0, 0.1)
     pattern = create_sampling_pattern(pdf, (nx, ny))
-    acq = CartesianAcquisitionInfo(is3D=false, image_size=(nx, ny), subsampling=pattern)
-    data = add_noise(simulate_acquisition(x_true, acq); noise_std=0.08f0)
+    acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny), subsampling = pattern)
+    data = add_noise(simulate_acquisition(x_true, acq); noise_std = 0.08f0)
 
     nrmse(rec) = norm(rec .- x_true) / norm(x_true)
 
     tv_only = reconstruct(
-        data, IterativeReconstruction(TotalVariation2D(3.0f-2); algorithm=ADMM(maxit=50));
-        verbosity=Silent(),
+        data, IterativeReconstruction(TotalVariation2D(3.0f-2); algorithm = ADMM(maxit = 50));
+        verbosity = Silent(),
     )
     @test minimum(real.(tv_only)) < 0  # TV alone overshoots negative -- the premise this test checks
 
@@ -105,10 +105,10 @@ end
     tv_plus_nn = reconstruct(
         data,
         IterativeReconstruction(
-            TotalVariation2D(3.0f-2), NonNegative(; complex_handling=:real);
-            algorithm=ADMM(maxit=50), on_iteration=cb,
+            TotalVariation2D(3.0f-2), NonNegative(; complex_handling = :real);
+            algorithm = ADMM(maxit = 50), on_iteration = cb,
         );
-        verbosity=Silent(),
+        verbosity = Silent(),
     )
 
     # ADMM's iteration metrics (primal_residual/dual_residual/iterate_change) are how solver
