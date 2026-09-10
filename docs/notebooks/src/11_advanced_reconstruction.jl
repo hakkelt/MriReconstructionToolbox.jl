@@ -32,7 +32,7 @@ include("NotebookUtils.jl")
 using .NotebookUtils
 
 using MriReconstructionToolbox
-using GeometricMedicalPhantoms: create_shepp_logan_phantom, create_torso_phantom, MRISheppLoganIntensities, TissueMask
+using GeometricMedicalPhantoms: create_shepp_logan_phantom, create_tubes_phantom, MRISheppLoganIntensities, TubesIntensities, TubesMask
 using MIRTjim: jim
 using Plots
 using AbstractOperators: Hankel
@@ -227,33 +227,33 @@ println("SNR 30 dB    L2Loss NRMSE at maxit = 40:                ", round(nrmse(
 # %% [markdown]
 # #### A phantom that really is low-dimensional
 #
-# The torso phantom from `GeometricMedicalPhantoms` can be asked for one tissue at a time
-# (`TissueMask(; heart = true)` and friends), which makes it easy to build a physically meaningful
-# multi-echo series: give each tissue a $T_2$ and a proton density, and sample the decay
-# $M_0 e^{-\mathrm{TE}/T_2}$ at 24 echo times. This is a spin-echo train, the acquisition
-# T2-shuffling was designed for.
+# The tubes phantom from `GeometricMedicalPhantoms` is the natural object here: it is a physical
+# relaxometry phantom — six tubes of doped fluid in a water-filled cylinder — and each tube is one
+# compartment with one $T_2$ and one proton density. Passing a *vector* of `TubesIntensities` to
+# `create_tubes_phantom` returns one frame per element, so the whole multi-echo series is the
+# analytic spin-echo decay $M_0 e^{-\mathrm{TE}/T_2}$ evaluated per tube at 24 echo times. Seven
+# compartments, seven exponentials: a genuinely low-dimensional series, which is what this section
+# is about.
 
 # %%
 n, nt, ncoils = 96, 24, 4
 
-tissue_T2 = (lung = 60.0, heart = 50.0, bones = 20.0, body = 90.0, lv_blood = 250.0, rv_blood = 250.0)
-tissue_M0 = (lung = 0.35, heart = 0.85, bones = 0.25, body = 0.70, lv_blood = 1.0, rv_blood = 1.0)
+tube_T2 = Float64[25, 45, 70, 110, 180, 300]      # ms, one per tube (short to long)
+tube_M0 = Float64[0.55, 0.7, 0.8, 0.9, 0.95, 1.0]
+cylinder_T2, cylinder_M0 = 500.0, 0.25            # the surrounding water bath
 
 TE = collect(range(10, 240; length = nt))     # ms
 
-series = zeros(ComplexF32, n, n, nt)
-tissue_maps = Dict{Symbol, BitMatrix}()
-for tissue in keys(tissue_T2)
-    mask = create_torso_phantom(
-        n, n, :axial; fov = (40, 40), ti = TissueMask(; NamedTuple{(tissue,)}((true,))...)
-    )[:, :, 1]
-    tissue_maps[tissue] = mask
-    curve = tissue_M0[tissue] .* exp.(-TE ./ tissue_T2[tissue])
-    for k in 1:nt
-        @views series[:, :, k] .+= ComplexF32(curve[k]) .* mask
-    end
-end
-series = NamedDimsArray{(:x, :y, :time)}(series)
+echo_intensities = [
+    TubesIntensities(;
+            outer_cylinder = cylinder_M0 * exp(-te / cylinder_T2),
+            tube_wall = 0.0,
+            tube_fillings = tube_M0 .* exp.(-te ./ tube_T2),
+        ) for te in TE
+]
+series = NamedDimsArray{(:x, :y, :time)}(
+    create_tubes_phantom(n, n, :axial; ti = echo_intensities, eltype = ComplexF32)
+)
 
 side_by_side(
     unname(series)[:, :, 1], unname(series)[:, :, 8], unname(series)[:, :, 24];
@@ -263,10 +263,10 @@ side_by_side(
 
 # %%
 plot(
-    TE, [tissue_M0[t] .* exp.(-TE ./ tissue_T2[t]) for t in keys(tissue_T2)];
-    label = reshape(["$t (T2 = $(round(Int, tissue_T2[t])) ms)" for t in keys(tissue_T2)], 1, :),
-    lw = 2, xlabel = "TE (ms)", ylabel = "signal", title = "Tissue signal evolutions",
-    size = (700, 350)
+    TE, [[tube_M0[i] * exp(-te / tube_T2[i]) for te in TE] for i in eachindex(tube_T2)];
+    label = reshape(["tube $i (T2 = $(round(Int, tube_T2[i])) ms)" for i in eachindex(tube_T2)], 1, :),
+    lw = 2, xlabel = "TE (ms)", ylabel = "signal", title = "Tube signal evolutions",
+    legend = :outertopright, size = (800, 350)
 )
 
 # %% [markdown]
@@ -406,7 +406,7 @@ end
 side_by_side(
     unname(series)[:, :, 12], unname(x_cg_dyn)[:, :, 12],
     unname(subspace_recons[2])[:, :, 12], unname(subspace_recons[4])[:, :, 12];
-    titles = ("truth, echo 12", "CG, no model", "K = 2", "K = 4"), size = (1300, 340)
+    titles = ("truth, echo 12", "CG, no model", "K = 2", "K = 4")
 )
 
 # %%
@@ -420,7 +420,11 @@ difference_image(
 # not just the images — which is the point of the whole exercise for parameter mapping.
 
 # %%
-roi = tissue_maps[:heart]
+# The ROI is one tube, isolated with `TubesMask`: only the third tube's filling is selected.
+roi = create_tubes_phantom(
+    n, n, :axial;
+    ti = TubesMask(; outer_cylinder = false, tube_wall = false, tube_fillings = [i == 3 for i in 1:6])
+)[:, :, 1] .> 0
 plot(
     TE, [
         [mean(abs.(unname(series))[roi, k]) for k in 1:nt],
@@ -428,7 +432,7 @@ plot(
         [mean(abs.(unname(subspace_recons[4]))[roi, k]) for k in 1:nt],
     ];
     lw = 2, label = ["truth" "CG, no model" "K = 4 subspace"],
-    xlabel = "TE (ms)", ylabel = "mean |x| in the myocardium ROI",
+    xlabel = "TE (ms)", ylabel = "mean |x| in tube 3 (T2 = $(round(Int, tube_T2[3])) ms)",
     title = "Recovered signal evolution", size = (700, 350)
 )
 
@@ -603,7 +607,7 @@ println("SAKE (rank 25)       ", round(nrmse(x_sake, img_pi), digits = 4))
 
 side_by_side(
     x_zf, unname(x_loraks), unname(x_sake), abs.(unname(img_pi));
-    titles = ("zero-filled RSS", "LORAKS-C", "SAKE", "ground truth"), size = (1400, 350)
+    titles = ("zero-filled RSS", "LORAKS-C", "SAKE", "ground truth")
 )
 
 # %% [markdown]

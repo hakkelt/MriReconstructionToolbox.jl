@@ -41,6 +41,7 @@ using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator,
     get_sensitivity_map_operator, get_subsampling_operator
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
 using Random
+using FFTW: ifftshift
 
 Random.seed!(0)
 
@@ -165,26 +166,61 @@ AcquisitionInfo(ksp; is3D = false, shifted_image_dims = (1,))
 ksp_n = NamedDimsArray{(:kx, :ky)}(rand(ComplexF32, 64, 64))
 AcquisitionInfo(ksp_n; shifted_kspace_dims = (:kx, :ky))
 
+# %% [markdown]
+# ### The k-space-domain shift, seen
+#
+# A shift declaration changes *what the array means*, not the numbers in it, so it is only visible
+# once something acts on the data. Take the same phantom's k-space in both conventions — centred
+# (MRT's default) and DC-at-index-1 (what comes off a scanner) — and reconstruct the DC-at-index-1
+# array twice: once declaring the convention, once forgetting to. The undeclared one is not
+# slightly wrong; the missing half-array shift becomes a sign alternation in image space, which
+# wraps the object around the FOV corners.
+
 # %%
-# The shift declarations change *what the array means*, not the numbers in it, so they are
-# only visible once something acts on the data. Simulate the same phantom into k-space twice —
-# centred (MRT's default convention) and DC-at-index-1 (`shifted_kspace_dims`, the raw-scanner
-# convention) — and compare the log-magnitude k-space and the reconstructed image.
 x_shift_demo = create_shepp_logan_phantom(64, 64, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
 acq_centred = simulate_acquisition(x_shift_demo, AcquisitionInfo(nothing; is3D = false, image_size = (64, 64)))
-acq_dc1 = AcquisitionInfo(acq_centred; shifted_kspace_dims = (1, 2))
+
+# A genuinely DC-at-index-1 array: move the centre of the centred k-space to index (1, 1).
+ksp_dc1 = ifftshift(unname(acq_centred.kspace_data))
 side_by_side(
-    log1p.(abs.(acq_centred.kspace_data)), log1p.(abs.(acq_dc1.kspace_data));
-    titles = ("centred (default)", "shifted_kspace_dims=(1,2)"),
+    log1p.(abs.(unname(acq_centred.kspace_data))), log1p.(abs.(ksp_dc1));
+    titles = ("centred k-space (log|k|)", "DC at index 1 (log|k|)"),
 )
 
 # %%
-# Both reconstruct to the same image: the shift is a bookkeeping convention the Fourier
-# operator absorbs, not a transformation applied to the data twice.
-x_from_centred = get_fourier_operator(acq_centred)' * acq_centred.kspace_data
-x_from_dc1 = get_fourier_operator(acq_dc1)' * acq_dc1.kspace_data
-side_by_side(x_from_centred, x_from_dc1; titles = ("from centred k-space", "from shifted_kspace_dims"))
-println("difference: ", nrmse(x_from_dc1, x_from_centred))
+acq_dc1_declared = AcquisitionInfo(ksp_dc1; is3D = false, shifted_kspace_dims = (1, 2))
+acq_dc1_forgotten = AcquisitionInfo(ksp_dc1; is3D = false)
+
+x_declared = get_fourier_operator(acq_dc1_declared)' * acq_dc1_declared.kspace_data
+x_forgotten = get_fourier_operator(acq_dc1_forgotten)' * acq_dc1_forgotten.kspace_data
+x_centred = get_fourier_operator(acq_centred)' * acq_centred.kspace_data
+
+side_by_side(
+    x_centred, x_declared, x_forgotten;
+    titles = ("centred data", "DC-at-1, declared", "DC-at-1, undeclared"),
+)
+println("declared vs. centred:   ", round(nrmse(x_declared, x_centred), digits = 6))
+println("undeclared vs. centred: ", round(nrmse(x_forgotten, x_centred), digits = 4))
+
+# %% [markdown]
+# ### The image-domain shift, seen
+#
+# `shifted_image_dims` is the mirror statement: the *image* the data corresponds to is centred at
+# index 1 along those dimensions rather than in the middle. Declaring it on data that is in fact
+# centred moves the reconstructed object by half the FOV — which is exactly the artefact the
+# declaration exists to undo when the data really does have that convention.
+
+# %%
+acq_img_shift = AcquisitionInfo(acq_centred; shifted_image_dims = (1,))
+x_img_shift = get_fourier_operator(acq_img_shift)' * acq_img_shift.kspace_data
+
+acq_img_shift_both = AcquisitionInfo(acq_centred; shifted_image_dims = (1, 2))
+x_img_shift_both = get_fourier_operator(acq_img_shift_both)' * acq_img_shift_both.kspace_data
+
+side_by_side(
+    x_centred, x_img_shift, x_img_shift_both;
+    titles = ("no image shift", "shifted_image_dims=(1,)", "shifted_image_dims=(1,2)"),
+)
 
 # %% [markdown]
 # ## 5. What the validation catches

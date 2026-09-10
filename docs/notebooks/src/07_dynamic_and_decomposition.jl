@@ -219,8 +219,7 @@ frame = 8
 side_by_side(
     unname(series)[:, :, frame], unname(x_dyn_direct)[:, :, frame],
     unname(x_tf)[:, :, frame], unname(x_ttv)[:, :, frame];
-    titles = ("truth", "direct", "temporal Fourier", "temporal TV"),
-    size = (1250, 330)
+    titles = ("truth", "direct", "temporal Fourier", "temporal TV")
 )
 
 # %% [markdown]
@@ -255,8 +254,7 @@ column = 34
 profile(x) = abs.(unname(x))[:, column, :]
 side_by_side(
     profile(series), profile(x_dyn_direct), profile(x_tf), profile(x_ttv);
-    titles = ("truth", "direct", "temporal Fourier", "temporal TV"),
-    size = (1250, 300)
+    titles = ("truth", "direct", "temporal Fourier", "temporal TV")
 )
 
 # %% [markdown]
@@ -338,8 +336,7 @@ report("LocallyLowRank, random", x_llr_shift)
 side_by_side(
     unname(x_lr)[:, :, frame], unname(x_llr)[:, :, frame],
     unname(x_llr_shift)[:, :, frame], unname(x_mslr)[:, :, frame];
-    titles = ("LowRank", "LocallyLowRank", "LLR, random grid", "MultiScaleLowRank"),
-    size = (1250, 330)
+    titles = ("LowRank", "LocallyLowRank", "LLR, random grid", "MultiScaleLowRank")
 )
 
 # %%

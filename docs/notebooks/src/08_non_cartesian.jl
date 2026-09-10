@@ -43,6 +43,7 @@ using Plots
 using NamedDims
 using LinearAlgebra
 using Random
+using Printf: @printf
 
 Random.seed!(0)
 
@@ -91,13 +92,20 @@ function traj_scatter(traj; title = "", kwargs...)
     )
 end
 
-function traj_scatter3d(traj; title = "", kwargs...)
+# Colour each kz shell separately: with one colour for the whole cloud the discrete partitions of
+# a stack-of-stars trajectory are impossible to tell from a continuous 3D distribution.
+function traj_scatter3d(traj; title = "", by_kz = false, kwargs...)
     t = reshape(unname(traj), size(traj, 1), :)   # flatten sample/spoke/partition axes
-    return scatter(
-        t[1, :], t[2, :], t[3, :];
-        markersize = 1.0, markerstrokewidth = 0, legend = false,
-        xlabel = "kx", ylabel = "ky", zlabel = "kz", title, kwargs...
-    )
+    p = plot(; xlabel = "kx", ylabel = "ky", zlabel = "kz", title, legend = false, kwargs...)
+    if by_kz
+        for (i, kz) in enumerate(sort(unique(t[3, :])))
+            sel = t[3, :] .== kz
+            scatter!(p, t[1, sel], t[2, sel], t[3, sel]; markersize = 1.2, markerstrokewidth = 0, color = i)
+        end
+    else
+        scatter!(p, t[1, :], t[2, :], t[3, :]; markersize = 1.0, markerstrokewidth = 0)
+    end
+    return p
 end
 
 plot(
@@ -106,7 +114,7 @@ plot(
     traj_scatter(traj_tiny; title = "radial, tiny golden angle"),
     traj_scatter(traj_spiral_a; title = "spiral, archimedean"),
     traj_scatter(traj_spiral_vd; title = "spiral, variable density");
-    layout = (1, 5), size = (1650, 350)
+    layout = grid_layout(5), size = (1050, 700)
 )
 
 # %%
@@ -114,7 +122,7 @@ plot(
 # radial in-plane and Cartesian through-plane (the discrete kz "shells"), while kooshball spokes
 # point quasi-uniformly over the whole sphere.
 plot(
-    traj_scatter3d(traj_sos; title = "stack of stars (6 partitions)"),
+    traj_scatter3d(traj_sos; title = "stack of stars (6 partitions)", by_kz = true),
     traj_scatter3d(traj_koosh; title = "kooshball");
     layout = (1, 2), size = (1000, 480)
 )
@@ -256,8 +264,10 @@ nspokes_us = 32
 traj_us = unname(traj)[:, :, 1:nspokes_us]
 acq_us = AcquisitionInfo(; trajectory = traj_us, image_size = (nx, ny), sensitivity_maps = smaps)
 data_us = simulate_acquisition(x_true, acq_us)
-println("spokes: ", nspokes_us, "  (acceleration ≈ ",
-    round(ceil(π / 2 * nx) / nspokes_us, digits = 1), "× relative to radial Nyquist)")
+println(
+    "spokes: ", nspokes_us, "  (acceleration ≈ ",
+    round(ceil(π / 2 * nx) / nspokes_us, digits = 1), "× relative to radial Nyquist)"
+)
 
 x_us_adj = reconstruct(density_compensation(data_us); verbosity = Silent())
 x_us_tv = reconstruct(data_us, IterativeReconstruction(TotalVariation2D(2.0f-3); maxit = 60); verbosity = Silent())
@@ -311,11 +321,23 @@ for s in 1:Nspokes
     traj_gd_wrong[2, :, s] .+= delay_true[2] * sin(angles[s])
 end
 
-plot(
-    traj_scatter(NamedDimsArray{(:coord, :sample, :spoke)}(traj_gd_true[:, :, 1:6]); title = "true trajectory (first 6 spokes)"),
-    traj_scatter(NamedDimsArray{(:coord, :sample, :spoke)}(traj_gd_wrong[:, :, 1:6]); title = "delay-biased trajectory (first 6 spokes)");
-    layout = (1, 2), size = (800, 380)
+# A gradient delay of a few hundredths of a k-space unit is invisible in a full-extent scatter of
+# the two trajectories: they overlap to within a marker width. Two views that do show it — a zoom
+# on the k-space centre, where the two point sets separate, and the displacement itself, spoke by
+# spoke.
+p_zoom = plot(; aspect_ratio = 1, xlabel = "kx", ylabel = "ky", title = "k-space centre, zoomed", legend = :outertopright)
+for sp in 1:6
+    scatter!(p_zoom, traj_gd_true[1, :, sp], traj_gd_true[2, :, sp]; markersize = 3, markerstrokewidth = 0, color = 1, label = sp == 1 ? "true" : "")
+    scatter!(p_zoom, traj_gd_wrong[1, :, sp], traj_gd_wrong[2, :, sp]; markersize = 3, markerstrokewidth = 0, marker = :xcross, color = 2, label = sp == 1 ? "delay-biased" : "")
+end
+plot!(p_zoom; xlim = (-0.08, 0.08), ylim = (-0.08, 0.08))
+
+p_shift = plot(
+    rad2deg.(angles), [delay_true[1] .* cos.(angles) delay_true[2] .* sin.(angles)];
+    lw = 2, label = ["dkx (delay in x)" "dky (delay in y)"], xlabel = "spoke angle (deg)",
+    ylabel = "trajectory displacement", title = "delay-induced shift per spoke", legend = :outertopright
 )
+plot(p_zoom, p_shift; layout = (1, 2), size = (1000, 400))
 
 # %% [markdown]
 # Samples are truly acquired at `traj_gd_true` (the object does not know about the delay); a
@@ -392,12 +414,16 @@ delays_ring = estimate_gradient_delays(acq_ring; method = RING())
 println("true (Sxx, Syy, Sxy) = ", (Sxx, Syy, Sxy))
 println("RING estimate        = ", map(v -> round(v, digits = 4), delays_ring))
 
-bar(
-    ["Sxx", "Syy", "Sxy"], [Sxx, Syy, Sxy];
-    label = "true", alpha = 0.6, xlabel = "delay component", ylabel = "value",
-    title = "RING: true vs. estimated", size = (450, 320)
+@printf("%-6s %10s %10s %10s\n", "", "Sxx", "Syy", "Sxy")
+@printf("%-6s %10.4f %10.4f %10.4f\n", "true", Sxx, Syy, Sxy)
+@printf("%-6s %10.4f %10.4f %10.4f\n", "RING", delays_ring.dx, delays_ring.dy, delays_ring.dxy)
+
+# What the estimate is worth is the trajectory it produces, not the three numbers themselves:
+acq_ring_fixed = correct_gradient_delays(acq_ring; method = RING())
+@printf(
+    "trajectory error vs. true: %.4f before correction, %.4f after\n",
+    norm(traj_ring_wrong - traj_gd_true), norm(unname(acq_ring_fixed.trajectory) - traj_gd_true)
 )
-bar!(["Sxx", "Syy", "Sxy"], [delays_ring.dx, delays_ring.dy, delays_ring.dxy]; label = "RING estimate", alpha = 0.6, bar_width = 0.4)
 
 # %%
 # Correction is refused on Cartesian data — there is no trajectory to correct.

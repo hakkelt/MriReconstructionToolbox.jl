@@ -22,11 +22,17 @@
 # $$ \min_x \tfrac12\|\mathcal{A}x - y\|_2^2 + \sum_i \lambda_i R_i(x) $$
 #
 # and this notebook walks through every regularizer $R_i$ the package offers on one synthetic
-# 2D problem, plus the 3D variants. Each section states the penalty, cites the paper it comes
-# from, and says how the same idea is reached in another toolbox (BART's `-R` flag, SigPy, or
-# RegularizedLeastSquares.jl) — see `docs/src/high-level/regularization.md` for the full
-# reference list and a "Choosing a regularizer" table. Temporal and low-rank terms have a
-# notebook of their own (`07_dynamic_and_decomposition.ipynb`) because they need a dynamic series.
+# 2D problem, plus the 3D variants. Every regularizer below is presented the same way:
+#
+# - **Problem** — the optimization problem this term actually poses, written out in full.
+# - **Description** — what it does, and what it is good and bad at.
+# - **References** — where it comes from.
+# - **Availability in other toolboxes** — how the same idea is reached in BART, SigPy and
+#   MRIReco.jl (whose regularizers come from RegularizedLeastSquares.jl).
+#
+# See `docs/src/high-level/regularization.md` for the full reference list and a "Choosing a
+# regularizer" table. Temporal and low-rank terms have a notebook of their own
+# (`07_dynamic_and_decomposition.ipynb`) because they need a dynamic series.
 #
 # **Contents**
 # 1. The common test problem
@@ -94,18 +100,24 @@ end
 #
 # ### `L2Image` (Tikhonov)
 #
-# $$ \lambda\|x\|_2^2 $$
+# **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 + \lambda\|x\|_2^2$
 #
-# Quadratic, smooth, solvable with conjugate gradient — the standard regularized-SENSE baseline.
-# `Tikhonov` is an exported alias for the same type. Fessler, *Model-based image reconstruction
-# for MRI*, IEEE Signal Processing Magazine 27(4), 81–89 (2010), covers the quadratic penalty
-# alongside the edge-preserving one below. It is BART's `-R Q`, SigPy's `L2Reg`, and
-# RegularizedLeastSquares.jl's `L2Regularization`.
+# **Description:** Quadratic, smooth, solvable with conjugate gradient — the standard
+# regularized-SENSE baseline, and the only term here that needs no proximal step at all.
+# `Tikhonov` is an exported alias for the same type. Its strength is speed and predictability: the
+# problem stays a linear system, so there is nothing to tune but λ. Its weakness is that it
+# penalizes edges exactly as hard as noise, so noise suppression and resolution are traded one for
+# one — too small barely regularizes (the NRMSE floor is the aliasing/noise level of the direct
+# reconstruction), too large smooths away the anatomy along with the noise. The two λ below are
+# chosen so the difference is visible at a glance, not just in the NRMSE number.
 #
-# λ trades noise suppression for detail directly: too small barely regularizes at all (the NRMSE
-# floor here is essentially the aliasing/noise level of the direct reconstruction), too large
-# smooths away the anatomy along with the noise. The two λ below are chosen so the difference is
-# visible at a glance, not just in the NRMSE number.
+# **References:** Fessler, *Model-based image reconstruction for MRI*, IEEE Signal Processing
+# Magazine 27(4), 81–89 (2010), covers the quadratic penalty alongside the edge-preserving one
+# below.
+#
+# **Availability in other toolboxes:** BART — `pics -R Q:λ` (ℓ₂ in image domain), or `-l2 -r λ`.
+# SigPy — `sigpy.prox.L2Reg`, or `sigpy.mri.app.SenseRecon(..., lamda=λ)`. MRIReco.jl —
+# `L2Regularization(λ)`, the default `reg` of its CG-SENSE solver.
 
 # %%
 x_l2_good = show_recon(IterativeReconstruction(L2Image(1.0f-4); maxit = 40), "L2Image λ=1e-4 (well chosen)")
@@ -116,20 +128,28 @@ x_l2_over = show_recon(IterativeReconstruction(L2Image(1.0f0); maxit = 40), "L2I
 x_l2_over_scaled = x_l2_over .* (maximum(abs, x_l2_good) / maximum(abs, x_l2_over))
 side_by_side(
     x_l2_good, x_l2_over_scaled;
-    titles = ("λ = 1e-4 (well chosen)\nNRMSE $(round(nrmse1(x_l2_good), digits = 3))",
-        "λ = 1e0 (over-regularized)\nNRMSE $(round(nrmse1(x_l2_over), digits = 3))"),
+    titles = (
+        "λ = 1e-4 (well chosen)\nNRMSE $(round(nrmse1(x_l2_good), digits = 3))",
+        "λ = 1e0 (over-regularized)\nNRMSE $(round(nrmse1(x_l2_over), digits = 3))",
+    ),
 )
 
 # %% [markdown]
 # ### `L1Image`
 #
-# $$ \lambda\|x\|_1 $$
+# **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 + \lambda\|x\|_1$
 #
-# Sparsity of the image itself. Right for genuinely sparse objects (angiography), too aggressive
-# for anatomy. Lustig, Donoho & Pauly, *Sparse MRI: The application of compressed sensing for
+# **Description:** Sparsity of the image itself, enforced by soft thresholding. Right for
+# genuinely sparse objects — angiography, where most of the FOV is background — and too aggressive
+# for anatomy, where it eats low-contrast tissue along with the noise. It also biases the
+# amplitudes it keeps downward by λγ, which §5's ℓ₀ terms exist to avoid.
+#
+# **References:** Lustig, Donoho & Pauly, *Sparse MRI: The application of compressed sensing for
 # rapid MR imaging*, Magnetic Resonance in Medicine 58(6), 1182–1195 (2007), is the reference for
-# ℓ₁ sparsity penalties in MRI generally. It is BART's `-R I`, SigPy's `L1Reg`, and
-# RegularizedLeastSquares.jl's `L1Regularization`.
+# ℓ₁ sparsity penalties in MRI generally.
+#
+# **Availability in other toolboxes:** BART — `pics -R I:λ`. SigPy — `sigpy.prox.L1Reg`.
+# MRIReco.jl — `L1Regularization(λ)`.
 
 # %%
 x_l1 = show_recon(IterativeReconstruction(L1Image(5.0f-3); maxit = 40), "L1Image λ=5e-3")
@@ -140,13 +160,21 @@ jim(x_l1; title = "L1Image", size = (400, 350))
 #
 # ### `L1Wavelet2D`
 #
-# $$ \lambda\|\mathcal{W}x\|_1 $$
+# **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 + \lambda\|\mathcal{W}x\|_1$
 #
-# The compressed-sensing default: anatomy is sparse in a wavelet basis. Lustig, Donoho & Pauly
-# (2007), cited above, is the paper that popularized this combination for MRI. It is BART's
-# `-R W` and SigPy's `L1WaveletRecon`; RegularizedLeastSquares.jl has no dedicated wavelet type —
-# the same term is `L1Regularization` composed with a wavelet `regTrafo`. `get_operator` gives
-# the transform itself, which is worth looking at.
+# **Description:** The compressed-sensing default: anatomy is compressible in a wavelet basis, so
+# an ℓ₁ penalty on the coefficients removes incoherent aliasing while keeping edges. Cheap
+# (an orthogonal transform, so the prox is exact soft thresholding of the coefficients) and robust
+# across anatomies; its weakness is the blocky, texture-suppressing look at high λ, and a
+# dependence on the wavelet family and level count shown below. `get_operator` gives the transform
+# itself, which is worth looking at.
+#
+# **References:** Lustig, Donoho & Pauly (2007), cited above, is the paper that popularized this
+# combination for MRI.
+#
+# **Availability in other toolboxes:** BART — `pics -R W:7:0:λ` (the first number selects the
+# transformed dimensions). SigPy — `sigpy.mri.app.L1WaveletRecon`. MRIReco.jl — no dedicated
+# wavelet type; the same term is `L1Regularization` with a wavelet `regTrafo`.
 
 # %%
 reg_w = L1Wavelet2D(2.0f-3)
@@ -174,14 +202,20 @@ jim(
 # %% [markdown]
 # ### `L1Contourlet`
 #
-# $$ \lambda\|\mathcal{C}x\|_1 $$
+# **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 + \lambda\|\mathcal{C}x\|_1$
 #
-# The nonsubsampled contourlet transform is directional: elongated, oriented structures (vessels,
-# fibres) need fewer coefficients than in a wavelet basis. It is more expensive per iteration.
-# da Cunha, Zhou & Do, *The nonsubsampled contourlet transform: theory, design, and
-# applications*, IEEE Transactions on Image Processing 15(10), 3089–3101 (2006), is the transform
-# this term sparsifies in. None of BART, SigPy or RegularizedLeastSquares.jl ships a contourlet
-# regularizer — no direct equivalent.
+# **Description:** The nonsubsampled contourlet transform is directional: elongated, oriented
+# structures — vessels, fibres, sharp curved boundaries — need far fewer coefficients than in a
+# wavelet basis, so at the same λ they survive better. The costs are real: the transform is
+# redundant (a stack of directional subbands rather than a basis), so it is several times more
+# expensive per iteration and uses more memory. The bands shown below are what the penalty acts
+# on — coarse approximation first, then increasingly fine directional detail.
+
+# **References:** da Cunha, Zhou & Do, *The nonsubsampled contourlet transform: theory, design,
+# and applications*, IEEE Transactions on Image Processing 15(10), 3089–3101 (2006).
+#
+# **Availability in other toolboxes:** none of BART, SigPy or MRIReco.jl ships a contourlet
+# regularizer — no direct equivalent anywhere else.
 
 # %%
 reg_c = L1Contourlet(2.0f-3)
@@ -192,17 +226,28 @@ println("contourlet stack: ", size(bands))
 x_cont = show_recon(IterativeReconstruction(reg_c; maxit = 30), "L1Contourlet λ=2e-3")
 nbands = size(bands, 3)
 band_idx = unique(round.(Int, range(1, nbands; length = min(4, nbands))))
+rows_c, cols_c = grid_layout(length(band_idx) + 1)
 jim(
     (jim(bands[:, :, b]; title = "band $b/$nbands") for b in band_idx)...,
     jim(x_cont; title = "L1Contourlet reconstruction");
-    layout = (1, length(band_idx) + 1), size = (250 * (length(band_idx) + 1), 300)
+    layout = (rows_c, cols_c), size = (330 * cols_c, 330 * rows_c)
 )
 
 # %% [markdown]
 # ### 3D: `L1Wavelet3D`
 #
-# Same penalty $\lambda\|\mathcal{W}_{3D}x\|_1$ as `L1Wavelet2D`, over volumes and multi-slice
-# stacks. Same references and toolbox equivalents as `L1Wavelet2D` above.
+# **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 + \lambda\|\mathcal{W}_{3D}x\|_1$
+#
+# **Description:** The same penalty as `L1Wavelet2D` with a three-dimensional transform, for
+# volumes and multi-slice stacks. It exploits correlation between neighbouring slices, so at the
+# same λ it is stronger than a per-slice 2D transform on a genuine volume — and worse than one on
+# a stack of unrelated slices.
+#
+# **References:** as `L1Wavelet2D` above.
+#
+# **Availability in other toolboxes:** BART — the same `-R W` with the 3D dimension flags set
+# (`-R W:7:0:λ`). SigPy — `L1WaveletRecon` over a 3D image shape. MRIReco.jl — `L1Regularization`
+# with a 3D wavelet `regTrafo`.
 
 # %%
 x3d = create_shepp_logan_phantom(64, 64, 32; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
@@ -224,16 +269,24 @@ jim(x3d_wav[:, :, 9:4:29]; title = "L1Wavelet3D, four slices", nrow = 1, size = 
 #
 # ### `TotalVariation2D`
 #
-# $$ \lambda\sum_{\text{pixels}} \|\nabla x\|_2 $$
+# **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 +
+# \lambda\sum_{\text{pixels}} \|\nabla x\|_2$
 #
-# The isotropic gradient magnitude, summed over pixels — favouring piecewise-constant images,
-# strong edge preservation, at the price of a cartoon-like ("staircasing") appearance if λ is too
-# large. Block, Uecker & Frahm, *Undersampled radial MRI with multiple coils: Iterative image
-# reconstruction using a total variation constraint*, Magnetic Resonance in Medicine 57(6),
-# 1086–1098 (2007), is the MRI-specific reference. It is BART's `-R T`, SigPy's
-# `TotalVariationRecon`; RegularizedLeastSquares.jl has no dedicated `TVRegularization` path for
-# this — its own docs recommend `L1Regularization` with a `GradientOp` transform instead, because
-# the alternative (`TVRegularization` as `reg`) routes through an inexact nested dual solve.
+# **Description:** The isotropic gradient magnitude, summed over pixels. It favours
+# piecewise-constant images, which is why it preserves edges better than any of the terms above —
+# and why, at too large a λ, it renders smooth intensity variation as a flight of steps
+# (*staircasing*), the artefact the second-order terms below exist to remove. The finite-difference
+# operator is not tight, so this term cannot be composed into a single proximal map: MRT solves it
+# with ADMM rather than FISTA.
+#
+# **References:** Block, Uecker & Frahm, *Undersampled radial MRI with multiple coils: Iterative
+# image reconstruction using a total variation constraint*, Magnetic Resonance in Medicine 57(6),
+# 1086–1098 (2007).
+#
+# **Availability in other toolboxes:** BART — `pics -R T:7:0:λ`. SigPy —
+# `sigpy.mri.app.TotalVariationRecon`. MRIReco.jl — `TVRegularization(λ)`, though its own docs
+# recommend `L1Regularization` with a `GradientOp` transform instead, because `TVRegularization`
+# routes through an inexact nested dual solve.
 
 # %%
 reg_tv = TotalVariation2D(1.0f-3)
@@ -251,27 +304,40 @@ jim(
 # %% [markdown]
 # ### Second-order TV and TGV
 #
-# First-order TV, $\lambda\|\nabla x\|$, charges a smooth intensity ramp; second-order TV,
-# $\lambda\|\nabla^2 x\|$, does not, but blurs jumps. `TotalGeneralizedVariation2D` makes the
-# trade-off adaptively per voxel through an auxiliary vector field $w$,
+# **Problem:** second-order TV adds the term as written,
 #
-# $$ \min_w \ \alpha_1\|\nabla x - w\|_1 + \alpha_0\|\mathcal{E}w\|_1 $$
+# $$ \min_x \ \tfrac12\|\mathcal{A}x - y\|_2^2 + \lambda_1\|\nabla x\|_1
+#    + \lambda_2\|\nabla^2 x\|_1, $$
 #
-# with $\mathcal{E}$ the symmetrized gradient — it needs ADMM (the auxiliary field is coupled to
-# $x$ through $\nabla x - w$, which the proximal-gradient algorithms cannot separate), and
-# roughly doubles the unknowns. This section pins `algorithm = ADMM()` for exactly that reason —
-# neither TV+TV² nor TGV admits a plain ISTA/FISTA step.
+# while TGV introduces an auxiliary vector field $w$ and minimizes over both variables:
 #
-# Bredies, Kunisch & Pock, *Total generalized variation*, SIAM Journal on Imaging Sciences 3(3),
-# 492–526 (2010) introduces TGV; Knoll, Bredies, Pock & Stollberger, *Second order total
-# generalized variation (TGV) for MRI*, Magnetic Resonance in Medicine 65(2), 480–491 (2011)
-# applies it to reconstruction. It is BART's `-R G`; neither SigPy nor RegularizedLeastSquares.jl
-# ships a TGV term — no direct equivalent there.
+# $$ \min_{x, w} \ \tfrac12\|\mathcal{A}x - y\|_2^2
+#    + \alpha_1\|\nabla x - w\|_1 + \alpha_0\|\mathcal{E}w\|_1 $$
+#
+# with $\mathcal{E}$ the symmetrized gradient.
+#
+# **Description:** First-order TV charges a smooth intensity ramp; second-order TV does not, but
+# blurs jumps. TGV makes that trade-off adaptively per voxel: where $w \approx \nabla x$ the
+# penalty falls on $\mathcal{E}w$ and the region is allowed to be smooth, where $w \approx 0$ it
+# falls on $\nabla x$ and the region is allowed a jump. The cost is roughly twice the unknowns and
+# a coupled problem: $w$ is tied to $x$ through $\nabla x - w$, which proximal-gradient algorithms
+# cannot separate, so both this and TV+TV² pin `algorithm = ADMM()` below.
+#
+# **References:** Bredies, Kunisch & Pock, *Total generalized variation*, SIAM Journal on Imaging
+# Sciences 3(3), 492–526 (2010), introduces TGV; Knoll, Bredies, Pock & Stollberger, *Second order
+# total generalized variation (TGV) for MRI*, Magnetic Resonance in Medicine 65(2), 480–491 (2011),
+# applies it to reconstruction.
+#
+# **Availability in other toolboxes:** BART — `pics -R G:7:0:λ` for TGV (and `-R C` / `-R V` for
+# the infimal-convolution variants of notebook 7 §5). Neither SigPy nor MRIReco.jl ships a TGV
+# term — no direct equivalent there.
 
 # %%
 x_tv2 = show_recon(
-    IterativeReconstruction(TotalVariation2D(1.0f-3), SecondOrderTotalVariation2D(2.0f-3);
-        algorithm = ADMM(), maxit = 60),
+    IterativeReconstruction(
+        TotalVariation2D(1.0f-3), SecondOrderTotalVariation2D(2.0f-3);
+        algorithm = ADMM(), maxit = 60
+    ),
     "TV + second-order TV"
 )
 
@@ -290,17 +356,26 @@ jim(
 # %% [markdown]
 # ### `EdgePreservingRoughness2D` (Huber)
 #
-# $$ \lambda \sum_{\text{pixels}} \phi_\delta(\nabla x), \qquad
-#    \phi_\delta(t) = \begin{cases} t^2 & |t| \le \delta \\ 2\delta|t| - \delta^2 & |t| > \delta \end{cases} $$
+# **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 +
+# \lambda \sum_{\text{pixels}} \phi_\delta(\nabla x)$, with
 #
-# A smooth interpolation between a quadratic roughness penalty and TV: differences below `δ` are
-# treated as noise and smoothed quadratically, those above are preserved. Being differentiable
-# everywhere, it needs no proximal step. `δ` is an absolute intensity — a good recipe is a low
-# percentile of the finite differences of a preliminary reconstruction. Charbonnier, Blanc-Féraud,
-# Aubert & Barlaud, *Deterministic edge-preserving regularization in computed imaging*, IEEE
-# Transactions on Image Processing 6(2), 298–311 (1997), is the Huber-type potential this
-# implements; Fessler (2010), cited above, is the model-based-MRI application. None of BART,
-# SigPy or RegularizedLeastSquares.jl ships this potential — no direct equivalent.
+# $$ \phi_\delta(t) = \begin{cases} t^2 & |t| \le \delta \\ 2\delta|t| - \delta^2 & |t| > \delta \end{cases} $$
+#
+# **Description:** A smooth interpolation between a quadratic roughness penalty and TV:
+# differences below `δ` are treated as noise and smoothed quadratically, those above are preserved
+# like TV. Being differentiable everywhere it needs no proximal step at all, so a plain gradient
+# method solves it and there is no staircasing — the reason to prefer it over TV when the object
+# has genuine smooth gradients. The price is a second parameter: `δ` is an absolute intensity, and
+# a good recipe is a low percentile of the finite differences of a preliminary reconstruction, as
+# below.
+#
+# **References:** Charbonnier, Blanc-Féraud, Aubert & Barlaud, *Deterministic edge-preserving
+# regularization in computed imaging*, IEEE Transactions on Image Processing 6(2), 298–311 (1997),
+# is the Huber-type potential this implements; Fessler (2010), cited above, is the
+# model-based-MRI application.
+#
+# **Availability in other toolboxes:** none of BART, SigPy or MRIReco.jl ships this potential — no
+# direct equivalent.
 
 # %%
 using Statistics: quantile
@@ -318,8 +393,14 @@ jim(x_huber; title = "Huber roughness penalty", size = (400, 350))
 # %% [markdown]
 # ### 3D total variation
 #
-# Same penalty as `TotalVariation2D`, over all three spatial dimensions; same references and
-# toolbox equivalents.
+# **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 +
+# \lambda\sum_{\text{voxels}} \|\nabla_{3D} x\|_2$
+#
+# **Description:** the same penalty as `TotalVariation2D` with the gradient taken over all three
+# spatial dimensions, so through-plane structure is regularized too.
+#
+# **References and availability in other toolboxes:** as `TotalVariation2D` above (BART's
+# `-R T` flags carry the dimension set, so the 3D form is the same option).
 
 # %%
 x3d_tv = reconstruct(data3d, IterativeReconstruction(TotalVariation3D(1.0f-3); maxit = 30); verbosity = Silent())
@@ -329,24 +410,33 @@ jim(x3d_tv[:, :, 9:4:29]; title = "TotalVariation3D, four slices", nrow = 1, siz
 # %% [markdown]
 # ## 5. Non-convex sparsity
 #
-# $$ \lambda\|\mathcal{W}x\|_0 \qquad \text{or, as a constraint,} \qquad \|\mathcal{W}x\|_0 \le n $$
+# **Problem:** in the penalty form,
 #
-# $\ell_1$ shrinks the coefficients it keeps, so intensities are systematically underestimated.
-# Hard thresholding does not shrink — at the price of non-convexity, which makes the result
-# depend on the starting image. Warm-starting from the $\ell_1$ solution is the standard recipe;
-# note the threshold is `sqrt(2γλ)` rather than `γλ`, so an ℓ₁ λ carried over gives a completely
-# different sparsity level and has to be retuned. Blumensath & Davies, *Iterative hard
-# thresholding for compressed sensing*, Applied and Computational Harmonic Analysis 27(3),
-# 265–274 (2009), is the algorithm both the penalty form (`threshold`) and constraint form
-# (`count`) come from. `L0Image`'s threshold form is BART's `-R H`; `L0Wavelet2D`'s threshold
-# form is BART's `-R N` (NIHT on wavelet coefficients). Neither SigPy nor
-# RegularizedLeastSquares.jl ships a hard-thresholding regularizer — no direct equivalent there.
-# The `count` constraint form has no BART/SigPy/RegularizedLeastSquares.jl equivalent either; it
-# is the sparsity analogue of [`RankLimit`](@ref) — see `docs/src/high-level/regularization.md`.
+# $$ \min_x \ \tfrac12\|\mathcal{A}x - y\|_2^2 + \lambda\|\mathcal{W}x\|_0, $$
 #
-# On this phantom the ℓ₁ solution stays ahead on NRMSE — the argument for the ℓ₀ terms is
-# unbiased amplitudes (lesion or vessel intensities that are not systematically shrunk), not a
-# better global error.
+# and in the constraint form, which is how the `count` variant is stated,
+#
+# $$ \min_x \ \tfrac12\|\mathcal{A}x - y\|_2^2
+#    \quad \text{subject to} \quad \|\mathcal{W}x\|_0 \le n. $$
+#
+# **Description:** $\ell_1$ shrinks the coefficients it keeps, so intensities come out
+# systematically underestimated. Hard thresholding keeps or kills a coefficient and never shrinks
+# it — unbiased amplitudes, which for a lesion or a vessel is the quantity of interest. The price
+# is non-convexity: the result depends on the starting image, so warm-starting from the $\ell_1$
+# solution is the standard recipe (and is what the cells below do). Note the threshold is
+# `sqrt(2γλ)` rather than `γλ`, so an ℓ₁ λ carried over gives a completely different sparsity
+# level and has to be retuned. On this phantom the ℓ₁ solution stays ahead on NRMSE — the argument
+# for the ℓ₀ terms is the unbiased amplitude, not a better global error.
+#
+# **References:** Blumensath & Davies, *Iterative hard thresholding for compressed sensing*,
+# Applied and Computational Harmonic Analysis 27(3), 265–274 (2009), is the algorithm both the
+# penalty form (`threshold`) and the constraint form (`count`) come from.
+#
+# **Availability in other toolboxes:** BART — `pics -R N:7:0:λ` is NIHT in the image domain
+# (`L0Image`) and `-R H:7:0:λ` is NIHT on wavelet coefficients (`L0Wavelet2D`). Neither SigPy nor
+# MRIReco.jl ships a hard-thresholding regularizer. The `count` constraint form has no equivalent
+# in any of the three; it is the sparsity analogue of `RankLimit` — see
+# `docs/src/high-level/regularization.md`.
 
 # %%
 x_hard = show_recon(
@@ -370,15 +460,31 @@ jim(
 # %% [markdown]
 # ## 6. Plug-and-play priors
 #
-# `PlugAndPlay` uses any callable `denoiser(image, σ)` as the proximal operator, i.e. as an
-# implicit image prior — there is no explicit penalty $R(x)$ to write down, only its proximal
-# operator, $\mathrm{prox}_{\gamma R}(x) = \mathrm{denoiser}(x, \sigma)$. Venkatakrishnan, Bouman
-# & Wohlberg, *Plug-and-play priors for model based reconstruction*, Proc. IEEE GlobalSIP,
-# 945–948 (2013), introduces the idea; Ahmad, Bouman, Buzzard et al., *Plug-and-play methods for
-# magnetic resonance imaging*, IEEE Signal Processing Magazine 37(1), 105–116 (2020), surveys it
-# for MRI specifically. RegularizedLeastSquares.jl has a matching `PlugAndPlayRegularization`;
-# BART also has one (`-R TF`), but restricted to a denoiser exported as a TensorFlow model — a
-# narrower interface than MRT's "any callable" one. SigPy ships no plug-and-play regularizer.
+# **Problem:** there is no explicit penalty to write down. The problem solved is
+#
+# $$ \min_x \ \tfrac12\|\mathcal{A}x - y\|_2^2 + R(x) $$
+#
+# where $R$ is known *only* through its proximal operator,
+# $\mathrm{prox}_{\gamma R}(x) = \mathrm{denoiser}(x, \sigma)$ — the algorithm never needs
+# $R$ itself, only that step.
+#
+# **Description:** `PlugAndPlay` uses any callable `denoiser(image, σ)` as that proximal operator,
+# i.e. as an implicit image prior. Its strength is that state-of-the-art denoisers (BM3D, trained
+# networks) are far better image models than any penalty anyone can write down. Its weaknesses
+# follow from the same fact: there is no objective value, so convergence cannot be checked against
+# one and line-search algorithms cannot be used; convergence is only guaranteed for denoisers with
+# properties most real ones are not proven to have; and the result depends on a denoiser that is
+# not part of the reconstruction's own mathematics.
+#
+# **References:** Venkatakrishnan, Bouman & Wohlberg, *Plug-and-play priors for model based
+# reconstruction*, Proc. IEEE GlobalSIP, 945–948 (2013), introduces the idea; Ahmad, Bouman,
+# Buzzard et al., *Plug-and-play methods for magnetic resonance imaging*, IEEE Signal Processing
+# Magazine 37(1), 105–116 (2020), surveys it for MRI.
+#
+# **Availability in other toolboxes:** MRIReco.jl — `PlugAndPlayRegularization`, which takes a
+# Julia callable, the closest match to MRT's interface. BART — `pics -R TF:{graph}:λ`, which does
+# have a plug-and-play prior but restricted to a denoiser exported as a TensorFlow model, a
+# narrower interface than "any callable". SigPy — no plug-and-play regularizer.
 #
 # No denoiser ships with MRT — BM3D or a trained network are the usual choices. To show the
 # wiring (and to check it), a soft-thresholding "denoiser" reproduces the proximal operator of
@@ -420,14 +526,20 @@ println("‖PnP − L1Image‖/‖L1Image‖ = ", round(norm(x_pnp - x_l1_ista) 
 #
 # ### `JointSparsity`
 #
-# $$ \lambda\|x\|_{2,1} = \lambda \sum_{\text{pixels}} \Big(\sum_{\text{contrasts}} |x|^2\Big)^{1/2} $$
+# **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 + \lambda\|x\|_{2,1}$, with
+# $\|x\|_{2,1} = \sum_{\text{pixels}} \big(\sum_{\text{contrasts}} |x|^2\big)^{1/2}$
 #
-# Multi-echo / multi-contrast images of the same anatomy share their edge locations. The joint
-# $\ell_{2,1}$ norm couples them so that a coefficient is either non-zero in every contrast or in
-# none. Majumdar & Ward, *Joint reconstruction of multiecho MR images using correlated
-# sparsity*, Magnetic Resonance Imaging 29(7), 899–906 (2011), is the reference. It matches
-# RegularizedLeastSquares.jl's `L21Regularization`; BART and SigPy have no dedicated joint-
-# sparsity flag.
+# **Description:** Multi-echo / multi-contrast images of the same anatomy share their edge
+# locations. The joint $\ell_{2,1}$ norm couples them so that a coefficient is either non-zero in
+# every contrast or in none, which recovers a weak contrast from the support the strong ones
+# agree on. It fails exactly when the assumption does: a structure genuinely present in one
+# contrast only is penalized as if it were noise.
+#
+# **References:** Majumdar & Ward, *Joint reconstruction of multiecho MR images using correlated
+# sparsity*, Magnetic Resonance Imaging 29(7), 899–906 (2011).
+#
+# **Availability in other toolboxes:** MRIReco.jl — `L21Regularization(λ; slices = n)`. BART and
+# SigPy — no dedicated joint-sparsity option; the ℓ₂,₁ prox would have to be supplied by hand.
 
 # %%
 # Three "echoes" of the same anatomy with different contrast: six tubes at fixed relative
@@ -457,17 +569,24 @@ jim(x_joint; title = "JointSparsity — three echoes", nrow = 1, size = (900, 30
 # %% [markdown]
 # ### `ReferencePrior`
 #
-# $$ \lambda\|x - x_{\text{ref}}\|_1 $$
+# **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 + \lambda\|x - x_{\text{ref}}\|_1
+# + \mu\|\mathcal{W}x\|_1$ — the second term is the ordinary sparsity penalty the reference
+# prior should always be paired with.
 #
-# Penalizes the difference to a known image (a temporal average, a previous exam) instead of the
-# image itself — the PICCS idea. Combine it with an ordinary sparsity term so a wrong reference
-# cannot dominate. Chen, Tang & Leng, *Prior image constrained compressed sensing (PICCS)*,
-# Medical Physics 35(2), 660–663 (2008), is the reference. None of BART, SigPy or
-# RegularizedLeastSquares.jl ships a reference-prior term — no direct equivalent; the closest
-# available building block elsewhere is a plain ℓ₁ penalty applied to a manually-formed
+# **Description:** Penalizes the difference to a known image — a temporal average, a previous exam
+# — instead of the image itself, which is the PICCS idea. Where the reference is right this is by
+# far the strongest prior available, because it constrains the *value* rather than the smoothness.
+# Where it is wrong it hallucinates the reference into the result, which is why it is combined
+# with an ordinary sparsity term so a wrong reference cannot dominate.
+#
+# **References:** Chen, Tang & Leng, *Prior image constrained compressed sensing (PICCS)*,
+# Medical Physics 35(2), 660–663 (2008).
+#
+# **Availability in other toolboxes:** none of BART, SigPy or MRIReco.jl ships a reference-prior
+# term; the closest building block elsewhere is a plain ℓ₁ penalty applied to a manually formed
 # difference image.
 #
-# `MRT` picks the solver automatically — two non-smooth terms together mean ADMM, without needing
+# MRT picks the solver automatically — two non-smooth terms together mean ADMM, without needing
 # `algorithm = ADMM()` spelled out.
 
 # %%
@@ -481,15 +600,28 @@ jim(x_piccs; title = "reference-constrained reconstruction", size = (400, 350))
 # %% [markdown]
 # ## 8. Constraints
 #
-# `NonNegative` and `BoxConstraint` are indicator functions, enforced by projection, so they
-# carry no λ:
+# **Problem:** a constraint, not a penalty — which is why these carry no λ:
 #
-# $$ R(x) = \iota_C(x) = \begin{cases} 0 & x \in C \\ +\infty & x \notin C \end{cases} $$
+# $$ \min_x \ \tfrac12\|\mathcal{A}x - y\|_2^2 \quad \text{subject to} \quad x \in C, $$
 #
-# with $C = \{x \ge 0\}$ or $C = [a, b]$. They are defined for **real-valued** images only —
-# applying them to a complex image (which is what a standard MRI reconstruction produces) throws.
-# They belong on quantitative maps and magnitude-only models. They are BART's `-R POS`, SigPy's
-# `BoxConstraint`, and RegularizedLeastSquares.jl's `PositiveRegularization`.
+# with $C = \{x \ge 0\}$ for `NonNegative` and $C = [a, b]$ for `BoxConstraint`. Internally this
+# is the indicator function $\iota_C$, whose proximal operator is the projection onto $C$.
+#
+# **Description:** Constraints encode what an image *cannot* be rather than what it should look
+# like, so unlike every penalty above they cost no accuracy where they are true: a proton density
+# or a $T_2$ map is non-negative as a matter of physics. Their natural home is quantitative maps
+# and magnitude-only models. The catch is that a standard MRI reconstruction produces a *complex*
+# image, for which "non-negative" is not defined — MRT therefore throws by default and offers
+# `complex_handling = :real` (below) to project onto the real non-negative orthant instead.
+#
+# **References:** the projection is elementary; Fessler (2010), cited above, discusses
+# non-negativity in model-based MRI reconstruction.
+#
+# **Availability in other toolboxes:** BART — `pics -R S:0:0:0` is the non-negative constraint,
+# and `pics -c` separately constrains the image to be real-valued (there is no `-R POS`). SigPy —
+# `sigpy.prox.BoxConstraint(shape, lower, upper)`, with `lower = 0` for non-negativity. MRIReco.jl
+# — `PositiveRegularization()` for non-negativity and `RealRegularization()` for the real-valued
+# constraint, both of which take the real part the way MRT's `:real` handling does.
 
 # %%
 println(NonNegative())
@@ -566,7 +698,7 @@ sweep = map(λs) do λ
     x̂ = reconstruct(data, IterativeReconstruction(L1Wavelet2D(λ); maxit = 40); verbosity = Silent())
     jim(x̂; title = "λ = $λ\nNRMSE $(round(nrmse1(x̂), digits = 3))")
 end
-jim(sweep...; layout = (1, 4), size = (1300, 320))
+jim(sweep...; layout = grid_layout(length(sweep)), size = (1000, 660))
 
 # %% [markdown]
 # ### Not covered here
