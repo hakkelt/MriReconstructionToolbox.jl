@@ -248,11 +248,12 @@ plot(
 )
 
 # %% [markdown]
-# The per-channel noise histograms make the second half of the story visible. Before whitening
-# the four channels have visibly different widths — channel 2 is the quietest, channel 3 the
-# noisiest — so an unweighted least-squares fit trusts them all equally, which is wrong. After
-# whitening all four collapse onto the same unit-variance Gaussian, which is the assumption the
-# data term makes.
+# The per-channel noise histograms make the second half of the story visible. The printed
+# standard deviations above quantify what to look for: at this array's mild coupling (largest
+# off-diagonal correlation around 0.3) the four channels differ by tens of percent, not by an
+# order of magnitude, so do not expect the four curves before whitening to look dramatically
+# different by eye — the important change is *after*, where all four collapse onto the same
+# unit-variance Gaussian, which is the assumption the least-squares data term makes.
 
 # %%
 noise_before = reshape(noise_patch, :, size(noise_patch, 3))
@@ -296,7 +297,12 @@ x_raw = reconstruct(AcquisitionInfo(acq_coils; sensitivity_maps = maps_raw); ver
 x_white = reconstruct(AcquisitionInfo(acq_white; sensitivity_maps = maps_matched); verbosity = Silent())
 
 box = 100:156
-bg_idx = findall(reference .< 0.02maximum(reference))
+# A proper background region — a corner box outside the head, hundreds of pixels — not
+# `reference .< threshold`: that thresholded set is dominated by a thin rim of near-zero pixels
+# right at the object's edge and can come down to a literal handful of samples, whose standard
+# deviation is itself noisy rather than a stable estimate of the background level.
+bg_box = 1:40
+bg_idx = CartesianIndices((bg_box, bg_box))
 snr(x) = mean(abs.(unname(x))[box, box]) / std(abs.(unname(x))[bg_idx])
 
 println("background pixels used: ", length(bg_idx))
@@ -375,8 +381,11 @@ end
 
 println("sensitivity-weighted combination vs. RSS: ", round(rel_err(x_ref), digits = 4))
 
+# Scale the adjoint panel by the same alpha rel_err aligns with, so the two panels are on a
+# common scale rather than each other's own maximum.
+α_ref = sum(abs.(unname(x_ref))[support] .* reference[support]) / sum(abs2, abs.(unname(x_ref))[support])
 side_by_side(
-    reference, abs.(unname(x_ref));
+    reference, α_ref .* abs.(unname(x_ref));
     titles = ("root sum of squares", "ESPIRiT + adjoint (A'y)"), size = (900, 420)
 )
 
@@ -450,6 +459,75 @@ plot(
 )
 
 # %% [markdown]
+# ### Preconditioned CG-SENSE
+#
+# `CGNR(; P, P_is_inverse)` accepts a preconditioner. The natural choice for SENSE is the
+# diagonal image-domain operator $P = 1/(\sum_c |S_c|^2 + \lambda)$: it approximates the inverse
+# of $\mathcal{A}^H\mathcal{A}$'s diagonal, which is dominated by the coil sensitivity energy at
+# each pixel. Built as a `DiagOp`, it costs one elementwise divide per application. The point of
+# preconditioning is convergence *speed* at the same accuracy, not a different answer — so the
+# comparison below is error against iteration count, not error against wall-clock time.
+
+# %%
+using AbstractOperators: DiagOp
+
+coil_energy = dropdims(sum(abs2, unname(maps_espirit); dims = 3); dims = 3)
+λ_precond = 1.0f-2
+P = DiagOp(ComplexF32.(1 ./ (coil_energy .+ λ_precond)))
+
+method_unprecond = IterativeReconstruction(L2Image(1.0f-2); algorithm = CGNR(), maxit = 30, tol = 0.0)
+method_precond = IterativeReconstruction(
+    L2Image(1.0f-2); algorithm = CGNR(P = P, P_is_inverse = true), maxit = 30, tol = 0.0
+)
+
+trace_unprecond = IterationTrace(rel_err)
+trace_precond = IterationTrace(rel_err)
+reconstruct(
+    acq_us, IterativeReconstruction(L2Image(1.0f-2); algorithm = CGNR(), maxit = 30, tol = 0.0, on_iteration = trace_unprecond);
+    verbosity = Silent()
+)
+reconstruct(
+    acq_us,
+    IterativeReconstruction(
+        L2Image(1.0f-2); algorithm = CGNR(P = P, P_is_inverse = true), maxit = 30, tol = 0.0,
+        on_iteration = trace_precond
+    );
+    verbosity = Silent()
+)
+
+println("relative error vs. reference, by iteration:")
+println(rpad("iteration", 12), rpad("unpreconditioned", 20), "preconditioned")
+for it in (1, 5, 10, 20, 30)
+    println(
+        rpad(it, 12), rpad(round(trace_unprecond.values[it], digits = 4), 20),
+        round(trace_precond.values[it], digits = 4)
+    )
+end
+
+# %% [markdown]
+# The two columns above are identical on this dataset, which is worth explaining rather than
+# leaving as a null result: `estimate_sensitivities` normalizes its output so
+# $\sum_c|S_c|^2 \approx 1$ throughout the reconstructed support (ESPIRiT's own convention), so
+# $P$ is nearly *constant* there — it only varies outside the object, where the coil energy
+# drops to zero. `rel_err` is masked to `support`, so it cannot see the one region $P$ actually
+# reweights. A preconditioner built from a genuinely non-uniform coil geometry (an array with
+# strong near/far sensitivity falloff, or a support-masked error metric extended to the whole
+# FOV) is where this preconditioner earns its keep; on unit-normalized maps evaluated only
+# inside the object it is close to a no-op, which is itself useful to know before reaching for
+# it as a default.
+#
+# The error growing with iteration count in both columns is the badly-conditioned inverse
+# problem from the discussion above (§5): unregularized CG-SENSE on four low-field channels
+# amplifies noise, so more iterations make it worse, not better — a preconditioner changes how
+# fast that happens, not whether the underlying problem needs regularization.
+
+plot(
+    trace_unprecond.iterations, trace_unprecond.values; label = "unpreconditioned", lw = 2,
+    xlabel = "iteration", ylabel = "relative error vs. reference", yscale = :log10, size = (650, 380)
+)
+plot!(trace_precond.iterations, trace_precond.values; label = "preconditioned", lw = 2)
+
+# %% [markdown]
 # ## 6. Parallel imaging on the same data
 #
 # A GRAPPA-style pattern — uniform R = 2 plus a fully sampled autocalibration block — lets the
@@ -476,14 +554,14 @@ x_grappa = reconstruct(acq_pi, GRAPPA(kernel_size = (3, 2), calib_size = (size(k
 x_sense = reconstruct(acq_pi, IterativeReconstruction(L2Image(1.0f-2); maxit = 30); verbosity = Silent())
 x_sense_cs = reconstruct(acq_pi, IterativeReconstruction(L1Wavelet2D(1.0f-2); maxit = 60); verbosity = Silent())
 
-println("GRAPPA              ", round(rel_err(x_grappa), digits = 4))
-println("CG-SENSE            ", round(rel_err(x_sense), digits = 4))
-println("CS-SENSE (wavelet)  ", round(rel_err(x_sense_cs), digits = 4))
+println("GRAPPA               ", round(rel_err(x_grappa), digits = 4))
+println("SENSE (L2, CG)       ", round(rel_err(x_sense), digits = 4))
+println("SENSE + wavelet CS   ", round(rel_err(x_sense_cs), digits = 4))
 
 jim(
     jim(abs.(unname(x_grappa)); title = "GRAPPA"),
-    jim(abs.(unname(x_sense)); title = "CG-SENSE"),
-    jim(abs.(unname(x_sense_cs)); title = "CS-SENSE");
+    jim(abs.(unname(x_sense)); title = "SENSE (L2, CG)"),
+    jim(abs.(unname(x_sense_cs)); title = "SENSE + wavelet CS");
     layout = (1, 3), size = (1350, 430)
 )
 
