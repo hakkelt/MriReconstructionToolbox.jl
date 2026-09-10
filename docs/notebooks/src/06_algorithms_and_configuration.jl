@@ -75,37 +75,22 @@ nrmse1(x̂) = nrmse(x̂, x_true)          # one-argument closure over the ground
 #
 # In the shapes: `ls(Ax - b)` is a least-squares data term, `f`/`g`/`gᵢ` are arbitrary functions
 # subject to the stated properties, and `Bᵢ` are linear operators (a regularizer's transform).
+#
+# | algorithm | model shape | picked when |
+# |---|---|---|
+# | CG | `ls(Ax - b)` + optional L2, `A` square | least squares plus at most an L2 penalty, and 𝒜 maps image to image (single coil, fully sampled, or a `KSpaceToImage` model) |
+# | CGNR | `ls(Ax - b)` + optional L2, any `A` | the normal-equation form, so a rectangular 𝒜 is fine — this is where an unregularized or L2-only model lands |
+# | FISTA | `f(x) + g(x)`, `g` proximable | one smooth data term and exactly one term the parser can reduce to a single proximal map (wavelets, temporal Fourier, low rank) |
+# | ADMM | `f(x) + Σᵢ gᵢ(Bᵢx)` | several regularizers, or one whose transform is not tight (finite differences), so the prox cannot be composed with it |
+# | Douglas–Rachford | `g₁(x) + g₂(x)`, both proximable | two proximable terms and nothing smooth: data consistency as a constraint rather than a penalty |
+#
+# `get_assumptions` is where each solver declares its own shape; the demonstration below reads
+# the declarations straight off `DEFAULT_ALGORITHMS` rather than restating the table by hand.
 
 # %%
-# One row per entry of `DEFAULT_ALGORITHMS`, in the order they are tried. The model shape comes
-# from the solver's own `get_assumptions`; only the last column is prose.
-const SELECTION_NOTES = Dict(
-    :CGIteration => ("CG", "quadratic, square operator: least squares plus at most an L2 penalty, and 𝒜 maps image to image (single coil, fully sampled, or a KSpaceToImage model)"),
-    :CGNRIteration => ("CGNR", "quadratic, any operator: the normal-equation form, so a rectangular 𝒜 is fine — this is where an unregularized or L2-only model lands"),
-    :FastForwardBackwardIteration => ("FISTA", "smooth + prox: one smooth data term and exactly one term the parser can reduce to a single proximal map (wavelets, temporal Fourier, low rank)"),
-    :ADMMIteration => ("ADMM", "least squares + proximable terms behind linear operators: several regularizers, or one whose transform is not tight (finite differences), so the prox cannot be composed with it"),
-    :DouglasRachfordIteration => ("DouglasRachford", "two proximable terms and nothing smooth: data consistency as a constraint rather than a penalty"),
-)
-
-function algorithm_table(algorithms)
-    rows = map(algorithms) do alg
-        iteration_type = typeof(alg).parameters[1]
-        key = nameof(iteration_type)
-        name, why = get(SELECTION_NOTES, key, (string(key), "—"))
-        shape = first(split(sprint(show, get_assumptions(alg)), " where "))
-        return (name, strip(shape), why)
-    end
-    wname = maximum(length(r[1]) for r in rows)
-    wshape = maximum(length(r[2]) for r in rows)
-    println(rpad("algorithm", wname), " | ", rpad("model shape", wshape), " | picked when")
-    println(repeat("-", wname), "-+-", repeat("-", wshape), "-+", repeat("-", 12))
-    for (name, shape, why) in rows
-        println(rpad(name, wname), " | ", rpad(shape, wshape), " | ", why)
-    end
-    return nothing
+for alg in DEFAULT_ALGORITHMS
+    println(nameof(typeof(alg).parameters[1]), ": ", get_assumptions(alg))
 end
-
-algorithm_table(DEFAULT_ALGORITHMS)
 
 # %% [markdown]
 # Two consequences worth spelling out:
@@ -186,6 +171,19 @@ x_dr = reconstruct(
 )
 println("DR + hard consistency NRMSE ", round(nrmse1(x_dr), digits = 4))
 
+# %% [markdown]
+# ### POGM — the same shape as FISTA, faster convergence rate
+#
+# POGM (Proximal Optimized Gradient Method, Taylor 2018) accepts the same model shape as FISTA
+# (smooth + one proximable term) and is a drop-in `algorithm` swap. Its worst-case convergence
+# rate on the smooth part is twice as fast as FISTA's, at the same per-iteration cost.
+
+# %%
+x_pogm = reconstruct(
+    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = POGM(), maxit = 60); verbosity = Silent()
+)
+println("POGM    NRMSE ", round(nrmse1(x_pogm), digits = 4))
+
 # %%
 side_by_side(
     x_cgnr, x_fista, x_admm;
@@ -232,6 +230,22 @@ println(
     "extended with ISTA      NRMSE ", round(nrmse1(x_extended), digits = 4),
     "  (equals ISTA: ", x_extended ≈ x_ista, ")"
 )
+
+# %% [markdown]
+# ### Any `ProximalAlgorithms` algorithm
+#
+# `algorithm` is not restricted to the names MRT re-exports — any `ProximalAlgorithms` iterable
+# algorithm works, as long as its `get_assumptions` matches the parsed model. `PANOC` (a
+# proximal-Newton-type method) is not among `DEFAULT_ALGORITHMS`, but it accepts the same
+# smooth-plus-prox shape as FISTA and POGM.
+
+# %%
+using ProximalAlgorithms: PANOC
+
+x_panoc = reconstruct(
+    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = PANOC(), maxit = 60); verbosity = Silent()
+)
+println("PANOC   NRMSE ", round(nrmse1(x_panoc), digits = 4))
 
 # %% [markdown]
 # ## 3. `maxit`, `tol` and early stopping
@@ -766,6 +780,13 @@ using FFTW
 # own curve.
 
 # %%
+# Warm up first, so the traced timings below measure the solve and not first-call compilation.
+for alg in (ISTA(), FISTA(), ADMM())
+    reconstruct(
+        data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = alg, maxit = 2); verbosity = Silent()
+    )
+end
+
 traces = Dict{String, IterationTrace}()
 
 for (label, alg) in (("ISTA", ISTA()), ("FISTA", FISTA()), ("ADMM", ADMM()))
