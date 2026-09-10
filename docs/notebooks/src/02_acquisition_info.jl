@@ -39,6 +39,7 @@ using MriReconstructionToolbox
 using NamedDims
 using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator,
     get_sensitivity_map_operator, get_subsampling_operator
+using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
 using Random
 
 Random.seed!(0)
@@ -120,10 +121,27 @@ println(typeof(pattern))
 AcquisitionInfo(nothing; is3D = false, image_size = (64, 64), subsampling = pattern)
 
 # %%
+# A plain Julia range works too, anywhere an index vector does — a regular undersampling
+# pattern needs no mask array at all.
+AcquisitionInfo(nothing; is3D = false, image_size = (64, 64), subsampling = (:, 1:2:64))
+
+# %%
 # 3D mask.
 mask_3d = rand(Bool, 32, 32, 16)
 mask_3d[13:20, 13:20, 5:12] .= true
 AcquisitionInfo(nothing; is3D = true, image_size = (32, 32, 16), subsampling = mask_3d)
+
+# %%
+# The three 2D patterns above, visualized: fully-random-with-calibration-region, the realistic
+# phase-encode-only mask, and the polynomial variable-density pattern.
+mask_ky_2d = falses(64, 64)
+mask_ky_2d[:, mask_ky] .= true
+pattern_2d = falses(64, 64)
+pattern_2d[pattern...] .= true
+side_by_side(
+    mask, mask_ky_2d, pattern_2d;
+    titles = ("random + calibration", "phase-encode-only", "variable density"),
+)
 
 # %% [markdown]
 # ## 4. FFT-shift conventions
@@ -146,6 +164,27 @@ AcquisitionInfo(ksp; is3D = false, shifted_image_dims = (1,))
 # With named dimensions the shifts are named too.
 ksp_n = NamedDimsArray{(:kx, :ky)}(rand(ComplexF32, 64, 64))
 AcquisitionInfo(ksp_n; shifted_kspace_dims = (:kx, :ky))
+
+# %%
+# The shift declarations change *what the array means*, not the numbers in it, so they are
+# only visible once something acts on the data. Simulate the same phantom into k-space twice —
+# centred (MRT's default convention) and DC-at-index-1 (`shifted_kspace_dims`, the raw-scanner
+# convention) — and compare the log-magnitude k-space and the reconstructed image.
+x_shift_demo = create_shepp_logan_phantom(64, 64, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
+acq_centred = simulate_acquisition(x_shift_demo, AcquisitionInfo(nothing; is3D = false, image_size = (64, 64)))
+acq_dc1 = AcquisitionInfo(acq_centred; shifted_kspace_dims = (1, 2))
+side_by_side(
+    log1p.(abs.(acq_centred.kspace_data)), log1p.(abs.(acq_dc1.kspace_data));
+    titles = ("centred (default)", "shifted_kspace_dims=(1,2)"),
+)
+
+# %%
+# Both reconstruct to the same image: the shift is a bookkeeping convention the Fourier
+# operator absorbs, not a transformation applied to the data twice.
+x_from_centred = get_fourier_operator(acq_centred)' * acq_centred.kspace_data
+x_from_dc1 = get_fourier_operator(acq_dc1)' * acq_dc1.kspace_data
+side_by_side(x_from_centred, x_from_dc1; titles = ("from centred k-space", "from shifted_kspace_dims"))
+println("difference: ", nrmse(x_from_dc1, x_from_centred))
 
 # %% [markdown]
 # ## 5. What the validation catches
