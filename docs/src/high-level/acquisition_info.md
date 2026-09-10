@@ -198,6 +198,7 @@ error for a partitioned acquisition instead of quietly reading the wrong samples
 works, since noise is well defined per frame.
 
 ```@docs
+CartesianAcquisitionInfo
 PartitionedKSpace
 MriReconstructionToolbox.is_partitioned
 ```

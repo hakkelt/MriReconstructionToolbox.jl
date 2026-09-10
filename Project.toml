@@ -9,8 +9,8 @@ projects = ["docs", "test"]
 [deps]
 AbstractOperators = "d9c5613a-d543-52d8-9afd-8f241a8c3f1c"
 ArgCheck = "dce04be8-c92d-5529-be00-80e4d2c0e197"
-Contourlets = "4d443f37-8914-48d3-9d0d-9e555eaf7273"
 ContourletOperators = "71a9f96d-0a22-4096-b570-94ff14b7f929"
+Contourlets = "4d443f37-8914-48d3-9d0d-9e555eaf7273"
 DSPOperators = "d5a72628-6e2f-430e-82f5-561df0bb8116"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 FFTWOperators = "c59a084b-ba08-4f3f-af9e-f4298d6caa94"
@@ -32,24 +32,32 @@ StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StructuredOptimization = "46cd3e9d-64ff-517d-a929-236bc1a1fc9d"
 WaveletOperators = "f3582904-6f60-4bbd-985d-55eab799bc9d"
 
+[weakdeps]
+MKL = "33e6dc65-8f57-5167-99aa-e5a354878fb2"
+MRIBase = "f7771a9a-6e57-4e71-863b-6e4b6a2f17df"
+
 [sources]
 AbstractOperators = {path = "deps/AbstractOperators"}
 ContourletOperators = {path = "deps/AbstractOperators/ContourletOperators"}
 DSPOperators = {path = "deps/AbstractOperators/DSPOperators"}
 FFTWOperators = {path = "deps/AbstractOperators/FFTWOperators"}
 NFFTOperators = {path = "deps/AbstractOperators/NFFTOperators"}
-WaveletOperators = {path = "deps/AbstractOperators/WaveletOperators"}
-OperatorCore = {url = "https://github.com/hakkelt/OperatorCore.jl"}
+OperatorCore = {rev = "master", url = "https://github.com/hakkelt/OperatorCore.jl"}
 ProximalAlgorithms = {path = "deps/ProximalAlgorithms"}
-ProximalCore = {url = "https://github.com/hakkelt/ProximalCore.jl"}
+ProximalCore = {rev = "master", url = "https://github.com/hakkelt/ProximalCore.jl"}
 ProximalOperators = {path = "deps/ProximalOperators"}
 StructuredOptimization = {path = "deps/StructuredOptimization"}
+WaveletOperators = {path = "deps/AbstractOperators/WaveletOperators"}
+
+[extensions]
+MriReconstructionToolboxMKLExt = "MKL"
+MriReconstructionToolboxMRIBaseExt = "MRIBase"
 
 [compat]
 AbstractOperators = "0.4"
 ArgCheck = "2.5"
-Contourlets = "0.1"
 ContourletOperators = "0.1"
+Contourlets = "0.1"
 DSPOperators = "0.1"
 FFTW = "1.10"
 FFTWOperators = "0.1"
@@ -73,11 +81,3 @@ StatsBase = "0.34"
 StructuredOptimization = "0.5"
 WaveletOperators = "0.1"
 julia = "1.11"
-
-[weakdeps]
-MKL = "33e6dc65-8f57-5167-99aa-e5a354878fb2"
-MRIBase = "f7771a9a-6e57-4e71-863b-6e4b6a2f17df"
-
-[extensions]
-MriReconstructionToolboxMKLExt = "MKL"
-MriReconstructionToolboxMRIBaseExt = "MRIBase"

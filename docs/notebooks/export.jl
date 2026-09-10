@@ -23,7 +23,7 @@ output-free (verified again at the end as a safety check).
 format) is the committed source. This script regenerates the .ipynb files from it via
 `python3 -m jupytext --to ipynb` before exporting, so a clean checkout is enough to run it.
 
-Requires `python3 -m nbconvert` and `python3 -m jupytext` on PATH, with the `julia-1.12` Jupyter
+Requires `python3 -m nbconvert` and `python3 -m jupytext` on PATH, with the `julia-1.13` Jupyter
 kernel installed (`Pkg.build("IJulia")` from the docs/notebooks environment registers it — see
 README.md).
 =#
@@ -71,7 +71,7 @@ function export_one(nb_file::AbstractString, timeout::Int)
     src = joinpath(NOTEBOOK_DIR, nb_file)
     mkpath(BUILD_DIR)
     cmd = `python3 -m nbconvert --to html --execute
-        --ExecutePreprocessor.kernel_name=julia-1.12
+        --ExecutePreprocessor.kernel_name=julia-1.13
         --ExecutePreprocessor.timeout=$timeout
         --output-dir=$BUILD_DIR $src`
     t0 = time()
@@ -104,7 +104,10 @@ end
 
 function main()
     selector, timeout = parse_args(ARGS)
-    regenerate_ipynb!()
+    # Skip when a caller (e.g. a SLURM array with one task per notebook) already regenerated
+    # every .ipynb once up front -- concurrent tasks calling regenerate_ipynb! at the same time
+    # would race on the same output files.
+    get(ENV, "MRT_SKIP_REGEN", "") == "1" || regenerate_ipynb!()
     notebooks = matching_notebooks(selector)
     if isempty(notebooks)
         println(stderr, "No notebook matches selector \"$selector\".")

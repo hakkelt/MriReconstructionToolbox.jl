@@ -28,11 +28,11 @@ WaveletOperators = "f3582904-6f60-4bbd-985d-55eab799bc9d"
 AbstractOperators = {path = "../../deps/AbstractOperators"}
 ContourletOperators = {path = "../../deps/AbstractOperators/ContourletOperators"}
 FFTWOperators = {path = "../../deps/AbstractOperators/FFTWOperators"}
-MRITestData = {url = "https://github.com/hakkelt/MRITestData.jl"}
+MRITestData = {rev = "master", url = "https://github.com/hakkelt/MRITestData.jl"}
 MriReconstructionToolbox = {path = "../.."}
 NFFTOperators = {path = "../../deps/AbstractOperators/NFFTOperators"}
 ProximalAlgorithms = {path = "../../deps/ProximalAlgorithms"}
-ProximalCore = {url = "https://github.com/hakkelt/ProximalCore.jl"}
+ProximalCore = {rev = "master", url = "https://github.com/hakkelt/ProximalCore.jl"}
 ProximalOperators = {path = "../../deps/ProximalOperators"}
 StructuredOptimization = {path = "../../deps/StructuredOptimization"}
 WaveletOperators = {path = "../../deps/AbstractOperators/WaveletOperators"}
