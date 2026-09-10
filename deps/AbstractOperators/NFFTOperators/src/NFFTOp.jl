@@ -374,5 +374,26 @@ function _copy_operator_impl(
     trajectory = reshape(collect(op.plan.k), D, ksp_shape...)
     dcf = collect(op.dcf)
     new_array_type = storage_type === nothing ? _array_wrapper_type(K){T} : storage_type{T}
-    return NFFTOp(image_size, trajectory, dcf; threaded = new_threaded, array_type = new_array_type)
+    # The gridding operating point is not recoverable from the trajectory, so it has to be read
+    # off the old plan and forwarded: rebuilding at the constructor defaults would silently give
+    # the copy a *different* transform from the one the caller set up.
+    return NFFTOp(
+        image_size, trajectory, dcf;
+        threaded = new_threaded, array_type = new_array_type,
+        _operating_point_kwargs(op.plan)...,
+    )
+end
+
+"""
+    _operating_point_kwargs(plan) -> NamedTuple
+
+The gridding operating point (`m`, `σ`, `precompute`) of an existing plan, in the keyword form
+[`NFFTOp`](@ref) forwards to `NFFT.initParams`. A plan that does not carry an `NFFTParams` --
+some GPU backends wrap their own -- yields an empty tuple, leaving the constructor's defaults in
+place, which is the pre-existing behaviour.
+"""
+function _operating_point_kwargs(plan)
+    hasproperty(plan, :params) || return NamedTuple()
+    params = plan.params
+    return (m = params.m, σ = params.σ, precompute = params.precompute)
 end

@@ -158,6 +158,33 @@ end
     end
 end
 
+@testitem "alternate_sign!: kernel state stays on the stack" tags = [:fftw, :SignAlternation] setup = [TestUtils] begin
+    using Random, FFTWOperators
+    Random.seed!(5)
+
+    # The per-column sign vector and the trailing-dimension mask used to be heap `Vector`s built
+    # on every call, in a kernel that runs once per FFT-shift per operator application. `N` is a
+    # static type parameter, so neither needs to allocate.
+    x = randn(ComplexF64, 32, 16, 4)
+    y = similar(x)
+    for dirs in ((1,), (2, 3), (1, 2, 3))
+        alternate_sign!(copy(x), dirs...; threaded = false)      # warm up / compile
+        alternate_sign!(y, x, dirs...; threaded = false)
+        @test (@allocated alternate_sign!(x, dirs...; threaded = false)) == 0
+        @test (@allocated alternate_sign!(y, x, dirs...; threaded = false)) == 0
+    end
+
+    # A single trailing column (a vector, or an `n x 1`) leaves the column loop with one item, so
+    # the threaded path has to spread dimension 1 instead. Correctness is what is asserted here;
+    # the naive-formula item above covers the general shapes.
+    for sz in ((64,), (64, 1))
+        v = randn(ComplexF64, sz...)
+        expected = [v[I] * (iseven(I[1]) ? -1 : 1) for I in CartesianIndices(v)]
+        @test alternate_sign!(copy(v), 1; threaded = true) ≈ expected
+        @test alternate_sign!(copy(v), 1; threaded = false) ≈ expected
+    end
+end
+
 @testitem "fftshift/ifftshift wrappers" tags = [:fftw, :FFTShift] setup = [TestUtils] begin
     using FFTW, LinearAlgebra, Random, FFTWOperators, AbstractOperators
     # Even length

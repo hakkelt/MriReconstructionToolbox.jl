@@ -60,6 +60,31 @@ end
 
 # Constructors
 
+"""
+    _check_transformable(wavelet)
+
+Reject a wavelet `mul!` cannot actually transform with.
+
+`mul!` calls the level-taking `dwt!`/`idwt!`, and Wavelets.jl defines those only for an
+`OrthoFilter`: a lifting-scheme `GLS` -- what `wavelet(c, WT.Lifting)` builds, for a
+biorthogonal class such as CDF *and* for an orthogonal one such as `db2` -- has only the
+single-array in-place form and the allocating `dwt(x, gls, levels)`. Constructing such an
+operator therefore produced one that raised a `MethodError` from inside Wavelets on its first
+application, and nothing else in the package could tell beforehand. Fail at construction, where
+the message can say what is wrong.
+"""
+function _check_transformable(wavelet::DiscreteWavelet)
+    wavelet isa Wavelets.WT.OrthoFilter && return nothing
+    throw(
+        ArgumentError(
+            "WaveletOp supports filter-bank wavelets (`Wavelets.WT.OrthoFilter`, i.e. " *
+                "`wavelet(class)` or `wavelet(class, WT.Filter)`); got a $(typeof(wavelet)). " *
+                "Wavelets.jl provides no level-taking `dwt!` for a lifting scheme, so such an " *
+                "operator could not be applied."
+        )
+    )
+end
+
 function WaveletOp(wavelet::DiscreteWavelet, dim_in, levels = nothing; array_type::Type{<:AbstractArray} = Array{Float64})
     if isnothing(levels)
         levels = get_max_transform_levels(dim_in)
@@ -75,6 +100,7 @@ function WaveletOp(
         T::Type, wavelet::DiscreteWavelet, dim_in::Integer, levels::Int = get_max_transform_levels(dim_in);
         array_type::Type{<:AbstractArray} = Array{T}
     )
+    _check_transformable(wavelet)
     if isodd(dim_in)
         throw(ArgumentError("The input dimension $dim_in is not suitable for wavelet transform: only even dimensions are allowed."))
     end
@@ -89,6 +115,7 @@ function WaveletOp(
         T::Type, wavelet::DiscreteWavelet, dim_in::NTuple{N, Int}, levels::Int = get_max_transform_levels(dim_in);
         array_type::Type{<:AbstractArray} = Array{T}
     ) where {N}
+    _check_transformable(wavelet)
     if any(isodd.(dim_in))
         throw(ArgumentError("The input dimension $dim_in is not suitable for wavelet transform: only even dimensions are allowed."))
     end
@@ -124,11 +151,24 @@ codomain_type(::WaveletOp{T}) where {T} = T
 domain_array_type(::WaveletOp{T, N, W, S}) where {T, N, W, S} = S
 codomain_array_type(::WaveletOp{T, N, W, S}) where {T, N, W, S} = S
 
-# `WᴴW = I` only holds for an orthogonal wavelet family (`wavelet(...)` constructs an
-# `OrthoFilter`); a biorthogonal family (e.g. CDF) constructs a lifting-scheme `GLS`, whose
-# forward/inverse pair is not self-adjoint, so every trait below that assumes the identity must
-# be guarded on this.
-_is_orthogonal(L::WaveletOp) = L.wavelet isa Wavelets.WT.OrthoFilter
+# `WᴴW = I` only holds for an orthogonal wavelet family, so every trait below that assumes the
+# identity is guarded on this. With `_check_transformable` in place this currently always answers
+# `true` -- only an `OrthoFilter` can be constructed at all -- but the guards stay, so relaxing
+# that constructor check cannot silently turn the traits into wrong answers.
+#
+# Orthogonality is a property of the wavelet *class*, not of the transform representation:
+# `wavelet(c, WT.Filter)` builds an `OrthoFilter` and `wavelet(c, WT.Lifting)` a `GLS` for *any*
+# class, orthogonal ones included (Wavelets.jl `WT/wt_main.jl`). So `wavelet(WT.db4, WT.Lifting)`
+# is orthonormal but is a `GLS`, and testing `isa OrthoFilter` alone would reject it. A `GLS`
+# carries only its scheme name, so classify on that; an unrecognized name counts as
+# non-orthogonal, which is the conservative direction — it costs the generic `L'*L` / power
+# iteration instead of asserting a fast path that may not hold.
+const _ORTHOGONAL_LIFTING_SCHEMES = ("haar", "db1", "db2")
+
+_is_orthogonal(L::WaveletOp) = _is_orthogonal_wavelet(L.wavelet)
+_is_orthogonal_wavelet(::Wavelets.WT.OrthoFilter) = true
+_is_orthogonal_wavelet(w::Wavelets.WT.GLS) = Wavelets.WT.name(w) in _ORTHOGONAL_LIFTING_SCHEMES
+_is_orthogonal_wavelet(::Any) = false
 
 is_AcA_diagonal(L::WaveletOp) = _is_orthogonal(L)
 is_AAc_diagonal(L::WaveletOp) = _is_orthogonal(L)
@@ -141,14 +181,21 @@ diag_AAc(L::WaveletOp{T}) where {T} = _is_orthogonal(L) ? real(T(1)) : throw(Arg
 
 AbstractOperators.is_thread_safe(::WaveletOp) = true
 
+# The non-orthogonal branches defer to `AbstractOperators`' generic definitions rather than
+# throwing: `opnorm(::AbstractOperator)` is a power iteration and `get_normal_op(L) = L' * L`,
+# both correct for a biorthogonal wavelet. Throwing here would turn a working call into an
+# error at every unguarded call site -- `ProximalAlgorithms`' primal-dual solvers call `opnorm`
+# directly, and `get_normal_op(::DCAT)` calls it on every block once *any* block reports an
+# optimized normal operator.
 has_fast_opnorm(L::WaveletOp) = _is_orthogonal(L)
 has_fast_opnorm(L::AdjointOperator{<:WaveletOp}) = _is_orthogonal(L.A)
-opnorm(L::WaveletOp{T}) where {T} = _is_orthogonal(L) ? one(T) : throw(ArgumentError("opnorm has no fast path for a biorthogonal wavelet; use estimate_opnorm"))
-opnorm(L::AdjointOperator{<:WaveletOp}) = _is_orthogonal(L.A) ? one(eltype(domain_type(L.A))) : throw(ArgumentError("opnorm has no fast path for a biorthogonal wavelet; use estimate_opnorm"))
+opnorm(L::WaveletOp{T}) where {T} = _is_orthogonal(L) ? one(T) : AbstractOperators.powerit(L)
+opnorm(L::AdjointOperator{<:WaveletOp}) =
+    _is_orthogonal(L.A) ? one(eltype(domain_type(L.A))) : AbstractOperators.powerit(L)
 
 has_optimized_normalop(L::WaveletOp) = _is_orthogonal(L)
 function get_normal_op(L::WaveletOp)
-    _is_orthogonal(L) || throw(ArgumentError("get_normal_op is only optimized for orthogonal wavelets"))
+    _is_orthogonal(L) || return L' * L
     return Eye(domain_type(L), size(L, 2); array_type = domain_array_type(L))
 end
 

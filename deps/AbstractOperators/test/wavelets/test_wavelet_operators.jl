@@ -104,3 +104,26 @@ end
     # ND: too many levels
     @test_throws ArgumentError WaveletOp(Float64, wt, (8, 8), 100)
 end
+
+@testitem "WaveletOp rejects lifting-scheme wavelets" tags = [:wavelet, :WaveletOp] setup = [TestUtils] begin
+    using Wavelets, WaveletOperators, AbstractOperators, LinearAlgebra
+
+    # Wavelets.jl defines the level-taking `dwt!`/`idwt!` only for an `OrthoFilter`, so a `GLS`
+    # operator could be constructed but never applied -- it raised a `MethodError` from inside
+    # Wavelets on first use. Reject it where the message can explain why.
+    for class in (WT.db2, WT.haar, WT.cdf97)
+        gls = wavelet(class, WT.Lifting)
+        @test gls isa WT.GLS
+        @test_throws ArgumentError WaveletOp(Float64, gls, (8, 8))
+    end
+
+    # The filter-bank form of the same orthogonal class is unaffected, and still gets the
+    # identity fast paths.
+    op = WaveletOp(Float64, wavelet(WT.db2), (8, 8))
+    @test has_fast_opnorm(op)
+    @test opnorm(op) == 1
+    @test get_normal_op(op) isa Eye
+    @test is_AcA_diagonal(op)
+    x = randn(8, 8)
+    @test op' * (op * x) ≈ x
+end
