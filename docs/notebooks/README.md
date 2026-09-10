@@ -48,7 +48,7 @@ cd docs/notebooks && jupyter lab
 ```
 
 Select the Julia kernel matching the version you instantiated with (Julia 1.12 or newer; the
-notebooks' stored kernel name is `julia-1.12`).
+notebooks' stored kernel name is `julia-1.13`).
 
 ### Threads
 
@@ -159,7 +159,7 @@ jupytext header comment block from an existing script) and generate its `.ipynb`
 
 `docs/notebooks/export.jl` first regenerates every `.ipynb` from `docs/notebooks/src/*.jl` (via
 `python3 -m jupytext --to ipynb`), then executes one or all of them and renders to HTML (via
-`python3 -m nbconvert --to html --execute` against the `julia-1.12` kernel), writing to the
+`python3 -m nbconvert --to html --execute` against the `julia-1.13` kernel), writing to the
 gitignored `docs/notebooks/build/` and leaving the regenerated `.ipynb` files output-free:
 
 ```sh
@@ -173,7 +173,7 @@ julia --project=docs/notebooks docs/notebooks/export.jl all --timeout=900
 
 It prints a pass/fail summary and exits non-zero if any notebook failed; requires
 `python3 -m nbconvert` (`pip install --user nbconvert`) and `python3 -m jupytext` on `PATH`, and
-the `julia-1.12` Jupyter kernel (`Pkg.build("IJulia")`, see Setup above).
+the `julia-1.13` Jupyter kernel (`Pkg.build("IJulia")`, see Setup above).
 
 The rendered HTML is self-contained (figures are embedded), so a file from `build/` is what to
 send someone who should see the notebook with its output without running Julia.
