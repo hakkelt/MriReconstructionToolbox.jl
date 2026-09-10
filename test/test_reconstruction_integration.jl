@@ -637,9 +637,12 @@ end
     const MRT = MriReconstructionToolbox
 
     # `execute`/`execute_two_phase` run item 1 outside the loop to learn its concrete result
-    # type. That must not put it in a different threading scope from items 2..n: unrestricted
-    # where the sequential loop restricts every pool, or without NFFT's guarded pool where the
-    # loop enables it.
+    # type. Under the sequential executor that must not put it in a different threading scope
+    # from items 2..n: unrestricted where the sequential loop restricts every pool, or without
+    # NFFT's guarded pool where the loop enables it. Under the multi-threading executor the
+    # hoisted item is not one of the `n-1` concurrently-running loop items -- it runs alone,
+    # before the loop opens -- so it gets full process capacity instead of the loop's
+    # per-worker budget.
     if MRT.capacity() > 1
         items = collect(1:4)
         rest = @view(items[2:end])
@@ -650,7 +653,6 @@ end
             for (executor, threaded) in (
                     (MRT.SequentialExecutor(), false),
                     (MRT.SequentialExecutor(), true),
-                    (MRT.MultiThreadingExecutor(), false),
                 )
                 first_seen = MRT.run_first_item(rest, config, executor; threaded) do
                     FFTW.get_num_threads()
@@ -663,6 +665,11 @@ end
                 end
                 @test all(==(first_seen), @view(rest_seen[2:end]))
             end
+
+            first_seen = MRT.run_first_item(rest, config, MRT.MultiThreadingExecutor(); threaded = false) do
+                FFTW.get_num_threads()
+            end
+            @test first_seen == MRT.capacity()
         finally
             FFTW.set_num_threads(fftw0)
         end
