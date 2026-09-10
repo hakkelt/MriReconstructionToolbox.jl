@@ -289,7 +289,7 @@ julia> M = ones(2,2); alternate_sign!(M, (1, 2))
 ```
 """
 function alternate_sign!(x::AbstractArray, dirs::Int...; threaded::Bool = true)
-    return alternate_sign!(x, tuple(dirs...); threaded)
+    return alternate_sign!(x, dirs; threaded)
 end
 
 function alternate_sign!(
@@ -317,12 +317,7 @@ function _alternate_sign!(
         # A single trailing column (a vector, or an `n×1`): the column loop has nothing to
         # spread across workers, so thread dimension 1 itself rather than run the whole pass
         # sequentially.
-        J = first(rest_range)
-        Jt = Tuple(J)
-        column_sign = _column_sign(rest_mask, J)
-        @inbounds @batch for i in axes(x, 1)
-            x[i, Jt...] *= column_sign * _dim1_sign(in1, i)
-        end
+        _alternate_sign_column!(x, in1, rest_mask, first(rest_range), Val(true))
     else
         @inbounds for J in rest_range
             _alternate_sign_column!(x, in1, rest_mask, J)
@@ -332,9 +327,13 @@ function _alternate_sign!(
 end
 
 # Dimension 1's own alternation, and the parity contribution of dimensions 2:N for one column.
-# Both were materialized as heap `Vector`s per call; `N` is a static type parameter and the dim-1
-# sign is a two-line predicate, so neither needs to be.
+# `N` is a static type parameter and the dim-1 sign is a predicate, so neither needs a heap array.
 @inline _dim1_sign(in1::Bool, i::Integer) = (in1 && iseven(i)) ? -1 : 1
+
+# Below this many elements, spreading a single column over Polyester workers costs more in
+# fork/join than the multiplies it saves — a 256-point readout is a few hundred nanoseconds of
+# work against microseconds of setup.
+const MIN_ELEMENTS_FOR_COLUMN_THREADING = 4096
 
 @inline function _column_sign(rest_mask::NTuple{K, Bool}, J::CartesianIndex) where {K}
     Jt = Tuple(J)
@@ -349,14 +348,23 @@ end
 
 # The parity contribution from dims 2:N is loop-invariant across dim 1, so it is computed once
 # per column ("per-slab base parity") and the inner loop over dim 1 — the only dimension that
-# can alternate every element — vectorizes with `@simd`.
+# can alternate every element — vectorizes with `@simd`. `Val(true)` spreads that inner loop
+# over workers instead, for the caller that has only one column to work with; the branch is on a
+# type parameter, so the unused loop is compiled away.
 @inline function _alternate_sign_column!(
-        x::AbstractArray, in1::Bool, rest_mask::NTuple{K, Bool}, J::CartesianIndex
-    ) where {K}
+        x::AbstractArray, in1::Bool, rest_mask::NTuple{K, Bool}, J::CartesianIndex,
+        ::Val{TH} = Val(false)
+    ) where {K, TH}
     Jt = Tuple(J)
     column_sign = _column_sign(rest_mask, J)
-    @inbounds @simd for i in axes(x, 1)
-        x[i, Jt...] *= column_sign * _dim1_sign(in1, i)
+    if TH
+        @inbounds @batch minbatch = MIN_ELEMENTS_FOR_COLUMN_THREADING for i in axes(x, 1)
+            x[i, Jt...] *= column_sign * _dim1_sign(in1, i)
+        end
+    else
+        @inbounds @simd for i in axes(x, 1)
+            x[i, Jt...] *= column_sign * _dim1_sign(in1, i)
+        end
     end
     return
 end
@@ -386,7 +394,7 @@ julia> alternate_sign!(y, x, (1, 2))
 function alternate_sign!(
         y::AbstractArray, x::AbstractArray, dirs::Int...; threaded::Bool = true
     )
-    return alternate_sign!(y, x, tuple(dirs...); threaded)
+    return alternate_sign!(y, x, dirs; threaded)
 end
 function alternate_sign!(
         y::AbstractArray, x::AbstractArray, dirs::NTuple{M, Int}; threaded::Bool = true
@@ -414,12 +422,7 @@ function _alternate_sign!(
     elseif use_threads && size(x, 1) > 1
         # See the in-place variant: a single trailing column leaves the column loop with nothing
         # to spread, so thread dimension 1 instead.
-        J = first(rest_range)
-        Jt = Tuple(J)
-        column_sign = _column_sign(rest_mask, J)
-        @inbounds @batch for i in axes(x, 1)
-            y[i, Jt...] = column_sign * _dim1_sign(in1, i) * x[i, Jt...]
-        end
+        _alternate_sign_column!(y, x, in1, rest_mask, first(rest_range), Val(true))
     else
         @inbounds for J in rest_range
             _alternate_sign_column!(y, x, in1, rest_mask, J)
@@ -429,12 +432,19 @@ function _alternate_sign!(
 end
 
 @inline function _alternate_sign_column!(
-        y::AbstractArray, x::AbstractArray, in1::Bool, rest_mask::NTuple{K, Bool}, J::CartesianIndex
-    ) where {K}
+        y::AbstractArray, x::AbstractArray, in1::Bool, rest_mask::NTuple{K, Bool}, J::CartesianIndex,
+        ::Val{TH} = Val(false)
+    ) where {K, TH}
     Jt = Tuple(J)
     column_sign = _column_sign(rest_mask, J)
-    @inbounds @simd for i in axes(x, 1)
-        y[i, Jt...] = column_sign * _dim1_sign(in1, i) * x[i, Jt...]
+    if TH
+        @inbounds @batch minbatch = MIN_ELEMENTS_FOR_COLUMN_THREADING for i in axes(x, 1)
+            y[i, Jt...] = column_sign * _dim1_sign(in1, i) * x[i, Jt...]
+        end
+    else
+        @inbounds @simd for i in axes(x, 1)
+            y[i, Jt...] = column_sign * _dim1_sign(in1, i) * x[i, Jt...]
+        end
     end
     return
 end

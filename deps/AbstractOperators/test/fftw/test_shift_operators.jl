@@ -160,24 +160,43 @@ end
 
 @testitem "alternate_sign!: kernel state stays on the stack" tags = [:fftw, :SignAlternation] setup = [TestUtils] begin
     using Random, FFTWOperators
+    using LinearAlgebra: mul!
     Random.seed!(5)
 
     # The per-column sign vector and the trailing-dimension mask used to be heap `Vector`s built
     # on every call, in a kernel that runs once per FFT-shift per operator application. `N` is a
     # static type parameter, so neither needs to allocate.
+    #
+    # Measured from inside a function, not at test-item top level: `@allocated` on a call whose
+    # arguments are globals also counts the boxing of those globals, which is not the kernel's
+    # doing (the same call measured at top level reports 128 B for a 3-element `dirs`).
+    alloc_in_place(x, dirs) = @allocated alternate_sign!(x, dirs...; threaded = false)
+    alloc_out_of_place(y, x, dirs) = @allocated alternate_sign!(y, x, dirs...; threaded = false)
+
     x = randn(ComplexF64, 32, 16, 4)
     y = similar(x)
     for dirs in ((1,), (2, 3), (1, 2, 3))
         alternate_sign!(copy(x), dirs...; threaded = false)      # warm up / compile
         alternate_sign!(y, x, dirs...; threaded = false)
-        @test (@allocated alternate_sign!(x, dirs...; threaded = false)) == 0
-        @test (@allocated alternate_sign!(y, x, dirs...; threaded = false)) == 0
+        @test alloc_in_place(x, dirs) == 0
+        @test alloc_out_of_place(y, x, dirs) == 0
     end
 
+    # The same claim where it actually matters: the operator's own `mul!`, which runs once per
+    # FFT-shift per operator application.
+    mul_alloc(y, S, x) = @allocated mul!(y, S, x)
+    S = SignAlternation(ComplexF64, size(x), (1, 2, 3); threaded = false)
+    mul!(y, S, x)
+    @test mul_alloc(y, S, x) == 0
+end
+
+@testitem "alternate_sign!: a single trailing column threads dimension 1" tags = [:fftw, :SignAlternation] setup = [TestUtils] begin
+    using Random, FFTWOperators
+    Random.seed!(5)
+
     # A single trailing column (a vector, or an `n x 1`) leaves the column loop with one item, so
-    # the threaded path has to spread dimension 1 instead. Correctness is what is asserted here;
-    # the naive-formula item above covers the general shapes.
-    for sz in ((64,), (64, 1))
+    # the threaded path spreads dimension 1 instead. Both paths must agree with the naive formula.
+    for sz in ((64,), (64, 1), (8192,))
         v = randn(ComplexF64, sz...)
         expected = [v[I] * (iseven(I[1]) ? -1 : 1) for I in CartesianIndices(v)]
         @test alternate_sign!(copy(v), 1; threaded = true) ≈ expected
