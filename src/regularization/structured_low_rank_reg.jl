@@ -55,7 +55,7 @@ function (f::HankelLowRankProx{RANK})(x) where {RANK}
     R = real(eltype(x))
     value = R(0)
     for b in 1:f.nbatch
-        σ = svdvals!(f.H * _hlrp_weighted(f.w, collect(selectdim(xr, ndims(xr), b))))
+        σ = svdvals!(f.H * _hlrp_lift(f.w, selectdim(xr, ndims(xr), b)))
         if RANK
             # Indicator of {k : rank(𝓗 k) ≤ max_rank}: 0 inside the set, Inf outside. The
             # Cadzow prox below is a projection of the *lifted* matrix, not of `k` itself
@@ -91,10 +91,11 @@ function ProximalCore.prox!(y, f::HankelLowRankProx{RANK}, x, gamma) where {RANK
     return RANK ? R(0) : f.λ * sum(partial)
 end
 
-# The ALOHA lift `w ⊙ k`. `nothing` is the unweighted SAKE / LORAKS-C case and returns the slab
-# itself, so that path allocates and copies exactly what it did before weights existed.
-_hlrp_weighted(::Nothing, xb) = xb
-_hlrp_weighted(w, xb) = w .* xb
+# The ALOHA lift `w ⊙ k` for one slab, always as a fresh array: the prox reuses it as the scratch
+# its adjoint writes into, so it must not alias the input. `nothing` is the unweighted
+# SAKE / LORAKS-C case, which is the only one that has to pay a copy for that.
+_hlrp_lift(::Nothing, xb) = collect(xb)
+_hlrp_lift(w, xb) = w .* xb
 
 # `keep` marks the samples the weighted term does not constrain (`w == 0`), where the prox is the
 # identity rather than zero.
@@ -106,8 +107,8 @@ end
 
 function _hlrp_prox_slab!(yr, xr, f::HankelLowRankProx, b::Int, threshold, ::Val{RANK}) where {RANK}
     R = real(eltype(xr))
-    xb = collect(selectdim(xr, ndims(xr), b))
-    buffer = _hlrp_weighted(f.w, xb)
+    xb = selectdim(xr, ndims(xr), b)
+    buffer = _hlrp_lift(f.w, xb)
     M = f.H * buffer
     F = svd!(M)
     if RANK
@@ -123,9 +124,8 @@ function _hlrp_prox_slab!(yr, xr, f::HankelLowRankProx, b::Int, threshold, ::Val
     lmul!(Diagonal(F.S), F.Vt)
     mul!(M, F.U, F.Vt)
     yb = selectdim(yr, ndims(yr), b)
-    # `buffer` is `xb` itself when unweighted, and the separate `w ⊙ xb` array when weighted, so
-    # in both cases it is a scratch array of the right shape for the adjoint -- but `xb` must
-    # survive it in the weighted case, which is why the restore below reads `xb`, not `buffer`.
+    # `buffer` is scratch of the slab's shape in both cases -- but it is overwritten here, which
+    # is why the restore below reads `xb` (the input slab), not `buffer`.
     mul!(buffer, f.H', M)
     @. yb = buffer * f.invmult
     _hlrp_restore!(yb, xb, f.keep)
@@ -288,16 +288,15 @@ k-space grid (DC at `N ÷ 2 + 1`): `w(k) = 1 - exp(-2πi h k / N)`. This is the 
 implied by sparsity of that difference, which is what ALOHA weights the Hankel lift with — `h = 1`
 is the total-variation model, `h = 2ˢ⁻¹` the Haar detail band of scale `s`.
 
-Returned with a trailing singleton axis so it broadcasts over the channel dimension.
+The symbol varies along `d` only, so it is returned shaped `(1, …, n, …, 1, 1)` — singleton on
+every other encoding dimension and on the trailing channel axis — and broadcasts to the full grid
+wherever it is used. Materializing it as a dense grid would cost `prod(gridsize)` numbers per
+weight for `n` distinct values.
 """
 function _slr_difference_weight(::Type{T}, gridsize::NTuple{N, Int}, d::Int, h::Int) where {T, N}
     n = gridsize[d]
     line = [one(T) - cispi(T(-2 * h * (i - 1 - n ÷ 2) // n)) for i in 1:n]
-    w = similar(line, (gridsize..., 1))
-    for idx in CartesianIndices(gridsize)
-        w[idx, 1] = line[idx[d]]
-    end
-    return w
+    return reshape(line, ntuple(i -> i == d ? n : 1, N)..., 1)
 end
 
 _slr_reshape_weight(::Type{T}, w::AbstractArray, gridsize::NTuple{N, Int}) where {T, N} =
@@ -317,7 +316,7 @@ function _slr_weights(reg::StructuredLowRank, gridsize::NTuple{N, Int}, ::Type{T
     # and a pyramid without its approximation band reconstructs measurably worse than plain
     # LORAKS-C. The detail bands are what ALOHA adds on top.
     return (
-        fill(one(T), (gridsize..., 1)),
+        fill(one(T), ntuple(_ -> 1, N)..., 1),
         (_slr_difference_weight(T, gridsize, d, h) for d in 1:N for h in steps)...,
     )
 end
@@ -334,7 +333,9 @@ function _slr_weighted_factors(w, invmult, ::Type{T}) where {T}
     tol = R(eps(R)) * maximum(w2)
     live = w2 .> tol
     factor = @. ifelse(live, conj(w) * invmult / ifelse(live, w2, one(R)), zero(T))
-    keep = T.(.!live)
+    # Real, not complex: it multiplies a complex slab in `_hlrp_restore!` either way, and a
+    # separable `w` keeps its singleton axes here, so the mask stays as small as the weight.
+    keep = R.(.!live)
     return factor, keep
 end
 
@@ -365,6 +366,8 @@ function materialize(reg::StructuredLowRank, x::Variable{T}; threaded::Bool) whe
                     _hankel_low_rank_prox(form, λ, max_rank, H, factor, nbatch, threaded, w, keep)
                 end for w in ws
         )
+        # Explicit `R` weights rather than `ProximalAverage(fs...)`: that constructor's uniform
+        # weights are `Float64`, which would widen a `Float32` term's objective value.
         f = length(fs) == 1 ? fs[1] : ProximalAverage(fs, fill(R(1 / length(fs)), length(fs)))
         model = reg.weights isa Symbol ? ":$(reg.weights)" : "custom"
         repr = penalty ?
