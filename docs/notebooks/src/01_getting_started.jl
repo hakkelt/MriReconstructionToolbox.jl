@@ -107,7 +107,7 @@ println("k-space data: ", size(data.kspace_data), " ", eltype(data.kspace_data))
 # 4×-undersampled data it is visibly aliased.
 
 # %%
-x_direct = reconstruct(data; verbosity = Silent())
+x_direct = reconstruct(data)
 
 println("direct NRMSE: ", round(nrmse(x_direct, x_true), digits = 4))
 
@@ -123,7 +123,7 @@ jim(jim(x_direct; title = "Direct (adjoint)"), difference_image(x_direct, x_true
 
 # %%
 method = IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 60)
-x_cs = reconstruct(data, method; verbosity = ProgressBar())
+x_cs = reconstruct(data, method)
 
 println("CS NRMSE:     ", round(nrmse(x_cs, x_true), digits = 4))
 

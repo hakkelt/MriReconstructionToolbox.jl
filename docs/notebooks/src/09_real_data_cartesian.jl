@@ -125,8 +125,10 @@ println("shifted image dims: ", acq_all.shifted_image_dims)
 # %%
 z_mid = size(acq_all.kspace_data, :z) ÷ 2 + 1
 acq_slice = AcquisitionInfo(acq_all; kspace_data = acq_all.kspace_data[z = z_mid])
-println("slice $z_mid of $(size(acq_all.kspace_data, :z)): ",
-    dimnames(acq_slice.kspace_data), " = ", size(acq_slice.kspace_data))
+println(
+    "slice $z_mid of $(size(acq_all.kspace_data, :z)): ",
+    dimnames(acq_slice.kspace_data), " = ", size(acq_slice.kspace_data)
+)
 
 jim(
     log.(abs.(unname(acq_slice.kspace_data)) .+ 1.0f-8);
@@ -148,15 +150,19 @@ jim(
 # %%
 ksp_slice = acq_slice.kspace_data
 measured = [any(!iszero, view(unname(ksp_slice), :, j, :)) for j in axes(ksp_slice, :ky)]
-println("phase-encode lines measured: ", sum(measured), " of ", length(measured),
+println(
+    "phase-encode lines measured: ", sum(measured), " of ", length(measured),
     "  (lines ", findfirst(measured), ":", findlast(measured), ", ",
-    round(100 * sum(measured) / length(measured), digits = 1), "% phase resolution)")
+    round(100 * sum(measured) / length(measured), digits = 1), "% phase resolution)"
+)
 
 acq_coils = AcquisitionInfo(
     acq_slice; kspace_data = ksp_slice[ky = measured], subsampling = (:, measured)
 )
-println("stored k-space: ", size(acq_coils.kspace_data),
-    "   reconstructed on: ", acq_coils.image_size)
+println(
+    "stored k-space: ", size(acq_coils.kspace_data),
+    "   reconstructed on: ", acq_coils.image_size
+)
 
 # %%
 # The coil images and their root-sum-of-squares — the coil-independent reference every comparison
@@ -221,10 +227,14 @@ correlation(Ψ) = abs.(Ψ) ./ sqrt.(real.(diag(Ψ)) * real.(diag(Ψ))')
 
 println("noise std per channel, before: ", round.(sqrt.(real.(diag(Ψ))); sigdigits = 3))
 println("noise std per channel, after:  ", round.(sqrt.(real.(diag(Ψ_after))); sigdigits = 3))
-println("largest channel correlation, before: ",
-    round(maximum(correlation(Ψ) - I), digits = 3))
-println("largest channel correlation, after:  ",
-    round(maximum(correlation(Ψ_after) - I), digits = 3))
+println(
+    "largest channel correlation, before: ",
+    round(maximum(correlation(Ψ) - I), digits = 3)
+)
+println(
+    "largest channel correlation, after:  ",
+    round(maximum(correlation(Ψ_after) - I), digits = 3)
+)
 
 # %% [markdown]
 # **What to look for in the two heatmaps below.** The left one is the measured correlation
@@ -308,8 +318,10 @@ snr(x) = mean(abs.(unname(x))[box, box]) / std(abs.(unname(x))[bg_idx])
 println("background pixels used: ", length(bg_idx))
 println("SNR without prewhitening: ", round(snr(x_raw), digits = 2))
 println("SNR with prewhitening:    ", round(snr(x_white), digits = 2))
-println("relative change:          ",
-    round(100 * (snr(x_white) / snr(x_raw) - 1), digits = 1), " %")
+println(
+    "relative change:          ",
+    round(100 * (snr(x_white) / snr(x_raw) - 1), digits = 1), " %"
+)
 
 side_by_side(
     abs.(unname(x_raw)) ./ maximum(abs, unname(x_raw)),
@@ -400,8 +412,10 @@ side_by_side(
 # %%
 pdf = VariableDensitySampling(PolynomialDistribution(3), 3.0, 0.08)
 mask_us = create_sampling_pattern(pdf, acq_coils.image_size)[2] .& measured
-println("retained phase encodes: ", sum(mask_us), " of ", sum(measured),
-    "  (", round(sum(measured) / sum(mask_us), digits = 2), "x acceleration)")
+println(
+    "retained phase encodes: ", sum(mask_us), " of ", sum(measured),
+    "  (", round(sum(measured) / sum(mask_us), digits = 2), "x acceleration)"
+)
 
 acq_us = AcquisitionInfo(
     acq_white;
@@ -443,7 +457,7 @@ jim(
     jim(reference; title = "reference (fully sampled)"),
     jim(abs.(unname(x_zf)); title = "zero-filled"),
     (jim(abs.(unname(x̂)); title = label) for (label, x̂) in recons)...;
-    layout = (2, 4), size = (1800, 900)
+    layout = grid_layout(length(recons) + 2), size = (1350, 1350)
 )
 
 # %%
@@ -526,6 +540,75 @@ plot(
     xlabel = "iteration", ylabel = "relative error vs. reference", yscale = :log10, size = (650, 380)
 )
 plot!(trace_precond.iterations, trace_precond.values; label = "preconditioned", lw = 2)
+
+# %% [markdown]
+# #### The case the preconditioner is *for*
+#
+# The null result above is a property of the coil array, not of the method, so it is worth
+# building the array where the method pays. A surface-coil array has strong near/far falloff: the
+# coil energy $\sum_c |S_c|^2$ varies by orders of magnitude across the FOV, $\mathcal{A}^H
+# \mathcal{A}$ is badly scaled from pixel to pixel, and CG spends its early iterations fixing that
+# scaling instead of the image. That is exactly what a diagonal preconditioner removes.
+#
+# The maps here are the *same* ESPIRiT maps multiplied by a smooth 20× falloff profile, and the
+# k-space is simulated from the fully-sampled reference through those maps with the same
+# undersampling mask — a real image, a real sampling pattern, and a coil array with the geometry
+# the preconditioner assumes.
+
+# %%
+nx_s, ny_s = size(reference)
+falloff = Float32[0.05f0 + 0.95f0 * exp(-3.0f0 * ((i - 1) / (nx_s - 1))^2) for i in 1:nx_s, _ in 1:ny_s]
+maps_shaded = copy(maps_espirit)
+for c in axes(unname(maps_shaded), 3)
+    @views unname(maps_shaded)[:, :, c] .*= falloff
+end
+
+energy_espirit = dropdims(sum(abs2, unname(maps_espirit); dims = 3); dims = 3)
+energy_shaded = dropdims(sum(abs2, unname(maps_shaded); dims = 3); dims = 3)
+println(
+    "coil-energy spread inside the object (max/min):  ESPIRiT ",
+    round(maximum(energy_espirit[support]) / minimum(energy_espirit[support]), digits = 1),
+    "x,  shaded array ", round(maximum(energy_shaded[support]) / minimum(energy_shaded[support]), digits = 1), "x"
+)
+
+acq_shaded = AcquisitionInfo(
+    nothing; is3D = false, image_size = (nx_s, ny_s),
+    sensitivity_maps = maps_shaded, subsampling = (:, mask_us)
+)
+data_shaded = simulate_acquisition(ComplexF32.(reference), acq_shaded)
+
+P_shaded = DiagOp(ComplexF32.(1 ./ (energy_shaded .+ λ_precond)))
+
+trace_shaded_plain = IterationTrace(rel_err)
+trace_shaded_precond = IterationTrace(rel_err)
+reconstruct(
+    data_shaded,
+    IterativeReconstruction(L2Image(1.0f-2); algorithm = CGNR(), maxit = 30, tol = 0.0, on_iteration = trace_shaded_plain);
+    verbosity = Silent()
+)
+reconstruct(
+    data_shaded,
+    IterativeReconstruction(
+        L2Image(1.0f-2); algorithm = CGNR(P = P_shaded, P_is_inverse = true), maxit = 30, tol = 0.0,
+        on_iteration = trace_shaded_precond
+    );
+    verbosity = Silent()
+)
+
+# How many iterations each needs to reach the other's final accuracy — the number preconditioning
+# is supposed to move.
+target = trace_shaded_plain.values[end]
+its_plain = findfirst(<=(target), trace_shaded_plain.values)
+its_precond = findfirst(<=(target), trace_shaded_precond.values)
+println("iterations to reach ", round(target, digits = 4), " relative error:")
+println("  unpreconditioned ", its_plain, "   preconditioned ", something(its_precond, "not reached"))
+
+plot(
+    trace_shaded_plain.iterations, trace_shaded_plain.values; label = "unpreconditioned", lw = 2,
+    xlabel = "iteration", ylabel = "relative error vs. reference", yscale = :log10,
+    title = "CG-SENSE on a coil array with 20x falloff", size = (700, 400)
+)
+plot!(trace_shaded_precond.iterations, trace_shaded_precond.values; label = "preconditioned", lw = 2)
 
 # %% [markdown]
 # ## 6. Parallel imaging on the same data
@@ -633,8 +716,10 @@ res_us = pseudo_replica(
 )
 
 println("fields: ", keys(res_us))
-println("mean g-factor over the object: ",
-    round(mean(res_us.g_factor[reference .> 0.15maximum(reference)]), digits = 3))
+println(
+    "mean g-factor over the object: ",
+    round(mean(res_us.g_factor[reference .> 0.15maximum(reference)]), digits = 3)
+)
 
 # %%
 jim(

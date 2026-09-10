@@ -290,11 +290,23 @@ jim(recs...; layout = (1, 3), size = (1000, 320))
 using NamedDims
 
 nt = 16
-t_resp, resp_liters = generate_respiratory_signal(nt * 1.0, 1.0, 15.0)   # nt samples, 15 breaths/min
+rr = 15.0                                  # breaths per minute
+breath_seconds = 60 / rr                   # one respiratory cycle
+# Sample one full cycle with the nt frames, rather than several cycles at four frames each: at a
+# coarser temporal resolution consecutive frames land at near-identical respiratory phases and the
+# series looks static even though the phantom is moving.
+t_resp, resp_liters = generate_respiratory_signal(breath_seconds, nt / breath_seconds, rr)
 vol_dyn = create_torso_phantom(64, 64, 64; respiratory_signal = resp_liters[1:nt], eltype = ComplexF32)
 series = NamedDimsArray{(:x, :y, :time)}(vol_dyn[:, 32, :, :])           # one coronal slice, all frames
 
-jim(series[:, :, 1:5:16]; title = "dynamic frames 1, 6, 11, 16", nrow = 1, size = (1000, 280))
+plot(
+    t_resp[1:nt], resp_liters[1:nt];
+    marker = :circle, lw = 2, label = "", xlabel = "time (s)", ylabel = "lung volume (l)",
+    title = "the respiratory signal the frames are sampled at", size = (700, 280)
+)
+
+# %%
+jim(series[:, :, 1:3:16]; title = "dynamic frames 1, 4, 7, 10, 13, 16", nrow = 2, size = (900, 620))
 
 # %% [markdown]
 # #### The same pattern for every frame

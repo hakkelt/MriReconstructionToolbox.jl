@@ -383,6 +383,12 @@ println("affected dims:   ", get_affected_dims(MaskedL1(5.0f-3, weights), nothin
 # *is* its inverse (shifting is a permutation, so `L'L = I`), and it needs no operator-norm
 # estimate at all — properties worth declaring explicitly rather than leaving for the generic,
 # more expensive fallbacks (`get_normal_op(L) = L' * L`, `opnorm(L) = powerit(L)`) to rediscover.
+#
+# The adjoint is the part that is easy to get wrong. `L'` does not build a new operator: the
+# generic `Base.adjoint(L::AbstractOperator)` wraps `L` in an `AdjointOperator`, and it is the
+# *second* `mul!` method — `mul!(y, ::AdjointOperator{<:MyOp}, b)` — that says what the adjoint
+# does. Every operator in `AbstractOperators` is written this way, and a custom one has to supply
+# both halves; there is no automatic transpose to fall back on.
 
 # %%
 struct CircShift{T, N} <: LinearOperator
@@ -395,14 +401,18 @@ Base.size(L::CircShift) = (L.dim, L.dim)          # square: same shape in and ou
 AbstractOperators.domain_type(::CircShift{T}) where {T} = T
 AbstractOperators.codomain_type(::CircShift{T}) where {T} = T
 
+# The forward map.
 function LinearAlgebra.mul!(y::AbstractArray, L::CircShift, x::AbstractArray)
     y .= circshift(x, L.offset)
     return y
 end
 
-# The adjoint of a circular shift is the shift in the opposite direction — shifting is a
-# permutation matrix, and a permutation's transpose is its inverse.
-Base.adjoint(L::CircShift{T, N}) where {T, N} = CircShift{T, N}(L.dim, .-(L.offset))
+# The adjoint map: shifting is a permutation matrix, so its transpose is its inverse — the shift
+# in the opposite direction. `L.A` reaches the wrapped operator inside the `AdjointOperator`.
+function LinearAlgebra.mul!(y::AbstractArray, L::AbstractOperators.AdjointOperator{<:CircShift}, b::AbstractArray)
+    y .= circshift(b, .-(L.A.offset))
+    return y
+end
 
 # Properties: exactly orthogonal, so L'L = AAc = I, and the operator norm is 1 without an
 # estimate.
@@ -414,7 +424,7 @@ AbstractOperators.is_AAc_diagonal(::CircShift) = true
 AbstractOperators.diag_AAc(::CircShift{T}) where {T} = one(real(T))
 
 # %%
-𝒞shift = CircShift(ComplexF32, (nx, ny), (5, -3))
+𝒞shift = CircShift(ComplexF32, (nx, ny), (nx ÷ 4, -ny ÷ 3))   # a quarter of the FOV, so the shift is visible
 shifted = 𝒞shift * x_true
 back = 𝒞shift' * shifted
 
@@ -495,26 +505,145 @@ println("hand-written MyNormL1:  ", round(nrmse(~v_custom), digits = 4))
 # %% [markdown]
 # ## 9. Adding an algorithm of your own
 #
-# `get_assumptions(::Type{<:IterationType})` is the declaration `IterativeReconstruction` reads
-# to decide whether a given algorithm can solve the parsed model — the mechanism behind
-# `DEFAULT_ALGORITHMS` in notebook 6 §1, and behind handing it any `ProximalAlgorithms` type at
-# all (notebook 6's `PANOC` example). This section is about *writing* that declaration, using
-# `ZeroFPR` — a quasi-Newton accelerated proximal-gradient algorithm the vendored fork ships but
-# that is not in `DEFAULT_ALGORITHMS` — as the concrete case.
+# An algorithm is not registered with `MriReconstructionToolbox` at all. It is a plain iterator
+# following `ProximalAlgorithms`' protocol, plus one declaration — `get_assumptions` — that says
+# which model shapes it can solve. MRT reads that declaration off whatever type it is handed
+# (`DEFAULT_ALGORITHMS` in notebook 6 §1 is the same mechanism), so an algorithm written in a
+# notebook cell is a legal `algorithm =` argument the moment it exists.
+#
+# The protocol has five parts:
+#
+# 1. An **iteration type** holding the problem (`f`, `g`, `x0`) and the algorithm's parameters.
+# 2. A **state type**, mutated in place, so an iteration allocates nothing per step.
+# 3. `Base.iterate(iter)` and `Base.iterate(iter, state)` — the first sets the state up, the
+#    second advances it by one step. The iterator is infinite; stopping is the caller's business.
+# 4. `default_stopping_criterion` / `default_solution` / `default_iteration_summary` — how to stop,
+#    what to hand back, what to print. `default_solution` is also what MRT's `on_iteration`
+#    callback sees.
+# 5. `get_assumptions` — the model shape, as a set of terms and the traits each must satisfy.
+#
+# ISTA is the smallest complete example: one gradient step on the smooth term, one prox on the
+# other. Everything below is written from scratch and then checked against the fork's own `ISTA`,
+# which is the only honest way to know a from-scratch implementation is right.
 
 # %%
-using ProximalAlgorithms: ZeroFPR, ZeroFPRIteration, get_assumptions
+using ProximalAlgorithms: IterativeAlgorithm, AssumptionGroup, SimpleTerm, get_assumptions,
+    value_and_gradient, lower_bound_smoothness_constant, default_display
+using ProximalCore: is_smooth, is_convex, is_proximable
 
-println(get_assumptions(ZeroFPRIteration))
+# 1. The iteration: the problem, plus a step size (or the Lipschitz constant to derive it from).
+Base.@kwdef struct MyISTAIteration{Tx, Tf, Tg, TLf, Tgamma}
+    f::Tf = ProximalCore.Zero()
+    g::Tg = ProximalCore.Zero()
+    x0::Tx
+    Lf::TLf = nothing
+    gamma::Tgamma = Lf === nothing ? nothing : 1 / Lf
+end
+
+Base.IteratorSize(::Type{<:MyISTAIteration}) = Base.IsInfinite()
+
+# 2. The state. `res = x - z` is the fixed-point residual: it is what the stopping rule reads.
+mutable struct MyISTAState{R, Tx}
+    x::Tx        # current iterate
+    y::Tx        # forward (gradient-step) point
+    z::Tx        # forward-backward point
+    res::Tx      # x - z
+    grad::Tx     # gradient of f at x
+    gamma::R     # step size
+    f_x::R       # value of f at x
+    g_z::R       # value of g at z
+end
+
+# %%
+# 3a. Setting up: one gradient step, one prox, and a step size if none was supplied.
+function Base.iterate(iter::MyISTAIteration)
+    x = copy(iter.x0)
+    R = real(eltype(x))
+    f_x, grad = value_and_gradient(iter.f, x)
+    gamma = iter.gamma === nothing ?
+        1 / lower_bound_smoothness_constant(iter.f, I, x, grad) : iter.gamma
+    y = x .- gamma .* grad
+    z, g_z = ProximalCore.prox(iter.g, y, gamma)
+    state = MyISTAState(x, y, z, x .- z, copy(grad), R(gamma), R(f_x), R(g_z))
+    return state, state
+end
+
+# 3b. One step: swap the buffers (the previous z becomes the new x), re-evaluate, prox again.
+function Base.iterate(iter::MyISTAIteration, state::MyISTAState{R}) where {R}
+    state.x, state.z = state.z, state.x
+    f_x, grad = value_and_gradient(iter.f, state.x)
+    state.f_x = R(f_x)
+    state.grad .= grad
+    state.y .= state.x .- state.gamma .* state.grad
+    state.g_z = R(ProximalCore.prox!(state.z, iter.g, state.y, state.gamma))
+    state.res .= state.x .- state.z
+    return state, state
+end
+
+# 4. Stopping, solution and display.
+ProximalAlgorithms.default_stopping_criterion(tol, ::MyISTAIteration, state::MyISTAState) =
+    norm(state.res, Inf) / state.gamma <= tol
+ProximalAlgorithms.default_solution(::MyISTAIteration, state::MyISTAState) = state.z
+ProximalAlgorithms.default_iteration_summary(it, ::MyISTAIteration, state::MyISTAState) =
+    ("" => it, "γ" => state.gamma, "f(x)" => state.f_x, "g(z)" => state.g_z)
+
+# The user-facing constructor: `IterativeAlgorithm` wraps the iteration with the loop that runs it.
+MyISTA(;
+    maxit = 10_000,
+    tol = 1.0e-8,
+    stop = (iter, state) -> ProximalAlgorithms.default_stopping_criterion(tol, iter, state),
+    solution = ProximalAlgorithms.default_solution,
+    verbose = false,
+    freq = 100,
+    summary = ProximalAlgorithms.default_iteration_summary,
+    display = default_display,
+    kwargs...,
+) = IterativeAlgorithm(MyISTAIteration; maxit, stop, solution, verbose, freq, summary, display, kwargs...)
+
+# 5. The declaration MRT's solver selection reads: a smooth convex term plus a proximable convex
+#    one. This is exactly what ISTA can solve, and no more — declaring anything wider here would
+#    let MRT hand this algorithm a model it cannot minimize.
+ProximalAlgorithms.get_assumptions(::Type{<:MyISTAIteration}) = AssumptionGroup(
+    SimpleTerm(:f => (is_smooth, is_convex)),
+    SimpleTerm(:g => (is_proximable, is_convex))
+)
+
+println("MyISTA: ", get_assumptions(MyISTA()))
+println("ISTA:   ", get_assumptions(ISTA()))
 
 # %% [markdown]
-# Read as: an `OperatorTerm` for `f`, requiring `f` be `is_smooth` and its operator `A` be
-# `is_linear` — a smooth term behind a linear map — and a `SimpleTerm` for `g`, requiring only
-# `is_proximable`. That is the same shape FISTA declares (smooth + one proximable term), which
-# is why `ZeroFPR` is a legal substitute for it below rather than needing a different model.
+# Both declarations are the same, which is the check that matters before running anything: MRT
+# will accept `MyISTA()` for exactly the models it accepts `ISTA()` for.
+#
+# Now the numerical check. Same data, same regularizer, same iteration count, one solver against
+# the other — a from-scratch ISTA that is correct must track the fork's to solver tolerance.
 
 # %%
-println("FISTA:   ", get_assumptions(FISTA()))
+x_myista = reconstruct(
+    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = MyISTA(), maxit = 60, tol = 0.0);
+    verbosity = Silent()
+)
+x_ista = reconstruct(
+    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = ISTA(), maxit = 60, tol = 0.0);
+    verbosity = Silent()
+)
+
+println("MyISTA NRMSE:            ", round(nrmse(x_myista), digits = 4))
+println("fork's ISTA NRMSE:       ", round(nrmse(x_ista), digits = 4))
+println("relative difference:     ", round(norm(unname(x_myista) - unname(x_ista)) / norm(unname(x_ista)), sigdigits = 3))
+
+side_by_side(
+    x_ista, x_myista; titles = ("fork's ISTA", "MyISTA (this cell)"), size = (750, 350)
+)
+
+# %% [markdown]
+# The same protocol is what lets an algorithm the vendored fork already ships, but that
+# `DEFAULT_ALGORITHMS` does not list, be used without any MRT-side change — `ZeroFPR`, a
+# quasi-Newton accelerated proximal-gradient method, declares the same model shape:
+
+# %%
+using ProximalAlgorithms: ZeroFPR, ZeroFPRIteration
+
 println("ZeroFPR: ", get_assumptions(ZeroFPR()))
 
 x_zerofpr = reconstruct(
@@ -525,11 +654,10 @@ println("FISTA   NRMSE: ", round(nrmse(x_api), digits = 4))
 println("ZeroFPR NRMSE: ", round(nrmse(x_zerofpr), digits = 4))
 
 # %% [markdown]
-# Nothing in `MriReconstructionToolbox` had to change for `ZeroFPR` to become a legal
-# `algorithm =` choice: `get_assumptions` is read off the type MRT is handed, so any
-# `ProximalAlgorithms`-shaped iteration — the package's own, or a new one following the same
-# `Base.iterate` protocol with a matching `get_assumptions` method — plugs into the same solver
-# selection `DEFAULT_ALGORITHMS` uses, with no MRT-side registration step.
+# Nothing in `MriReconstructionToolbox` had to change in either case: `get_assumptions` is read
+# off the type MRT is handed, so any `ProximalAlgorithms`-shaped iteration — the package's own, or
+# one written in a notebook cell — plugs into the same solver selection `DEFAULT_ALGORITHMS` uses,
+# with no registration step.
 
 # %% [markdown]
 # ## Environment

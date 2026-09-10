@@ -773,7 +773,7 @@ using FFTW
 # inverse-scaled and in the shape `reconstruct` will return. `IterationTrace(reduction)` is the
 # collector to use: it applies `reduction` to that estimate and records the result together with
 # the iteration index and a wall-clock reading from a monotonic clock started *after* the
-# operator build and the operator-norm estimate. Three runs, three traces, and the NRMSE is
+# operator build and the operator-norm estimate. Four runs, four traces, and the NRMSE is
 # computed after every single iteration rather than by re-solving at a ladder of budgets.
 #
 # `tol = 0` matters here: with the default tolerance a solver would stop early and truncate its
@@ -781,7 +781,7 @@ using FFTW
 
 # %%
 # Warm up first, so the traced timings below measure the solve and not first-call compilation.
-for alg in (ISTA(), FISTA(), ADMM())
+for alg in (ISTA(), FISTA(), POGM(), ADMM())
     reconstruct(
         data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = alg, maxit = 2); verbosity = Silent()
     )
@@ -789,7 +789,7 @@ end
 
 traces = Dict{String, IterationTrace}()
 
-for (label, alg) in (("ISTA", ISTA()), ("FISTA", FISTA()), ("ADMM", ADMM()))
+for (label, alg) in (("ISTA", ISTA()), ("FISTA", FISTA()), ("POGM", POGM()), ("ADMM", ADMM()))
     trace = IterationTrace(nrmse1)
     reconstruct(
         data,
@@ -816,7 +816,7 @@ end
 # %%
 p_iter = plot(; xlabel = "iteration", ylabel = "NRMSE", yscale = :log10, title = "per iteration")
 p_time = plot(; xlabel = "wall-clock time (s)", ylabel = "NRMSE", yscale = :log10, title = "per second")
-for label in ("ISTA", "FISTA", "ADMM")
+for label in ("ISTA", "FISTA", "POGM", "ADMM")
     trace = traces[label]
     plot!(p_iter, trace.iterations, trace.values; label = label, lw = 2)
     plot!(p_time, trace.times, trace.values; label = label, lw = 2)
@@ -829,7 +829,7 @@ plot(p_iter, p_time; layout = (1, 2), size = (950, 380))
 # not something to guess at.
 
 # %%
-for label in ("ISTA", "FISTA", "ADMM")
+for label in ("ISTA", "FISTA", "POGM", "ADMM")
     println(rpad(label, 6), " metric fields: ", keys(traces[label].metrics[1]))
 end
 
@@ -838,6 +838,7 @@ plot(
     [m.fixed_point_residual for m in traces["FISTA"].metrics];
     label = "FISTA fixed-point residual", lw = 2, yscale = :log10, xlabel = "iteration"
 )
+plot!([m.fixed_point_residual for m in traces["POGM"].metrics]; label = "POGM fixed-point residual", lw = 2)
 plot!([m.primal_residual for m in traces["ADMM"].metrics]; label = "ADMM primal residual", lw = 2)
 plot!(
     [m.dual_residual for m in traces["ADMM"].metrics];

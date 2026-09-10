@@ -220,7 +220,7 @@ end
 # %%
 side_by_side(
     unname(x_zf), unname(x_hom_lin), unname(x_pc), unname(x_pocs);
-    titles = ("zero-filled", "Homodyne", "PhaseConstrained", "POCS"), size = (1300, 340)
+    titles = ("zero-filled", "Homodyne", "PhaseConstrained", "POCS")
 )
 
 # %% [markdown]

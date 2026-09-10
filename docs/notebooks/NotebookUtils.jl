@@ -19,7 +19,7 @@ using LinearAlgebra: norm
 using Pkg: Pkg
 using InteractiveUtils: versioninfo
 
-export nrmse, side_by_side, difference_image, print_versions
+export nrmse, side_by_side, difference_image, grid_layout, print_versions
 
 # --------------------------------------------------------------------------------------------
 # 1. jim orientation: MIRTjim's `yflip` default is `minimum(y) >= 0`, which is `true` for the
@@ -61,18 +61,36 @@ against the same ground truth may still define a local one-argument closure
 nrmse(x̂, x) = norm(abs.(x̂) .- abs.(x)) / norm(abs.(x))
 
 """
-    side_by_side(images...; titles = ("", "", ...), clim = nothing, size = (350*n, 350), kwargs...)
+    grid_layout(n; maxcols = 3) -> (rows, cols)
+
+Row/column counts for a figure of `n` panels, with at most `maxcols` panels per row. Notebook
+figures cap a row at three images so that panels stay legible in the exported HTML at ordinary
+screen widths; a `jim` call that renders several slices or frames *inside one panel* is not
+affected by this and may show more.
+"""
+function grid_layout(n::Integer; maxcols::Integer = 3)
+    n >= 1 || throw(ArgumentError("grid_layout: need at least one panel, got $n"))
+    rows = cld(n, min(n, maxcols))
+    return (rows, cld(n, rows))   # balance the rows: four panels are 2x2, not 3+1
+end
+
+"""
+    side_by_side(images...; titles = ("", "", ...), clim = nothing, size = ..., maxcols = 3, kwargs...)
 
 Display several images side by side (via `jim`/`MIRTjim`) on a SHARED color scale, so the panels
 are visually comparable. By default `clim` is the joint `(min, max)` of `abs.(image)` across all
 `images`; pass `clim` explicitly to override. `titles` pairs with `images` positionally.
 Remaining `kwargs` are forwarded to every panel's `jim` call (not to the combining `jim`).
+
+At most `maxcols` panels go in one row; with more images the figure wraps onto further rows
+(see [`grid_layout`](@ref)), and the default `size` grows with the row count accordingly.
 """
 function side_by_side(
         images...;
         titles = ntuple(_ -> "", length(images)),
         clim = nothing,
-        size = (350 * length(images), 350),
+        maxcols::Integer = 3,
+        size = nothing,
         kwargs...,
     )
     length(titles) == length(images) ||
@@ -83,7 +101,9 @@ function side_by_side(
         jim(img; title = t, clim = shared_clim, kwargs...)
             for (img, t) in zip(images, titles)
     ]
-    return jim(panels...; layout = (1, length(images)), size = size)
+    rows, cols = grid_layout(length(images); maxcols = maxcols)
+    figsize = size === nothing ? (350 * cols, 350 * rows) : size
+    return jim(panels...; layout = (rows, cols), size = figsize)
 end
 
 """

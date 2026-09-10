@@ -66,25 +66,25 @@ Julia.
 
 Notebooks 1–8, 11 and 12 are written to run end to end on a laptop: the phantoms are 128² or
 smaller, the dynamic series is 64² × 16 frames, and the iteration counts are chosen for a few
-seconds per reconstruction. Measured with `export.jl` on 2026-09-10 (Julia 1.13.0,
+seconds per reconstruction. Measured with `export.jl` on 2026-09-11 (Julia 1.13.0,
 `JULIA_NUM_THREADS=8`, one dedicated compute node per notebook, packages precompiled beforehand
-by `run_precompile_slurm.sh`). These are not comparable with the previous table, which was
-measured on a shared login node:
+by `run_precompile_slurm.sh`). They are not comparable with a table measured on a shared login
+node:
 
 | Notebook | Wall time | Notes |
 |---|---|---|
-| `01_getting_started` | 1m 15s | |
-| `02_acquisition_info` | 0m 53s | |
-| `03_simulation` | 1m 28s | |
-| `04_reconstruction_methods` | 1m 32s | |
-| `05_regularization` | 4m 05s | every regularizer, several reconstructions each |
-| `06_algorithms_and_configuration` | 3m 46s | |
-| `07_dynamic_and_decomposition` | 4m 52s | |
-| `08_non_cartesian` | 1m 28s | plus NFFT precompilation on the first call |
-| `09_real_data_cartesian` | 3m 19s | after the ~12 MB download |
-| `10_real_data_dynamic` | 24m 42s | after the ~200 MB download; the λ sweep is most of it |
-| `11_advanced_reconstruction` | 3m 56s | |
-| `12_low_level_interface` | 1m 50s | |
+| `01_getting_started` | 1m 00s | |
+| `02_acquisition_info` | 0m 40s | |
+| `03_simulation` | 1m 21s | |
+| `04_reconstruction_methods` | 1m 34s | |
+| `05_regularization` | 4m 09s | every regularizer, several reconstructions each |
+| `06_algorithms_and_configuration` | 3m 58s | |
+| `07_dynamic_and_decomposition` | 4m 53s | |
+| `08_non_cartesian` | 1m 19s | plus NFFT precompilation on the first call |
+| `09_real_data_cartesian` | 3m 16s | after the ~12 MB download |
+| `10_real_data_dynamic` | 17m 02s | after the ~200 MB download; the λ sweep is most of it |
+| `11_advanced_reconstruction` | 4m 04s | |
+| `12_low_level_interface` | 1m 51s | |
 
 Each number is one measurement and includes first-call compilation of whatever the notebook
 touches first, so treat them as an order of magnitude rather than a benchmark.

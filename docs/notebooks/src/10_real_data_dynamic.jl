@@ -166,9 +166,11 @@ println("reference: ", size(reference))
 temporal_mean = mean(reference; dims = 3)
 frame_deviation = [norm(reference[:, :, t] - temporal_mean[:, :, 1]) for t in 1:nframes]
 frame = argmax(frame_deviation)
-println("most dynamic frame: ", frame, " of ", nframes,
+println(
+    "most dynamic frame: ", frame, " of ", nframes,
     "  (deviation from the temporal mean, normalized: ",
-    join(round.(frame_deviation ./ maximum(frame_deviation); digits = 2), " "), ")")
+    join(round.(frame_deviation ./ maximum(frame_deviation); digits = 2), " "), ")"
+)
 
 jim(reference[:, :, 1:3:nframes]; title = "reference, every 3rd frame", nrow = 2, size = (1200, 620))
 
@@ -218,10 +220,14 @@ mask_fixed[(nky ÷ 2 - acs):(nky ÷ 2 + acs)] .= true
 masks_interleaved = [circshift(mask_fixed, t - 1) for t in 1:nframes]
 nlines = sum(mask_fixed)
 
-println("lines per frame: ", nlines, " of ", nky,
-    "  (net acceleration ", round(nky / nlines, digits = 2), "x)")
-println("lines per frame, interleaved: ", unique(sum.(masks_interleaved)),
-    "   union over time: ", sum(reduce(.|, masks_interleaved)), " of ", nky)
+println(
+    "lines per frame: ", nlines, " of ", nky,
+    "  (net acceleration ", round(nky / nlines, digits = 2), "x)"
+)
+println(
+    "lines per frame, interleaved: ", unique(sum.(masks_interleaved)),
+    "   union over time: ", sum(reduce(.|, masks_interleaved)), " of ", nky
+)
 
 # Both acquisitions are built with the copy constructor, `AcquisitionInfo(info; field = value)`,
 # so `image_size`, `is3D` and — the one that bites — `shifted_image_dims` are inherited rather
@@ -343,15 +349,21 @@ sweeps = (
     # the sparse weight is tied to the low-rank one at the ratio Otazo et al. use (the sparse part
     # is the weaker penalty) and the pair is swept as a single parameter. That is a coarser search
     # than the others get — worth remembering when reading its row in the table.
-    "L+S (LowRank+TemporalTV)" =>
+    #
+    # The sparse term is a plain `L1Image`, which is what Otazo's L+S actually uses: an entrywise
+    # penalty on S in the image domain. A temporal-TV sparse term penalizes *change* rather than
+    # magnitude, which lets the constant part of the anatomy sit in S at no cost and pushes the
+    # motion into L — the two components then come out swapped, with L looking sparse and S
+    # looking low-rank.
+    "L+S (LowRank+L1Image)" =>
         (
-            Float32[1.0e-2, 3.0e-2, 1.0e-1, 3.0e-1],
-            λ -> IterativeReconstruction(
-                Component(:lowrank, LowRank(λ; time_dim = :time)),
-                Component(:sparse, TemporalTotalVariation(λ / 5; time_dim = :time));
-                maxit = 30
-            ),
+        Float32[1.0e-2, 3.0e-2, 1.0e-1, 3.0e-1],
+        λ -> IterativeReconstruction(
+            Component(:lowrank, LowRank(λ; time_dim = :time)),
+            Component(:sparse, L1Image(λ / 5));
+            maxit = 30
         ),
+    ),
 )
 
 function sweep(acq)
@@ -477,7 +489,7 @@ end
 col = argmax(vec(sum(motion; dims = 1)))
 println("profiling column ", col)
 
-profile_methods = ("L1Wavelet2D (per frame)", "TemporalTotalVariation", "L+S (LowRank+TemporalTV)")
+profile_methods = ("L1Wavelet2D (per frame)", "TemporalTotalVariation", "L+S (LowRank+L1Image)")
 profiles = (
     "reference" => reference[:, col, :],
     "zero-filled" => abs.(unname(x_zf_interleaved))[:, col, :],
@@ -521,7 +533,7 @@ plot!()
 # | `TemporalTotalVariation` | 0.0619 | **0.0520** |
 # | `LowRank` | 0.0736 | 0.0677 |
 # | `LocallyLowRank` | **0.0566** | 0.0543 |
-# | `L+S` (`LowRank` + `TemporalTV`) | 0.0729 | 0.0700 |
+# | `L+S` (`LowRank` + `L1Image`) | 0.0723 | 0.0689 |
 #
 # Four things are worth taking away, and one of them is a caveat about this notebook itself.
 #
