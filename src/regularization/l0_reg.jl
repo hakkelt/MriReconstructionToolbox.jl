@@ -47,8 +47,8 @@ Create an `ℓ₀` regularization term on the image domain directly (no transfor
 - Penalty form: hard thresholding does not shrink the coefficients it keeps, so unlike the `ℓ₁` terms
   ([`L1Image`](@ref), [`L1Wavelet2D`](@ref)) it introduces no amplitude bias in the retained features — at
   the price of a non-convex objective, for which the solvers only guarantee a stationary point. It is
-  BART's `-R H`. The threshold is `sqrt(2γλ)`, not `γλ` as for the `ℓ₁` terms, so a `λ` transplanted from
-  an `ℓ₁` term will not give a comparable amount of sparsity.
+  BART's `-R N` (NIHT in the image domain). The threshold is `sqrt(2γλ)`, not `γλ` as for the `ℓ₁`
+  terms, so a `λ` transplanted from an `ℓ₁` term will not give a comparable amount of sparsity.
 - Constraint form: the sparsity analogue of [`RankLimit`](@ref) — instead of tuning a penalty weight whose
   relation to the resulting sparsity is indirect, the sparsity itself is prescribed. It is the thresholding
   step of iterative hard thresholding (Blumensath & Davies, *Iterative hard thresholding for compressed
