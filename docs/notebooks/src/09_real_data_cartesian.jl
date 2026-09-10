@@ -15,7 +15,7 @@
 # ---
 
 # %% [markdown]
-# # 10 — Real scanner data, end to end
+# # 9 — Real scanner data, end to end
 #
 # Everything so far ran on simulated data. This notebook takes a real Cartesian brain acquisition
 # and walks the whole pipeline: raw ISMRMRD file → `AcquisitionInfo` → preprocessing →
@@ -84,9 +84,9 @@ println("field strength: ", raw.params["systemFieldStrength_T"], " T")
 # code goes wrong, so MRT does it for you. Loading `MRIBase` (`MRITestData` already does)
 # activates a package extension that adds
 #
-# ```julia
+# `$julia
 # AcquisitionInfo(raw::MRIBase.RawAcquisitionData; sensitivity_maps = nothing)
-# ```
+# $`
 #
 # It reads the encoding matrix from the header, drops noise-calibration profiles, decides
 # Cartesian vs. non-Cartesian from `raw.params["trajectory"]`, turns every encoding counter that
@@ -176,14 +176,14 @@ jim(
 # ### Noise prewhitening
 #
 # Receiver channels do not see independent noise. Neighbouring elements couple to each other and
-# to the same body noise, so the channel noise covariance ``\Psi`` has off-diagonal entries, and
+# to the same body noise, so the channel noise covariance $\Psi$ has off-diagonal entries, and
 # the channels do not even have equal noise variance (different cable lengths, preamplifier
 # gains, loading).
 #
-# That matters because every least-squares reconstruction here minimizes ``\|\mathcal{A}x - y\|_2^2``,
+# That matters because every least-squares reconstruction here minimizes $\|\mathcal{A}x - y\|_2^2$,
 # and that is the maximum-likelihood data term **only** when the noise is white with unit
-# variance. Prewhitening makes it true: estimate ``\Psi`` from noise-only samples, factor
-# ``\Psi = L L^H``, and replace ``y`` by ``L^{-1} y`` (and the sensitivity maps by ``L^{-1} S``,
+# variance. Prewhitening makes it true: estimate $\Psi$ from noise-only samples, factor
+# $\Psi = L L^H$, and replace $y$ by $L^{-1} y$ (and the sensitivity maps by $L^{-1} S$,
 # which `prewhiten` does for you when they are attached).
 #
 # `estimate_noise_covariance` wants pure-noise samples. A dedicated noise scan is best; this
@@ -231,7 +231,7 @@ println("largest channel correlation, after:  ",
 # matrix: a unit diagonal, and off-diagonal blobs wherever two elements of the array are coupled.
 # The right one is the same estimate recomputed *after* whitening, and it must be the identity —
 # black everywhere off the diagonal. That is not a soft convergence criterion but an algebraic
-# identity: ``L^{-1} \Psi L^{-H} = I`` exactly, so any visible off-diagonal structure on the
+# identity: $L^{-1} \Psi L^{-H} = I$ exactly, so any visible off-diagonal structure on the
 # right means the covariance was estimated from samples that were not pure noise (signal leaking
 # into the corners, a too-small patch), not that whitening "did not work well enough".
 
@@ -276,7 +276,7 @@ plot(
 #
 # The two reconstructions below use the *same* sensitivity maps (estimated once, on the whitened
 # data, then pushed back through `L` for the un-whitened path) so the only difference is whether
-# the data term knows about ``\Psi``. SNR is measured as the mean magnitude over a box inside the
+# the data term knows about $\Psi$. SNR is measured as the mean magnitude over a box inside the
 # brain divided by the standard deviation over the image corners, which are pure background.
 #
 # Read the printed numbers, not the pictures: with four mildly correlated channels the gain is a
@@ -406,7 +406,7 @@ println("zero-filled: ", round(rel_err(x_zf), digits = 4))
 jim(abs.(unname(x_zf)); title = "zero-filled, undersampled", size = (480, 420))
 
 # %%
-# λ is larger here than on the phantom of notebook 4: this is 0.3 T data with four channels, so
+# λ is larger here than on the phantom of notebook 5: this is 0.3 T data with four channels, so
 # the SNR is low and the noise, not the aliasing, is what limits the result.
 methods = (
     "L2Image (CG-SENSE)" => IterativeReconstruction(L2Image(1.0f-2); maxit = 30),
@@ -493,17 +493,17 @@ jim(
 # ### What question this answers
 #
 # Accelerating an acquisition costs SNR twice: once because fewer samples were collected
-# (the ``\sqrt{R}`` factor, which is unavoidable), and once because *unfolding* the aliased
+# (the $\sqrt{R}$ factor, which is unavoidable), and once because *unfolding* the aliased
 # signal is an ill-conditioned inverse problem whose conditioning varies from pixel to pixel.
-# The second factor is the **geometry factor** ``g``: the local noise amplification caused by the
+# The second factor is the **geometry factor** $g$: the local noise amplification caused by the
 # geometry of the coil array relative to the sampling pattern. It is what makes accelerated
 # images noisy in the middle of the FOV, where the coil sensitivities are most similar, while the
 # edges stay clean.
 #
-# For plain SENSE there is a closed-form ``g`` map, because the reconstruction is a linear
+# For plain SENSE there is a closed-form $g$ map, because the reconstruction is a linear
 # operator you can write down. Every interesting reconstruction in this notebook is **not**
 # linear: `L1Wavelet2D` thresholds, `TotalVariation2D` and TGV solve a non-smooth problem, GRAPPA
-# fits kernels from the data. There is no matrix to invert, so there is no analytic ``g``.
+# fits kernels from the data. There is no matrix to invert, so there is no analytic $g$.
 #
 # ### How pseudo-replicas answer it anyway
 #
@@ -519,11 +519,11 @@ jim(
 #
 # The standard-deviation map is the noise the reconstruction actually delivers, non-linearity and
 # all. `pseudo_replica` also divides it by the corresponding fully-sampled map (with the
-# ``\sqrt{R}`` factor removed) to give a `g_factor` field.
+# $\sqrt{R}$ factor removed) to give a `g_factor` field.
 #
 # ### How to read the map
 #
-# ``g = 1`` means the acceleration cost nothing beyond the ``\sqrt{R}`` sample loss; ``g = 3``
+# $g = 1$ means the acceleration cost nothing beyond the $\sqrt{R}$ sample loss; $g = 3$
 # means the noise in that pixel is three times worse than that. Expect a smooth map with its
 # maximum near the centre of the object, growing with acceleration and shrinking as channels are
 # added. Only the values inside the object mean anything — outside it both maps are noise divided
@@ -531,12 +531,12 @@ jim(
 #
 # ### Limitations
 #
-# * It is Monte Carlo: the estimate has its own error, falling as ``1/\sqrt{N_{\text{replicas}}}``.
+# * It is Monte Carlo: the estimate has its own error, falling as $1/\sqrt{N_{\text{replicas}}}$.
 #   Sixteen replicas, used here to keep the notebook fast, is enough for the pattern but not for
 #   a number you would publish; Robson et al. use hundreds.
 # * For a non-linear reconstruction the "g-factor" is not a property of the coil geometry alone —
 #   it depends on λ, on the iteration count, and on the underlying image. A regularizer can push
-#   ``g`` below 1 by *biasing* the estimate: less noise, more smoothing. The σ map alone never
+#   $g$ below 1 by *biasing* the estimate: less noise, more smoothing. The σ map alone never
 #   reveals that trade; compare it against the error maps in section 5.
 # * The added noise must dominate nothing and change nothing else, so data-dependent scaling
 #   would rescale every replica by its own noise level. `pseudo_replica` therefore insists on
@@ -584,3 +584,9 @@ side_by_side(
     res_us.std .* support, res_cs.std .* support;
     titles = ("sigma - CG-SENSE", "sigma - L1-wavelet"), size = (900, 420)
 )
+
+# %% [markdown]
+# ## Environment
+
+# %%
+print_versions()

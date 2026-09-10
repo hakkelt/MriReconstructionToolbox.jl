@@ -518,3 +518,9 @@ side_by_side(
 # the threading settings that control it — is a *run* setting rather than a model, and is covered
 # in notebook 06 §8, together with the `get_affected_dims` table that says which of the terms
 # above leave which dimensions splittable.
+
+# %% [markdown]
+# ## Environment
+
+# %%
+print_versions()

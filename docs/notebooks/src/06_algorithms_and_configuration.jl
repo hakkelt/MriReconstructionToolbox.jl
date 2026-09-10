@@ -872,3 +872,9 @@ try
 catch e
     println(sprint(showerror, e))
 end
+
+# %% [markdown]
+# ## Environment
+
+# %%
+print_versions()

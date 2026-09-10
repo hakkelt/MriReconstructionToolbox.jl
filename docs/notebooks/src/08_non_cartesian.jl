@@ -420,3 +420,9 @@ end
 # operating point stay within a fraction of a percent of it, at a fraction of the cost. Given the
 # timing noise on this node, treat the exact millisecond values as illustrative; the ordering
 # (accurate ≥ MRT default ≥ fast) is the reproducible part.
+
+# %% [markdown]
+# ## Environment
+
+# %%
+print_versions()

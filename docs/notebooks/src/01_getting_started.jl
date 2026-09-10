@@ -140,11 +140,18 @@ side_by_side(x_true, x_direct, x_cs; titles = ("Ground truth", "Direct", "CS"), 
 # |---|---|
 # | `02_acquisition_info.ipynb` | `AcquisitionInfo`, named dimensions, validation |
 # | `03_simulation.ipynb` | phantoms, coil maps, sampling patterns, noise |
-# | `04_regularization.ipynb` | every regularizer in the package |
-# | `05_reconstruction_methods.ipynb` | GRAPPA, SPIRiT, partial Fourier, signal models |
+# | `04_reconstruction_methods.ipynb` | GRAPPA, SPIRiT, partial Fourier |
+# | `05_regularization.ipynb` | every regularizer in the package |
 # | `06_algorithms_and_configuration.ipynb` | solvers, tolerances, scaling, verbosity, task splitting |
 # | `07_dynamic_and_decomposition.ipynb` | dynamic imaging, L+S, image decomposition |
 # | `08_non_cartesian.ipynb` | radial/spiral trajectories, NFFT, density compensation |
-# | `09_low_level_interface.ipynb` | operators, `StructuredOptimization`, custom terms |
-# | `10_real_data_cartesian.ipynb` | real 0.3 T brain data end to end |
-# | `11_real_data_dynamic.ipynb` | real 1.5 T cardiac cine, low-rank + sparse |
+# | `09_real_data_cartesian.ipynb` | real 0.3 T brain data end to end |
+# | `10_real_data_dynamic.ipynb` | real 1.5 T cardiac cine, low-rank + sparse |
+# | `11_advanced_reconstruction.ipynb` | data fidelity, signal models, calibrationless k-space |
+# | `12_low_level_interface.ipynb` | operators, `StructuredOptimization`, custom terms |
+
+# %% [markdown]
+# ## Environment
+
+# %%
+print_versions()

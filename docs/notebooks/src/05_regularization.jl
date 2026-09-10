@@ -15,7 +15,7 @@
 # ---
 
 # %% [markdown]
-# # 4 — Regularization
+# # 5 — Regularization
 #
 # Undersampled reconstruction is ill-posed: many images explain the measured samples. MRT solves
 #
@@ -549,3 +549,9 @@ jim(sweep...; layout = (1, 4), size = (1300, 320))
 # The temporal and low-rank terms — `L1TemporalFourier`, `TemporalTotalVariation`, `LowRank`,
 # `RankLimit`, `LocallyLowRank`, `MultiScaleLowRank` — need a dynamic series; they are covered in
 # `07_dynamic_and_decomposition.ipynb`, together with the additive `Component` models (L+S).
+
+# %% [markdown]
+# ## Environment
+
+# %%
+print_versions()
