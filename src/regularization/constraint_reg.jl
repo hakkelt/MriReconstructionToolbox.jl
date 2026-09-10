@@ -23,10 +23,15 @@ Constrain the reconstructed image to be non-negative (element-wise `x ≥ 0`).
 """
 struct NonNegative <: Regularization
     complex_handling::Symbol
-    function NonNegative(; complex_handling::Symbol=:error)
-        @argcheck complex_handling in (:error, :real) "complex_handling must be :error or :real, got $complex_handling"
-        return new(complex_handling)
+    function NonNegative(; complex_handling::Symbol = :error)
+        return new(_checked_complex_handling(complex_handling))
     end
+end
+
+# The two constraints take the same option, so they validate it in one place.
+function _checked_complex_handling(complex_handling::Symbol)
+    @argcheck complex_handling in (:error, :real) "complex_handling must be :error or :real, got $complex_handling"
+    return complex_handling
 end
 
 """
@@ -46,20 +51,19 @@ Constrain the reconstructed image element-wise to the interval `[lower, upper]`.
 - Useful for quantitative maps with a physically meaningful range (e.g. proton density in `[0, 1]`,
   relaxation rates bounded from above).
 """
-struct BoxConstraint{L,U} <: Regularization
+struct BoxConstraint{L, U} <: Regularization
     lower::L
     upper::U
     complex_handling::Symbol
-    function BoxConstraint(lower::L, upper::U; complex_handling::Symbol=:error) where {L,U}
+    function BoxConstraint(lower::L, upper::U; complex_handling::Symbol = :error) where {L, U}
         @argcheck all(lower .<= upper) "lower bound must not exceed upper bound"
-        @argcheck complex_handling in (:error, :real) "complex_handling must be :error or :real, got $complex_handling"
-        return new{L,U}(lower, upper, complex_handling)
+        return new{L, U}(lower, upper, _checked_complex_handling(complex_handling))
     end
 end
 
-const _Constraint = Union{NonNegative,BoxConstraint}
+const _Constraint = Union{NonNegative, BoxConstraint}
 
-get_operator(::_Constraint, x::AbstractArray; threaded::Bool=true) = identity_operator(x)
+get_operator(::_Constraint, x::AbstractArray; threaded::Bool = true) = identity_operator(x)
 
 # Constraints act element-wise, so no dimension is coupled -- unless the bounds are given as arrays, which
 # have the size of the full image and therefore must not be split over batch dimensions.
@@ -74,7 +78,7 @@ end
 # image, so they follow the variable scaling (see scale_regularization docstring).
 scale_regularization(reg::NonNegative, ::Real) = reg
 function scale_regularization(reg::BoxConstraint, factor::Real)
-    return BoxConstraint(reg.lower .* factor, reg.upper .* factor; complex_handling=reg.complex_handling)
+    return BoxConstraint(reg.lower .* factor, reg.upper .* factor; complex_handling = reg.complex_handling)
 end
 
 function _check_complex_handling(reg::Regularization, ::Type{T}) where {T}
