@@ -24,7 +24,7 @@ julia> reg = L1Image(0.2)
 julia> terms = build_model(𝒜, y, reg; threaded=false)
 ```
 """
-function build_model(𝒜::AbstractOperator, y::AbstractArray, reg::Regularization; threaded::Bool=true, x₀::Union{Nothing,AbstractArray}=nothing, disable_normalop_optimization::Bool=false)
+function build_model(𝒜::AbstractOperator, y::AbstractArray, reg::Regularization; threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing, disable_normalop_optimization::Bool = false)
     return build_model(𝒜, y, (reg,); threaded, x₀, disable_normalop_optimization)
 end
 
@@ -38,15 +38,15 @@ operator used to build the model -- `nothing` when the operator was left at its 
 operator is correct and no override is applied.
 """
 function patch_algorithm_with_default_values(
-    algorithm::ProximalAlgorithms.IterativeAlgorithm{T}, Lf::Union{Nothing,Real}=nothing;
-    eltype_real::Type{<:Real}=Float64,
-) where {
-    T<:Union{
-        ProximalAlgorithms.ForwardBackwardIteration,
-        ProximalAlgorithms.FastForwardBackwardIteration,
-        ProximalAlgorithms.POGMIteration,
-    },
-}
+        algorithm::ProximalAlgorithms.IterativeAlgorithm{T}, Lf::Union{Nothing, Real} = nothing;
+        eltype_real::Type{<:Real} = Float64,
+    ) where {
+        T <: Union{
+            ProximalAlgorithms.ForwardBackwardIteration,
+            ProximalAlgorithms.FastForwardBackwardIteration,
+            ProximalAlgorithms.POGMIteration,
+        },
+    }
     if Lf !== nothing && :Lf ∉ keys(algorithm.kwargs)
         return ProximalAlgorithms.override_parameters(algorithm; Lf)
     else
@@ -55,9 +55,9 @@ function patch_algorithm_with_default_values(
 end
 
 function patch_algorithm_with_default_values(
-    algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.ADMMIteration}, Lf::Union{Nothing,Real}=nothing;
-    eltype_real::Type{<:Real}=Float64,
-)
+        algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.ADMMIteration}, Lf::Union{Nothing, Real} = nothing;
+        eltype_real::Type{<:Real} = Float64,
+    )
     # `cg_maxit` is capped well below ADMM's own default of 100 because the inner CG is warm-started
     # from the previous outer iterate, so a short solve per outer step is enough.
     #
@@ -74,41 +74,41 @@ function patch_algorithm_with_default_values(
     # behaviour is sensitive to the penalty should document a tuned `rho` of their own rather than
     # have one imposed on every caller here.
     :cg_maxit ∈ keys(algorithm.kwargs) && return algorithm
-    return ProximalAlgorithms.override_parameters(algorithm; cg_maxit=10)
+    return ProximalAlgorithms.override_parameters(algorithm; cg_maxit = 10)
 end
 
 function patch_algorithm_with_default_values(
-    algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.DouglasRachfordIteration}, Lf::Union{Nothing,Real}=nothing;
-    eltype_real::Type{<:Real}=Float64,
-)
+        algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.DouglasRachfordIteration}, Lf::Union{Nothing, Real} = nothing;
+        eltype_real::Type{<:Real} = Float64,
+    )
     if :gamma ∉ keys(algorithm.kwargs)
         # `Lf = n‖𝒜‖²` for the data term, so the default step is `1/Lf`.
         # When two indicator / constraint terms are present, the problem is scale-free and gamma sets the rate.
         gamma = Lf !== nothing ? eltype_real(1 / max(Lf, eps(eltype_real))) : eltype_real(1)
-        return ProximalAlgorithms.override_parameters(algorithm; gamma=gamma)
+        return ProximalAlgorithms.override_parameters(algorithm; gamma = gamma)
     else
         g = algorithm.kwargs[:gamma]
         if g isa Real && typeof(g) != eltype_real
-            return ProximalAlgorithms.override_parameters(algorithm; gamma=eltype_real(g))
+            return ProximalAlgorithms.override_parameters(algorithm; gamma = eltype_real(g))
         end
     end
     return algorithm
 end
 
-function patch_algorithm_with_default_values(algorithm::ProximalAlgorithms.IterativeAlgorithm, Lf::Union{Nothing,Real}=nothing; eltype_real::Type{<:Real}=Float64)
+function patch_algorithm_with_default_values(algorithm::ProximalAlgorithms.IterativeAlgorithm, Lf::Union{Nothing, Real} = nothing; eltype_real::Type{<:Real} = Float64)
     return algorithm
 end
 
-function patch_algorithm_with_default_values(algorithm::Tuple, Lf::Union{Nothing,Real}=nothing; eltype_real::Type{<:Real}=Float64)
+function patch_algorithm_with_default_values(algorithm::Tuple, Lf::Union{Nothing, Real} = nothing; eltype_real::Type{<:Real} = Float64)
     return map(a -> patch_algorithm_with_default_values(a, Lf; eltype_real), algorithm)
 end
 
 function build_model(
-    𝒜::AbstractOperator, y::AbstractArray, regs::Tuple;
-    threaded::Bool=true, x₀::Union{Nothing,AbstractArray}=nothing,
-    disable_normalop_optimization::Bool=false,
-    fidelity::DataFidelity=L2Loss(),
-)
+        𝒜::AbstractOperator, y::AbstractArray, regs::Tuple;
+        threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing,
+        disable_normalop_optimization::Bool = false,
+        fidelity::DataFidelity = L2Loss(),
+    )
     terms, _, _ = build_model_with_variables(
         𝒜, y, regs; threaded, x₀, disable_normalop_optimization, fidelity
     )
@@ -127,11 +127,11 @@ once a regularization contributes auxiliary variables, the position of the image
 an implementation detail of `extract_variables`, not something to rely on.
 """
 function build_model_with_variables(
-    𝒜::AbstractOperator, y::AbstractArray, regs::Tuple;
-    threaded::Bool=true, x₀::Union{Nothing,AbstractArray}=nothing,
-    disable_normalop_optimization::Bool=false,
-    fidelity::DataFidelity=L2Loss(),
-)
+        𝒜::AbstractOperator, y::AbstractArray, regs::Tuple;
+        threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing,
+        disable_normalop_optimization::Bool = false,
+        fidelity::DataFidelity = L2Loss(),
+    )
     x₀ = isnothing(x₀) ? 𝒜' * y : copy(x₀)
     regs = bind_dimensions(regs, dims_of(x₀))
     x = Variable(unname(x₀))
@@ -196,10 +196,10 @@ operators requires the upstream `HCAT` normal-op fusion.
   [`materialize_with_auxiliaries`](@ref)) — usually empty.
 """
 function build_model(
-    𝒜::AbstractOperator, y::AbstractArray, components::Tuple{Component,Vararg{Component}};
-    threaded::Bool=true, x₀s,
-    fidelity::DataFidelity=L2Loss(),
-)
+        𝒜::AbstractOperator, y::AbstractArray, components::Tuple{Component, Vararg{Component}};
+        threaded::Bool = true, x₀s,
+        fidelity::DataFidelity = L2Loss(),
+    )
     check_components(components)
     components = bind_dimensions(components, dims_of(first(x₀s)))
     𝒜 = unname(𝒜)

@@ -29,11 +29,11 @@ method and are passed to its constructor, e.g.
 - The reconstructed image (NamedDimsArray if input is NamedDimsArray, otherwise standard Array).
 """
 function reconstruct(
-    acq_data::AcquisitionInfo,
-    method::ReconstructionMethod=DirectReconstruction();
-    x₀::Union{Nothing,AbstractArray,Tuple,NamedTuple}=nothing,
-    kwargs...,
-)
+        acq_data::AcquisitionInfo,
+        method::ReconstructionMethod = DirectReconstruction();
+        x₀::Union{Nothing, AbstractArray, Tuple, NamedTuple} = nothing,
+        kwargs...,
+    )
     config = construct_config(kwargs)
     t_start = time()
     method = lower(method, acq_data)
@@ -50,7 +50,7 @@ function _reconstruct_dispatch(acq_data, method::ReconstructionMethod, x₀, con
 end
 
 function _reconstruct_dispatch(acq_data, method::IterativeReconstruction, x₀, config)
-    if method.regularization isa Tuple{Component,Vararg{Component}}
+    if method.regularization isa Tuple{Component, Vararg{Component}}
         check_components(method.regularization)
         return _reconstruct_dispatch_components(acq_data, method, x₀, config)
     else
@@ -84,7 +84,7 @@ function _reconstruct_dispatch_plain(acq_data, method::ReconstructionMethod, x�
             # unsplit result instead of normalizing each slice separately. A *new*
             # binding, not a reassignment of `config`: rebinding it would box the variable that
             # the `with_progress` closure above captures.
-            unscaled_config = ReconstructionConfig(config; scaling=NoScaling())
+            unscaled_config = ReconstructionConfig(config; scaling = NoScaling())
             execute(task_splitting_plan, acq_data, unscaled_config) do idx, local_acq, local_conf
                 local_x₀ = isnothing(x₀) ? nothing : get_x₀_slice(x₀, task_splitting_plan, idx)
                 _reconstruct(local_acq, method, local_x₀, local_conf)
@@ -105,14 +105,14 @@ function _reconstruct_dispatch_plain(acq_data, method::ReconstructionMethod, x�
 end
 
 function _reconstruct(
-    acq_data, method::ReconstructionMethod, x₀, config;
-    scale_override=nothing, 𝒜=nothing, precomputed_L=nothing,
-)
+        acq_data, method::ReconstructionMethod, x₀, config;
+        scale_override = nothing, 𝒜 = nothing, precomputed_L = nothing,
+    )
     fast_planning = method isa DirectReconstruction
     if isnothing(𝒜)
         @step "Constructing encoding operator" config begin
             𝒜 = build_encoding_operator(
-                acq_data, method; threaded=config.threaded, fast_planning
+                acq_data, method; threaded = config.threaded, fast_planning
             )
         end
     end
@@ -133,9 +133,9 @@ function _reconstruct(
         bound_regs = bind_dimensions(method.regularization, get_image_dims(acq_data))
         build = (𝒜, y; x₀) -> build_model_with_variables(
             𝒜, y, bound_regs;
-            threaded=config.threaded, x₀,
-            disable_normalop_optimization=method.disable_normalop_optimization,
-            fidelity=method.fidelity,
+            threaded = config.threaded, x₀,
+            disable_normalop_optimization = method.disable_normalop_optimization,
+            fidelity = method.fidelity,
         )
         # The same two post-processing steps the final image goes through below, so that an
         # `on_iteration` callback sees intermediate iterates in the units, shape and dimension
@@ -154,7 +154,7 @@ end
 # caller gets. Factored out because the `on_iteration` callback has to apply exactly the same two
 # to every intermediate iterate.
 function _present_image(x, method::IterativeReconstruction, acq_data, config)
-    x = apply_signal_model(method.signal_model, x, acq_data; threaded=config.threaded)
+    x = apply_signal_model(method.signal_model, x, acq_data; threaded = config.threaded)
     if _has_dimnames(acq_data.kspace_data) && !(x isa NamedDimsArray)
         x = NamedDimsArray{output_dims(method, acq_data)}(x)
     end
@@ -200,13 +200,13 @@ function _reconstruct_dispatch_components(acq_data, method::IterativeReconstruct
 end
 
 function _reconstruct_components(
-    acq_data, method::IterativeReconstruction, x₀, config;
-    scale_override=nothing, x₀s=nothing, 𝒜=nothing, precomputed_L=nothing,
-)
+        acq_data, method::IterativeReconstruction, x₀, config;
+        scale_override = nothing, x₀s = nothing, 𝒜 = nothing, precomputed_L = nothing,
+    )
     components = bind_dimensions(method.regularization, get_image_dims(acq_data))
     if isnothing(𝒜)
         @step "Constructing encoding operator" config begin
-            𝒜 = build_encoding_operator(acq_data, method; threaded=config.threaded, fast_planning=false)
+            𝒜 = build_encoding_operator(acq_data, method; threaded = config.threaded, fast_planning = false)
         end
     end
     # `x₀s` lets a caller that has already formed the per-component initial guesses skip the adjoint
@@ -223,8 +223,8 @@ function _reconstruct_components(
     end
     build = (𝒜, y; x₀) -> build_model(
         𝒜, y, components;
-        threaded=config.threaded, x₀s=x₀,
-        fidelity=method.fidelity,
+        threaded = config.threaded, x₀s = x₀,
+        fidelity = method.fidelity,
     )
     names = map(c -> c.name, components)
     present = xs -> _present_components(xs, names, method, acq_data)

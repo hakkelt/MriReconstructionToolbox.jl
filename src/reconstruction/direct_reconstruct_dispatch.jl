@@ -1,9 +1,9 @@
-function _direct_reconstruct_components(𝒜, acq_data, method::ReconstructionMethod, config; scale_override=nothing)
+function _direct_reconstruct_components(𝒜, acq_data, method::ReconstructionMethod, config; scale_override = nothing)
     @step "Getting initial estimate" config begin
         x̂ = 𝒜' * _measurement(acq_data.kspace_data)
     end
     scale_input = if method isa IterativeReconstruction && method.signal_model !== nothing
-        get_encoding_operator(acq_data; threaded=config.threaded)' * _measurement(acq_data.kspace_data)
+        get_encoding_operator(acq_data; threaded = config.threaded)' * _measurement(acq_data.kspace_data)
     else
         x̂
     end
@@ -86,14 +86,14 @@ function _direct_reconstruct_coil_combined(acq_data::CartesianAcquisitionInfo, m
     # (`_compose_with_sensitivity`); rebuild the bare (sensitivity-free) encoding operator so
     # per-coil images stay correctly zero-filled/gridded even for a Cartesian-subsampled
     # acquisition, then dispatch the combination explicitly.
-    ℬ = isnothing(smaps) ? 𝒜 : get_encoding_operator(CartesianAcquisitionInfo(acq_data; sensitivity_maps=nothing))
+    ℬ = isnothing(smaps) ? 𝒜 : get_encoding_operator(CartesianAcquisitionInfo(acq_data; sensitivity_maps = nothing))
     coil_imgs = unname(ℬ' * _measurement(acq_data.kspace_data))
 
     img_out, coil_reduced = if method.coil_combination isa AdjointSensitivity
         @argcheck !isnothing(smaps) "AdjointSensitivity coil combination requires sensitivity maps."
-        sum(coil_imgs .* conj.(unname(smaps)); dims=c_dim), true
+        sum(coil_imgs .* conj.(unname(smaps)); dims = c_dim), true
     elseif method.coil_combination isa RootSumSquares
-        sqrt.(sum(abs2, coil_imgs; dims=c_dim)), true
+        sqrt.(sum(abs2, coil_imgs; dims = c_dim)), true
     elseif method.coil_combination isa NoCoilCombination
         coil_imgs, false
     else
@@ -106,7 +106,7 @@ function _direct_reconstruct_coil_combined(acq_data::NonCartesianAcquisitionInfo
     return 𝒜' * _measurement(acq_data.kspace_data)
 end
 
-function _direct_reconstruct(𝒜, acq_data, x₀, method::ReconstructionMethod, config; scale_override=nothing)
+function _direct_reconstruct(𝒜, acq_data, x₀, method::ReconstructionMethod, config; scale_override = nothing)
     direct_recon_only = method isa DirectMethod
     if !isnothing(x₀) && direct_recon_only
         log_message(
@@ -125,13 +125,13 @@ function _direct_reconstruct(𝒜, acq_data, x₀, method::ReconstructionMethod,
                 is_default_iterative_adjoint = true
             else
                 x₀ = _direct_reconstruct(
-                    acq_data, method; progress=progress_tick(config.verbosity)
+                    acq_data, method; progress = progress_tick(config.verbosity)
                 )
             end
         end
     end
     scale_input = if method isa IterativeReconstruction && method.signal_model !== nothing
-        get_encoding_operator(acq_data; threaded=config.threaded)' * _measurement(acq_data.kspace_data)
+        get_encoding_operator(acq_data; threaded = config.threaded)' * _measurement(acq_data.kspace_data)
     else
         x₀
     end

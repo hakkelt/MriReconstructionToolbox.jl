@@ -198,7 +198,7 @@ plumbed through.
 """
 function with_serial_blas(f::F) where {F}
     LinearAlgebra.BLAS.get_num_threads() == 1 && return f()
-    return with_thread_budget(f, 1; only=(:blas, :mkl))
+    return with_thread_budget(f, 1; only = (:blas, :mkl))
 end
 
 function with_serial_blas(f::F, x) where {F}
@@ -234,7 +234,7 @@ genuinely pays) untouched.
 function maybe_disable_unsplit_threading(config, method, acq_data)
     config.threaded || return config
     bytes = prod(variable_size(method, acq_data)) * sizeof(eltype(acq_data.kspace_data))
-    return _should_thread_work_item(config, bytes) ? config : ReconstructionConfig(config; threaded=false)
+    return _should_thread_work_item(config, bytes) ? config : ReconstructionConfig(config; threaded = false)
 end
 
 _work_item_bytes(x::AbstractArray) = length(x) * sizeof(eltype(x))
