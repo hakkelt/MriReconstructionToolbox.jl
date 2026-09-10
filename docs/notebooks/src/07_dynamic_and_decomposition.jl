@@ -62,10 +62,11 @@ Random.seed!(0)
 #
 # Sixteen frames spanning one cardiac cycle at 60 bpm, with the respiratory signal sampled over
 # the same one-second window, gives a short cine with a strongly moving heart and a slow
-# through-plane drift. Slice 10 of 16 is the one that cuts through both ventricles.
+# through-plane drift. A coronal slice through the mid-chest cuts through both ventricles and,
+# unlike an axial slice, also shows the diaphragm — the structure the respiratory signal moves.
 
 # %%
-n, nt, nc, nz, zslice = 64, 16, 4, 16, 10
+n, nt, nc, nz, yslice = 64, 16, 4, 64, 32
 
 _, cardiac = generate_cardiac_signals(1.0, Float64(nt), 60.0)     # one beat, nt frames
 _, respiratory = generate_respiratory_signal(1.0, Float64(nt), 15.0)
@@ -81,7 +82,7 @@ println(
 volume = create_torso_phantom(
     n, n, nz; respiratory_signal = respiratory, cardiac_volumes = cardiac, eltype = ComplexF32
 )
-series = NamedDimsArray{(:x, :y, :time)}(volume[:, :, zslice, :])
+series = NamedDimsArray{(:x, :y, :time)}(volume[:, yslice, :, :])   # coronal: fix the y axis
 println("series: ", size(series), " ", dimnames(series))
 
 jim(unname(series)[:, :, 1:5:16]; title = "frames 1, 6, 11, 16", nrow = 1, size = (1000, 280))
@@ -97,7 +98,7 @@ jim(unname(series)[:, :, 1:5:16]; title = "frames 1, 6, 11, 16", nrow = 1, size 
 # %%
 tissue_mask(mask) = create_torso_phantom(
     n, n, nz; respiratory_signal = respiratory, cardiac_volumes = cardiac, ti = mask
-)[:, :, zslice, :]
+)[:, yslice, :, :]
 
 masks = (
     lv_blood = tissue_mask(TissueMask(lv_blood = true)),
@@ -272,23 +273,52 @@ side_by_side(
 # - `MultiScaleLowRank(λ; block_sizes)` — several block sizes at once, via a proximal average.
 
 # %%
-x_lr = reconstruct(
-    data_dyn, IterativeReconstruction(LowRank(5.0f-2; time_dim = :time); maxit = 60); verbosity = Silent()
-)
-x_llr = reconstruct(
-    data_dyn,
-    IterativeReconstruction(LocallyLowRank(5.0f-2; block_size = 8, time_dim = :time); maxit = 60);
-    verbosity = Silent()
-)
-x_mslr = reconstruct(
-    data_dyn,
-    IterativeReconstruction(MultiScaleLowRank(5.0f-2; block_sizes = (4, 8, 16), time_dim = :time); maxit = 60);
-    verbosity = Silent()
-)
+# Each method gets its own λ sweep rather than reusing one value across all three — the three
+# regularizers penalize different things (a global Casorati matrix, per-block matrices, several
+# block sizes at once) and there is no reason their best λ would coincide. Each sweep is checked
+# for an interior optimum (neither endpoint is the winner); an edge optimum would mean the range
+# needs widening, not that the method is simply "worse".
+λs = [2.0f-3, 3.5f-3, 5.0f-3, 1.0f-2, 2.0f-2, 3.5f-2, 5.0f-2, 7.0f-2, 1.0f-1]
+
+function sweep(build_reg)
+    results = map(λs) do λ
+        x̂ = reconstruct(data_dyn, IterativeReconstruction(build_reg(λ); maxit = 60); verbosity = Silent())
+        return λ, x̂, nrmse_dyn(x̂)
+    end
+    best = results[argmin(last.(results))]
+    return best
+end
+
+λ_lr, x_lr, nrmse_lr = sweep(λ -> LowRank(λ; time_dim = :time))
+λ_llr, x_llr, nrmse_llr = sweep(λ -> LocallyLowRank(λ; block_size = 8, time_dim = :time))
+λ_mslr, x_mslr, nrmse_mslr = sweep(λ -> MultiScaleLowRank(λ; block_sizes = (4, 8, 16), time_dim = :time))
+
+println("best λ (interior optimum unless noted):")
+for (label, λ, best_nrmse) in (("LowRank", λ_lr, nrmse_lr), ("LocallyLowRank(8)", λ_llr, nrmse_llr), ("MultiScaleLowRank", λ_mslr, nrmse_mslr))
+    edge = λ in (first(λs), last(λs)) ? "  (EDGE — widen the sweep)" : ""
+    println(rpad(label, 20), " λ = ", λ, "  NRMSE ", round(best_nrmse, digits = 4), edge)
+end
 
 report("LowRank", x_lr)
 report("LocallyLowRank(8)", x_llr)
 report("MultiScaleLowRank", x_mslr)
+
+# %% [markdown]
+# `MultiScaleLowRank` also accepts one λ per scale instead of a single shared one — coarser
+# blocks capture more of the signal energy, so they often want a different threshold than fine
+# blocks. Comparing a per-scale λ against the best shared one shows what the extra degree of
+# freedom buys.
+
+# %%
+x_mslr_per_scale = reconstruct(
+    data_dyn,
+    IterativeReconstruction(
+        MultiScaleLowRank([3.0f-2, 5.0f-2, 8.0f-2]; block_sizes = (4, 8, 16), time_dim = :time); maxit = 60
+    );
+    verbosity = Silent()
+)
+report("MultiScaleLowRank, shared λ", x_mslr)
+report("MultiScaleLowRank, per-scale λ", x_mslr_per_scale)
 
 # %%
 # `shift = :random` redraws the block grid before every proximal step, which averages out the
