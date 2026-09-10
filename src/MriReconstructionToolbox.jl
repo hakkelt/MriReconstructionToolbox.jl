@@ -13,7 +13,7 @@ using NamedDims
 using StructuredOptimization
 using NFFTOperators: NFFTOp, NFFT
 
-using NestedThreading: @budgeted_threads, with_full_threads, with_restricted_threads, with_thread_budget
+using NestedThreading: @budgeted_threads, budget_for, capacity, with_full_threads, with_restricted_threads, with_thread_budget
 using WaveletOperators: WaveletOp, WT, wavelet
 using ContourletOperators: ContourletOp, NSCTOp, ContourletParams, parabolic_levels
 using FFTWOperators: FFTWOperators, DFT, fftshift_op, ifftshift_op, alternate_sign!

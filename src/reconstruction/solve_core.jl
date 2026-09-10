@@ -89,7 +89,14 @@ function _iterative_reconstruct_core(
             if uses_blas3(method.regularization)
                 solve(model, algorithm; solver_kwargs...)
             elseif _work_item_bytes(_first_x0(x₀_or_x₀s)) < serial_blas_threshold_bytes()
-                with_restricted_threads_if_needed() do
+                # No early-out on `BLAS.get_num_threads() == 1` here, tempting as it looks:
+                # `with_restricted_threads` narrows every counted pool *and* switches off the
+                # Polyester guard, so a serial BLAS says nothing about FFTW, NFFT or Polyester,
+                # each of which would then run at full width for the whole solve. The scope is
+                # entered once per solve, so its bookkeeping is not worth a guard that can be
+                # wrong. `with_serial_blas`'s own early-out stays valid because that helper
+                # restricts `only = (:blas, :mkl)` and nothing else.
+                with_restricted_threads() do
                     solve(model, algorithm; solver_kwargs...)
                 end
             else

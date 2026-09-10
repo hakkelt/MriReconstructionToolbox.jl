@@ -603,6 +603,93 @@ end
     @test img_threaded == img_serial
 end
 
+@testitem "Threading scopes: BLAS is not a proxy for the process" tags = [:reconstruction, :minimizer] begin
+    using MriReconstructionToolbox
+    using FFTW, LinearAlgebra
+    const MRT = MriReconstructionToolbox
+
+    # `with_restricted_threads` narrows every counted pool *and* switches off the Polyester
+    # guard, so a serial BLAS says nothing about whether entering it would be a no-op. The solve
+    # path used to skip the scope on `BLAS.get_num_threads() == 1`, which left FFTW, NFFT and
+    # Polyester at full width for the whole solve -- exactly the oversubscription the gate exists
+    # to prevent.
+    if MRT.capacity() > 1   # nothing to observe on a single-threaded process
+        blas0, fftw0 = BLAS.get_num_threads(), FFTW.get_num_threads()
+        try
+            BLAS.set_num_threads(1)
+            FFTW.set_num_threads(MRT.capacity())
+            @test FFTW.get_num_threads() > 1
+            inside = MRT.with_restricted_threads() do
+                (FFTW.get_num_threads(), BLAS.get_num_threads())
+            end
+            @test inside == (1, 1)
+            @test FFTW.get_num_threads() > 1   # restored on exit
+        finally
+            BLAS.set_num_threads(blas0)
+            FFTW.set_num_threads(fftw0)
+        end
+    end
+end
+
+@testitem "Task splitting: the hoisted first item shares the loop's threading scope" tags = [:reconstruction, :integration] begin
+    using MriReconstructionToolbox
+    using FFTW
+    const MRT = MriReconstructionToolbox
+
+    # `execute`/`execute_two_phase` run item 1 outside the loop to learn its concrete result
+    # type. That must not put it in a different threading scope from items 2..n: unrestricted
+    # where the sequential loop restricts every pool, or without NFFT's guarded pool where the
+    # loop enables it.
+    if MRT.capacity() > 1
+        items = collect(1:4)
+        rest = @view(items[2:end])
+        config = ReconstructionConfig(; threaded = true, verbosity = Silent())
+        fftw0 = FFTW.get_num_threads()
+        try
+            FFTW.set_num_threads(MRT.capacity())
+            for (executor, threaded) in (
+                    (MRT.SequentialExecutor(), false),
+                    (MRT.SequentialExecutor(), true),
+                    (MRT.MultiThreadingExecutor(), false),
+                )
+                first_seen = MRT.run_first_item(rest, config, executor; threaded) do
+                    FFTW.get_num_threads()
+                end
+                # Indexed rather than pushed: the multi-threading executor runs the body from
+                # several tasks at once.
+                rest_seen = zeros(Int, length(items))
+                MRT.for_each_item!(rest, config, executor; threaded) do i
+                    rest_seen[i] = FFTW.get_num_threads()
+                end
+                @test all(==(first_seen), @view(rest_seen[2:end]))
+            end
+        finally
+            FFTW.set_num_threads(fftw0)
+        end
+    end
+end
+
+@testitem "Task splitting: a type-inconsistent slice names itself" tags = [:reconstruction] begin
+    using MriReconstructionToolbox
+    const MRT = MriReconstructionToolbox
+
+    # The result array is allocated from the first item's concrete type, so a later item of a
+    # different type would otherwise surface as a bare `convert`/`MethodError` from inside a
+    # threaded loop.
+    dest = Array{Vector{Float64}}(undef, 2)
+    MRT.store_item!(dest, 1, [1.0, 2.0], "slice 1")
+    @test dest[1] == [1.0, 2.0]
+    err = try
+        MRT.store_item!(dest, 2, [1.0f0, 2.0f0], "slice 2")
+        nothing
+    catch e
+        e
+    end
+    @test err isa ArgumentError
+    @test occursin("slice 2", err.msg)
+    @test occursin("Vector{Float32}", err.msg)
+end
+
 @testitem "Serial-BLAS threshold is settable" tags = [:reconstruction] begin
     using MriReconstructionToolbox
     const MRT = MriReconstructionToolbox
