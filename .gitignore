@@ -10,6 +10,10 @@ benchmark/hpc/results/*.json
 docs/notebooks/build/
 docs/notebooks/cache/
 
+# .ipynb is a jupytext-generated view of docs/notebooks/src/*.jl (the tracked source); regenerate
+# with `python3 -m jupytext --to ipynb docs/notebooks/src/*.jl` rather than committing it.
+docs/notebooks/*.ipynb
+
 # per-section/per-group benchmark fragments (merged into benchmark_<backend>_<n>threads.json)
 benchmark/comparison/results/*__*.json
 benchmark/hpc/results/*__*.json
