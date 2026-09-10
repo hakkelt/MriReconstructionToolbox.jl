@@ -45,7 +45,8 @@ using .NotebookUtils
 
 using MriReconstructionToolbox
 using MriReconstructionToolbox: get_operator
-using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
+using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities,
+    create_tubes_phantom, TubesIntensities
 using MIRTjim: jim
 using Plots
 using LinearAlgebra: norm
@@ -110,8 +111,11 @@ end
 x_l2_good = show_recon(IterativeReconstruction(L2Image(1.0f-4); maxit = 40), "L2Image λ=1e-4 (well chosen)")
 x_l2_over = show_recon(IterativeReconstruction(L2Image(1.0f0); maxit = 40), "L2Image λ=1e0 (over-regularized)")
 
+# The over-regularized solution is heavily shrunk in magnitude; rescale it to the well-chosen
+# image's peak before display, so the comparison is about lost structure, not lost brightness.
+x_l2_over_scaled = x_l2_over .* (maximum(abs, x_l2_good) / maximum(abs, x_l2_over))
 side_by_side(
-    x_l2_good, x_l2_over;
+    x_l2_good, x_l2_over_scaled;
     titles = ("λ = 1e-4 (well chosen)\nNRMSE $(round(nrmse1(x_l2_good), digits = 3))",
         "λ = 1e0 (over-regularized)\nNRMSE $(round(nrmse1(x_l2_over), digits = 3))"),
 )
@@ -186,18 +190,19 @@ bands = 𝒞 * x_noisy
 println("contourlet stack: ", size(bands))
 
 x_cont = show_recon(IterativeReconstruction(reg_c; maxit = 30), "L1Contourlet λ=2e-3")
+nbands = size(bands, 3)
+band_idx = unique(round.(Int, range(1, nbands; length = min(4, nbands))))
 jim(
-    jim(bands[:, :, 1]; title = "coarse band"),
+    (jim(bands[:, :, b]; title = "band $b/$nbands") for b in band_idx)...,
     jim(x_cont; title = "L1Contourlet reconstruction");
-    layout = (1, 2), size = (800, 350)
+    layout = (1, length(band_idx) + 1), size = (250 * (length(band_idx) + 1), 300)
 )
 
 # %% [markdown]
 # ### 3D: `L1Wavelet3D`
 #
 # Same penalty $\lambda\|\mathcal{W}_{3D}x\|_1$ as `L1Wavelet2D`, over volumes and multi-slice
-# stacks — the transform couples the slice direction, which also means the problem no longer
-# decomposes over slices. Same references and toolbox equivalents as `L1Wavelet2D` above.
+# stacks. Same references and toolbox equivalents as `L1Wavelet2D` above.
 
 # %%
 x3d = create_shepp_logan_phantom(64, 64, 32; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
@@ -357,8 +362,8 @@ x_sparsity = show_recon(
 
 jim(
     jim(x_wav; title = "L1 wavelet"),
-    jim(x_hard; title = "L0 threshold"),
-    jim(x_sparsity; title = "L0 count");
+    jim(x_hard; title = "L0 (threshold) wavelet"),
+    jim(x_sparsity; title = "L0 (count) wavelet");
     layout = (1, 3), size = (1050, 300)
 )
 
@@ -372,7 +377,8 @@ jim(
 # 945–948 (2013), introduces the idea; Ahmad, Bouman, Buzzard et al., *Plug-and-play methods for
 # magnetic resonance imaging*, IEEE Signal Processing Magazine 37(1), 105–116 (2020), surveys it
 # for MRI specifically. RegularizedLeastSquares.jl has a matching `PlugAndPlayRegularization`;
-# neither BART nor SigPy ships one.
+# BART also has one (`-R TF`), but restricted to a denoiser exported as a TensorFlow model — a
+# narrower interface than MRT's "any callable" one. SigPy ships no plug-and-play regularizer.
 #
 # No denoiser ships with MRT — BM3D or a trained network are the usual choices. To show the
 # wiring (and to check it), a soft-thresholding "denoiser" reproduces the proximal operator of
@@ -424,10 +430,13 @@ println("‖PnP − L1Image‖/‖L1Image‖ = ", round(norm(x_pnp - x_l1_ista) 
 # sparsity flag.
 
 # %%
-# Three "echoes" of the same anatomy with different contrast.
+# Three "echoes" of the same anatomy with different contrast: six tubes at fixed relative
+# fillings, scaled together per echo the way multi-echo signal decays — a more realistic
+# multi-contrast test than a single phantom uniformly dimmed.
 n = 64
-base = create_shepp_logan_phantom(n, n, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
-echoes = cat((base .* w for w in (1.0f0, 0.7f0, 0.45f0))...; dims = 3)
+base_fillings = [0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
+echo_intensities = [TubesIntensities(tube_fillings = base_fillings .* w) for w in (1.0, 0.7, 0.45)]
+echoes = create_tubes_phantom(n, n, :axial; ti = echo_intensities, eltype = ComplexF32)
 
 acq_me = AcquisitionInfo(;
     is3D = false,
@@ -489,8 +498,24 @@ println(BoxConstraint(0.0, 1.0))
 try
     reconstruct(data, IterativeReconstruction(TotalVariation2D(1.0f-3), NonNegative()); verbosity = Silent())
 catch e
-    println("\nOn complex data: ", sprint(showerror, e))
+    println("\nOn complex data, default (:error): ", sprint(showerror, e))
 end
+
+# %% [markdown]
+# `complex_handling = :real` projects onto the real, non-negative orthant instead of throwing:
+# the imaginary part is discarded and the real part clamped at 0. On the real, non-negative
+# Shepp–Logan phantom used throughout this notebook, adding that constraint to TV should only
+# help — it rules out images the true one could never be.
+
+# %%
+x_tv_only = show_recon(IterativeReconstruction(TotalVariation2D(1.0f-3); maxit = 60), "TV alone")
+x_tv_pos = show_recon(
+    IterativeReconstruction(TotalVariation2D(1.0f-3), NonNegative(; complex_handling = :real); maxit = 60),
+    "TV + NonNegative(:real)"
+)
+println("NonNegative(:real) improves on TV alone: ", nrmse1(x_tv_pos) < nrmse1(x_tv_only))
+
+side_by_side(x_tv_only, x_tv_pos; titles = ("TV alone", "TV + NonNegative(:real)"))
 
 # %% [markdown]
 # ## 9. Combining terms, and choosing λ
