@@ -125,15 +125,10 @@ function _simulate_partitioned_acquisition(image, acq_info::CartesianAcquisition
 
     frame_names = image isa NamedDimsArray ? dimnames(image)[1:(end - 1)] : nothing
     raw_image = unname(image)
+    # Copy constructor rather than a hand-written field list: every field but the two overridden
+    # here is carried across, so a field added to the type later cannot be silently dropped.
     frame_acqs = map(specs) do spec
-        return CartesianAcquisitionInfo(;
-            is3D = acq_info.is3D,
-            image_size = acq_info.image_size,
-            sensitivity_maps = acq_info.sensitivity_maps,
-            subsampling = spec,
-            shifted_kspace_dims = acq_info.shifted_kspace_dims,
-            shifted_image_dims = acq_info.shifted_image_dims,
-        )
+        return CartesianAcquisitionInfo(acq_info; subsampling = spec, kspace_data = nothing)
     end
     frame_ksps = map(enumerate(frame_acqs)) do (frame, frame_acq)
         frame_image = collect(selectdim(raw_image, nd, frame))
