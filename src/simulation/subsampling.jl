@@ -173,17 +173,40 @@ function _create_sampling_pattern(subsampling::PoissonDiskSampling, dims, center
 end
 
 """
+    _phase_encode_mask(keep::AbstractVector{Bool}, nsamples::Int) -> BitMatrix
+
+The `(:, keep)` sampling-pattern form spelled out as a dense mask: every readout sample of the
+phase encodes `keep` selects. Its own function so that the selector's concrete type is available
+here (see the note at the call site in [`to_displayable_mask`](@ref)).
+"""
+function _phase_encode_mask(keep::AbstractVector{Bool}, nsamples::Int)
+    # `reshape(keep, 1, length(keep))`, not `reshape(keep, 1, :)`: the colon form goes through
+    # `_reshape_uncolon`, whose result the compiler gives up on (`::Any`), which turns the fill
+    # below into a runtime dispatch.
+    mask = falses(nsamples, length(keep))
+    mask .= reshape(keep, 1, length(keep))
+    return mask
+end
+
+"""
     to_displayable_mask(pattern, dims)
 
 Convert a sampling pattern returned by [`create_sampling_pattern`](@ref) into a `Bool` mask of
 size `dims` suitable for display. Accepts either a plain `Bool` mask (returned as is) or the
-`(:, mask)` form used when the frequency-encoding dimension is fully sampled.
+`(:, mask)` form used when the frequency-encoding dimension is fully sampled; the latter describes
+a 2D acquisition, so `dims` must be two-dimensional for it.
 """
 function to_displayable_mask(pattern, dims::NTuple{N, Int}) where {N}
     if pattern isa Tuple && length(pattern) == 2 && pattern[2] isa AbstractVector{Bool}
-        mask = falses(dims)
-        mask[:, pattern[2]] .= true
-        return mask
+        # `(:, keep)` says "every readout sample, the phase encodes `keep` selects", which is a
+        # statement about a 2D array.
+        N == 2 || throw(ArgumentError("the `(:, mask)` pattern form describes a 2D acquisition, got dims $dims"))
+        # `last(pattern)`, not `pattern[2]`: inside this branch the compiler carries `pattern[2]`
+        # as `Union{Colon, AbstractVector{Bool}}` (the `isa` test narrows the check, not the
+        # value), and everything downstream of that union is a runtime dispatch. `last` of a
+        # two-element tuple is the selector's own type, and `_phase_encode_mask` is then a
+        # function barrier specialized on it.
+        return _phase_encode_mask(last(pattern), dims[1])
     elseif pattern isa Tuple && length(pattern) == 2 && pattern[2] isa AbstractArray{Bool}
         return pattern[2]
     elseif pattern isa Tuple && length(pattern) == 1 && first(pattern) isa AbstractArray{Bool}
