@@ -28,6 +28,9 @@
 # 4. Writing the optimization problem by hand
 # 5. Proximal operators directly
 # 6. Adding a regularizer of your own
+# 7. Adding an `AbstractOperators`-compatible operator
+# 8. Adding a proximal operator of your own
+# 9. Adding an algorithm of your own
 
 # %%
 include("NotebookUtils.jl")
@@ -43,6 +46,7 @@ using Plots
 using AbstractOperators
 using StructuredOptimization
 using ProximalOperators
+using ProximalCore
 using ProximalAlgorithms
 using WaveletOperators: WaveletOp, WT, wavelet
 using LinearAlgebra
@@ -355,6 +359,177 @@ jim(
 # across batch dimensions because `get_affected_dims` says it couples nothing.
 println("value at x_true: ", round(calculate(MaskedL1(5.0f-3, weights), x_true), digits = 4))
 println("affected dims:   ", get_affected_dims(MaskedL1(5.0f-3, weights), nothing, (:x, :y, :slice)))
+
+# %% [markdown]
+# ## 7. Adding an `AbstractOperators`-compatible operator
+#
+# The encoding operator itself, `𝒜 = 𝒫ℱ𝒮`, is built from `AbstractOperators.AbstractOperator`s —
+# the same interface a custom operator implements. The contract is small:
+#
+# - `struct MyOp <: LinearOperator` carrying whatever the operator needs (here, a fixed pixel
+#   shift).
+# - `Base.size(L::MyOp)` — `(codomain_size, domain_size)`, matrix convention.
+# - `LinearAlgebra.mul!(y, L::MyOp, x)` — the forward map, in place.
+# - `Base.adjoint(L::MyOp)` (or an `AdjointOperator` wrapper with its own `mul!`) — the adjoint
+#   map, also in place.
+#
+# Optionally, the **property traits** from `properties.jl` — `is_linear`, `is_AcA_diagonal`,
+# `is_AAc_diagonal`, `diag_AcA`, `is_orthogonal`, `is_full_row_rank` and friends — which is how a
+# solver decides whether it can use the operator without applying it: `is_AAc_diagonal` is what
+# lets `HardConsistency` project in closed form (§2.2 of notebook 11), and an orthogonal operator
+# skips the operator-norm power iteration entirely (`estimate_opnorm` returns `1` directly).
+#
+# A circular pixel shift is a clean example: it is exactly invertible (shift back), its adjoint
+# *is* its inverse (shifting is a permutation, so `L'L = I`), and it needs no operator-norm
+# estimate at all — properties worth declaring explicitly rather than leaving for the generic,
+# more expensive fallbacks (`get_normal_op(L) = L' * L`, `opnorm(L) = powerit(L)`) to rediscover.
+
+# %%
+struct CircShift{T, N} <: LinearOperator
+    dim::NTuple{N, Int}
+    offset::NTuple{N, Int}
+end
+CircShift(::Type{T}, dim::NTuple{N, Int}, offset::NTuple{N, Int}) where {T, N} = CircShift{T, N}(dim, offset)
+
+Base.size(L::CircShift) = (L.dim, L.dim)          # square: same shape in and out
+AbstractOperators.domain_type(::CircShift{T}) where {T} = T
+AbstractOperators.codomain_type(::CircShift{T}) where {T} = T
+
+function LinearAlgebra.mul!(y::AbstractArray, L::CircShift, x::AbstractArray)
+    y .= circshift(x, L.offset)
+    return y
+end
+
+# The adjoint of a circular shift is the shift in the opposite direction — shifting is a
+# permutation matrix, and a permutation's transpose is its inverse.
+Base.adjoint(L::CircShift{T, N}) where {T, N} = CircShift{T, N}(L.dim, .-(L.offset))
+
+# Properties: exactly orthogonal, so L'L = AAc = I, and the operator norm is 1 without an
+# estimate.
+AbstractOperators.is_linear(::CircShift) = true
+AbstractOperators.is_orthogonal(::CircShift) = true
+AbstractOperators.is_AcA_diagonal(::CircShift) = true
+AbstractOperators.diag_AcA(::CircShift{T}) where {T} = one(real(T))
+AbstractOperators.is_AAc_diagonal(::CircShift) = true
+AbstractOperators.diag_AAc(::CircShift{T}) where {T} = one(real(T))
+
+# %%
+𝒞shift = CircShift(ComplexF32, (nx, ny), (5, -3))
+shifted = 𝒞shift * x_true
+back = 𝒞shift' * shifted
+
+println("round trip error (should be 0):     ", norm(back - x_true))
+println("adjoint == inverse (orthogonal op):  ", norm(𝒞shift' * (𝒞shift * x_true) - x_true))
+println("‖𝒞shift‖ without power iteration:    ", AbstractOperators.estimate_opnorm(𝒞shift))
+
+jim(
+    jim(x_true; title = "original"),
+    jim(shifted; title = "circularly shifted");
+    layout = (1, 2), size = (800, 350)
+)
+
+# %% [markdown]
+# ## 8. Adding a proximal operator of your own
+#
+# A proximal function needs three things: a callable that returns its value, a `prox!` that
+# writes the proximal point in place and returns the value *there*, and the `is_*` traits a
+# parser consults (`is_proximable`, `is_convex`, and so on — §1 of this notebook reads
+# `get_assumptions` off exactly these).
+#
+# To check a from-scratch implementation actually is the right proximal operator rather than
+# just plausible code, re-derive `NormL1` — whose closed form (soft thresholding) is well known
+# — independently, and confirm it agrees with the fork's own `NormL1` bit for bit.
+
+# %%
+struct MyNormL1{T}
+    λ::T
+end
+
+ProximalCore.is_proximable(::Type{<:MyNormL1}) = true
+ProximalCore.is_convex(::Type{<:MyNormL1}) = true
+
+(f::MyNormL1)(x) = f.λ * sum(abs, x)
+
+function ProximalCore.prox!(y, f::MyNormL1, x, γ)
+    τ = f.λ * γ
+    y .= sign.(x) .* max.(abs.(x) .- τ, 0)
+    return f(y)
+end
+
+# %%
+z_test = randn(ComplexF32, 200)
+γ_test = 0.7
+λ_test = 0.4f0
+
+y_mine = similar(z_test)
+val_mine = ProximalCore.prox!(y_mine, MyNormL1(λ_test), z_test, γ_test)
+
+y_fork = similar(z_test)
+val_fork = prox!(y_fork, NormL1(λ_test), z_test, γ_test)
+
+println("prox points agree: ", y_mine ≈ y_fork)
+println("values agree:      ", val_mine ≈ val_fork, "  (", round(val_mine, digits = 4), " vs ", round(val_fork, digits = 4), ")")
+
+# %% [markdown]
+# Dropping `MyNormL1` into a reconstruction needs no further wiring — `materialize` for any
+# regularizer just needs to produce a `StructuredOptimization.Term` built from *some* proximal
+# function, and the parser only ever inspects the `is_*` traits, never the concrete type. Doing
+# that by hand (rather than through `@minimize`'s DSL, which recognizes `norm(·, 1)` specially
+# but not an arbitrary callable) is exactly `StructuredOptimization.Term(coeff, f, operator*x)`,
+# the same constructor `MaskedL1`'s `materialize` used in §6.
+
+# %%
+v_custom = Variable(copy(x_adj))
+term_custom = StructuredOptimization.Term(1, MyNormL1(5.0f-3), Eye(ComplexF32, (nx, ny)) * v_custom)
+p_custom = problem(ls(𝒜 * v_custom - y), term_custom)
+x̂_custom, _ = solve(p_custom, FISTA(maxit = 60, verbose = false))
+
+x_mynorm = reconstruct(
+    data,
+    IterativeReconstruction(L1Image(5.0f-3); maxit = 60);   # MRT's own L1Image, for reference
+    verbosity = Silent()
+)
+println("MRT's L1Image NRMSE:    ", round(nrmse(x_mynorm), digits = 4))
+println("hand-written MyNormL1:  ", round(nrmse(~v_custom), digits = 4))
+
+# %% [markdown]
+# ## 9. Adding an algorithm of your own
+#
+# `get_assumptions(::Type{<:IterationType})` is the declaration `IterativeReconstruction` reads
+# to decide whether a given algorithm can solve the parsed model — the mechanism behind
+# `DEFAULT_ALGORITHMS` in notebook 6 §1, and behind handing it any `ProximalAlgorithms` type at
+# all (notebook 6's `PANOC` example). This section is about *writing* that declaration, using
+# `ZeroFPR` — a quasi-Newton accelerated proximal-gradient algorithm the vendored fork ships but
+# that is not in `DEFAULT_ALGORITHMS` — as the concrete case.
+
+# %%
+using ProximalAlgorithms: ZeroFPR, ZeroFPRIteration, get_assumptions
+
+println(get_assumptions(ZeroFPRIteration))
+
+# %% [markdown]
+# Read as: an `OperatorTerm` for `f`, requiring `f` be `is_smooth` and its operator `A` be
+# `is_linear` — a smooth term behind a linear map — and a `SimpleTerm` for `g`, requiring only
+# `is_proximable`. That is the same shape FISTA declares (smooth + one proximable term), which
+# is why `ZeroFPR` is a legal substitute for it below rather than needing a different model.
+
+# %%
+println("FISTA:   ", get_assumptions(FISTA()))
+println("ZeroFPR: ", get_assumptions(ZeroFPR()))
+
+x_zerofpr = reconstruct(
+    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = ZeroFPR(), maxit = 60);
+    verbosity = Silent()
+)
+println("FISTA   NRMSE: ", round(nrmse(x_api), digits = 4))
+println("ZeroFPR NRMSE: ", round(nrmse(x_zerofpr), digits = 4))
+
+# %% [markdown]
+# Nothing in `MriReconstructionToolbox` had to change for `ZeroFPR` to become a legal
+# `algorithm =` choice: `get_assumptions` is read off the type MRT is handed, so any
+# `ProximalAlgorithms`-shaped iteration — the package's own, or a new one following the same
+# `Base.iterate` protocol with a matching `get_assumptions` method — plugs into the same solver
+# selection `DEFAULT_ALGORITHMS` uses, with no MRT-side registration step.
 
 # %% [markdown]
 # ## Environment
