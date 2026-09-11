@@ -8,13 +8,8 @@ function _direct_reconstruct_components(𝒜, acq_data, method::ReconstructionMe
         x̂
     end
     scale = _resolve_scale(acq_data, scale_input, config, scale_override)
-    # `𝒜'y` is only on the image's scale when `𝒜'𝒜 ≈ I`; a raw FFT/NFFT is not. `L`, already
-    # needed as the algorithm's step-size estimate (below, or by the caller when this warm start
-    # feeds a later `_iterative_reconstruct_core` call), makes `x̂/‖𝒜‖²` (one Landweber step) the
-    # scale-correct warm start at no extra cost. Computed from the pre-rescale `x̂` so `scale`
-    # above stays exactly as before.
-    L = _warm_start_needs_operator_norm(method) ? _operator_norm_for_stepsize(𝒜, method, config) : nothing
-    isnothing(L) || (x̂ = _scale_x0(x̂, L^2))
+    # Computed from the pre-rescale `x̂`, so `scale` above stays exactly as before.
+    x̂, L = _scale_default_warm_start(𝒜, x̂, method, config)
     return x̂, scale, L
 end
 
@@ -136,13 +131,10 @@ function _direct_reconstruct(𝒜, acq_data, x₀, method::ReconstructionMethod,
         x₀
     end
     scale = _resolve_scale(acq_data, scale_input, config, scale_override)
-    # Same fix as `_direct_reconstruct_components`, restricted to the case that actually produced
-    # a fresh default adjoint here (not a caller-supplied x₀, and not a pure direct method's own
-    # reconstruction, which is already correctly scaled).
-    L = nothing
-    if is_default_iterative_adjoint && _warm_start_needs_operator_norm(method)
-        L = _operator_norm_for_stepsize(𝒜, method, config)
-        x₀ = _scale_x0(x₀, L^2)
-    end
+    # Only the case that actually produced a fresh default adjoint here is rescaled: not a
+    # caller-supplied x₀, and not a pure direct method's own reconstruction, which is already
+    # correctly scaled.
+    x₀, L = is_default_iterative_adjoint ?
+        _scale_default_warm_start(𝒜, x₀, method, config) : (x₀, nothing)
     return x₀, scale, L
 end

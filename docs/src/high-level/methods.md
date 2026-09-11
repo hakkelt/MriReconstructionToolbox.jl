@@ -119,12 +119,19 @@ $\mathcal{A}^*\mathcal{A} \approx I$, which holds for an orthonormal Cartesian F
 uncompensated non-Cartesian (e.g. radial NFFT) operator, where $\mathcal{A}^*y$ can be off by
 several orders of magnitude and a finite-`maxit`/`tol` solve never fully corrects it — CG-SENSE is
 the case that motivated this: run on radial data, it used to be *worse* than the plain adjoint.
-For every proximal algorithm this reuses the same $L$ computed above at no extra cost; a pure
-unregularized CG/CGNR solve does not otherwise need $L$ (it derives its own step size), so this is
-the one case that pays for `estimate_opnorm` solely for the warm start, worth it because a
-badly-scaled starting point costs far more in iterations than the estimate does. Either way it is
-skipped (keeping the bare adjoint) only when `disable_operator_normalization = true` is passed
-explicitly.
+For every proximal algorithm this reuses the same $L$ computed above at no extra cost. A pure
+unregularized CG/CGNR solve does not otherwise need $L$ (it derives its own step size), and there
+the warm start is scaled by a one-application stand-in instead — the Rayleigh quotient
+$\langle x_0, \mathcal{A}^*\mathcal{A}x_0\rangle / \langle x_0, x_0\rangle$, which estimates the
+same $\rho(\mathcal{A}^*\mathcal{A})$ the power method converges to, and is close precisely
+because $x_0 = \mathcal{A}^*y$ already lies in the dominant subspace. Measured on a 192²×8
+acquisition: 11 ms instead of 118 ms (Cartesian, R = 3) and 62 ms instead of 812 ms (radial, 80
+spokes), landing 0.4 % and 3.2 % under the power estimate, which takes a 30-iteration CG-SENSE
+solve from 0.448 s to 0.253 s and from 2.73 s to 1.82 s at unchanged NRMSE. A few per cent is
+immaterial for a scale correction, where an order of magnitude is what matters; a step-size hint
+that is too small is not, which is why the power method still runs wherever $L$ *is* the step size.
+Either way the correction is skipped (keeping the bare adjoint) only when
+`disable_operator_normalization = true` is passed explicitly.
 
 #### Signal Models (`ℳ`)
 
