@@ -48,11 +48,12 @@ papers.** `StructuredLowRank` is named for "structured low-rank matrix completio
 field's own umbrella term (it is the title phrase of Shin et al., MRM 2014) and which covers both
 forms the type provides: `max_rank` is SAKE's hard rank constraint and `λ` is LORAKS' C-matrix
 nuclear-norm penalty. Naming the type `SAKE` or `LORAKS` would break Rule 1.4's spirit rather than
-follow it: those acronyms name whole reconstruction pipelines — LORAKS in particular is a family
-with S- and G-matrix variants that are *not* implemented here — so a type called `LORAKS` would
-overclaim, and two types would duplicate one operator and one prox for no gain. The papers are cited
-in the docstring and in `docs/src/high-level/regularization.md`; the keyword tells the reader which
-one they are running.
+follow it: those acronyms name whole reconstruction pipelines, so a type called `LORAKS` would
+overclaim, and a type per paper would duplicate one operator and one prox for no gain. The same
+reasoning governs the `structure` keyword: LORAKS is a *family* of matrix constructions, and its
+C, S and G matrices are `structure = :c`, `:s` and `:g` of the one type rather than three types,
+because they differ only in the lift. The papers are cited in the docstring and in
+`docs/src/high-level/regularization.md`; the keywords tell the reader which one they are running.
 
 **Rule 1.3 — Constraints read as constraints.** A hard constraint (an indicator function) is named
 for the set, not for a norm: `RankLimit`, `NonNegative`, `BoxConstraint`, `HardConsistency`. Where a
@@ -205,7 +206,10 @@ followed. A proximal function that only makes sense given an image layout
 a thin layout wrapper in MRT. `BlockNuclearNorm` is the case that stays: it is defined against the
 `(spatial…, frames, batch)` image layout throughout, so there is no generic core to lift out;
 `HankelLowRankProx` (behind `StructuredLowRank`) is the same case for the
-`(k-space grid…, channels, batch)` layout.
+`(k-space grid…, channels, batch)` layout, and `LoraksLowRankProx` doubly so: the LORAKS S- and
+G-matrix lifts it wraps reflect k-space about DC, which is MRI content, and they are only
+real-linear, so they are not `LinearOperator`s that rule 7.3 could send to `AbstractOperators`
+either.
 `hard_consistency_prox` is the case that split cleanly: the CG projection went upstream, and only
 the `is_AAc_diagonal`/`diag_AAc` shortcut — which is knowledge about MRI encoding operators — stayed.
 

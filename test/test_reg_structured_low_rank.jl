@@ -26,7 +26,23 @@ using TestItems
         @test_throws ArgumentError StructuredLowRank(max_rank = 0, window = (5, 5))
         @test_throws ArgumentError StructuredLowRank(λ = 0.1, window = (5,))
         @test_throws ArgumentError StructuredLowRank(λ = 0.1, window = (5, 0))
-        @test_throws ArgumentError StructuredLowRank(λ = 0.1, window = (5, 5), structure = :s)
+        @test_throws ArgumentError StructuredLowRank(λ = 0.1, window = (5, 5), structure = :hankel)
+
+        # the LORAKS phase structures
+        @test StructuredLowRank(λ = 0.1, window = (5, 5), structure = :s).structure === :s
+        @test StructuredLowRank(max_rank = 20, window = (5, 5), structure = :g).structure === :g
+        @test StructuredLowRank(λ = 0.1, window = (5, 5)).kspace_center === nothing
+        @test StructuredLowRank(λ = 0.1, window = (5, 5), structure = :s, kspace_center = (1, 1)).kspace_center == (1, 1)
+        @test_throws ArgumentError StructuredLowRank(λ = 0.1, window = (5, 5), structure = :s, kspace_center = (0, 3))
+        # ALOHA's weighting is defined for the C-matrix lift only
+        @test_throws ArgumentError StructuredLowRank(λ = 0.1, window = (5, 5), structure = :s, weights = :tv)
+        # and the structure is carried through a rescale
+        @test scale_regularization(
+            StructuredLowRank(λ = 0.2, window = (4, 3), structure = :s, kspace_center = (3, 2)), 3.0
+        ).structure === :s
+        @test scale_regularization(
+            StructuredLowRank(λ = 0.2, window = (4, 3), structure = :s, kspace_center = (3, 2)), 3.0
+        ).kspace_center == (3, 2)
     end
 
     @testset "get_operator is the identity" for threaded in [false, true]
@@ -305,4 +321,231 @@ end
     e_rank = nrmse(solve(StructuredLowRank(max_rank = 30, window = (5, 5))), truth)
     @test e_rank < 0.08
     @test e_rank < e_zf
+end
+
+@testitem "LORAKS S- and G-matrix lifts" tags = [:regularization] setup = [RegTestSetup, ProxOf] begin
+    using LinearAlgebra
+    using FFTW: fft, fftshift, ifftshift
+    import Random
+    Random.seed!(0)
+    MRT = MriReconstructionToolbox
+
+    function lift_matrix(lift, x, st)
+        M = Array{real(eltype(x))}(undef, MRT._loraks_matrix_size(lift, Val(st))...)
+        return MRT._loraks_lift!(M, lift, x, Val(st))
+    end
+    lift_rows(lift) = CartesianIndices(lift.nwin)
+
+    @testset "geometry" begin
+        lift = MRT.LoraksLift((13, 11), (4, 3), 2, :s)
+        @test lift.center == (7, 6)                             # MRT's centered k-space default
+        @test lift.nwin == (10, 9)                              # every window position is a row
+        @test MRT._loraks_matrix_size(lift, Val(:s)) == (2 * 90, 2 * 12 * 2)
+        @test MRT._loraks_matrix_size(lift, Val(:g)) == (2 * 90, 2 * 12 * 2 + 2)
+        # the reflection is `-ν mod N` about the centre, so DC is its own partner
+        @test MRT._loraks_reflect(lift, CartesianIndex(7, 6)) == CartesianIndex(7, 6)
+        @test MRT._loraks_reflect(lift, CartesianIndex(8, 7)) == CartesianIndex(6, 5)
+        @test MRT._loraks_reflect(lift, CartesianIndex(1, 1)) == CartesianIndex(13, 11)
+        # an explicit centre is honoured; a centre off the grid, a window that does not fit and
+        # an unknown structure are rejected
+        @test MRT.LoraksLift((13, 11), (4, 3), 1, :s; center = (1, 1)).center == (1, 1)
+        @test_throws ArgumentError MRT.LoraksLift((13, 11), (4, 3), 1, :s; center = (0, 5))
+        @test_throws ArgumentError MRT.LoraksLift((13, 11), (20, 3), 1, :s)
+        @test_throws ArgumentError MRT.LoraksLift((13, 11), (4, 3), 1, :c)
+    end
+
+    @testset "the lift is a weighted tight frame ($st, grid $gs)" for st in (:s, :g),
+            gs in ((12, 10), (13, 11), (8, 7, 6))
+
+        ks = length(gs) == 2 ? (4, 3) : (3, 3, 2)
+        nch = 2
+        lift = MRT.LoraksLift(gs, ks, nch, st)
+        x = randn(ComplexF64, gs..., nch)
+        M = lift_matrix(lift, x, st)
+        @test size(M, 1) == 2 * length(lift_rows(lift))
+
+        y = similar(x)
+        MRT._loraks_unlift!(y, lift, M, Val(st))
+        mult = MRT._loraks_multiplicity(Float64, lift, Val(st))
+        # `LᴴL` is the real diagonal `mult` -- the sign pattern of both constructions makes every
+        # cross term between the two sides of k-space cancel. That is what makes the
+        # multiplicity-weighted adjoint an exact left inverse, and the Cadzow prox exact.
+        @test y ≈ mult .* x
+        # with the modular reflection every sample is in the lift, so there is no sample the
+        # prox has to hand through unchanged
+        @test all(>(0), mult)
+
+        # and `_loraks_unlift!` really is the *real* adjoint of the lift: ⟨D, L x⟩ = ⟨Lᴴ D, x⟩
+        # over the real inner product, which is the one the lift is linear in.
+        D = randn(size(M)...)
+        MRT._loraks_unlift!(y, lift, D, Val(st))
+        @test dot(D, M) ≈ real(dot(y, x))
+    end
+
+    @testset "the S matrix matches Haldar (2014) Eqs. 3-6 and 22" begin
+        gs, ks, nch = (13, 11), (4, 3), 2
+        lift = MRT.LoraksLift(gs, ks, nch, :s)
+        x = randn(ComplexF64, gs..., nch)
+        rows, offs = lift_rows(lift), CartesianIndices(ks)
+        K, nblock = length(rows), prod(ks) * nch
+        # Written out in the paper's own indexing: rows are neighbourhood centres ν, columns are
+        # the in-window offsets p, and the four sub-blocks hold the real and imaginary parts of
+        # k(ν - p) and k(-ν - p).
+        at(coord) = mod1.(coord .+ lift.center, gs)              # `ν ↦ array index`, modulo the grid
+        Sr₊, Si₊, Sr₋, Si₋ = (zeros(K, nblock) for _ in 1:4)
+        for c in 1:nch, (jk, ko) in enumerate(offs), (jw, wi) in enumerate(rows)
+            ν = Tuple(wi) .- lift.center
+            p = .-(Tuple(ko) .- 1)
+            col = (c - 1) * prod(ks) + jk
+            zp = x[at(ν .- p)..., c]
+            zm = x[at(.-ν .- p)..., c]
+            Sr₊[jw, col], Si₊[jw, col] = real(zp), imag(zp)
+            Sr₋[jw, col], Si₋[jw, col] = real(zm), imag(zm)
+        end
+        @test lift_matrix(lift, x, :s) ≈ [(Sr₊ .- Sr₋) (Si₋ .- Si₊); (Si₊ .+ Si₋) (Sr₊ .+ Sr₋)]
+    end
+
+    @testset "the G matrix matches Haldar (2014) Eqs. 17-21" begin
+        gs, ks, nch = (13, 11), (4, 3), 2
+        lift = MRT.LoraksLift(gs, ks, nch, :g)
+        x = randn(ComplexF64, gs..., nch)
+        rows, offs = lift_rows(lift), CartesianIndices(ks)
+        K, nblock = length(rows), prod(ks) * nch
+        at(coord) = mod1.(coord .+ lift.center, gs)
+        gr, gi = zeros(K, nch), zeros(K, nch)
+        Gr, Gi = zeros(K, nblock), zeros(K, nblock)
+        for c in 1:nch
+            for (jw, wi) in enumerate(rows)
+                ν = Tuple(wi) .- lift.center
+                z = x[at(.-ν)..., c]                     # the reflected sample, k(-ν)
+                gr[jw, c], gi[jw, c] = real(z), imag(z)
+            end
+            for (jk, ko) in enumerate(offs), (jw, wi) in enumerate(rows)
+                ν = Tuple(wi) .- lift.center
+                p = .-(Tuple(ko) .- 1)
+                z = x[at(ν .- p)..., c]
+                Gr[jw, (c - 1) * prod(ks) + jk] = real(z)
+                Gi[jw, (c - 1) * prod(ks) + jk] = imag(z)
+            end
+        end
+        # `g` is one column per channel, which is the P-LORAKS channel-stacking applied to a
+        # construction the papers only write down for a single channel.
+        @test lift_matrix(lift, x, :g) ≈ [(-gr) Gr (-Gi); gi Gi Gr]
+    end
+
+    @testset "the S matrix sees conjugate symmetry" begin
+        N = 32
+        xs = range(-1, 1, N)
+        supp = [(abs(u) < 0.3 && abs(v) < 0.3) ? 1.0 : 0.0 for u in xs, v in xs]
+        ksp(im_) = reshape(fftshift(fft(ifftshift(im_))) / N, N, N, 1)
+        lift = MRT.LoraksLift((N, N), (5, 5), 1, :s)
+        σ_of(im_) = svdvals(lift_matrix(lift, ksp(im_), :s))
+        H = AbstractOperators.Hankel(ComplexF64, (N, N), (5, 5); nchannels = 1, channels = true)
+        numrank(s) = count(>(1.0e-3 * s[1]), s)
+
+        Random.seed!(3)
+        rough = supp .* cispi.(2 .* rand(N, N))
+        σ_real, σ_rough = σ_of(complex(supp)), σ_of(rough)
+        # A real-valued image has an exactly conjugate-symmetric k-space, and exposing that is
+        # what the S matrix is for: it acquires a numerical null space...
+        @test σ_real[end] / σ_real[1] < 1.0e-12
+        # ...that a random-phase image of the same support does not give it, where S is no more
+        # deficient than the two copies of the C matrix it is built from.
+        @test numrank(σ_real) < numrank(σ_rough)
+        @test σ_rough[end] / σ_rough[1] > 1.0e-8
+        # the C matrix cannot tell the two images apart at all: it models support, not phase
+        @test numrank(svdvals(H * ksp(complex(supp)))) == numrank(svdvals(H * ksp(rough)))
+    end
+
+    @testset "the prox is one Cadzow step of the $st matrix" for st in (:s, :g)
+        gs, ks, nch = (14, 12), (4, 3), 2
+        x = randn(ComplexF64, gs..., nch)
+        γ, λ = 0.7, 0.15
+        reg = StructuredLowRank(λ = λ, window = ks, structure = st)
+        y, value = prox_of(reg, x, γ)
+
+        lift = MRT.LoraksLift(gs, ks, nch, st)
+        M = lift_matrix(lift, x, st)
+        F = svd(M)
+        Sσ = max.(0.0, F.S .- λ * γ)
+        ref = similar(x)
+        MRT._loraks_unlift!(ref, lift, F.U * Diagonal(Sσ) * F.Vt, Val(st))
+        mult = MRT._loraks_multiplicity(Float64, lift, Val(st))
+        @test y ≈ ref ./ mult
+        @test value ≈ λ * sum(Sσ)
+        @test calculate(reg, x; threaded = false) ≈ λ * sum(svdvals(M))
+    end
+
+    @testset "the rank form truncates, and threading does not change it" begin
+        gs, ks, nch = (16, 14), (5, 4), 2
+        x = randn(ComplexF64, gs..., nch, 2)                    # two batch slabs
+        reg = StructuredLowRank(max_rank = 8, window = ks, structure = :s)
+        seq, value = prox_of(reg, x, 1.0)
+        @test value == 0                                        # an indicator, zero where projected
+
+        lift = MRT.LoraksLift(gs, ks, nch, :s)
+        ref = similar(x)
+        mult = MRT._loraks_multiplicity(Float64, lift, Val(:s))
+        for b in 1:2
+            F = svd(lift_matrix(lift, x[:, :, :, b], :s))
+            Sσ = copy(F.S)
+            Sσ[9:end] .= 0                                      # rank 8, the hard-truncation form
+            slab = similar(x, gs..., nch)
+            MRT._loraks_unlift!(slab, lift, F.U * Diagonal(Sσ) * F.Vt, Val(:s))
+            ref[:, :, :, b] = slab ./ mult
+        end
+        @test seq ≈ ref
+
+        term = materialize(reg, Variable(x); threaded = true)
+        f = MriReconstructionToolbox.StructuredOptimization.extract_functions(term)
+        par = similar(x)
+        MriReconstructionToolbox.ProximalCore.prox!(par, f, x, 1.0)
+        @test par ≈ seq
+        # the Cadzow step truncates the *lifted* matrix, so a generic iterate stays infeasible
+        @test calculate(reg, x; threaded = false) == Inf
+    end
+end
+
+@testitem "LORAKS S-matrix partial-Fourier reconstruction" tags = [:regularization, :reconstruction, :integration] begin
+    using MriReconstructionToolbox
+    using LinearAlgebra, NamedDims
+
+    # Single-channel partial Fourier: the phase constraints are the one structured-low-rank
+    # prior that works without several coils, which is LORAKS' original selling point.
+    N = 32
+    g = range(-1, 1, N)
+    img = ComplexF64[
+        ((abs(x) < 0.45 && abs(y) < 0.45) ? (abs(x) < 0.2 && abs(y) < 0.2 ? 0.6 : 1.0) : 0.0) *
+            cis(0.9 * (x + 0.5y)) for x in g, y in g
+    ]
+    mask = falses(N)
+    mask[1:20] .= true                                          # 62 % of ky, from one side
+    ksp_full = simulate_acquisition(
+        NamedDimsArray{(:x, :y)}(img), CartesianAcquisitionInfo(; is3D = false, image_size = (N, N))
+    ).kspace_data
+    acq = CartesianAcquisitionInfo(
+        ksp_full[:, mask]; is3D = false, image_size = (N, N), subsampling = (:, mask),
+    )
+
+    nrmse(a, b) = norm(abs.(a) .- abs.(b)) / norm(abs.(b))
+    solve(reg) = unname(
+        reconstruct(
+            acq,
+            IterativeReconstruction(
+                reg; signal_model = KSpaceToImage(RootSumSquares()), algorithm = ADMM(), maxit = 120,
+            );
+            verbosity = Silent(),
+        )
+    )
+
+    e_zf = nrmse(unname(reconstruct(acq, DirectReconstruction(); verbosity = Silent())), img)
+    # The S matrix is the strong one, and it holds across λ: 0.123-0.136 against 0.182 zero-filled
+    # over λ ∈ [0.005, 0.08].
+    e_s = nrmse(solve(StructuredLowRank(λ = 0.02, window = (5, 5), structure = :s)), img)
+    @test e_s < 0.85 * e_zf
+    # The G matrix helps too, but it is the weaker construction (the paper expects it to be merely
+    # rank-deficient), and its λ has to be picked rather than trusted: the same sweep runs
+    # 0.132-0.173, non-monotonically.
+    e_g = nrmse(solve(StructuredLowRank(λ = 0.01, window = (5, 5), structure = :g)), img)
+    @test e_g < 0.9 * e_zf
 end
