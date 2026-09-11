@@ -120,9 +120,9 @@ end
     # The filter-bank form of the same orthogonal class is unaffected, and still gets the
     # identity fast paths.
     op = WaveletOp(Float64, wavelet(WT.db2), (8, 8))
-    @test has_fast_opnorm(op)
+    @test AbstractOperators.has_fast_opnorm(op)
     @test opnorm(op) == 1
-    @test get_normal_op(op) isa Eye
+    @test AbstractOperators.get_normal_op(op) isa Eye
     @test is_AcA_diagonal(op)
     x = randn(8, 8)
     @test op' * (op * x) ≈ x
