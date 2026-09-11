@@ -213,8 +213,9 @@ no ACS lines are needed.
 - `structure = :s` and `:g` reflect k-space about DC modulo the grid, which is the exact
   conjugate symmetry of the DFT the encoding operator applies. Haldar instead keeps only the
   neighbourhoods whose reflection lies inside an odd, zero-symmetric grid; that variant was
-  measured and rejected here because it leaves a fifth to a third of the k-space samples out of
-  the lift for the same lifted rank (`LoraksLift`'s docstring records the numbers).
+  measured and rejected here because it leaves samples out of the lift entirely for the same
+  lifted rank — 295 of 1024 on a 32² grid with a `(5, 5)` window, 615 of 4096 on a 64² one
+  (`LoraksLift`'s docstring records the comparison).
 - `structure = :s` and `:g` model image *phase*, not coil relations, so they are useful on
   single-channel data as well — unlike `:c`, whose multi-channel form is what makes it a
   parallel-imaging prior. Combining both constraints, as LORAKS does, means adding two terms
