@@ -133,7 +133,7 @@ function _hlrp_prox_slab!(yr, xr, f::HankelLowRankProx, b::Int, threshold, ::Val
 end
 
 """
-	StructuredLowRank(; λ=nothing, max_rank=nothing, window, structure=:c, weights=nothing, batch_dims=nothing)
+	StructuredLowRank(; λ=nothing, max_rank=nothing, window, structure=:c, weights=nothing, batch_dims=nothing, kspace_center=nothing)
 
 Calibrationless structured low-rank k-space regularization — the SAKE / LORAKS-C / ALOHA family.
 Exactly one of `λ` or `max_rank` must be given.
@@ -153,8 +153,27 @@ no ACS lines are needed.
   This is SAKE's hard rank constraint, imposed by a Cadzow truncation step.
 - `window`: sliding-window size over the k-space encoding dims, a 2- or 3-tuple. Typically
   `(5, 5)` or `(6, 6)` in 2D and `(4, 4, 4)` in 3D.
-- `structure`: only `:c` (plain block-Hankel) is currently implemented.
-- `weights`: (optional) ALOHA's transform-domain weighting. `nothing` (the default) is plain
+- `structure`: which LORAKS matrix is lifted and low-ranked.
+  - `:c` (the default) — the plain block-Hankel (C) matrix. Low rank when the image has limited
+    spatial support, and, with several channels, through the coil relations above. This is the
+    SAKE / LORAKS-C / ALOHA structure and the only one `weights` applies to.
+  - `:s` — the LORAKS S-matrix, `S ∈ ℝ^(2K × 2NᵣL)`, which reads k-space on both sides of DC and
+    is low rank when the image phase is **smoothly varying** (lower still when the support is
+    also limited). This is the phase constraint P-LORAKS carries; it needs no phase calibration.
+  - `:g` — the LORAKS G-matrix, the other phase construction of Haldar (2014). Deliberately
+    offered as the weaker sibling of `:s`: the paper's own analysis is that `G` is
+    rank-deficient but not necessarily *low* rank unless the image support is limited too, so
+    prefer `:s` unless you are reproducing G-matrix results.
+  The `:s` and `:g` matrices are real by construction, so their prox runs a real SVD of a matrix
+  with twice the rows and columns of the C matrix. Measured on a 64²×8 slab with a `(5, 5)`
+  window: 76 ms for `:c` against 209 ms (`:s`) and 212 ms (`:g`) per proximal call, i.e. 2.7-2.8×.
+  The internal `LoraksLift`'s docstring carries the exact constructions.
+- `kspace_center`: (optional) the array index of the DC sample per k-space encoding dimension,
+  used by `structure = :s` and `:g` to reflect k-space about DC. Defaults to MRT's centered
+  convention, `N ÷ 2 + 1` per dimension — pass the true center when DC sits elsewhere (an
+  acquisition with `shifted_kspace_dims`, where DC is at index 1). Ignored by `structure = :c`.
+- `weights`: (optional) ALOHA's transform-domain weighting, for `structure = :c` only. `nothing`
+  (the default) is plain
   SAKE / LORAKS-C. Otherwise the lift is applied to `w ⊙ k` for each weight `w`, and several
   weights are combined by a [`ProximalAverage`](@ref) the way [`MultiScaleLowRank`](@ref)
   combines its scales. Accepts:
@@ -191,14 +210,25 @@ no ACS lines are needed.
   the image is sparse, the correspondingly weighted k-space is annihilated by a small filter, so
   `𝓗(w ⊙ k)` is low-rank even for a single channel. The weighted terms cost one SVD each, so
   `weights = :wavelet` is `2 * length(window)` times the work of the unweighted term.
-- Only the plain block-Hankel structure is implemented. The LORAKS S-matrix (which also imposes
-  conjugate symmetry) and the G-matrix are not available.
+- `structure = :s` and `:g` reflect k-space about DC modulo the grid, which is the exact
+  conjugate symmetry of the DFT the encoding operator applies. Haldar instead keeps only the
+  neighbourhoods whose reflection lies inside an odd, zero-symmetric grid; that variant was
+  measured and rejected here because it leaves a fifth to a third of the k-space samples out of
+  the lift for the same lifted rank (`LoraksLift`'s docstring records the numbers).
+- `structure = :s` and `:g` model image *phase*, not coil relations, so they are useful on
+  single-channel data as well — unlike `:c`, whose multi-channel form is what makes it a
+  parallel-imaging prior. Combining both constraints, as LORAKS does, means adding two terms
+  (one `:c`, one `:s`) with their own `λ`, which is what `Component`s are for.
 
 # References
 - Shin, P. J., et al. (2014). *Calibrationless parallel imaging reconstruction based on
   structured low-rank matrix completion.* Magn Reson Med, 72(4), 959-970. — the `max_rank` form.
 - Haldar, J. P. (2014). *Low-rank modeling of local k-space neighborhoods (LORAKS) for
-  constrained MRI.* IEEE Trans Med Imaging, 33(3), 668-681. — the `λ` form.
+  constrained MRI.* IEEE Trans Med Imaging, 33(3), 668-681. — the `λ` form, and the S- and
+  G-matrix constructions behind `structure = :s` and `:g` (Eqs. 17-22).
+- Haldar, J. P., & Zhuo, J. (2016). *P-LORAKS: Low-rank modeling of local k-space neighborhoods
+  with parallel imaging data.* Magn Reson Med, 75(4), 1499-1514. — the multi-channel
+  (channel-stacked) form of the C and S matrices.
 - Jin, K. H., Lee, D., & Ye, J. C. (2016). *A general framework for compressed sensing and
   parallel MRI using annihilating filter based low-rank Hankel matrix.* IEEE Trans Comput
   Imaging, 2(4), 480-495. — ALOHA, the `weights` argument.
@@ -210,25 +240,35 @@ struct StructuredLowRank{T, N, W} <: Regularization
     structure::Symbol
     weights::W
     batch_dims::Union{Nothing, Tuple}
+    kspace_center::Union{Nothing, NTuple{N, Int}}
     function StructuredLowRank(;
             λ::Union{Real, Nothing} = nothing, max_rank::Union{Integer, Nothing} = nothing,
             window, structure::Symbol = :c, weights = nothing, batch_dims = nothing,
+            kspace_center = nothing,
         )
         @argcheck (λ === nothing) != (max_rank === nothing) "StructuredLowRank requires exactly one of `λ` or `max_rank` (they are mutually exclusive), got λ=$(repr(λ)), max_rank=$(repr(max_rank))"
         λ !== nothing && @argcheck λ >= 0 "λ must be non-negative"
         max_rank !== nothing && @argcheck max_rank > 0 "max_rank must be positive"
-        @argcheck structure === :c "only structure = :c is currently implemented"
+        @argcheck structure in _SLR_STRUCTURES "structure must be one of $_SLR_STRUCTURES, got :$structure"
         @argcheck length(window) in (2, 3) "window must be a 2- or 3-tuple"
         @argcheck all(window .> 0) "window sizes must be positive"
+        # ALOHA's weighting is a statement about the block-Hankel lift of `w ⊙ k`; the S- and
+        # G-matrices already read both sides of k-space and have no weighted form in the
+        # literature.
+        @argcheck (weights === nothing || structure === :c) "`weights` (ALOHA) applies to structure = :c only, got :$structure"
         _check_slr_weights(weights, length(window))
         bd = batch_dims === nothing ? nothing : Tuple(batch_dims)
         T = λ === nothing ? Float64 : typeof(λ)
         w = NTuple{length(window), Int}(window)
+        center = kspace_center === nothing ? nothing : NTuple{length(window), Int}(kspace_center)
+        center === nothing || @argcheck all(center .> 0) "kspace_center indices must be positive"
         return new{T, length(window), typeof(weights)}(
-            λ, max_rank === nothing ? nothing : Int(max_rank), w, structure, weights, bd
+            λ, max_rank === nothing ? nothing : Int(max_rank), w, structure, weights, bd, center
         )
     end
 end
+
+const _SLR_STRUCTURES = (:c, :s, :g)
 
 const _SLR_WEIGHT_MODELS = (:tv, :wavelet)
 
@@ -265,16 +305,21 @@ function scale_regularization(reg::StructuredLowRank, factor::Real)
     reg.λ === nothing && return reg
     return StructuredLowRank(;
         λ = reg.λ * factor, window = reg.window, structure = reg.structure,
-        weights = reg.weights, batch_dims = reg.batch_dims,
+        weights = reg.weights, batch_dims = reg.batch_dims, kspace_center = reg.kspace_center,
     )
 end
 
-function _build_hankel_prox(reg::StructuredLowRank{T0, N}, x_val, ::Type{T}) where {T0, N, T}
-    @argcheck ndims(x_val) >= N + 1 "StructuredLowRank needs at least $(N + 1) dims (k-space grid + channels), got $(ndims(x_val))"
+function _slr_geometry(reg::StructuredLowRank{T0, N}, x_val; min_dims::Int = N + 1) where {T0, N}
+    @argcheck ndims(x_val) >= min_dims "StructuredLowRank(; structure = :$(reg.structure)) needs at least $min_dims dims (k-space grid$(min_dims > N ? " + channels" : "")), got $(ndims(x_val))"
     gridsize = NTuple{N, Int}(size(x_val)[1:N])
     @argcheck all(reg.window .<= gridsize) "window $(reg.window) exceeds the k-space grid size $gridsize"
     nchannels = size(x_val, N + 1)
     nbatch = prod(size(x_val)[(N + 2):end]; init = 1)
+    return gridsize, nchannels, nbatch
+end
+
+function _build_hankel_prox(reg::StructuredLowRank{T0, N}, x_val, ::Type{T}) where {T0, N, T}
+    gridsize, nchannels, nbatch = _slr_geometry(reg, x_val)
     H = Hankel(T, gridsize, reg.window; nchannels, channels = true)
     invmult = one(real(T)) ./ real(T).(AbstractOperators.diag_AcA(H))
     return H, invmult, nbatch
@@ -346,6 +391,7 @@ function _hankel_low_rank_prox(::Val{RANK}, λ, max_rank, H, invmult, nbatch, th
 end
 
 function materialize(reg::StructuredLowRank, x::Variable{T}; threaded::Bool) where {T}
+    reg.structure === :c || return _materialize_loraks(reg, x; threaded)
     H, invmult, nbatch = _build_hankel_prox(reg, ~x, T)
     op = get_operator(reg, ~x; threaded)
     R = real(T)
@@ -374,6 +420,39 @@ function materialize(reg::StructuredLowRank, x::Variable{T}; threaded::Bool) whe
             (@sprintf "avg_{w ∈ %s} %g ⋅ ‖𝓗(w ⊙ %s)‖_*" model λ get_name(x)) :
             (@sprintf "avg_{w ∈ %s} rank(𝓗(w ⊙ %s)) ≤ %d" model get_name(x) max_rank)
     end
+    return StructuredOptimization.Term(1, f, op * x, repr)
+end
+
+function _loraks_low_rank_prox(
+        ::Val{RANK}, ::Val{STRUCT}, λ, max_rank, lift, invmult, nbatch, threaded
+    ) where {RANK, STRUCT}
+    return LoraksLowRankProx{RANK, STRUCT, typeof(λ), typeof(lift), typeof(invmult)}(
+        λ, max_rank, lift, invmult, nbatch, threaded
+    )
+end
+
+# The phase-constrained LORAKS structures (`:s`, `:g`). Same Cadzow pipeline as the C matrix
+# above, with `LoraksLift` in place of the block-Hankel lift and a real SVD.
+function _materialize_loraks(reg::StructuredLowRank{T0, N}, x::Variable{T}; threaded::Bool) where {T0, N, T}
+    # The phase constraints say something about a single channel too -- that is LORAKS' point --
+    # so a k-space array with no coil axis is accepted here, unlike the C matrix, whose
+    # multi-channel form is what makes it a parallel-imaging prior.
+    gridsize, nchannels, nbatch = _slr_geometry(reg, ~x; min_dims = N)
+    form = Val(reg.structure)
+    lift = LoraksLift(gridsize, reg.window, nchannels, reg.structure; center = reg.kspace_center)
+    R = real(T)
+    invmult = one(R) ./ _loraks_multiplicity(R, lift, form)
+    penalty = reg.λ !== nothing
+    λ = penalty ? R(reg.λ) : one(R)
+    max_rank = penalty ? 0 : reg.max_rank
+    f = _loraks_low_rank_prox(
+        Val(!penalty), form, λ, max_rank, lift, invmult, nbatch, threaded
+    )
+    sym = reg.structure === :s ? "𝓢" : "𝓖"
+    repr = penalty ?
+        (@sprintf "%g ⋅ ‖%s %s‖_*" λ sym get_name(x)) :
+        (@sprintf "rank(%s %s) ≤ %d" sym get_name(x) max_rank)
+    op = get_operator(reg, ~x; threaded)
     return StructuredOptimization.Term(1, f, op * x, repr)
 end
 

@@ -569,8 +569,31 @@ rec = reconstruct(
 **Practical tip:** The optimization variable is the full multi-channel k-space, so pair the term
 with `signal_model = KSpaceToImage(...)` (as `SPIRiT(; iterative = true)` does). Each iteration
 costs one economy SVD of a `prod(gridsize .- window .+ 1) × (prod(window) * ncoils)` matrix per
-batch slab, so keep `window` small. Only `structure = :c` (plain block-Hankel) is implemented;
-the LORAKS S-matrix and G-matrix are not yet available.
+batch slab, so keep `window` small.
+
+**LORAKS phase constraints — the S and G matrices.** `structure` selects which LORAKS matrix is
+lifted. `:c` (the default) is the block-Hankel matrix above, low rank when the image has limited
+support and — with several coils — through the coil relations. `:s` is the LORAKS S-matrix, which
+reads k-space on both sides of DC and is low rank when the image **phase varies smoothly**; `:g`
+is the other phase construction of Haldar (2014), offered for completeness and weaker by the
+paper's own analysis (rank-deficient, but not necessarily *low* rank unless the support is
+limited too). Both are real by construction, so their prox runs a real SVD of a matrix with twice
+the rows and columns of the C matrix: 2.7-2.8× the C-matrix cost per proximal call, measured on a
+64²×8 slab with a `(5, 5)` window (76 ms against 209 ms and 212 ms).
+
+Unlike `:c`, the phase structures say something about a **single-channel** acquisition, which is
+LORAKS' original point: no coils, no calibration, no phase estimate. On a 32×32 single-channel
+partial-Fourier problem (62 % of `ky` from one side) they cut the NRMSE from 0.182 zero-filled to
+0.123 (`:s`) and 0.132 (`:g`).
+
+```julia
+StructuredLowRank(; λ = 0.02, window = (5, 5), structure = :s)
+```
+
+The reflection about DC uses MRT's centered k-space convention by default; pass `kspace_center`
+when DC sits elsewhere (an acquisition with `shifted_kspace_dims` has it at index 1). ALOHA's
+`weights` apply to `:c` only. To impose support *and* phase structure at once, as LORAKS does,
+add two terms — one `:c`, one `:s` — each with its own `λ`.
 
 **ALOHA — transform-domain weighting.** `weights` lifts `w ⊙ k` instead of `k`, where `w` is the
 annihilating filter implied by a sparsity model: if a transform of the image is sparse, the
@@ -830,7 +853,8 @@ Low-rank models:
 - Ong, F., & Lustig, M. (2016). *Beyond low rank + sparse: Multiscale low rank matrix decomposition.* IEEE Journal of Selected Topics in Signal Processing, 10(4), 672-687. — [`MultiScaleLowRank`](@ref).
 - Bauschke, H. H., Goebel, R., Lucet, Y., & Wang, X. (2008). *The proximal average: Basic theory.* SIAM Journal on Optimization, 19(2), 766-785. — the construction [`MultiScaleLowRank`](@ref) uses to combine the scales.
 - Shin, P. J., Larson, P. E. Z., Ohliger, M. A., et al. (2014). *Calibrationless parallel imaging reconstruction based on structured low-rank matrix completion.* Magnetic Resonance in Medicine, 72(4), 959-970. — SAKE, the `max_rank` form of [`StructuredLowRank`](@ref).
-- Haldar, J. P. (2014). *Low-rank modeling of local k-space neighborhoods (LORAKS) for constrained MRI.* IEEE Transactions on Medical Imaging, 33(3), 668-681. — LORAKS, whose C-matrix penalty is the `λ` form of [`StructuredLowRank`](@ref).
+- Haldar, J. P. (2014). *Low-rank modeling of local k-space neighborhoods (LORAKS) for constrained MRI.* IEEE Transactions on Medical Imaging, 33(3), 668-681. — LORAKS, whose C-matrix penalty is the `λ` form of [`StructuredLowRank`](@ref) and whose S- and G-matrices are its `structure = :s` and `:g`.
+- Haldar, J. P., & Zhuo, J. (2016). *P-LORAKS: Low-rank modeling of local k-space neighborhoods with parallel imaging data.* Magnetic Resonance in Medicine, 75(4), 1499-1514. — the multi-channel form of the C and S matrices.
 - Jin, K. H., Lee, D., & Ye, J. C. (2016). *A general framework for compressed sensing and parallel MRI using annihilating filter based low-rank Hankel matrix.* IEEE Transactions on Computational Imaging, 2(4), 480-495. — ALOHA (the `weights` argument of [`StructuredLowRank`](@ref)).
 
 Joint sparsity and prior images:
@@ -850,7 +874,6 @@ Algorithms:
 
 The following terms appear in the literature and in other reconstruction packages but are not implemented here, because they need building blocks the package does not yet have:
 
-- **LORAKS S/G matrices**: the plain block-Hankel form (SAKE, LORAKS-C, and ALOHA's transform-domain weighting via `weights`) is available as [`StructuredLowRank`](@ref); the conjugate-symmetric S-matrix and the phase/gradient-weighted G-matrix are not implemented.
 - **Learned reconstruction networks** (unrolled networks, end-to-end variational networks): these replace the reconstruction, not the regularizer. A trained *denoiser* can be used today through [`PlugAndPlay`](@ref).
 
 Note that [`PlugAndPlay`](@ref) supplies the mechanism but no denoisers: any callable
