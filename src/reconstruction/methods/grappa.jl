@@ -52,6 +52,9 @@ autocalibration block (empty when there is none). Throws when the frequency-enco
 itself subsampled, since GRAPPA's kernel assumes complete `kx` lines.
 """
 function _grappa_ky_pattern(acq::CartesianAcquisitionInfo)
+    # One pattern per frame has no single `(acquired, R, acs)` answer, and `to_displayable_mask`
+    # would report only that it cannot read the spec. Say what is actually unsupported.
+    _reject_partitioned(acq.kspace_data, "GRAPPA/SPIRiT kernel calibration")
     Nx, Ny = get_image_size(acq)[1], get_image_size(acq)[2]
     mask = to_displayable_mask(acq.subsampling, (Nx, Ny))
     acquired = vec(any(mask; dims = 1))

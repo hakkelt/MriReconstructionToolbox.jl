@@ -57,8 +57,10 @@ function _kspace_to_image(
         throw(ArgumentError("Unsupported coil combination: $(typeof(coil_combine))"))
     end
 
+    # A single-coil acquisition carries no coil axis at all (`DirectReconstruction` accepts that
+    # layout too), so there is nothing to drop and `dims = 3` would be out of range.
     combined = !(coil_combine isa NoCoilCombination)
-    combined && (img_out = dropdims(img_out; dims = c_dim))
+    combined && ndims(coil_imgs) >= c_dim && (img_out = dropdims(img_out; dims = c_dim))
 
     if _has_dimnames(acq.kspace_data)
         out_d = combined ? filter(!=(:coil), get_image_dims(acq)) : get_image_dims(acq)
