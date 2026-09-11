@@ -76,13 +76,13 @@ function reinstantiate_penalty_sequence(
     final_rho = ensure_correct_value(seq.rho, R, rho)
 	n_blocks = length(final_rho)
     default_tau = fill(R(10.0), n_blocks)
-    tau_vec = ensure_correct_value(seq.tau, R, default_tau)
+    tau_vec = ensure_correct_value(default_tau, R, seq.tau)
 	default_eta = fill(R(100.0), n_blocks)
-	eta_vec = ensure_correct_value(seq.eta, R, default_eta)
+	eta_vec = ensure_correct_value(default_eta, R, seq.eta)
     default_rho_min = fill(R(1e-6), n_blocks)
-    rho_min_vec = ensure_correct_value(seq.rho_min, R, default_rho_min)
+    rho_min_vec = ensure_correct_value(default_rho_min, R, seq.rho_min)
     default_rho_max = fill(R(1e6), n_blocks)
-    rho_max_vec = ensure_correct_value(seq.rho_max, R, default_rho_max)
+    rho_max_vec = ensure_correct_value(default_rho_max, R, seq.rho_max)
     T = typeof(final_rho)
     SpectralRadiusBoundPenalty{T,T,T}(;
         rho=final_rho,

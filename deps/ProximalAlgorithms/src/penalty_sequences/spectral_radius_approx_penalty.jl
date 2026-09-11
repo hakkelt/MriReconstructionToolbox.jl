@@ -1,5 +1,5 @@
 """
-    SpectralRadiusApproximationPenalty{R,T}
+    SpectralRadiusApproximationPenalty{R,T,Tmin,Tmax}
 
 Adaptive penalty parameter strategy based on spectral radius approximation. Updates penalties using the formula:
     ρ = ‖yᵢ - yᵢ₋₁‖ / ‖(zᵢ - zᵢ₋₁)‖
@@ -7,8 +7,8 @@ Adaptive penalty parameter strategy based on spectral radius approximation. Upda
 # Arguments
 - `rho::R`: Initial penalty parameters (one per regularizer block)
 - `tau::T=10`: Scaling factor for the penalty update (default is 10)
-- `rho_min::T=1e-6`: Lower bound `ρ` is clamped to after every update
-- `rho_max::T=1e6`: Upper bound `ρ` is clamped to after every update -- without it, a block whose
+- `rho_min::Tmin=1e-6`: Lower bound `ρ` is clamped to after every update
+- `rho_max::Tmax=1e6`: Upper bound `ρ` is clamped to after every update -- without it, a block whose
   `z` reaches a fixed point (a satisfied indicator/constraint term is the common case: its prox
   is idempotent once feasible, so `Δz_norm ≈ 0` every iteration after that) compounds `ρ *= τ`
   without limit and overflows within a few dozen iterations
@@ -25,32 +25,32 @@ Adaptive penalty parameter strategy based on spectral radius approximation. Upda
    Penalty Selection Method for Multiconstraint and Multiblock ADMM (No. arXiv:2502.21202).
    arXiv. https://doi.org/10.48550/arXiv.2502.21202
 """
-@kwdef mutable struct SpectralRadiusApproximationPenalty{R,T} <: PenaltySequence
+@kwdef mutable struct SpectralRadiusApproximationPenalty{R,T,Tmin,Tmax} <: PenaltySequence
     rho::R = nothing
     tau::T = nothing
-    rho_min::T = nothing
-    rho_max::T = nothing
+    rho_min::Tmin = nothing
+    rho_max::Tmax = nothing
     adp_freq::Int = 1
     adp_start_iter::Int = 2
     adp_end_iter::Int = typemax(Int)
     current_iter::Int = 0
     uᵢ₋₁::Union{Nothing,Tuple} = nothing  # Storage for previous u values
-    function SpectralRadiusApproximationPenalty{R,T}(
+    function SpectralRadiusApproximationPenalty{R,T,Tmin,Tmax}(
         rho::R,
         tau::T,
-        rho_min::T,
-        rho_max::T,
+        rho_min::Tmin,
+        rho_max::Tmax,
         adp_freq::Int,
         adp_start_iter::Int,
         adp_end_iter::Int,
         current_iter::Int,
         uᵢ₋₁::Union{Nothing,Tuple}
-    ) where {R,T}
+    ) where {R,T,Tmin,Tmax}
         @assert adp_start_iter >= 2
         @assert adp_start_iter <= adp_end_iter
         @assert adp_freq > 0
         @assert current_iter >= 0
-        new{R,T}(
+        new{R,T,Tmin,Tmax}(
             isnothing(rho) ? nothing : copy(rho),
             isnothing(tau) ? nothing : copy(tau),
             isnothing(rho_min) ? nothing : copy(rho_min),
@@ -65,8 +65,10 @@ Adaptive penalty parameter strategy based on spectral radius approximation. Upda
 end
 
 # Constructors
-function SpectralRadiusApproximationPenalty(rho::R, tau::T, rho_min::T, rho_max::T, args...) where {R,T}
-    SpectralRadiusApproximationPenalty{R,T}(rho, tau, rho_min, rho_max, args...)
+function SpectralRadiusApproximationPenalty(
+    rho::R, tau::T, rho_min::Tmin, rho_max::Tmax, args...
+) where {R,T,Tmin,Tmax}
+    SpectralRadiusApproximationPenalty{R,T,Tmin,Tmax}(rho, tau, rho_min, rho_max, args...)
 end
 function SpectralRadiusApproximationPenalty(rho::Union{AbstractVector,Number}; kwargs...)
     SpectralRadiusApproximationPenalty(; rho=rho, kwargs...)
@@ -78,13 +80,13 @@ function reinstantiate_penalty_sequence(
     final_rho = ensure_correct_value(seq.rho, R, rho)
     n_blocks = length(final_rho)
     default_tau = fill(R(10.0), n_blocks)
-    tau_vec = ensure_correct_value(seq.tau, R, default_tau)
+    tau_vec = ensure_correct_value(default_tau, R, seq.tau)
     default_rho_min = fill(R(1e-6), n_blocks)
-    rho_min_vec = ensure_correct_value(seq.rho_min, R, default_rho_min)
+    rho_min_vec = ensure_correct_value(default_rho_min, R, seq.rho_min)
     default_rho_max = fill(R(1e6), n_blocks)
-    rho_max_vec = ensure_correct_value(seq.rho_max, R, default_rho_max)
+    rho_max_vec = ensure_correct_value(default_rho_max, R, seq.rho_max)
     T = typeof(final_rho)
-    SpectralRadiusApproximationPenalty{T,T}(;
+    SpectralRadiusApproximationPenalty{T,T,T,T}(;
         rho=final_rho,
         tau=tau_vec,
         rho_min=rho_min_vec,
