@@ -153,10 +153,11 @@ end
     # P always has Int elements (inner VCATs are flattened at construction)
     ex = :($ex; mul!(y, H.A[1]', b.x[H.idxs[1]])) # write on y
 
+    # `add_mul!` is "write into `H.buf`, then add" for a general block, and a direct accumulation
+    # for one that supports it (`GetIndex`). The difference is the whole cost of this loop when
+    # the blocks are small and disjoint: two full passes over the domain per block, or none.
     for i in 2:N
-        ex = :($ex; mul!(H.buf, H.A[$i]', b.x[H.idxs[$i]])) # write on H.buf
-        # sum H.buf with y
-        ex = :($ex; y .+= H.buf)
+        ex = :($ex; add_mul!(y, H.A[$i]', b.x[H.idxs[$i]], H.buf))
     end
     ex = :($ex; return y)
     return ex

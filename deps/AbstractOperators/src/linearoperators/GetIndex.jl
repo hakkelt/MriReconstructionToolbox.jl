@@ -153,6 +153,16 @@ function mul!(y::AbstractArray, L::AdjointOperator{<:GetIndex}, b::AbstractArray
     return y
 end
 
+# Additive adjoint: touch only the selected samples instead of writing a full-domain buffer and
+# adding it. Gather-add-scatter rather than a broadcast into a `view`, so the index forms this
+# operator accepts on a GPU backend stay exactly the ones `mul!` above accepts (`view` with a
+# Bool mask or an integer vector is not universally supported). `buf` is unused.
+function add_mul!(y::AbstractArray, L::AdjointOperator{<:GetIndex}, b::AbstractArray, ::AbstractArray)
+    check(y, L, b)
+    @inbounds setindex!(y, getindex(y, L.A.idx...) .+ b, L.A.idx...)
+    return y
+end
+
 """
 NormalGetIndex([domain_type=Float64::Type,] dim_in::Tuple, idx...)
 
