@@ -897,4 +897,16 @@ end
     @test_throws ArgumentError estimate_sensitivities(acq)
     @test_throws ArgumentError compress_coils(acq, 2)
     @test_throws ArgumentError partial_fourier_band(acq)
+    # The remaining `_reject_partitioned` guards, so that dropping one fails here rather than
+    # returning a plausible image built from the wrong samples. Every entry point that indexes
+    # k-space as a rectangle belongs in this list.
+    @test_throws ArgumentError pseudo_replica(acq, DirectReconstruction(); nreplicas = 2)
+    @test_throws ArgumentError reconstruct(
+        acq,
+        IterativeReconstruction(
+            L1Image(1.0f-3); signal_model = KSpaceToImage(RootSumSquares()), maxit = 2,
+        );
+        verbosity = Silent(),
+    )
+    @test_throws ArgumentError reconstruct(acq, GRAPPA(; kernel_size = (3, 3)); verbosity = Silent())
 end

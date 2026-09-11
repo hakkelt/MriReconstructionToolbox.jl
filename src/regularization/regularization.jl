@@ -22,6 +22,18 @@ end
 Create a `StructuredOptimization.Term` corresponding to the regularization `reg` applied to the variable `x`.
 The `threaded` argument indicates whether to use multi-threading for operations that support it.
 
+!!! note "Thread-entry contract for a materialized term"
+    A materialized term is entered by **one thread at a time**: task splitting gives every slab its
+    own terms (`materialize_all` runs per task), and a solver evaluates its objective and proximal
+    steps sequentially. A term is therefore free to hold mutable state across proximal calls —
+    scratch buffers, a shifted tiling origin (`LocallyLowRank(; shift = :random)`), an iteration
+    counter — without synchronisation.
+
+    What a term must *not* assume is that its own internals are serial: several of them thread
+    across slabs or blocks inside one proximal call (`@budgeted_threads` in `BlockNuclearNorm`,
+    `HankelLowRankProx`, `LoraksLowRankProx`), so state shared between those tasks is a data race.
+    Per-task state has to be indexed by the task, as `partial` is.
+
 # Example
 ```juliajulia
 julia> using MriReconstructionToolbox, StructuredOptimization
