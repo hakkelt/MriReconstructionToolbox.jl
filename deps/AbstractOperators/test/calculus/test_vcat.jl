@@ -208,3 +208,42 @@ end
     x2 = randn(n)
     @test collect(opV2 * x2) ≈ collect(opV * x2)
 end
+
+@testitem "VCAT: adjoint accumulates without a full-domain buffer per block" tags = [:calculus, :VCAT, :GetIndex] setup = [TestUtils] begin
+    using Random, AbstractOperators
+    using LinearAlgebra: dot
+    Random.seed!(0)
+
+    # A stack of `GetIndex`es over disjoint parts of one domain -- the per-frame subsampling
+    # shape. Each block's adjoint touches only its own samples, so `add_mul!` accumulates into
+    # `y` directly instead of writing a full-domain buffer and adding it; the generic path made
+    # this loop quadratic in the number of blocks.
+    n, T = 16, 6
+    masks = [BitVector(mod(i + f, 3) == 0 for i in 1:n) for f in 1:T]
+    dom = (n, n, T)
+    blocks = [GetIndex(Float64, dom, (Colon(), masks[f], f)) for f in 1:T]
+    opV = VCAT(blocks...)
+
+    x = randn(dom...)
+    y = opV * x
+    @test all(y.x[f] ≈ x[:, masks[f], f] for f in 1:T)
+
+    # the adjoint is the scatter of every block, summed
+    ref = zeros(dom...)
+    for f in 1:T
+        ref[:, masks[f], f] .+= y.x[f]
+    end
+    adj = opV' * y
+    @test adj ≈ ref
+    # and it is the mathematical adjoint of the forward map
+    b = ArrayPartition((randn(size(y.x[f])...) for f in 1:T)...)
+    @test dot(opV * x, b) ≈ dot(x, opV' * b)
+
+    # `add_mul!` itself: the specialized path and the generic buffer path must agree
+    G = blocks[2]
+    yb = randn(dom...)
+    y_specialized = copy(yb)
+    AbstractOperators.add_mul!(y_specialized, G', y.x[2], zeros(dom...))
+    y_generic = copy(yb) .+ (G' * y.x[2])
+    @test y_specialized ≈ y_generic
+end
