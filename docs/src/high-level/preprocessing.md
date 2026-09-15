@@ -51,6 +51,14 @@ ESPIRiT
 estimate_sensitivities
 ```
 
+### Batch dimensions
+
+K-space that carries batch dimensions past the coil axis — `:z` for multi-slice, `:time` for a
+cine, `:contrast` for a mapping series — gets **one set of maps per slab**, returned in the same
+layout as the k-space (`(:x, :y, :coil, :z)` for the multi-slice case, which is exactly the
+per-slice map layout [`AcquisitionInfo`](@ref) accepts). Coil sensitivities differ from slice to
+slice, so estimating them jointly would be wrong; they are estimated independently and stacked.
+
 ### Methods:
 - `SelfCalibrating(; calib_size = 24)`: Smooth low-resolution calibration from central k-space auto-calibration signal (ACS) lines, normalized by root-sum-of-squares (McKenzie et al. 2002). Fastest method for Cartesian data with an ACS region.
 - `AdaptiveCombine(; kernel_size = 5)`: Local array correlation matrix eigenanalysis (Walsh et al. 2000). Needs no dedicated calibration scan and provides SNR-optimal coil combination.

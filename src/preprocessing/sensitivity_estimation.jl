@@ -62,6 +62,10 @@ When passed an `AcquisitionInfo`, returns a new `AcquisitionInfo` with the `sens
 sized to match `acq.image_size` (the k-space is zero-padded, centered, if it only covers the measured extent
 of a subsampled acquisition). Passing `image_size` explicitly has the same effect for the raw-array method.
 
+K-space with batch dimensions past the coil axis (`:z` slices, `:time` frames, `:contrast`, ...)
+is estimated slab by slab — coil sensitivities differ from slice to slice — and the maps come
+back in the k-space's own layout, e.g. `(:x, :y, :coil, :z)` for multi-slice data.
+
 ## FFT-shift convention
 
 Every estimator inverts centered k-space into MRT's *default* image convention — image origin at
@@ -79,7 +83,10 @@ function estimate_sensitivities(
         method::SensitivityEstimation = SelfCalibrating(),
     )
     _reject_partitioned(acq.kspace_data, "sensitivity estimation")
-    is3D = acq isa CartesianAcquisitionInfo ? acq.is3D : false
+    # Every estimator here reads a calibration window out of a Cartesian grid; non-Cartesian
+    # samples have no such window (their k-space axes are `:sample`/`:readout`, not `:kx`/`:ky`).
+    @argcheck acq isa CartesianAcquisitionInfo "sensitivity estimation needs Cartesian k-space; grid the non-Cartesian samples onto a Cartesian grid first, or pass `sensitivity_maps` estimated by hand"
+    is3D = acq.is3D
     sens = estimate_sensitivities(
         acq.kspace_data;
         method,
@@ -100,7 +107,9 @@ function _shift_sensitivity_maps(sens, shifted_image_dims, kspace, is3D::Bool)
         shifted_image_dims, is3D, kspace, "shifted_image_dims", (:x, :y, :z)
     )
     c_idx = _resolve_coil_dim(sens, nothing; fallback = is3D ? 4 : 3)
-    spatial_axes = [i for i in 1:ndims(sens) if i != c_idx]
+    # Only the leading `is3D ? 3 : 2` non-coil axes are spatial; anything past them is a batch
+    # dimension (slices, frames, contrasts) and is never fftshifted.
+    spatial_axes = [i for i in 1:ndims(sens) if i != c_idx][1:(is3D ? 3 : 2)]
     axes_to_shift = Tuple(spatial_axes[i] for i in spatial_indices)
     shifted = fftshift(unname(sens), axes_to_shift)
     return sens isa NamedDimsArray ? NamedDimsArray{dimnames(sens)}(shifted) : shifted
@@ -116,10 +125,7 @@ function estimate_sensitivities(
     c_idx = _resolve_coil_dim(kspace, coil_dim; fallback = is3D ? 4 : 3)
 
     raw_ksp = unname(kspace)
-    if !isnothing(image_size)
-        raw_ksp = _pad_kspace_to_image_size(raw_ksp, image_size, c_idx)
-    end
-    sens_arr = _estimate_sensitivities_core(raw_ksp, method, c_idx, is3D)
+    sens_arr = _estimate_sensitivities_batched(raw_ksp, method, c_idx, is3D, image_size)
 
     if kspace isa NamedDimsArray
         k_dims = dimnames(kspace)
@@ -131,6 +137,53 @@ function estimate_sensitivities(
     else
         return sens_arr
     end
+end
+
+"""
+    _estimate_sensitivities_batched(kspace, method, c_idx, is3D, image_size)
+
+Estimate maps for k-space that carries batch dimensions (slices, frames, contrasts, ...) beyond
+the `is3D ? 3 : 2` spatial axes and the coil axis: every slab gets its own maps, since coil
+sensitivities differ from slice to slice, and the results are stacked back into the batch layout
+the k-space had. K-space without batch dimensions goes straight to the estimator.
+"""
+function _estimate_sensitivities_batched(kspace::AbstractArray, method, c_idx, is3D::Bool, image_size)
+    function estimate(slab)
+        slab_maps = _estimate_sensitivities_core(
+            isnothing(image_size) ? slab : _pad_kspace_to_image_size(slab, image_size, c_idx),
+            method, c_idx, is3D,
+        )
+        if iszero(slab_maps) && !iszero(slab)
+            # All-zero maps are not an estimate, they are a silent wrong answer: every
+            # sensitivity-weighted reconstruction that uses them comes out zero, and dividing by
+            # them (as the iterative solvers do) produces NaNs several stages later.
+            @warn "Sensitivity estimation produced all-zero maps from k-space that is not " *
+                "empty: the calibration region at the centre of the encoded matrix holds no " *
+                "signal. The k-space centre is most likely not where the header says it is — " *
+                "check `head.center_sample` and the encoding limits of the file it came from, " *
+                "or pass maps estimated by hand." maxlog = 1
+        end
+        return slab_maps
+    end
+
+    nspatial = is3D ? 3 : 2
+    nbatch = ndims(kspace) - nspatial - 1
+    nbatch <= 0 && return estimate(kspace)
+
+    @argcheck c_idx == nspatial + 1 "batch dimensions are only supported after the coil dimension: coil is dimension $(c_idx) of $(ndims(kspace)), expected $(nspatial + 1)"
+    batch_sizes = size(kspace)[(nspatial + 2):end]
+    lead = ntuple(_ -> Colon(), nspatial + 1)
+
+    maps = nothing
+    for b in CartesianIndices(batch_sizes)
+        slab = kspace[lead..., Tuple(b)...]
+        s = estimate(slab)
+        if maps === nothing
+            maps = similar(s, size(s)..., batch_sizes...)
+        end
+        maps[lead..., Tuple(b)...] = s
+    end
+    return maps
 end
 
 """

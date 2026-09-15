@@ -26,6 +26,33 @@
     @test combined_dft isa Eye
 end
 
+@testitem "Shift/DFT rules read `dirs` through the adjoint wrapper" tags = [:fftw, :CombinationRules, :Shift] begin
+    using FFTWOperators
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+    using LinearAlgebra: norm
+
+    # An `AdjointOperator` has no `dirs` of its own — it only wraps the operator that has one.
+    # Every rule taking a shift *through* an adjoint has to unwrap it first; reading `T.dirs`
+    # threw `FieldError: type AdjointOperator has no field dirs` instead, which surfaced when a
+    # normal operator `AᴴA` put `IFFTShift' * DFT'` next to each other (any sensitivity-weighted
+    # reconstruction of raw scanner data does).
+    sz = (8, 8)
+    S = IFFTShift(ComplexF64, sz, (1, 2))
+    F = DFT(ComplexF64, sz)
+
+    @test can_be_combined(S', F)
+    @test can_be_combined(S', F')
+    @test can_be_combined(F, S')
+    @test can_be_combined(F', S')
+
+    x = randn(ComplexF64, sz)
+    for (T1, T2) in ((S', F), (S', F'), (F, S'), (F', S'))
+        combined = combine(T1, T2)
+        @test norm(combined * x - T1 * (T2 * x)) <= 1.0e-9 * norm(T1 * (T2 * x))
+    end
+end
+
 @testitem "SignAlternation pair cancels around a diagonal" tags = [:fftw, :CombinationRules] begin
     using FFTWOperators
     using AbstractOperators
