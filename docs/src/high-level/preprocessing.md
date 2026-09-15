@@ -79,6 +79,12 @@ centred image grid the non-Cartesian reconstruction itself uses.
   dimensions not named here are estimated slab by slab, as for Cartesian data; pass
   `average_dims = ()` for one set of maps per frame.
 
+A slab whose calibration region holds no signal yields all-zero maps, and MRT warns rather than
+returning them silently. Two file-level causes account for almost every occurrence: a header whose
+`center_sample` does not match where the k-space energy is, and a 3D acquisition loaded with a
+single partition, where the calibration region cannot fit along `:kz` — reconstruct that one as 2D
+instead. `examples/mridata/` demonstrates both.
+
 ### Methods:
 - `SelfCalibrating(; calib_size = 24)`: Smooth low-resolution calibration from central k-space auto-calibration signal (ACS) lines, normalized by root-sum-of-squares (McKenzie et al. 2002). Fastest method for Cartesian data with an ACS region.
 - `AdaptiveCombine(; kernel_size = 5)`: Local array correlation matrix eigenanalysis (Walsh et al. 2000). Needs no dedicated calibration scan and provides SNR-optimal coil combination.
