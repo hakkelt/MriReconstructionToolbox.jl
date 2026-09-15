@@ -53,13 +53,13 @@ function can_be_combined(T1::DFT, T2::AdjointOperator{<:ShiftOp})
     return all(iseven, size(T1, 2)[collect(T2.A.dirs)])
 end
 function can_be_combined(T1::AdjointOperator{<:ShiftOp}, T2::DFT)
-    return all(iseven, size(T2, 1)[collect(T1.dirs)])
+    return all(iseven, size(T2, 1)[collect(T1.A.dirs)])
 end
 function can_be_combined(T1::AdjointOperator{<:DFT}, T2::AdjointOperator{<:ShiftOp})
     return all(iseven, size(T1, 2)[collect(T2.A.dirs)])
 end
 function can_be_combined(T1::AdjointOperator{<:ShiftOp}, T2::AdjointOperator{<:DFT})
-    return all(iseven, size(T2, 1)[collect(T1.dirs)])
+    return all(iseven, size(T2, 1)[collect(T1.A.dirs)])
 end
 function combine(T1::DFT, T2::ShiftOp)
     return SignAlternation(codomain_type(T1), size(T1, 1), T2.dirs; array_type = codomain_array_type(T1)) * T1
@@ -74,16 +74,16 @@ function combine(T1::ShiftOp, T2::AdjointOperator{<:DFT})
     return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.dirs; array_type = domain_array_type(T2))
 end
 function combine(T1::DFT, T2::AdjointOperator{<:ShiftOp})
-    return SignAlternation(codomain_type(T1), size(T1, 1), T2.dirs; array_type = codomain_array_type(T1)) * T1
+    return SignAlternation(codomain_type(T1), size(T1, 1), T2.A.dirs; array_type = codomain_array_type(T1)) * T1
 end
 function combine(T1::AdjointOperator{<:ShiftOp}, T2::DFT)
-    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.dirs; array_type = domain_array_type(T2))
+    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.A.dirs; array_type = domain_array_type(T2))
 end
 function combine(T1::AdjointOperator{<:DFT}, T2::AdjointOperator{<:ShiftOp})
-    return SignAlternation(codomain_type(T1), size(T1, 1), T2.dirs; array_type = codomain_array_type(T1)) * T1
+    return SignAlternation(codomain_type(T1), size(T1, 1), T2.A.dirs; array_type = codomain_array_type(T1)) * T1
 end
 function combine(T1::AdjointOperator{<:ShiftOp}, T2::AdjointOperator{<:DFT})
-    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.dirs; array_type = domain_array_type(T2))
+    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.A.dirs; array_type = domain_array_type(T2))
 end
 
 # FFTShift/IFFTShift with DFT and SignAlternation

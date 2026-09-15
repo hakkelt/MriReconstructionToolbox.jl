@@ -145,6 +145,104 @@ end
     @test isapprox(abs.(unname(rec_espirit))[mask], abs.(unname(img))[mask]; rtol = 0.15)
 end
 
+@testitem "Sensitivity estimation: batch dimensions get their own maps" tags = [:preprocessing, :acquisition, :simulation] setup = [SyntheticCoils] begin
+    using Test
+    using MriReconstructionToolbox
+    using LinearAlgebra: norm
+    using NamedDims
+
+    # Every real multi-slice or cine acquisition arrives with a batch dimension after the coil
+    # one; coil sensitivities differ from slice to slice, so each slab is estimated separately
+    # and the maps come back in the same layout as the k-space.
+    Nx, Ny, Nc, Nz = 32, 32, 4, 3
+    sens_true = NamedDimsArray{(:x, :y, :coil)}(synthetic_sensitivities(ComplexF32, Nx, Ny, Nc))
+
+    slabs = map(1:Nz) do z
+        img = NamedDimsArray{(:x, :y)}(zeros(ComplexF32, Nx, Ny))
+        img[(6 + z):(22 + z), 8:24] .= 1.0f0
+        acq = CartesianAcquisitionInfo(
+            NamedDimsArray{(:kx, :ky, :coil)}(zeros(ComplexF32, Nx, Ny, Nc));
+            is3D = false, sensitivity_maps = sens_true,
+        )
+        return simulate_acquisition(img, acq)
+    end
+
+    ksp = NamedDimsArray{(:kx, :ky, :coil, :z)}(
+        cat((unname(s.kspace_data) for s in slabs)...; dims = 4)
+    )
+    acq_ms = CartesianAcquisitionInfo(ksp; is3D = false)
+
+    acq_est = estimate_sensitivities(acq_ms; method = SelfCalibrating(calib_size = 16))
+    maps = acq_est.sensitivity_maps
+    @test dimnames(maps) == (:x, :y, :coil, :z)
+    @test size(maps) == (Nx, Ny, Nc, Nz)
+
+    # Each slab's maps must equal what estimating that slab on its own gives.
+    for z in 1:Nz
+        alone = estimate_sensitivities(
+            slabs[z].kspace_data; method = SelfCalibrating(calib_size = 16),
+            image_size = (Nx, Ny),
+        )
+        @test unname(maps)[:, :, :, z] == unname(alone)
+    end
+
+    # And they reconstruct: one coil-combined image per slab, close to the object.
+    rec = reconstruct(acq_est, DirectReconstruction(); verbosity = Silent())
+    @test dimnames(rec) == (:x, :y, :z)
+    for z in 1:Nz
+        img = zeros(ComplexF32, Nx, Ny)
+        img[(6 + z):(22 + z), 8:24] .= 1.0f0
+        mask = abs.(img) .> 0.5
+        @test isapprox(abs.(unname(rec)[:, :, z])[mask], abs.(img)[mask]; rtol = 0.15)
+    end
+end
+
+@testitem "Sensitivity estimation: non-Cartesian k-space is refused" tags = [:preprocessing, :acquisition] begin
+    using Test
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using NamedDims
+
+    # A non-Cartesian acquisition has no calibration window to read: its k-space axes are
+    # `:sample`/`:readout`, and padding them to `image_size` used to index out of bounds.
+    nsamp, nspoke, ncoil = 16, 8, 2
+    traj = NamedDimsArray{(:coord, :sample, :readout)}(
+        Float32.(reshape(range(-0.4f0, 0.4f0; length = 2 * nsamp * nspoke), 2, nsamp, nspoke))
+    )
+    ksp = NamedDimsArray{(:sample, :readout, :coil)}(randn(ComplexF32, nsamp, nspoke, ncoil))
+    acq = NonCartesianAcquisitionInfo(ksp; trajectory = traj, image_size = (16, 16))
+
+    @test_throws ArgumentError estimate_sensitivities(acq)
+end
+
+@testitem "Sensitivity estimation: all-zero maps are reported, not returned silently" tags = [:preprocessing, :acquisition] begin
+    using Test
+    using MriReconstructionToolbox
+    using NamedDims
+
+    # K-space whose signal sits away from the centre of the encoded matrix — a file whose
+    # `center_sample`/encoding limits do not match where the echo actually is (CMRxRecon-300's
+    # test set, for one) — leaves the calibration window empty. The maps then come out all zero,
+    # which reconstructs to an all-zero image and, through an iterative solver, to NaNs.
+    Nx, Ny, Nc = 64, 64, 2
+    ksp = zeros(ComplexF32, Nx, Ny, Nc)
+    ksp[5:12, 5:12, :] .= 1.0f0     # signal in a corner, nothing in the centre
+    named = NamedDimsArray{(:kx, :ky, :coil)}(ksp)
+
+    maps = @test_logs (:warn, r"all-zero maps") match_mode = :any estimate_sensitivities(
+        named; method = SelfCalibrating(calib_size = 16)
+    )
+    @test iszero(unname(maps))
+
+    # Signal in the centre: estimated normally, no warning.
+    centred = zeros(ComplexF32, Nx, Ny, Nc)
+    centred[29:36, 29:36, :] .= 1.0f0
+    quiet = @test_logs estimate_sensitivities(
+        NamedDimsArray{(:kx, :ky, :coil)}(centred); method = SelfCalibrating(calib_size = 16)
+    )
+    @test !iszero(unname(quiet))
+end
+
 @testitem "Sensitivity estimation: measured k-space smaller than image_size is zero-padded" tags = [:preprocessing, :acquisition] setup = [SyntheticCoils] begin
     using Test
     using MriReconstructionToolbox

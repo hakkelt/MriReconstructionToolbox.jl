@@ -287,10 +287,24 @@ and `estimate_sensitivities(acq)` returns maps on the same (centred) image grid 
 [Coil Sensitivity Estimation](@ref). Maps estimated by hand from a bare k-space array are in MRT's
 *default* convention and must be `fftshift`ed before being attached to such an acquisition.
 
-Non-Cartesian raw data (`raw.params["trajectory"] != "cartesian"`) builds a
-`NonCartesianAcquisitionInfo` from `MRIBase.trajectory`/`MRIBase.rawdata` for one `slice`/
-`contrast` at a time (keywords, both defaulting to `1`) — it does not collect multiple slices,
-contrasts or repetitions into batch dimensions the way the Cartesian path does.
+#### Non-Cartesian raw data
+
+Raw data whose `raw.params["trajectory"]` is not `"cartesian"` builds a
+`NonCartesianAcquisitionInfo` from the profiles themselves (not from `MRIBase.trajectory` /
+`MRIBase.rawdata`, which disagree about how profiles are laid out and, for files that number
+every profile with its own `repetition`, return a trajectory of mostly zeros against a one-profile
+k-space):
+
+- **`kspace_data`** is `(:sample, :readout, :coil, batch...)`, **`trajectory`** is
+  `(:coord, :sample, :readout)`, and **`dcf`** — when the profiles carry a trajectory row beyond
+  the encoding dimensions, the vendor's density compensation weighting — is `(:sample, :readout)`.
+- **`:readout`** indexes the profiles of one slab in acquisition order: spiral interleaves, radial
+  spokes, EPI shots.
+- **Batch dimensions** come from the same ISMRMRD counters as the Cartesian path, except that a
+  counter taking a *different value in every profile* is treated as a running profile counter, not
+  as a batch dimension. Dynamic series that separate their frames that way (USC Speech's spiral
+  files, for instance) therefore arrive as one long `:readout` axis; split `raw.profiles` into
+  frames yourself, one `AcquisitionInfo` per frame, if you want an image per frame.
 
 ## Validation Rules
 

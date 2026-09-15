@@ -135,6 +135,19 @@ function _cartesian_acquisition_info(raw::RawAcquisitionData; sensitivity_maps =
     rows = (pre + 1):(nsamples - post)
     row_offset = nkx ÷ 2 - center_sample
     kx_lo, kx_hi = first(rows) + row_offset, last(rows) + row_offset
+    if center_sample == 0 && !(1 <= kx_lo && kx_hi <= nkx)
+        # `center_sample = 0` is how several exporters (mridata.org's GE files among them) spell
+        # "not recorded", and it is indistinguishable from an echo genuinely at the first sample.
+        # Only the reading that cannot be true is discarded: if placing the echo at sample 0 puts
+        # the readout outside the encoded matrix, assume a symmetric readout instead.
+        center_sample = length(rows) ÷ 2
+        row_offset = nkx ÷ 2 - center_sample
+        kx_lo, kx_hi = first(rows) + row_offset, last(rows) + row_offset
+        @warn "This ISMRMRD file records no echo position (`center_sample = 0` in every " *
+            "profile) and placing the echo at the first sample would put the readout outside " *
+            "the encoded matrix. Assuming a symmetric readout, echo at sample " *
+            "$(center_sample). Pass k-space assembled by hand if the readout is asymmetric." maxlog = 1
+    end
     @argcheck 1 <= kx_lo && kx_hi <= nkx "readout centering places samples outside the encoded matrix ($(kx_lo):$(kx_hi) vs 1:$(nkx)); assemble manually"
     kx_sub = _positions_to_subsampling(nkx, collect(kx_lo:kx_hi))
 
@@ -220,27 +233,109 @@ function _cartesian_acquisition_info(raw::RawAcquisitionData; sensitivity_maps =
     )
 end
 
-# Minimal non-Cartesian support: MRIBase's own `trajectory`/`rawdata` already assemble a single
-# slice/contrast's samples in a consistent order, so this reuses them rather than re-deriving the
-# (vendor-dependent) trajectory layout from individual profiles. Multiple slices/contrasts/
-# repetitions are not collected into batch dimensions here (unlike the Cartesian path) — call
-# this once per slice/contrast and combine the results yourself if you need more.
-function _noncartesian_acquisition_info(
-        raw::RawAcquisitionData; sensitivity_maps = nothing, slice::Integer = 1, contrast::Integer = 1,
-    )
-    tr = MRIBase.trajectory(raw; slice, contrast)
-    nodes = kspaceNodes(tr) # (D, samples_per_profile, numProfiles), already in [-0.5, 0.5)
-    D = size(nodes, 1)
-    is3D = D == 3
-    enc = Int.(raw.params["encodedSize"])
-    image_size = is3D ? (enc[1], enc[2], enc[3]) : (enc[1], enc[2])
-    trajectory = reshape(nodes, D, :)
+# Non-Cartesian data is assembled from the profiles directly rather than through
+# `MRIBase.trajectory`/`MRIBase.rawdata`. Those two disagree for real files: `trajectory` lays
+# profiles out by `(kspace_encode_step_1, kspace_encode_step_2, slice, repetition)` and then keeps
+# only the first slice and repetition, while `rawdata` selects profiles by `repetition = 1`. An
+# exporter that numbers every profile with its own repetition index — USC Speech's spiral files do
+# — therefore gets a trajectory that is all but one interleaf of zeros, and a k-space of a single
+# profile, which do not even have matching sizes.
+#
+# The layout produced here is `(:sample, :readout, :coil, batch...)` for k-space, with the
+# trajectory `(:coord, :sample, :readout)` and, when the file carries one, a density compensation
+# array `(:sample, :readout)`. `:readout` indexes the profiles of one slab in acquisition order —
+# the spiral interleaves, radial spokes, EPI shots. A dynamic series whose frames are *not*
+# separated by one of the ISMRMRD counters (again USC Speech, which increments `repetition` per
+# profile rather than per frame) therefore arrives as one long readout axis: split it into frames
+# yourself if you want one image per frame.
+function _noncartesian_acquisition_info(raw::RawAcquisitionData; sensitivity_maps = nothing)
+    profiles = _image_profiles(raw)
 
-    kspace_data = MRIBase.rawdata(raw; slice, contrast)
+    enc = Int.(raw.params["encodedSize"])
+    lim2 = get(raw.params, "enc_lim_kspace_encoding_step_2", Limit(0, 0, 0))::Limit
+    is3D = lim2.maximum > lim2.minimum
+    D = is3D ? 3 : 2
+    image_size = is3D ? (enc[1], enc[2], enc[3]) : (enc[1], enc[2])
+
+    p1 = first(profiles)
+    pre = Int(p1.head.discard_pre)
+    post = Int(p1.head.discard_post)
+    nsamples = size(p1.data, 1)
+    ncoil = Int(p1.head.active_channels)
+    traj_dims = size(p1.traj, 1)
+    @argcheck traj_dims >= D "profiles carry $(traj_dims) trajectory rows, fewer than the $(D) encoding dimensions"
+    for p in profiles
+        @argcheck size(p.data, 1) == nsamples "profiles have differing readout lengths; assemble manually"
+        @argcheck Int(p.head.discard_pre) == pre && Int(p.head.discard_post) == post "profiles have differing discard_pre/discard_post; assemble manually"
+        @argcheck Int(p.head.active_channels) == ncoil "profiles have differing active_channels; assemble manually"
+        @argcheck size(p.traj, 1) == traj_dims "profiles have differing trajectory dimensions; assemble manually"
+    end
+    rows = (pre + 1):(nsamples - post)
+
+    # A trajectory row beyond the encoding dimensions is the vendor's density compensation
+    # weighting (this is what USC Speech's third row is: 0 at the centre of k-space, 1 at the
+    # edge), not a kz coordinate — a 2D acquisition has no kz to store.
+    dcf_row = traj_dims > D ? D + 1 : nothing
+
+    # Only counters that vary *and* are not simply a per-profile running index become batch
+    # dimensions: an exporter that numbers every profile with its own repetition index is
+    # counting profiles, not repetitions, and turning that into a batch dimension would give one
+    # readout per "frame".
+    batch_candidates = (
+        (:z, p -> Int(p.head.idx.slice)),
+        (:contrast, p -> Int(p.head.idx.contrast)),
+        (:time, p -> Int(p.head.idx.phase)),
+        (:repetition, p -> Int(p.head.idx.repetition)),
+        (:set, p -> Int(p.head.idx.set)),
+        (:average, p -> Int(p.head.idx.average)),
+    )
+    batch_names = Symbol[]
+    batch_maps = Dict{Int, Int}[]
+    batch_getters = Function[]
+    batch_sizes = Int[]
+    for (name, getter) in batch_candidates
+        ids = [getter(p) for p in profiles]
+        nuniq = length(unique(ids))
+        (nuniq == 1 || nuniq == length(profiles)) && continue
+        map, uids = _compact_index_map(ids)
+        push!(batch_names, name)
+        push!(batch_maps, map)
+        push!(batch_getters, getter)
+        push!(batch_sizes, length(uids))
+    end
+
+    nbatch = isempty(batch_sizes) ? 1 : prod(batch_sizes)
+    nreadout, r = divrem(length(profiles), nbatch)
+    @argcheck r == 0 "the $(length(profiles)) profiles do not split evenly over the batch dimensions $(batch_names); assemble manually"
+
+    T = eltype(p1.data)
+    R = real(T)
+    nsamp = length(rows)
+    ksp = zeros(T, nsamp, nreadout, ncoil, batch_sizes...)
+    traj = zeros(R, D, nsamp, nreadout)
+    dcf = dcf_row === nothing ? nothing : zeros(R, nsamp, nreadout)
+
+    counters = zeros(Int, batch_sizes...)
+    for p in profiles
+        batch_idx = ntuple(j -> batch_maps[j][batch_getters[j](p)], length(batch_names))
+        counters[batch_idx...] += 1
+        i = counters[batch_idx...]
+        @views ksp[:, i, :, batch_idx...] .= p.data[rows, :]
+        # The trajectory of a given readout is the same in every batch, so the first batch to
+        # reach readout `i` writes it and the rest agree.
+        @views traj[:, :, i] .= p.traj[1:D, rows]
+        dcf === nothing || (@views dcf[:, i] .= p.traj[dcf_row, rows])
+    end
+
+    ksp_names = (:sample, :readout, :coil, batch_names...)
+    kspace_data = NamedDimsArray{ksp_names}(ksp)
+    trajectory = NamedDimsArray{(:coord, :sample, :readout)}(traj)
+    dcf_named = dcf === nothing ? nothing : NamedDimsArray{(:sample, :readout)}(dcf)
 
     return NonCartesianAcquisitionInfo(
         kspace_data;
         trajectory,
+        dcf = dcf_named,
         sensitivity_maps,
         image_size,
     )

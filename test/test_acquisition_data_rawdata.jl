@@ -30,7 +30,8 @@
     # A minimal non-Cartesian ("custom" trajectory) profile: MRIBase's own `trajectory(f)` needs
     # a nonzero `sample_time_us` (it divides by it) and `trajectory_dimensions` set from `traj`.
     function make_traj_profile(
-            data::Matrix{ComplexF32}, traj::Matrix{Float32}; slice = 0, contrast = 0, repetition = 0,
+            data::Matrix{ComplexF32}, traj::Matrix{Float32}; slice = 0, contrast = 0, phase = 0,
+            repetition = 0,
         )
         ncoil = size(data, 2)
         head = AcquisitionHeader(;
@@ -40,7 +41,8 @@
             trajectory_dimensions = UInt16(size(traj, 1)),
             sample_time_us = 5.0f0,
             idx = EncodingCounters(;
-                slice = UInt16(slice), contrast = UInt16(contrast), repetition = UInt16(repetition),
+                slice = UInt16(slice), contrast = UInt16(contrast), phase = UInt16(phase),
+                repetition = UInt16(repetition),
             ),
         )
         return Profile(head, traj, data)
@@ -102,6 +104,31 @@ end
         @test isnothing(info.subsampling)
         @test info.image_size == (4, 4)
         @test info.shifted_image_dims == (:x, :y)
+    end
+
+    @testset "an unrecorded center_sample falls back to a symmetric readout" begin
+        # `center_sample = 0` is what several exporters write when they record no echo position
+        # (mridata.org's GE files among them). Taken literally it places the readout outside the
+        # encoded matrix; the constructor then assumes the echo sits mid-readout instead.
+        profiles = Profile[
+            make_profile(ComplexF32[i + 0im for i in 1:4, c in 1:1]; step1, center_sample = 0)
+                for step1 in 0:3
+        ]
+        raw = make_raw(profiles; encoded_size = (4, 4, 1), lim1 = Limit(0, 3, 2))
+
+        info = @test_logs (:warn, r"records no echo position") AcquisitionInfo(raw)
+        @test size(info.kspace_data) == (4, 4, 1)
+        @test isnothing(info.subsampling)
+
+        # A `center_sample = 0` that *is* consistent with the encoded matrix is left alone: here
+        # the four acquired samples sit at the start of an 8-sample readout axis.
+        edge = Profile[
+            make_profile(ComplexF32[i + 0im for i in 1:4, c in 1:1]; step1, center_sample = 0)
+                for step1 in 0:3
+        ]
+        raw_edge = make_raw(edge; encoded_size = (8, 4, 1), lim1 = Limit(0, 3, 2))
+        info_edge = AcquisitionInfo(raw_edge)
+        @test info_edge.subsampling[1] == 5:8
     end
 
     @testset "3D sets shifted_image_dims on all three spatial axes" begin
@@ -203,6 +230,7 @@ end
 @testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — non-Cartesian dispatch" tags = [:acquisition, :nfft] setup = [RawAcqHelpers] begin
     using MriReconstructionToolbox
     using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using NamedDims: dimnames, unname
 
     nsamp, ncoil = 5, 1
     profiles = Profile[]
@@ -217,8 +245,70 @@ end
     @test info isa NonCartesianAcquisitionInfo
     @test info.is3D == false
     @test info.image_size == (8, 8)
-    @test size(info.trajectory) == (2, length(profiles) * nsamp)
-    @test size(info.kspace_data) == (length(profiles) * nsamp, ncoil)
+    @test dimnames(info.trajectory) == (:coord, :sample, :readout)
+    @test size(info.trajectory) == (2, nsamp, length(profiles))
+    @test dimnames(info.kspace_data) == (:sample, :readout, :coil)
+    @test size(info.kspace_data) == (nsamp, length(profiles), ncoil)
+    @test isnothing(info.dcf)
+    # Every profile's samples land under its own readout index, in acquisition order.
+    for (i, p) in enumerate(profiles)
+        @test unname(info.kspace_data)[:, i, :] == p.data
+        @test unname(info.trajectory)[:, :, i] == p.traj
+    end
+end
+
+@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — non-Cartesian density compensation and batches" tags = [:acquisition, :nfft] setup = [RawAcqHelpers] begin
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using NamedDims: dimnames, unname
+
+    nsamp, ncoil, ninterleaf, nframe = 5, 2, 3, 4
+
+    # A profile whose trajectory carries a third row on a 2D acquisition: that row is the vendor's
+    # density compensation weighting, not a kz coordinate.
+    function spiral_profiles(; frame_counter)
+        profiles = Profile[]
+        for frame in 0:(nframe - 1), k in 0:(ninterleaf - 1)
+            angle = 2π * k / ninterleaf
+            r = range(0.0f0, 0.45f0; length = nsamp)
+            traj = Float32.(vcat((r .* cos(angle))', (r .* sin(angle))', collect(r)'))
+            data = ComplexF32.(fill(frame * ninterleaf + k + 1, nsamp, ncoil))
+            # `repetition` counts profiles, as several real exporters do; `phase` counts frames.
+            counters = frame_counter == :phase ?
+                (; phase = frame, repetition = frame * ninterleaf + k) :
+                (; repetition = frame * ninterleaf + k)
+            push!(profiles, make_traj_profile(data, traj; counters...))
+        end
+        return profiles
+    end
+
+    @testset "the extra trajectory row becomes the dcf" begin
+        raw = make_raw(
+            spiral_profiles(; frame_counter = :none); encoded_size = (8, 8, 1),
+            lim1 = Limit(0, ninterleaf - 1, 0), trajectory = "spiral",
+        )
+        info = AcquisitionInfo(raw)
+        @test info isa NonCartesianAcquisitionInfo
+        @test size(info.trajectory) == (2, nsamp, ninterleaf * nframe)
+        @test dimnames(info.dcf) == (:sample, :readout)
+        @test size(info.dcf) == (nsamp, ninterleaf * nframe)
+        @test unname(info.dcf)[:, 1] == Float32.(range(0.0f0, 0.45f0; length = nsamp))
+        # A counter that takes a different value in every profile is a profile counter, not a
+        # batch dimension: all the profiles stay on one `:readout` axis.
+        @test dimnames(info.kspace_data) == (:sample, :readout, :coil)
+    end
+
+    @testset "a counter that separates frames becomes a batch dimension" begin
+        raw = make_raw(
+            spiral_profiles(; frame_counter = :phase); encoded_size = (8, 8, 1),
+            lim1 = Limit(0, ninterleaf - 1, 0), trajectory = "spiral",
+        )
+        info = AcquisitionInfo(raw)
+        @test dimnames(info.kspace_data) == (:sample, :readout, :coil, :time)
+        @test size(info.kspace_data) == (nsamp, ninterleaf, ncoil, nframe)
+        @test size(info.trajectory) == (2, nsamp, ninterleaf)
+        @test unname(info.kspace_data)[1, 1, 1, 3] == ComplexF32(2 * ninterleaf + 1)
+    end
 end
 
 @testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — real M4Raw data" tags = [:acquisition, :integration] begin
