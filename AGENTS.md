@@ -29,6 +29,14 @@ AcquisitionInfo → Encoding operators → Regularization → Reconstruction
 `src/MriReconstructionToolbox.jl` is the authoritative list of source files (`include` order) and
 exports — read it rather than trusting a tree here.
 
+`examples/` is a workspace member holding one script per data type of every `MRITestData` source
+(35 of them), each reconstructing a real dataset. When changing the raw-data path
+(`ext/MriReconstructionToolboxMRIBaseExt.jl`) or preprocessing, run the affected ones —
+`julia --project=examples examples/run_all.jl <source>` — since the header defects they cover
+(missing dwell time, unrecorded echo position, calibration block with a different readout length,
+calibration profiles overwriting the imaging k-space centre, single-partition 3D slab) have no
+synthetic equivalent in the test suite.
+
 ### Task splitting over batch dimensions
 
 The reconstruction is split into tasks over batch (non-image, non-time) dimensions: each slab is solved

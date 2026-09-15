@@ -27,6 +27,10 @@ benchmark/hpc/results/*__*.json
 # branch; they belong to the dependency checkouts, not to this repository.
 .vendor-work/
 
+# Images written by the example scripts, and the download-cache preference they set.
+/examples/output/
+/examples/LocalPreferences.toml
+
 # Written by the test environment when MRITestData caches a download; per-machine state.
 # (The tracked docs/notebooks/ and benchmark/comparison/ LocalPreferences.toml are deliberate.)
 /test/LocalPreferences.toml
