@@ -1,4 +1,4 @@
-import ..ProximalOperators: gradient!, gradient # this can be removed when moved to Prox
+import ..ProximalOperators: gradient!, gradient, preallocate # this can be removed when moved to Prox
 
 export PrecomposeNonlinear
 
@@ -20,7 +20,11 @@ function PrecomposeNonlinear(g::P, G::T) where {P, T}
   t, s = codomain_type(G), size(G,1)
   bufC = eltype(s) <: Int ? zeros(t,s) : ArrayPartition(zeros.(t,s))
   bufC2 = eltype(s) <: Int ? zeros(t,s) : ArrayPartition(zeros.(t,s))
-  PrecomposeNonlinear{P, T, typeof(bufD), typeof(bufC)}(g, G, bufD, bufC, bufC2)
+  # `g` sees `bufC`-shaped input on every call (see `gradient!` below), so it can be
+  # preallocated for that shape right away instead of paying its own scratch
+  # allocation (if any) on every solver iteration.
+  g = preallocate(g, bufC)
+  PrecomposeNonlinear{typeof(g), T, typeof(bufD), typeof(bufC)}(g, G, bufD, bufC, bufC2)
 end
 
 is_smooth(f::PrecomposeNonlinear) = is_smooth(f.g)
