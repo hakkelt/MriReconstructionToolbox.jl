@@ -47,7 +47,83 @@
     end
 end
 
+@testitem "estimate_snr and the image-domain `snr` keyword" tags = [:simulation, :analysis] begin
+    using MriReconstructionToolbox
+    using NamedDims
+    using Random
+    using Statistics: std
+
+    Random.seed!(0)
+
+    # A disc of signal on an empty background, wide enough to contain the centred signal box and
+    # far enough from the corners to leave them signal-free.
+    n = 128
+    image = ComplexF32[
+        (i - n ÷ 2)^2 + (j - n ÷ 2)^2 < (n ÷ 3)^2 ? 1 : 0 for i in 1:n, j in 1:n
+    ]
+
+    @testset "add_noise(; snr) round-trips through estimate_snr" begin
+        # Fixed boxes measure the noise where there is no signal, so there is no threshold to clip
+        # the background tail and the round trip holds at low SNR too.
+        for target in (5, 10, 20, 40, 100)
+            noisy = add_noise(image; snr = target, rng = MersenneTwister(1))
+            @test isapprox(estimate_snr(noisy), target; rtol = 0.1)
+        end
+    end
+
+    @testset "the box sizes are in voxels and the corners can be chosen" begin
+        noisy = add_noise(image; snr = 20, rng = MersenneTwister(4))
+        @test isapprox(estimate_snr(noisy; signal_box = 24, noise_box = 12), 20; rtol = 0.15)
+        @test isapprox(estimate_snr(noisy; signal_box = (24, 16)), 20; rtol = 0.15)
+        # One corner holds a quarter of the noise samples and still measures the same noise.
+        @test isapprox(estimate_snr(noisy; corners = 1), estimate_snr(noisy); rtol = 0.15)
+        @test isapprox(estimate_snr(noisy; corners = (1, 4)), estimate_snr(noisy); rtol = 0.15)
+    end
+
+    @testset "a noiseless image has no background noise" begin
+        @test estimate_snr(image) == Inf
+    end
+
+    @testset "NamedDimsArray input" begin
+        noisy = add_noise(NamedDimsArray{(:x, :y)}(image); snr = 50, rng = MersenneTwister(2))
+        @test noisy isa NamedDimsArray
+        @test isapprox(estimate_snr(noisy), 50; rtol = 0.1)
+    end
+
+    @testset "snr_masks is the pair of regions estimate_snr measures over" begin
+        noisy = add_noise(image; snr = 50, rng = MersenneTwister(3))
+        sig, noise = snr_masks(noisy)
+        # A centred box of n ÷ 8 a side, and four corner boxes of the same size.
+        @test count(sig) == (n ÷ 8)^2
+        @test count(noise) == 4 * (n ÷ 8)^2
+        @test !any(sig .& noise)
+        # The signal box lands on the disc and the corner boxes land off it.
+        @test all(!iszero, image[sig])
+        @test all(iszero, image[noise])
+        # Measuring by hand over those masks reproduces `estimate_snr`.
+        mag = abs.(noisy)
+        by_hand = sqrt(2 - π / 2) * (sum(mag[sig]) / count(sig)) / std(mag[noise])
+        @test by_hand ≈ estimate_snr(noisy)
+    end
+
+    @testset "argument checking" begin
+        @test_throws ArgumentError add_noise(image; snr = 20, noise_std = 0.1)
+        @test_throws ArgumentError add_noise(image; snr = -1)
+        # A box that does not fit twice along a dimension would meet its opposite number.
+        @test_throws ArgumentError estimate_snr(image; noise_box = 100)
+        # A signal box that reaches into the corners is not a signal box.
+        @test_throws ArgumentError estimate_snr(image; signal_box = 120, noise_box = 16)
+        @test_throws ArgumentError estimate_snr(image; corners = 5)
+        @test_throws ArgumentError estimate_snr(image; signal_box = (8, 8, 8))
+        # `snr` is image-domain, so it is rejected on an acquisition's k-space.
+        acq = AcquisitionInfo(; is3D = false, image_size = (16, 16))
+        data = simulate_acquisition(image[1:16, 1:16], acq)
+        @test_throws ArgumentError add_noise(data; snr = 20)
+    end
+end
+
 @testitem "add_noise on AcquisitionInfo (Cartesian and non-Cartesian)" tags = [:simulation, :acquisition, :nfft] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using MriReconstructionToolbox
     using MriReconstructionToolbox: NonCartesianAcquisitionInfo
     using Random
@@ -94,23 +170,30 @@ end
     end
 
     @testset "orderings differ and stay within bounds" begin
-        for ordering in (:linear, :golden_angle, :tiny_golden_angle)
+        for ordering in (LinearOrdering(), GoldenAngle(), TinyGoldenAngle(), TinyGoldenAngle(3))
             traj = radial_trajectory(32, 16; ordering)
             @test size(traj) == (2, 32, 16)
             @test all(x -> -0.5 <= x < 0.5, unname(traj))
         end
-        @test unname(radial_trajectory(8, 4; ordering = :linear)) != unname(radial_trajectory(8, 4; ordering = :golden_angle))
+        @test unname(radial_trajectory(8, 4; ordering = LinearOrdering())) != unname(radial_trajectory(8, 4; ordering = GoldenAngle()))
+        # Index 1 of the tiny family *is* the standard golden angle.
+        @test unname(radial_trajectory(8, 4; ordering = TinyGoldenAngle(1))) ≈ unname(radial_trajectory(8, 4; ordering = GoldenAngle()))
+        # Consecutive tiny-golden-angle spokes stay closer together than golden-angle ones.
+        tiny = unname(radial_trajectory(2, 2; ordering = TinyGoldenAngle(4)))
+        golden = unname(radial_trajectory(2, 2; ordering = GoldenAngle()))
+        @test norm(tiny[:, :, 2] - tiny[:, :, 1]) < norm(golden[:, :, 2] - golden[:, :, 1])
     end
 
-    @testset "unknown ordering errors" begin
-        @test_throws ArgumentError radial_trajectory(8, 4; ordering = :bogus)
+    @testset "an ordering is a type, not a symbol" begin
+        @test_throws TypeError radial_trajectory(8, 4; ordering = :golden_angle)
+        @test_throws ArgumentError TinyGoldenAngle(0)
     end
 
     @testset "simulate_acquisition + direct NFFT reconstruction is sane" begin
         using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
         nx, ny = 48, 48
         img = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
-        traj = radial_trajectory(72, 150; ordering = :golden_angle)
+        traj = radial_trajectory(72, 150; ordering = GoldenAngle())
         acq = AcquisitionInfo(; trajectory = traj, image_size = (nx, ny))
         data = simulate_acquisition(img, acq)
         @test size(data.kspace_data) == (72, 150)
@@ -184,7 +267,7 @@ end
     using LinearAlgebra
 
     @testset "shape, dimension names and k-space extent" begin
-        for variant in (:archimedean, :variable_density)
+        for variant in (Archimedean(), VariableDensity(), VariableDensity(0.5))
             traj = spiral_trajectory(128, 6; variant, nturns = 8)
             @test size(traj) == (2, 128, 6)
             @test dimnames(traj) == (:coord, :sample, :interleave)
@@ -193,17 +276,20 @@ end
     end
 
     @testset "variable density oversamples the center relative to archimedean" begin
-        arch = unname(spiral_trajectory(64, 1; variant = :archimedean, nturns = 8))
-        vd = unname(spiral_trajectory(64, 1; variant = :variable_density, density_exponent = 2.0, nturns = 8))
+        arch = unname(spiral_trajectory(64, 1; variant = Archimedean(), nturns = 8))
+        vd = unname(spiral_trajectory(64, 1; variant = VariableDensity(2.0), nturns = 8))
         r_arch = sqrt.(arch[1, :, 1] .^ 2 .+ arch[2, :, 1] .^ 2)
         r_vd = sqrt.(vd[1, :, 1] .^ 2 .+ vd[2, :, 1] .^ 2)
-        # variable-density (density_exponent > 1) spiral grows its radius more slowly at the
-        # start of the arm, packing more samples near the center than the Archimedean spiral.
+        # A variable-density spiral with exponent > 1 grows its radius more slowly at the start
+        # of the arm, packing more samples near the center than the Archimedean spiral.
         @test r_vd[8] < r_arch[8]
+        # Exponent 1 is the Archimedean spiral.
+        @test unname(spiral_trajectory(64, 1; variant = VariableDensity(1), nturns = 8)) ≈ arch
     end
 
-    @testset "unknown variant errors" begin
-        @test_throws ArgumentError spiral_trajectory(16, 2; variant = :bogus)
+    @testset "a variant is a type, not a symbol" begin
+        @test_throws TypeError spiral_trajectory(16, 2; variant = :archimedean)
+        @test_throws ArgumentError VariableDensity(0)
     end
 
     @testset "simulate_acquisition + direct NFFT reconstruction is sane" begin
