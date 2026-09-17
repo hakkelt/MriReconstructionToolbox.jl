@@ -9,8 +9,8 @@ Wrap a function to reshape the input.
 It is useful when the function `f` expects a specific shape of the input, but you want to pass it a different shape.
 
 ```julia
-julia> f = ReshapeInput(IndballRank(5), (10, 10))
-ReshapeInput(IndBallRank{Int64}(5), (10, 10))
+julia> f = ReshapeInput(IndBallRank(5), (10, 10))
+ReshapeInput(IndBallRank{Int64, Nothing}(5, nothing), (10, 10))
 
 julia> f(rand(100))
 Inf
@@ -18,6 +18,13 @@ Inf
 struct ReshapeInput{F, S}
     f::F
     expected_shape::S
+end
+
+# no scratch space of its own: the inner function is preallocated for the
+# reshaped prototype, which is what it will be called with
+function preallocate(f::ReshapeInput, x)
+    z = size(x) != f.expected_shape ? reshape(x, f.expected_shape) : x
+    return ReshapeInput(preallocate(f.f, z), f.expected_shape)
 end
 
 function (f::ReshapeInput)(x)
@@ -57,3 +64,6 @@ function prox_naive(f::ReshapeInput, x, gamma)
     end
     return prox_naive(f.f, x, gamma)
 end
+
+# see `device_tier` in src/utilities/hostfallback.jl
+device_tier(::Type{<:ReshapeInput{T}}) where T = device_tier(T)

@@ -75,6 +75,10 @@ end
 # SOFTWARE.
 
 function prox!(y, ::IndExpPrimal, x, gamma)
+    # A single cone is a handful of scalars, so there is nothing here to parallelise and the
+    # few reads would each be a separate device transfer. Applied to *many* cones through
+    # `SlicedSeparableSum` the slices parallelise at that level instead.
+    is_cpu_storage(typeof(x)) || return host_prox!(y, IndExpPrimal(), x, gamma)
     R = real(eltype(x))
     r = x[1]
     s = x[2]
@@ -164,3 +168,8 @@ end
 prox_naive(f::IndExpPrimal, x, gamma) = prox(f, x, gamma) # we don't have a much simpler way to do this yet
 
 prox_naive(f::PrecomposeDiagonal{Conjugate{IndExpPrimal}}, x, gamma) = prox(f, x, gamma) # we don't have a much simpler way to do this yet
+
+# see `device_tier` in src/utilities/hostfallback.jl
+# `IndExpDual` is a `PrecomposeDiagonal` around the primal cone, so it inherits this
+# through the wrapper propagation in src/utilities/hostfallback.jl
+device_tier(::Type{<:IndExpPrimal}) = :host

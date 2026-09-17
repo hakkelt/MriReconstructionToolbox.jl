@@ -36,6 +36,10 @@ function (f::IndGraphSkinny)(x, y)
 end
 
 function prox!(x, y, f::IndGraphSkinny, c, d, gamma=1)
+    # This operator carries its own matrix and a factorization computed once at construction.
+    # Moving those per call would defeat the factorization entirely, so the round-trip moves
+    # only the input and output: build it from host arrays and it accepts device inputs.
+    is_cpu_storage(typeof(c)) || return _host_graph_prox!(x, y, f, c, d, gamma)
   # x[:] = f.F \ (c + f.A' * d)
   mul!(x, adjoint(f.A), d)
   x .+= c
@@ -48,3 +52,6 @@ function prox_naive(f::IndGraphSkinny, c, d, gamma)
   x = f.F \ (c + f.A' * d)
   return x, f.A * x, real(eltype(c))(0)
 end
+
+# see `device_tier` in src/utilities/hostfallback.jl
+device_tier(::Type{<:IndGraphSkinny}) = :host

@@ -3,7 +3,7 @@
 export SeparableSum
 
 """
-    SeparableSum(f_1, ..., f_k)
+    SeparableSum(f_1, ..., f_k; threaded=true)
 
 Given functions `f_1` to `f_k`, return their separable sum, that is
 ```math
@@ -20,14 +20,26 @@ Example:
     Y = randn(20, 30); # some random matrix
     f_xY = f((x, Y)); # evaluates f at (x, Y)
     (u, V), f_uV = prox(f, (x, Y), 1.3); # computes prox at (x, Y)
+
+With `threaded = true` (the default) the blocks are proxed in parallel, but only when there
+are at least `$(MIN_BLOCKS_FOR_PARALLEL)` of them: the block count is a compile-time tuple
+length, so for the common two- or three-block sum the decision folds away and no task is
+ever spawned. See [`is_threaded`](@ref).
 """
-struct SeparableSum{T}
+struct SeparableSum{T, Th}
     fs::T
 end
 
-SeparableSum(fs::Vararg) = SeparableSum((fs...,))
+SeparableSum(fs::Tuple; threaded::Bool=true) = SeparableSum{typeof(fs), threaded}(fs)
+SeparableSum(fs::Vararg; threaded::Bool=true) = SeparableSum((fs...,); threaded)
 
-component_types(::Type{SeparableSum{T}}) where T = fieldtypes(T)
+@threadable SeparableSum{<:Any, Th} BlockParallel
+
+component_types(::Type{<:SeparableSum{T}}) where T = fieldtypes(T)
+
+# no scratch space of its own: each block is proxed in place
+preallocate(g::SeparableSum{<:Any, Th}, xs::Tuple) where Th =
+    SeparableSum(map(preallocate, g.fs, xs); threaded = Th)
 
 @generated is_proximable(::Type{T}) where T <: SeparableSum = return all(is_proximable, component_types(T)) ? true : false
 @generated is_convex(::Type{T}) where T <: SeparableSum = return all(is_convex, component_types(T)) ? true : false
@@ -42,9 +54,47 @@ component_types(::Type{SeparableSum{T}}) where T = fieldtypes(T)
 
 (g::SeparableSum)(xs::Tuple) = sum(f(x) for (f, x) in zip(g.fs, xs))
 
-prox!(ys::Tuple, g::SeparableSum, xs::Tuple, gamma::Number) = sum(prox!(y, f, x, gamma) for (y, f, x) in zip(ys, g.fs, xs))
+# The blocks of a `SeparableSum` have different types, so this is a heterogeneous tuple and
+# not a loop `@batch` can take: one task per block is spawned instead. The region runs with
+# the thread budget restricted, so a block that calls BLAS shares the budget with its
+# siblings rather than each opening a full pool.
+#
+# The tasks are spawned *inside* the restricted region, not before it. A budget scope is
+# decided when it is entered, so a block that starts while nothing is restricted opens a
+# full Polyester pool of its own, and all the blocks together then oversubscribe the
+# machine: measured on 8 blocks of 2^17 elements over 4 threads, spawning first cost
+# 1957us against 574us for the same work run serially, and spawning inside the region
+# turns that into a speedup.
+#
+# Each child is also rebuilt with `unthreaded` before it is spawned: `Polyester`'s pool is
+# all-or-nothing, so a child that still permits threading would try (and fail, expensively)
+# to claim a pool this block loop already holds. See `unthreaded` in
+# `src/utilities/execution.jl`.
+@inline function _prox_blocks!(ys::Tuple, fs::Tuple, xs::Tuple, gammas, R::Type)
+    fs = map(unthreaded, fs)
+    return NestedThreading.with_restricted_threads() do
+        tasks = map((y, f, x, gamma) -> Threads.@spawn(prox!(y, f, x, gamma)), ys, fs, xs, gammas)
+        sum(t -> fetch(t)::R, tasks)
+    end
+end
 
-prox!(ys::Tuple, g::SeparableSum, xs::Tuple, gammas::Tuple) = sum(prox!(y, f, x, gamma) for (y, f, x, gamma) in zip(ys, g.fs, xs, gammas))
+@inline _block_work(xs::Tuple) = sum(length, xs)
+
+function prox!(ys::Tuple, g::SeparableSum, xs::Tuple, gamma::Number)
+    if should_thread_blocks(g, length(xs), _block_work(xs))
+        R = real(eltype(first(xs)))
+        return _prox_blocks!(ys, g.fs, xs, map(_ -> gamma, xs), R)
+    end
+    return sum(prox!(y, f, x, gamma) for (y, f, x) in zip(ys, g.fs, xs))
+end
+
+function prox!(ys::Tuple, g::SeparableSum, xs::Tuple, gammas::Tuple)
+    if should_thread_blocks(g, length(xs), _block_work(xs))
+        R = real(eltype(first(xs)))
+        return _prox_blocks!(ys, g.fs, xs, gammas, R)
+    end
+    return sum(prox!(y, f, x, gamma) for (y, f, x, gamma) in zip(ys, g.fs, xs, gammas))
+end
 
 function prox(g::SeparableSum, xs::Tuple, gamma=1)
     ys = similar.(xs)
@@ -70,3 +120,6 @@ function prox_naive(f::SeparableSum, xs::Tuple, gamma)
     end
     return Tuple(ys), fys
 end
+
+# see `device_tier` in src/utilities/hostfallback.jl
+device_tier(::Type{T}) where T <: SeparableSum = _combine_tiers(map(device_tier, component_types(T))...)

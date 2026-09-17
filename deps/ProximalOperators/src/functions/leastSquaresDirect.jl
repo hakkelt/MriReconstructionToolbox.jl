@@ -65,6 +65,10 @@ function (f::LeastSquaresDirect)(x)
 end
 
 function prox!(y, f::LeastSquaresDirect, x, gamma)
+    # This operator carries its own matrix and a factorization computed once at construction.
+    # Moving those per call would defeat the factorization entirely, so the round-trip moves
+    # only the input and output: build it from host arrays and it accepts device inputs.
+    is_cpu_storage(typeof(x)) || return host_prox!(y, f, x, gamma)
     # if gamma different from f.gamma then call factor_step!
     if gamma != f.gamma
         factor_step!(f, gamma)
@@ -135,3 +139,6 @@ function prox_naive(f::LeastSquaresDirect, x, gamma)
     fy = (f.lambda/2)*norm(f.A*y-f.b)^2
     return y, fy
 end
+
+# see `device_tier` in src/utilities/hostfallback.jl
+device_tier(::Type{<:LeastSquaresDirect}) = :host

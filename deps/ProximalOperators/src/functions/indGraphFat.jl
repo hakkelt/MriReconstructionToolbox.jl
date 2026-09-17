@@ -32,6 +32,10 @@ function (f::IndGraphFat)(x, y)
 end
 
 function prox!(x, y, f::IndGraphFat, c, d, gamma=1)
+    # This operator carries its own matrix and a factorization computed once at construction.
+    # Moving those per call would defeat the factorization entirely, so the round-trip moves
+    # only the input and output: build it from host arrays and it accepts device inputs.
+    is_cpu_storage(typeof(c)) || return _host_graph_prox!(x, y, f, c, d, gamma)
   # y .= f.F \ (f.A * c + f.AA * d)
   mul!(f.tmp, f.A, c)
   mul!(y, f.AA, d)
@@ -49,3 +53,6 @@ function prox_naive(f::IndGraphFat, c, d, gamma)
   y = f.F \ (f.A * c + f.AA * d)
   return c + f.A' * (d - y), y, real(eltype(c))(0)
 end
+
+# see `device_tier` in src/utilities/hostfallback.jl
+device_tier(::Type{<:IndGraphFat}) = :host
