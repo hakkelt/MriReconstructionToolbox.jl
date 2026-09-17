@@ -34,7 +34,7 @@
 #
 # **Contents**
 # 1. Loading the raw data
-# 2. From `RawAcquisitionData` to `AcquisitionInfo` in one call
+# 2. From `RawAcquisitionData` to `AcquisitionInfo`
 # 3. Preprocessing — prewhitening, sensitivity maps, coil compression
 # 4. The fully-sampled reference
 # 5. Retrospective undersampling and compressed sensing
@@ -54,7 +54,7 @@ using LinearAlgebra
 using Statistics
 using Random
 
-Random.seed!(0)
+Random.seed!(0);
 
 # %% [markdown]
 # ## 1. Loading the raw data
@@ -78,15 +78,12 @@ println("slices:        ", length(unique(Int(p.head.idx.slice) for p in raw.prof
 println("field strength: ", raw.params["systemFieldStrength_T"], " T")
 
 # %% [markdown]
-# ## 2. From `RawAcquisitionData` to `AcquisitionInfo` in one call
+# ## 2. From `RawAcquisitionData` to `AcquisitionInfo`
 #
 # Turning a scanner file into the array a reconstruction can use is where most hand-written MRI
 # code goes wrong, so MRT does it for you. Loading `MRIBase` (`MRITestData` already does)
 # activates a package extension that adds
-#
-# `$julia
-# AcquisitionInfo(raw::MRIBase.RawAcquisitionData; sensitivity_maps = nothing)
-# $`
+# `AcquisitionInfo(raw::MRIBase.RawAcquisitionData; sensitivity_maps = nothing)`.
 #
 # It reads the encoding matrix from the header, drops noise-calibration profiles, decides
 # Cartesian vs. non-Cartesian from `raw.params["trajectory"]`, turns every encoding counter that
@@ -167,7 +164,7 @@ println(
 # %%
 # The coil images and their root-sum-of-squares — the coil-independent reference every comparison
 # below is scored against.
-coil_images = reconstruct(acq_coils; verbosity = Silent())        # no maps => one image per coil
+coil_images = reconstruct(acq_coils)        # no maps => one image per coil
 reference = sqrt.(sum(abs2, unname(coil_images); dims = 3)[:, :, 1])
 
 jim(
@@ -258,43 +255,29 @@ plot(
 )
 
 # %% [markdown]
-# The per-channel noise histograms make the second half of the story visible. The printed
-# standard deviations above quantify what to look for: at this array's mild coupling (largest
-# off-diagonal correlation around 0.3) the four channels differ by tens of percent, not by an
-# order of magnitude, so do not expect the four curves before whitening to look dramatically
-# different by eye — the important change is *after*, where all four collapse onto the same
-# unit-variance Gaussian, which is the assumption the least-squares data term makes.
-
-# %%
-noise_before = reshape(noise_patch, :, size(noise_patch, 3))
-noise_after = reshape(noise_patch_w, :, size(noise_patch_w, 3))
-plot(
-    plot(
-        [real.(noise_before[:, c]) for c in chan]; seriestype = :stephist, bins = 60,
-        label = reshape(["ch $c" for c in chan], 1, :), lw = 2,
-        title = "noise, real part - before", xlabel = "value", ylabel = "count"
-    ),
-    plot(
-        [real.(noise_after[:, c]) for c in chan]; seriestype = :stephist, bins = 60,
-        label = reshape(["ch $c" for c in chan], 1, :), lw = 2,
-        title = "noise, real part - after (whitened)", xlabel = "value", ylabel = "count"
-    );
-    layout = (1, 2), size = (1000, 380)
-)
+# The other half of the story is in the printed standard deviations rather than in a picture. At
+# this array's mild coupling — largest off-diagonal correlation around 0.3 — the four channels
+# differ by tens of percent before whitening and are equal to three digits after it. Plotted as
+# four overlaid noise histograms that is four nearly-identical bells becoming four identical
+# bells, which is a figure that cannot be read; the numbers say it exactly.
 
 # %% [markdown]
 # ### Does it change the picture?
 #
 # The two reconstructions below use the *same* sensitivity maps (estimated once, on the whitened
 # data, then pushed back through `L` for the un-whitened path) so the only difference is whether
-# the data term knows about $\Psi$. SNR is measured as the mean magnitude over a box inside the
-# brain divided by the standard deviation over the image corners, which are pure background.
+# the data term knows about $\Psi$. SNR is `estimate_snr` (notebook 03 §7): the mean magnitude in a
+# box at the centre of the image over the standard deviation in boxes in its four corners, which on
+# this dataset are pure background.
 #
-# Read the printed numbers, not the pictures: with four mildly correlated channels the gain is a
-# **few percent**, and the difference image is dominated by noise texture rather than structure.
-# That is the honest result at this array size. Prewhitening is cheap and always correct, and it
-# is what makes the g-factor of section 7 mean anything; on a 32-channel array with correlations
-# of 0.5 and up, the same step is worth much more.
+# Read the printed numbers, not the pictures — and read them for their *size*, not their sign: with
+# four channels whose largest correlation is about 0.3 the two reconstructions differ by a few
+# percent, which on this dataset comes out slightly in favour of the un-whitened one. That is not
+# evidence against prewhitening. A single-image SNR estimate is itself uncertain at the percent
+# level here, and the measure is blind to what whitening actually buys: it makes the data term the
+# maximum-likelihood one, which is what the g-factor of section 7 is defined against. The step is
+# cheap and always correct; it earns a visible number on a 32-channel array with correlations of
+# 0.5 and up, not on four mildly coupled low-field channels.
 
 # %%
 # One set of maps, estimated on the measured data, carried into the whitened frame by the very
@@ -303,19 +286,15 @@ plot(
 maps_raw = estimate_sensitivities(acq_coils; method = ESPIRiT(calib_size = 24, kernel_size = 6)).sensitivity_maps
 maps_matched = prewhiten(maps_raw, Ψ)
 
-x_raw = reconstruct(AcquisitionInfo(acq_coils; sensitivity_maps = maps_raw); verbosity = Silent())
-x_white = reconstruct(AcquisitionInfo(acq_white; sensitivity_maps = maps_matched); verbosity = Silent())
+x_raw = reconstruct(AcquisitionInfo(acq_coils; sensitivity_maps = maps_raw))
+x_white = reconstruct(AcquisitionInfo(acq_white; sensitivity_maps = maps_matched))
 
-box = 100:156
-# A proper background region — a corner box outside the head, hundreds of pixels — not
-# `reference .< threshold`: that thresholded set is dominated by a thin rim of near-zero pixels
-# right at the object's edge and can come down to a literal handful of samples, whose standard
-# deviation is itself noisy rather than a stable estimate of the background level.
-bg_box = 1:40
-bg_idx = CartesianIndices((bg_box, bg_box))
-snr(x) = mean(abs.(unname(x))[box, box]) / std(abs.(unname(x))[bg_idx])
+# `signal_box` and `noise_box` are sizes in pixels: a 56-pixel box at the centre sits well inside
+# the brain, and 40-pixel corner boxes are outside the head on every side.
+snr(x) = estimate_snr(unname(x); signal_box = 56, noise_box = 40)
 
-println("background pixels used: ", length(bg_idx))
+sig_mask, noise_mask = snr_masks(unname(x_white); signal_box = 56, noise_box = 40)
+println("background pixels used: ", count(noise_mask))
 println("SNR without prewhitening: ", round(snr(x_raw), digits = 2))
 println("SNR with prewhitening:    ", round(snr(x_white), digits = 2))
 println(
@@ -332,9 +311,31 @@ side_by_side(
 # %% [markdown]
 # ### Sensitivity maps
 #
-# Three estimators, all working from the fully sampled centre of k-space. ESPIRiT's maps have
-# compact support (they are zero where there is no signal), which is what a SENSE-type
-# reconstruction wants.
+# `estimate_sensitivities(acq; method)` returns a *new* `AcquisitionInfo` with the maps filled in.
+# MRT ships every estimator below; these are all of them, and all three work from data this
+# acquisition already contains.
+#
+# - **`SelfCalibrating(; calib_size)`** (McKenzie 2002, Bydder 2002) — take the fully sampled
+#   `calib_size × calib_size` block at the centre of k-space, transform it to a low-resolution
+#   image per channel, and divide by the root-sum-of-squares combination. The map is then
+#   literally "what this channel sees, relative to everything the channels see together".
+#   *Cheap and transparent*, and the one to reach for when the centre really is fully sampled.
+#   Its weakness is the division: where no channel sees signal the denominator is noise, so the
+#   maps are noisy outside the object and carry no support information.
+# - **`AdaptiveCombine(; kernel_size)`** (Walsh 2000) — no calibration region at all. Around every
+#   pixel it forms the `kernel_size × kernel_size` local channel correlation matrix and takes its
+#   dominant eigenvector as the local sensitivity vector, which is the SNR-optimal combination at
+#   that pixel. *Use it when there is no ACS block*, or when the pattern is irregular; the maps
+#   are smooth, but the per-pixel eigenvector is only determined up to a phase, so the phase of
+#   the combined image is not the object's.
+# - **`ESPIRiT(; calib_size, kernel_size, eigenvalue_threshold, subspace_threshold)`**
+#   (Uecker 2014) — the autocalibrating one. It builds a calibration matrix from the same central
+#   block, keeps the subspace whose singular values pass `subspace_threshold`, and takes, per
+#   pixel, the eigenvectors of the operator built from that subspace. Every pixel whose leading
+#   eigenvalue falls below `eigenvalue_threshold` is declared *outside* the object and its map is
+#   set to zero — a built-in support mask no other estimator here produces, which is what a
+#   SENSE-type reconstruction wants and why it is the usual default for real data. It costs the
+#   most of the three, and it is the only one with two thresholds to think about.
 
 # %%
 maps_selfcal = estimate_sensitivities(acq_white; method = SelfCalibrating(calib_size = 24)).sensitivity_maps
@@ -350,6 +351,19 @@ jim(
 )
 
 # %% [markdown]
+# The support mask is visible in the panels above — ESPIRiT's maps go to zero off the head while
+# the other two keep estimating something there — and it is what the reconstructions differ by:
+
+# %%
+for (label, maps) in (
+        ("SelfCalibrating", maps_selfcal), ("AdaptiveCombine", maps_adaptive), ("ESPIRiT", maps_espirit),
+    )
+    x̂ = reconstruct(AcquisitionInfo(acq_white; sensitivity_maps = maps))
+    println(rpad(label, 18), " direct reconstruction, background level ",
+        round(mean(abs.(unname(x̂))[1:12, 1:12]), sigdigits = 3))
+end
+
+# %% [markdown]
 # ### Coil compression
 #
 # With four channels there is little to gain, but the mechanics are the same as on a 32-channel
@@ -360,8 +374,8 @@ acq_compressed, C = compress_coils(acq_espirit, 2; method = SVDCompression())
 println("compression matrix: ", size(C), "  (virtual x physical)")
 println("channels: ", size(acq_espirit.kspace_data, :coil), " -> ", size(acq_compressed.kspace_data, :coil))
 
-rec_full_4ch = reconstruct(acq_espirit; verbosity = Silent())
-rec_full_2ch = reconstruct(acq_compressed; verbosity = Silent())
+rec_full_4ch = reconstruct(acq_espirit)
+rec_full_2ch = reconstruct(acq_compressed)
 
 jim(
     jim(abs.(unname(rec_full_4ch)); title = "4 channels"),
@@ -377,7 +391,7 @@ jim(
 # It is the target the accelerated reconstructions below are measured against.
 
 # %%
-x_ref = reconstruct(acq_espirit; verbosity = Silent())
+x_ref = reconstruct(acq_espirit)
 
 # Everything below is scored against the root-sum-of-squares of the fully sampled data, on
 # magnitude, with the amplitude aligned (different reconstructions carry different scalings) and
@@ -424,33 +438,48 @@ acq_us = AcquisitionInfo(
     sensitivity_maps = maps_espirit,
 )
 
-x_zf = reconstruct(acq_us; verbosity = Silent())
+x_zf = reconstruct(acq_us)
 println("zero-filled: ", round(rel_err(x_zf), digits = 4))
 jim(abs.(unname(x_zf)); title = "zero-filled, undersampled", size = (480, 420))
 
 # %%
 # λ is larger here than on the phantom of notebook 5: this is 0.3 T data with four channels, so
-# the SNR is low and the noise, not the aliasing, is what limits the result.
+# the SNR is low and the noise, not the aliasing, is what limits the result. The values below are
+# the minima of a λ sweep on this exact acquisition (the sweep for `L1Wavelet2D` is the cell after
+# the panels, and it prints its own minimum rather than leaving you to read it off the plot).
 methods = (
     "L2Image (CG-SENSE)" => IterativeReconstruction(L2Image(1.0f-2); maxit = 30),
-    "L1Wavelet2D" => IterativeReconstruction(L1Wavelet2D(2.0f-2); maxit = 60),
-    "TotalVariation2D" => IterativeReconstruction(TotalVariation2D(1.0f-2); maxit = 60),
-    "wavelet + TV" => IterativeReconstruction(L1Wavelet2D(1.0f-2), TotalVariation2D(5.0f-3); algorithm = ADMM(), maxit = 60),
-    "TGV" => IterativeReconstruction(TotalGeneralizedVariation2D(1.0f-2); algorithm = ADMM(), maxit = 60),
+    "L1Wavelet2D" => IterativeReconstruction(L1Wavelet2D(6.0f-3); maxit = 60),
+    "TotalVariation2D" => IterativeReconstruction(TotalVariation2D(6.0f-3); maxit = 60),
+    "wavelet + TV" => IterativeReconstruction(L1Wavelet2D(5.0f-3), TotalVariation2D(3.0f-3); algorithm = ADMM(), maxit = 60),
+    "TGV" => IterativeReconstruction(TotalGeneralizedVariation2D(6.0f-3); algorithm = ADMM(), maxit = 60),
 )
 
 recons = map(methods) do (label, method)
-    x̂ = reconstruct(acq_us, method; verbosity = Silent())
+    x̂ = reconstruct(acq_us, method)
     println(rpad(label, 22), " ", round(rel_err(x̂), digits = 4))
     label => x̂
 end;
 
 # %% [markdown]
-# Two things are worth reading off those numbers. The unregularized parallel-imaging solve
+# Three things are worth reading off those numbers. The unregularized parallel-imaging solve
 # (`L2Image` with a small λ is CG-SENSE) is *worse* than the zero-filled adjoint here: with four
 # low-field channels the inverse problem is badly conditioned, and CG happily amplifies noise
-# into the answer — section 7 measures the g-factor for exactly this setup. The regularized
-# reconstructions are what make the acceleration usable.
+# into the answer — section 7 measures the g-factor for exactly this setup.
+#
+# Every prior beats the zero-filled adjoint, but the finite-difference ones (TV, TGV) beat it by
+# about half again as much as the wavelet does (0.036 of error removed against 0.025), and adding
+# a wavelet term to TV buys nothing over TV alone. That ordering is what this anatomy and this noise level ask for: at 0.3 T with a 2.5×
+# effective acceleration the error is dominated by noise rather than by aliasing, the
+# zero-filled adjoint is already a fair denoiser because the sensitivity-weighted combination
+# averages the four channels, and what is left for a prior to remove is noise on a brain that is
+# close to piecewise constant at this resolution. A prior only helps when it removes more error
+# than the bias it introduces, and the margin the wavelet manages is the smaller one.
+#
+# And the acceleration itself is the reason the margins are narrow: only 195 of the 256 encoded
+# phase encodes were measured at all, so an effective 2.5× is already a thin sampling of this
+# data. Pushing the retrospective factor further (4×, 5×) makes every reconstruction worse
+# without changing their order.
 
 # %%
 jim(
@@ -461,11 +490,17 @@ jim(
 )
 
 # %%
-# A λ sweep on the real data — the same exercise as on the phantom, with a real noise floor.
-λs = Float32[2.0e-3, 8.0e-3, 2.0e-2, 5.0e-2, 1.0e-1, 2.0e-1]
+# A λ sweep on the real data — the same exercise as on the phantom, with a real noise floor. This
+# is where the λ used above comes from; the minimum is shallow, and everything past it trades
+# noise for blur faster than it removes aliasing.
+λs = Float32[1.0e-3, 3.0e-3, 6.0e-3, 1.0e-2, 2.0e-2, 5.0e-2]
 errs = map(λs) do λ
-    rel_err(reconstruct(acq_us, IterativeReconstruction(L1Wavelet2D(λ); maxit = 60); verbosity = Silent()))
+    rel_err(reconstruct(acq_us, IterativeReconstruction(L1Wavelet2D(λ); maxit = 60)))
 end
+for (λ, e) in zip(λs, errs)
+    println("λ = ", rpad(λ, 8), " relative error ", round(e, digits = 4))
+end
+println("best λ = ", λs[argmin(errs)], " at ", round(minimum(errs), digits = 4))
 plot(
     λs, errs; xscale = :log10, marker = :circle, lw = 2, legend = false,
     xlabel = "lambda", ylabel = "relative error vs. reference",
@@ -473,142 +508,12 @@ plot(
 )
 
 # %% [markdown]
-# ### Preconditioned CG-SENSE
-#
-# `CGNR(; P, P_is_inverse)` accepts a preconditioner. The natural choice for SENSE is the
-# diagonal image-domain operator $P = 1/(\sum_c |S_c|^2 + \lambda)$: it approximates the inverse
-# of $\mathcal{A}^H\mathcal{A}$'s diagonal, which is dominated by the coil sensitivity energy at
-# each pixel. Built as a `DiagOp`, it costs one elementwise divide per application. The point of
-# preconditioning is convergence *speed* at the same accuracy, not a different answer — so the
-# comparison below is error against iteration count, not error against wall-clock time.
-
-# %%
-using AbstractOperators: DiagOp
-
-coil_energy = dropdims(sum(abs2, unname(maps_espirit); dims = 3); dims = 3)
-λ_precond = 1.0f-2
-P = DiagOp(ComplexF32.(1 ./ (coil_energy .+ λ_precond)))
-
-method_unprecond = IterativeReconstruction(L2Image(1.0f-2); algorithm = CGNR(), maxit = 30, tol = 0.0)
-method_precond = IterativeReconstruction(
-    L2Image(1.0f-2); algorithm = CGNR(P = P, P_is_inverse = true), maxit = 30, tol = 0.0
-)
-
-trace_unprecond = IterationTrace(rel_err)
-trace_precond = IterationTrace(rel_err)
-reconstruct(
-    acq_us, IterativeReconstruction(L2Image(1.0f-2); algorithm = CGNR(), maxit = 30, tol = 0.0, on_iteration = trace_unprecond);
-    verbosity = Silent()
-)
-reconstruct(
-    acq_us,
-    IterativeReconstruction(
-        L2Image(1.0f-2); algorithm = CGNR(P = P, P_is_inverse = true), maxit = 30, tol = 0.0,
-        on_iteration = trace_precond
-    );
-    verbosity = Silent()
-)
-
-println("relative error vs. reference, by iteration:")
-println(rpad("iteration", 12), rpad("unpreconditioned", 20), "preconditioned")
-for it in (1, 5, 10, 20, 30)
-    println(
-        rpad(it, 12), rpad(round(trace_unprecond.values[it], digits = 4), 20),
-        round(trace_precond.values[it], digits = 4)
-    )
-end
-
-# %% [markdown]
-# The two columns above are identical on this dataset, which is worth explaining rather than
-# leaving as a null result: `estimate_sensitivities` normalizes its output so
-# $\sum_c|S_c|^2 \approx 1$ throughout the reconstructed support (ESPIRiT's own convention), so
-# $P$ is nearly *constant* there — it only varies outside the object, where the coil energy
-# drops to zero. `rel_err` is masked to `support`, so it cannot see the one region $P$ actually
-# reweights. A preconditioner built from a genuinely non-uniform coil geometry (an array with
-# strong near/far sensitivity falloff, or a support-masked error metric extended to the whole
-# FOV) is where this preconditioner earns its keep; on unit-normalized maps evaluated only
-# inside the object it is close to a no-op, which is itself useful to know before reaching for
-# it as a default.
-#
-# The error growing with iteration count in both columns is the badly-conditioned inverse
-# problem from the discussion above (§5): unregularized CG-SENSE on four low-field channels
-# amplifies noise, so more iterations make it worse, not better — a preconditioner changes how
-# fast that happens, not whether the underlying problem needs regularization.
-
-plot(
-    trace_unprecond.iterations, trace_unprecond.values; label = "unpreconditioned", lw = 2,
-    xlabel = "iteration", ylabel = "relative error vs. reference", yscale = :log10, size = (650, 380)
-)
-plot!(trace_precond.iterations, trace_precond.values; label = "preconditioned", lw = 2)
-
-# %% [markdown]
-# #### The case the preconditioner is *for*
-#
-# The null result above is a property of the coil array, not of the method, so it is worth
-# building the array where the method pays. A surface-coil array has strong near/far falloff: the
-# coil energy $\sum_c |S_c|^2$ varies by orders of magnitude across the FOV, $\mathcal{A}^H
-# \mathcal{A}$ is badly scaled from pixel to pixel, and CG spends its early iterations fixing that
-# scaling instead of the image. That is exactly what a diagonal preconditioner removes.
-#
-# The maps here are the *same* ESPIRiT maps multiplied by a smooth 20× falloff profile, and the
-# k-space is simulated from the fully-sampled reference through those maps with the same
-# undersampling mask — a real image, a real sampling pattern, and a coil array with the geometry
-# the preconditioner assumes.
-
-# %%
-nx_s, ny_s = size(reference)
-falloff = Float32[0.05f0 + 0.95f0 * exp(-3.0f0 * ((i - 1) / (nx_s - 1))^2) for i in 1:nx_s, _ in 1:ny_s]
-maps_shaded = copy(maps_espirit)
-for c in axes(unname(maps_shaded), 3)
-    @views unname(maps_shaded)[:, :, c] .*= falloff
-end
-
-energy_espirit = dropdims(sum(abs2, unname(maps_espirit); dims = 3); dims = 3)
-energy_shaded = dropdims(sum(abs2, unname(maps_shaded); dims = 3); dims = 3)
-println(
-    "coil-energy spread inside the object (max/min):  ESPIRiT ",
-    round(maximum(energy_espirit[support]) / minimum(energy_espirit[support]), digits = 1),
-    "x,  shaded array ", round(maximum(energy_shaded[support]) / minimum(energy_shaded[support]), digits = 1), "x"
-)
-
-acq_shaded = AcquisitionInfo(
-    nothing; is3D = false, image_size = (nx_s, ny_s),
-    sensitivity_maps = maps_shaded, subsampling = (:, mask_us)
-)
-data_shaded = simulate_acquisition(ComplexF32.(reference), acq_shaded)
-
-P_shaded = DiagOp(ComplexF32.(1 ./ (energy_shaded .+ λ_precond)))
-
-trace_shaded_plain = IterationTrace(rel_err)
-trace_shaded_precond = IterationTrace(rel_err)
-reconstruct(
-    data_shaded,
-    IterativeReconstruction(L2Image(1.0f-2); algorithm = CGNR(), maxit = 30, tol = 0.0, on_iteration = trace_shaded_plain);
-    verbosity = Silent()
-)
-reconstruct(
-    data_shaded,
-    IterativeReconstruction(
-        L2Image(1.0f-2); algorithm = CGNR(P = P_shaded, P_is_inverse = true), maxit = 30, tol = 0.0,
-        on_iteration = trace_shaded_precond
-    );
-    verbosity = Silent()
-)
-
-# How many iterations each needs to reach the other's final accuracy — the number preconditioning
-# is supposed to move.
-target = trace_shaded_plain.values[end]
-its_plain = findfirst(<=(target), trace_shaded_plain.values)
-its_precond = findfirst(<=(target), trace_shaded_precond.values)
-println("iterations to reach ", round(target, digits = 4), " relative error:")
-println("  unpreconditioned ", its_plain, "   preconditioned ", something(its_precond, "not reached"))
-
-plot(
-    trace_shaded_plain.iterations, trace_shaded_plain.values; label = "unpreconditioned", lw = 2,
-    xlabel = "iteration", ylabel = "relative error vs. reference", yscale = :log10,
-    title = "CG-SENSE on a coil array with 20x falloff", size = (700, 400)
-)
-plot!(trace_shaded_precond.iterations, trace_shaded_precond.values; label = "preconditioned", lw = 2)
+# Preconditioning the CG solve is the other knob on this problem, and it belongs with the rest of
+# the solver settings rather than here: `CGNR(; P, P_is_inverse)` and the diagonal image-domain
+# preconditioner it takes are in
+# [`06_algorithms_and_configuration` §2](06_algorithms_and_configuration.ipynb). It would show nothing on this
+# dataset — `estimate_sensitivities` normalizes its maps so that $\sum_c |S_c|^2 \approx 1$ over
+# the object, which is exactly the case where a diagonal preconditioner is close to a no-op.
 
 # %% [markdown]
 # ## 6. Parallel imaging on the same data
@@ -633,9 +538,9 @@ acq_pi = AcquisitionInfo(
     sensitivity_maps = maps_espirit,
 )
 
-x_grappa = reconstruct(acq_pi, GRAPPA(kernel_size = (3, 2), calib_size = (size(ksp, 1), 24)); verbosity = Silent())
-x_sense = reconstruct(acq_pi, IterativeReconstruction(L2Image(1.0f-2); maxit = 30); verbosity = Silent())
-x_sense_cs = reconstruct(acq_pi, IterativeReconstruction(L1Wavelet2D(1.0f-2); maxit = 60); verbosity = Silent())
+x_grappa = reconstruct(acq_pi, GRAPPA(kernel_size = (3, 2), calib_size = (size(ksp, 1), 24)))
+x_sense = reconstruct(acq_pi, IterativeReconstruction(L2Image(1.0f-2); maxit = 30))
+x_sense_cs = reconstruct(acq_pi, IterativeReconstruction(L1Wavelet2D(1.0f-2); maxit = 60))
 
 println("GRAPPA               ", round(rel_err(x_grappa), digits = 4))
 println("SENSE (L2, CG)       ", round(rel_err(x_sense), digits = 4))
@@ -747,6 +652,19 @@ side_by_side(
     res_us.std .* support, res_cs.std .* support;
     titles = ("sigma - CG-SENSE", "sigma - L1-wavelet"), size = (900, 420)
 )
+
+# %% [markdown]
+# ## Further reading
+#
+# The scanner-side facts this notebook has to cope with, from *Questions and Answers in MRI*:
+#
+# - [k-space: data](https://mriquestions.com/data-for-k-space.html) — what the raw file holds, and
+#   in what order.
+# - [How to measure SNR](https://mriquestions.com/signal-to-noise.html) — the definitions behind
+#   the noise statistics prewhitening is estimating.
+# - [Parallel imaging](https://mriquestions.com/what-is-pi.html) and
+#   [PI: artifacts](https://mriquestions.com/artifacts-in-pi.html) — what an under-calibrated
+#   sensitivity map does to a real reconstruction.
 
 # %% [markdown]
 # ## Environment

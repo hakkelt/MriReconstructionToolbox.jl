@@ -59,6 +59,26 @@ layout as the k-space (`(:x, :y, :coil, :z)` for the multi-slice case, which is 
 per-slice map layout [`AcquisitionInfo`](@ref) accepts). Coil sensitivities differ from slice to
 slice, so estimating them jointly would be wrong; they are estimated independently and stacked.
 
+### Non-Cartesian acquisitions
+
+`estimate_sensitivities(acq::NonCartesianAcquisitionInfo; ...)` calibrates radial, spiral and
+arbitrary-trajectory data **directly** — no hand-rolled gridding round trip. It grids the samples
+with a density-compensated NFFT adjoint (one image per coil), transforms those back onto a
+Cartesian grid of `acq.image_size`, and runs the chosen estimator there, returning maps on the
+centred image grid the non-Cartesian reconstruction itself uses.
+
+- `dcf` defaults to `acq.dcf` when the acquisition carries one — vendor weights, or the output of
+  [`density_compensation`](@ref) — and to `:auto` (NFFTOperators' own estimator) otherwise. It
+  cannot be `nothing`: gridding without density compensation weights the calibration region by
+  how densely the trajectory samples it.
+- `average_dims` (default `(:time,)`) names the batch dimensions averaged over before
+  calibration. The averaging happens on the samples, which the shared trajectory and the
+  linearity of gridding make equivalent to averaging the gridded images, at one gridding pass
+  instead of one per frame. One frame of a real-time or cine non-Cartesian series is usually
+  far too undersampled to calibrate from, while the coils do not move between frames. Batch
+  dimensions not named here are estimated slab by slab, as for Cartesian data; pass
+  `average_dims = ()` for one set of maps per frame.
+
 ### Methods:
 - `SelfCalibrating(; calib_size = 24)`: Smooth low-resolution calibration from central k-space auto-calibration signal (ACS) lines, normalized by root-sum-of-squares (McKenzie et al. 2002). Fastest method for Cartesian data with an ACS region.
 - `AdaptiveCombine(; kernel_size = 5)`: Local array correlation matrix eigenanalysis (Walsh et al. 2000). Needs no dedicated calibration scan and provides SNR-optimal coil combination.

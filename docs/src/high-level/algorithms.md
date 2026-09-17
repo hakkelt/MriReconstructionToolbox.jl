@@ -17,7 +17,7 @@ img = reconstruct(acq, IterativeReconstruction(regularization))
 Is your problem smooth (no L1, TV, etc.)?
 ├─ Yes → Use CGNR (Conjugate Gradient Normal Residual)
 └─ No → Does it have a single non-smooth regularizer where the wrapped operator is symmetric* (e.g. wavelets, temporal Fourier)?
-    ├─ Yes → Use FISTA (Fast Iterative Shrinkage-Thresholding Algorithm)
+    ├─ Yes → Use POGM (Proximal Optimized Gradient Method)
     └─ No → Use ADMM (Alternating Direction Method of Multipliers)
 ```
 
@@ -27,7 +27,8 @@ Is your problem smooth (no L1, TV, etc.)?
 
 MriReconstructionToolbox builds on [ProximalAlgorithms.jl](https://github.com/JuliaFirstOrder/ProximalAlgorithms.jl). All algorithms from that package can be used directly. There are three recommended algorithms for MRI reconstruction used by default in `reconstruct()`:
 - `CGNR`: Conjugate Gradient Normal Residual for smooth problems
-- `FISTA`: Fast Iterative Shrinkage-Thresholding Algorithm for single non-smooth regularizer
+- `POGM`: Proximal Optimized Gradient Method for a single non-smooth regularizer (`FISTA` solves the
+  same problems and is one `algorithm = FISTA()` away)
 - `ADMM`: Alternating Direction Method of Multipliers for multiple regularizers
 
 All algorithms from this library share a common interface with the following parameters:
@@ -128,7 +129,7 @@ The natural choice for SENSE is the diagonal image-domain approximation of `𝒜
 `Σ_c |S_c|² + λ`:
 
 ```@example imports
-using AbstractOperators: DiagOp
+using MriReconstructionToolbox.AbstractOperators: DiagOp
 coverage = real(sum(abs2, unname(smaps); dims = 3)[:, :, 1])
 P⁻¹ = DiagOp(ComplexF32.(1 ./ (coverage .+ 1.0f-4)))
 img_pc = reconstruct(
@@ -343,7 +344,7 @@ img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(), maxit =
 img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(), maxit = 80))
 ```
 
-`maxit` and `tol` on `IterativeReconstruction` take precedence over the same parameters on the
+`maxit` and `reltol` on `IterativeReconstruction` take precedence over `maxit` and `tol` on the
 algorithm object. To let the algorithm's own values through instead, set the method's to
 `nothing`:
 
@@ -357,19 +358,20 @@ Controls early stopping:
 
 ```julia
 # Stricter convergence
-img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(), maxit = 200, tol = 1e-6))
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(), maxit = 200, reltol = 1e-6))
 
 # Looser convergence (faster but less accurate)
-img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(), maxit = 200, tol = 1e-3))
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(), maxit = 200, reltol = 1e-3))
 
 # Disable early stopping
-img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(), maxit = 100, tol = 0))
+img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(), maxit = 100, reltol = 0))
 ```
 
-MRT's `tol` is **relative**: the absolute threshold handed to the solver is
-`max(10*eps, tol * maximum(abs, x₀))`, unlike `ProximalAlgorithms`' absolute `tol`.
+MRT's tolerance is **relative**, which is why it is called `reltol`: the absolute threshold handed
+to the solver is `max(10*eps, reltol * maximum(abs, x₀))`. `ProximalAlgorithms`' own `tol`, on the
+algorithm object, is absolute.
 
-**Practical tip:** Default `tol=1e-4` is usually good. Tighten to 1e-5 or 1e-6 if you need higher accuracy.
+**Practical tip:** Default `reltol=1e-4` is usually good. Tighten to 1e-5 or 1e-6 if you need higher accuracy.
 
 ### Verbosity and Monitoring
 
@@ -385,7 +387,7 @@ img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithm); verb
 # A progress bar instead of the log
 img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithm); verbosity = ProgressBar())
 
-# No output
+# No output — the default, so this is what a plain `reconstruct` call does
 img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithm); verbosity = Silent())
 ```
 
@@ -485,7 +487,7 @@ img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithms))
 ### Custom Stopping Criteria
 
 ```julia
-using ProximalAlgorithms
+using MriReconstructionToolbox.ProximalAlgorithms
 
 # Custom stopping function
 function my_stop(iter, state)

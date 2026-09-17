@@ -9,6 +9,8 @@ benchmark/hpc/results/*.json
 .ipynb_checkpoints/
 docs/notebooks/build/
 docs/notebooks/cache/
+# Plots.jl writes the scratch file for an animated GIF next to the working directory.
+docs/notebooks/tmp.gif
 
 # .ipynb is a jupytext-generated view of docs/notebooks/src/*.jl (the tracked source); regenerate
 # with `python3 -m jupytext --to ipynb docs/notebooks/src/*.jl` rather than committing it.

@@ -30,7 +30,6 @@
 # 2. Temporal regularizers
 # 3. Low-rank regularizers
 # 4. Image decomposition — low-rank + sparse
-# 5. Infimal-convolution TV as a decomposition
 
 # %%
 include("NotebookUtils.jl")
@@ -46,14 +45,14 @@ using LinearAlgebra
 using Statistics: mean
 using Random
 
-Random.seed!(0)
+Random.seed!(0);
 
 # %% [markdown]
 # ## 1. A dynamic torso-phantom dataset
 #
 # The phantom is `create_torso_phantom` from
 # [GeometricMedicalPhantoms.jl](https://github.com/hakkelt/GeometricMedicalPhantoms.jl), driven
-# by that package's physiological signal generators rather than by a hand-rolled bolus curve:
+# by that package's physiological signal generators:
 #
 # - `generate_cardiac_signals(duration, fs, hr)` returns the four chamber volumes in millilitres
 #   (`lv`, `rv`, `la`, `ra`); the phantom rescales its chambers to follow them.
@@ -85,7 +84,7 @@ volume = create_torso_phantom(
 series = NamedDimsArray{(:x, :y, :time)}(volume[:, yslice, :, :])   # coronal: fix the y axis
 println("series: ", size(series), " ", dimnames(series))
 
-jim(unname(series)[:, :, 1:5:16]; title = "frames 1, 6, 11, 16", nrow = 1, size = (1000, 280))
+animate_slices(series; title = i -> "dynamic series, frame $i of $nt", fps = 8, size = (400, 350))
 
 # %% [markdown]
 # ### Tissue masks
@@ -162,14 +161,14 @@ function tissue_nrmse(x̂, mask)
 end
 
 function report(label, x̂)
-    print(rpad(label, 26), " global ", lpad(round(nrmse_dyn(x̂), digits = 4), 7))
+    print(rpad(label, 26), " global: ", round(nrmse_dyn(x̂), digits = 4))
     for (name, m) in pairs(masks)
-        print("  ", name, " ", lpad(round(tissue_nrmse(x̂, m), digits = 4), 7))
+        print(", ", name, ": ", round(tissue_nrmse(x̂, m), digits = 4))
     end
     return println()
 end
 
-x_dyn_direct = reconstruct(data_dyn; verbosity = Silent())
+x_dyn_direct = reconstruct(data_dyn)
 report("direct", x_dyn_direct)
 
 # %% [markdown]
@@ -188,20 +187,17 @@ report("direct", x_dyn_direct)
 
 # %%
 x_tf = reconstruct(
-    data_dyn, IterativeReconstruction(L1TemporalFourier(2.0f-2; time_dim = :time); maxit = 60);
-    verbosity = Silent()
+    data_dyn, IterativeReconstruction(L1TemporalFourier(2.0f-2; time_dim = :time); maxit = 60)
 )
 x_ttv = reconstruct(
-    data_dyn, IterativeReconstruction(TemporalTotalVariation(2.0f-2; time_dim = :time); maxit = 60);
-    verbosity = Silent()
+    data_dyn, IterativeReconstruction(TemporalTotalVariation(2.0f-2; time_dim = :time); maxit = 60)
 )
 x_spatiotemporal = reconstruct(
     data_dyn,
     IterativeReconstruction(
         TotalVariation2D(1.0f-3), TemporalTotalVariation(2.0f-2; time_dim = :time);
         algorithm = ADMM(), maxit = 60
-    );
-    verbosity = Silent()
+    )
 )
 
 report("direct", x_dyn_direct)
@@ -225,29 +221,9 @@ side_by_side(
 # %% [markdown]
 # ### The temporal profile through the moving structure
 #
-# The point of a temporal term is the time course, not the single frame. Averaging the magnitude
-# inside the (moving) LV blood-pool mask traces the ventricle filling and emptying; the direct
-# reconstruction blurs that curve towards its mean, and the temporal terms restore it.
-
-# %%
-lv_curve(x) = [mean(abs.(unname(x))[:, :, t][masks.lv_blood[:, :, t]]) for t in 1:nt]
-
-plot(
-    lv_curve(series); label = "truth", lw = 3, color = :black,
-    xlabel = "frame", ylabel = "mean |x| in the LV blood pool", size = (700, 360)
-)
-for (label, x̂) in (
-        ("direct", x_dyn_direct), ("temporal Fourier", x_tf),
-        ("temporal TV", x_ttv), ("spatial + temporal TV", x_spatiotemporal),
-    )
-    plot!(lv_curve(x̂); label = label, lw = 2)
-end
-plot!()
-
-# %% [markdown]
-# A y–t profile through a fixed column across the ventricle shows the same thing without any
-# mask: the horizontal axis is time, so a moving wall is a slanted edge, and blurring it is
-# immediately visible.
+# The point of a temporal term is the time course, not the single frame. A y–t profile through a
+# fixed column across the ventricle shows it directly: the horizontal axis is time, so a moving
+# wall is a slanted edge, and blurring it is immediately visible.
 
 # %%
 column = 34
@@ -260,7 +236,9 @@ side_by_side(
 # %% [markdown]
 # ## 3. Low-rank regularizers
 #
-# A dynamic series reshaped as a Casorati matrix (space × time) is nearly low rank whenever the
+# A dynamic series reshaped as a
+# [Casorati matrix](https://cds.ismrm.org/protected/18MProceedings/PDFfiles/E1262.html)
+# (space × time) is nearly low rank whenever the
 # frames are correlated — and a cine is, since most of the field of view does not move at all.
 #
 # - `LowRank(λ)` — nuclear norm of the whole matrix.
@@ -280,7 +258,7 @@ side_by_side(
 
 function sweep(build_reg)
     results = map(λs) do λ
-        x̂ = reconstruct(data_dyn, IterativeReconstruction(build_reg(λ); maxit = 60); verbosity = Silent())
+        x̂ = reconstruct(data_dyn, IterativeReconstruction(build_reg(λ); maxit = 60))
         return λ, x̂, nrmse_dyn(x̂)
     end
     best = results[argmin(last.(results))]
@@ -312,8 +290,7 @@ x_mslr_per_scale = reconstruct(
     data_dyn,
     IterativeReconstruction(
         MultiScaleLowRank([3.0f-2, 5.0f-2, 8.0f-2]; block_sizes = (4, 8, 16), time_dim = :time); maxit = 60
-    );
-    verbosity = Silent()
+    )
 )
 report("MultiScaleLowRank, shared λ", x_mslr)
 report("MultiScaleLowRank, per-scale λ", x_mslr_per_scale)
@@ -322,14 +299,13 @@ report("MultiScaleLowRank, per-scale λ", x_mslr_per_scale)
 # `shift = :random` redraws the block grid before every proximal step, which averages out the
 # block boundaries a fixed grid can leave at large λ. It changes the objective from iteration to
 # iteration, so it must not be combined with a line-search algorithm — hence the explicit
-# `FISTA()`, whose step size is fixed by `Lf` (notebook 06 §7).
+# `POGM()`, whose step size is fixed by `Lf` (notebook 06 §7).
 x_llr_shift = reconstruct(
     data_dyn,
     IterativeReconstruction(
         LocallyLowRank(5.0f-2; block_size = 8, time_dim = :time, shift = :random);
-        algorithm = FISTA(), maxit = 60
-    );
-    verbosity = Silent()
+        algorithm = POGM(), maxit = 60
+    )
 )
 report("LocallyLowRank, random", x_llr_shift)
 
@@ -357,16 +333,26 @@ plot!(svdvals(casorati(x_lr))[1:12]; label = "LowRank", lw = 2, marker = :circle
 # gets its own prior. The classic model (Otazo, Candès & Sodickson 2015) is a low-rank background
 # plus a temporally sparse foreground, and a cardiac cine is what it was designed for: the static
 # chest is the background, the beating heart is the foreground.
+#
+# The sparse part is penalized with `L1Image`, as in RPCA and in Otazo's L+S, rather than with a
+# temporal-difference term — and that choice is what makes the split work at all. A *static*
+# background costs `TemporalTotalVariation` nothing, so with that as the sparse term the "sparse"
+# component absorbs the whole image at every λ and the low-rank one is left holding a few percent
+# of the energy. An ℓ₁ penalty on the pixels themselves is expensive for a static background, so
+# the background goes where it belongs.
+#
+# The two λ then control the split directly. At `(8e-2, 2e-3)` the low-rank part carries about
+# 98 % of the image energy and the sparse part is non-zero on roughly a seventh of the voxels —
+# most of the energy in `L`, and an `S` that is neither empty nor a second copy of the image.
 
 # %%
 img_ls = reconstruct(
     data_dyn,
     IterativeReconstruction(
-        Component(:lowrank, LowRank(5.0f-2; time_dim = :time)),
-        Component(:sparse, TemporalTotalVariation(2.0f-2; time_dim = :time));
+        Component(:lowrank, LowRank(8.0f-2; time_dim = :time)),
+        Component(:sparse, L1Image(2.0f-3));
         maxit = 80
-    );
-    verbosity = Silent()
+    )
 )
 
 println(typeof(img_ls).name.name)
@@ -381,26 +367,22 @@ println("sum of components == total: ", sum(values(components(img_ls))) ≈ tota
 L = img_ls.lowrank
 S = img_ls.sparse
 
-side_by_side(
-    unname(L)[:, :, frame], unname(S)[:, :, frame], unname(img_ls)[:, :, frame];
-    titles = ("L — background", "S — dynamics", "L + S")
-)
+# Played rather than tiled: the point of the decomposition is what each part does *over time* —
+# `L` should barely move while `S` carries the beat — and a single frame cannot show that. Each
+# panel keeps its own fixed colour scale across the animation: `S` holds a small fraction of the
+# energy by construction, so a scale shared with `L` would render it black, and a scale
+# recomputed per frame would flicker.
+clim_of(x) = (0.0, maximum(abs, unname(x)))
+cl_L, cl_S, cl_sum = clim_of(L), clim_of(S), clim_of(total_image(img_ls))
 
-# %% [markdown]
-# The separation is temporal, and the tissue masks make that concrete: inside the LV blood pool
-# `L` is nearly flat while `S` carries the whole cardiac cycle, and inside the (nearly static)
-# bones both are flat.
-
-# %%
-plot(
-    lv_curve(L); label = "L in the LV blood pool", lw = 2,
-    xlabel = "frame", ylabel = "mean |x|", size = (700, 360)
-)
-plot!(lv_curve(S); label = "S in the LV blood pool", lw = 2)
-plot!(
-    [mean(abs.(unname(S))[:, :, t][masks.bones[:, :, t]]) for t in 1:nt];
-    label = "S in bone", lw = 2, ls = :dash
-)
+animate_frames(nt; fps = 8) do i
+    jim(
+        jim(unname(L)[:, :, i]; title = "L - background", clim = cl_L),
+        jim(unname(S)[:, :, i]; title = "S - dynamics", clim = cl_S),
+        jim(unname(total_image(img_ls))[:, :, i]; title = "L + S", clim = cl_sum);
+        layout = (1, 3), size = (1000, 320), plot_title = "frame $i of $nt",
+    )
+end
 
 # %%
 # A component may carry several regularizers, exactly like the plain API.
@@ -410,8 +392,7 @@ img_multi = reconstruct(
         Component(:structured, LowRank(5.0f-2; time_dim = :time), TotalVariation2D(5.0f-4)),
         Component(:sparse, L1Image(5.0f-3));
         maxit = 40
-    );
-    verbosity = Silent()
+    )
 )
 report("two-reg component", img_multi)
 
@@ -422,129 +403,33 @@ report("two-reg component", img_multi)
 img_warm = reconstruct(
     data_dyn,
     IterativeReconstruction(
-        Component(:lowrank, LowRank(5.0f-2; time_dim = :time)),
-        Component(:sparse, TemporalTotalVariation(2.0f-2; time_dim = :time));
+        Component(:lowrank, LowRank(8.0f-2; time_dim = :time)),
+        Component(:sparse, L1Image(2.0f-3));
         maxit = 40
     );
-    x₀ = (lowrank = x_dyn_direct, sparse = zero(x_dyn_direct)), verbosity = Silent()
+    x₀ = (lowrank = x_dyn_direct, sparse = zero(x_dyn_direct))
 )
 report("warm-started L+S", img_warm)
 
 # %%
 # A single component is rejected — that is just the plain regularization API.
 try
-    reconstruct(data_dyn, IterativeReconstruction(Component(:only, LowRank(5.0f-2))); verbosity = Silent())
+    reconstruct(data_dyn, IterativeReconstruction(Component(:only, LowRank(5.0f-2))))
 catch e
     println(sprint(showerror, e))
 end
 
 # %% [markdown]
-# ## 5. Infimal-convolution TV as a decomposition
+# ## Further reading
 #
-# Splitting an image into a piecewise-constant "cartoon" and a piecewise-linear "ramp" needs no
-# special regularizer: it is an additive decomposition with a first-order TV term on one part and
-# a second-order term on the other. Unlike `TotalGeneralizedVariation2D`, this gives you the two
-# parts separately — useful when the smooth part *is* the quantity of interest (a bias field, a
-# background, a shading correction).
+# The acquisitions these temporal models are built for, from *Questions and Answers in MRI*:
 #
-# The failure it fixes only shows up on data that *has* smooth gradients. Plain TV is minimized
-# by piecewise-constant images, so it renders a linear ramp as a flight of steps — **staircasing**
-# — and that is invisible on a phantom made of flat ellipses. The test image below is therefore
-# built deliberately: two piecewise-constant shapes on top of a genuine linear ramp running
-# across the whole field of view.
-
-# %%
-m_ic = 96
-blocks = zeros(Float32, m_ic, m_ic)
-for i in 1:m_ic, j in 1:m_ic
-    hypot(i - 40, j - 40) < 22 && (blocks[i, j] = 0.55f0)
-    (60 <= i <= 84 && 20 <= j <= 76) && (blocks[i, j] = 0.85f0)
-end
-ramp_true = Float32[0.15f0 + 0.6f0 * (j - 1) / (m_ic - 1) for i in 1:m_ic, j in 1:m_ic]
-x_ic_true = ComplexF32.(blocks .+ ramp_true)
-
-# Rows 1–15 sit above every shape, so they are pure ramp: the region where staircasing lives.
-ramp_region = falses(m_ic, m_ic)
-ramp_region[1:15, :] .= true
-
-side_by_side(blocks, ramp_true, x_ic_true; titles = ("cartoon part", "ramp part", "test image"))
-
-# %%
-acq_ic = AcquisitionInfo(;
-    is3D = false, image_size = (m_ic, m_ic), sensitivity_maps = coil_sensitivities(m_ic, m_ic, 4),
-    subsampling = create_sampling_pattern(
-        VariableDensitySampling(PolynomialDistribution(3), 5.0, 0.06), (m_ic, m_ic)
-    ),
-)
-data_ic = simulate_acquisition(x_ic_true + 0.02f0 * randn(ComplexF32, m_ic, m_ic), acq_ic)
-
-λ_ic = 1.0f-2
-x_ic_tv = reconstruct(
-    data_ic, IterativeReconstruction(TotalVariation2D(λ_ic); algorithm = ADMM(), maxit = 400);
-    verbosity = Silent()
-)
-img_ic = reconstruct(
-    data_ic,
-    IterativeReconstruction(
-        Component(:cartoon, TotalVariation2D(λ_ic)),
-        Component(:ramp, SecondOrderTotalVariation2D(λ_ic));
-        algorithm = ADMM(), maxit = 400
-    );
-    verbosity = Silent()
-)
-
-# The staircase metric: the total second difference along a profile through the pure-ramp band.
-# A straight ramp has second differences of zero; every step contributes twice.
-staircase(x) = sum(abs, diff(diff(abs.(unname(x))[8, :])))
-region_nrmse(x) = nrmse(unname(x)[ramp_region], x_ic_true[ramp_region])
-
-for (label, x̂) in (("plain TV", x_ic_tv), ("infimal-convolution TV", Array(img_ic)))
-    println(
-        rpad(label, 24),
-        " global NRMSE ", lpad(round(nrmse(x̂, x_ic_true), digits = 4), 7),
-        "   ramp-region NRMSE ", lpad(round(region_nrmse(x̂), digits = 4), 7),
-        "   staircase ", lpad(round(staircase(x̂), digits = 3), 6)
-    )
-end
-
-# %% [markdown]
-# The global NRMSE barely separates the two — staircasing is a *structured* error confined to
-# the smooth regions, and a whole-image average dilutes it against the edges, which plain TV
-# renders slightly more crisply. Restricted to the pure-ramp band the gap is large, and the
-# staircase metric is halved. The profile below is what those two numbers are measuring.
-
-# %%
-row = 8
-plot(
-    abs.(x_ic_true[row, :]); label = "truth", lw = 3, color = :black,
-    xlabel = "column", ylabel = "|x|", title = "profile through the pure-ramp band", size = (750, 380)
-)
-plot!(abs.(unname(x_ic_tv))[row, :]; label = "plain TV — staircased", lw = 2)
-plot!(abs.(unname(Array(img_ic)))[row, :]; label = "infimal-convolution TV", lw = 2)
-
-# %%
-side_by_side(
-    x_ic_true, x_ic_tv, Array(img_ic);
-    titles = ("truth", "plain TV", "infimal-convolution TV")
-)
-
-# %% [markdown]
-# And the two components, which plain TV cannot give you at all: `img_ic.cartoon` holds the
-# shapes and `img_ic.ramp` the smooth shading, reachable by name straight off the image.
-
-# %%
-side_by_side(
-    abs.(img_ic.cartoon), abs.(img_ic.ramp), abs.(Array(img_ic));
-    titles = ("cartoon component", "ramp component", "sum")
-)
-
-# %% [markdown]
-# ---
-#
-# **Task splitting** — running one independent reconstruction per slice, contrast or frame, and
-# the threading settings that control it — is a *run* setting rather than a model, and is covered
-# in notebook 06 §8, together with the `get_affected_dims` table that says which of the terms
-# above leave which dimensions splittable.
+# - [Real-time cine](https://mriquestions.com/real-time-cine.html) — the regime where every frame
+#   is drastically undersampled, which is what the temporal priors here exploit.
+# - [SSFP cardiac cine](https://mriquestions.com/cine-parameters.html) — the segmented alternative,
+#   and the temporal-resolution budget it works under.
+# - [Compressed sensing](https://mriquestions.com/compressed-sensing.html) — why a different
+#   sampling pattern per frame is what makes these priors work.
 
 # %% [markdown]
 # ## Environment

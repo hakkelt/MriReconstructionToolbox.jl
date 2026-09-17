@@ -14,12 +14,16 @@ for how it fits into the notebook workflow.
 module NotebookUtils
 
 using MIRTjim: jim, jim!
-using Plots: Plot
+# `Plots` itself, not only the names used here: `@animate` expands to code that refers to
+# `Plots.Animation`, so the module has to be resolvable inside this one.
+import Plots
+using Plots: Plot, @animate, gif
 using LinearAlgebra: norm
 using Pkg: Pkg
 using InteractiveUtils: versioninfo
 
-export nrmse, side_by_side, difference_image, grid_layout, print_versions
+export nrmse, side_by_side, difference_image, grid_layout, print_versions, kaxes, animate_slices,
+    animate_frames
 
 # --------------------------------------------------------------------------------------------
 # 1. jim orientation: MIRTjim's `yflip` default is `minimum(y) >= 0`, which is `true` for the
@@ -32,6 +36,38 @@ export nrmse, side_by_side, difference_image, grid_layout, print_versions
 #    single point of control the campaign plan asks for: it fixes every `jim` call in every
 #    notebook, present and future, without touching the phantom arrays themselves.
 jim(:yflip, false)
+
+# Every image panel carries axis labels, the same way every plot does. `x`/`y` are the image-domain
+# pixel axes, which is what most panels show; a panel showing something else (k-space, a sampling
+# mask over `kx`/`ky`, a Casorati matrix) passes `xlabel`/`ylabel` explicitly and overrides these.
+# Setting them as global defaults here is the same single point of control as `yflip` above, rather
+# than repeating two keywords at every `jim` call in twelve notebooks.
+jim(:xlabel, "x")
+jim(:ylabel, "y")
+
+# GR sizes a subplot's plot area first and draws the axis labels into whatever is left, so in a
+# multi-panel figure the leftmost panel's `ylabel` and the bottom row's `xlabel` are drawn outside
+# the canvas and simply do not appear. Reserving the margin globally is the same single point of
+# control as the two defaults above: it fixes every figure in every notebook rather than adding two
+# keywords to each `plot` and `jim` call that happens to be wide enough to clip.
+#
+# The right margin is the same defect seen from the other side: a colour bar's tick labels are
+# drawn outside the subplot, so a panel whose values need long labels (`0.0000125`) loses the last
+# characters off the edge of the canvas.
+Plots.default(left_margin = 6Plots.mm, bottom_margin = 8Plots.mm, right_margin = 10Plots.mm)
+
+"""
+    kaxes
+
+The `xlabel`/`ylabel` pair for a panel that shows k-space rather than the image domain — a raw
+k-space array, a sampling mask, a point-spread function's source. Splat it into the `jim` call
+(`jim(mask; title = "...", kaxes...)`) so every k-space panel in every notebook is labelled the
+same way, rather than each one spelling out two keywords.
+
+A view along other k-space axes (`kx`/`kz`, say) passes its own labels; a `NamedDimsArray` takes
+its labels from its own dimension names and needs neither.
+"""
+const kaxes = (xlabel = "kx", ylabel = "ky")
 
 # --------------------------------------------------------------------------------------------
 # 2. Write plot titles and axis labels in plain ASCII (`title = "Ax"`, not `title = "𝒜x"`).
@@ -79,8 +115,11 @@ end
 
 Display several images side by side (via `jim`/`MIRTjim`) on a SHARED color scale, so the panels
 are visually comparable. By default `clim` is the joint `(min, max)` of `abs.(image)` across all
-`images`; pass `clim` explicitly to override. `titles` pairs with `images` positionally.
-Remaining `kwargs` are forwarded to every panel's `jim` call (not to the combining `jim`).
+`images`; pass `clim` explicitly to override, or `clim = :each` to let every panel scale itself.
+Use `:each` when the panels are not in the same units — a real-valued image next to a log-magnitude
+spectrum, say, where one shared scale flattens the panel with the smaller range to a flat field.
+`titles` pairs with `images` positionally. Remaining `kwargs` are forwarded to every panel's `jim`
+call (not to the combining `jim`).
 
 At most `maxcols` panels go in one row; with more images the figure wraps onto further rows
 (see [`grid_layout`](@ref)), and the default `size` grows with the row count accordingly.
@@ -95,15 +134,66 @@ function side_by_side(
     )
     length(titles) == length(images) ||
         throw(ArgumentError("side_by_side: got $(length(images)) images but $(length(titles)) titles"))
-    mags = map(img -> abs.(img), images)
-    shared_clim = clim === nothing ? (minimum(minimum, mags), maximum(maximum, mags)) : clim
-    panels = [
-        jim(img; title = t, clim = shared_clim, kwargs...)
-            for (img, t) in zip(images, titles)
-    ]
+    panels = if clim === :each
+        [jim(img; title = t, kwargs...) for (img, t) in zip(images, titles)]
+    else
+        mags = map(img -> abs.(img), images)
+        shared_clim = clim === nothing ? (minimum(minimum, mags), maximum(maximum, mags)) : clim
+        [jim(img; title = t, clim = shared_clim, kwargs...) for (img, t) in zip(images, titles)]
+    end
     rows, cols = grid_layout(length(images); maxcols = maxcols)
     figsize = size === nothing ? (350 * cols, 350 * rows) : size
     return jim(panels...; layout = (rows, cols), size = figsize)
+end
+
+"""
+    animate_slices(volume; dim = ndims(volume), fps = 6, title = i -> "", clim = nothing, kwargs...)
+
+An animated GIF stepping along `dim` of `volume` — the right display for a stack of slices or a
+dynamic series, where a montage of static panels forces the reader to compare frames by eye.
+
+Every frame shares one colour scale (the magnitude range over the whole volume unless `clim` says
+otherwise), because a per-frame scale makes the animation flicker and hides exactly the intensity
+changes a dynamic series is about. `title` is a function of the frame index. Remaining `kwargs` go
+to `jim`.
+
+The returned value renders inline in the notebook and is embedded in the exported HTML, so nothing
+is written next to the page.
+"""
+function animate_slices(
+        volume; dim::Integer = ndims(volume), fps::Real = 6,
+        title = _ -> "", clim = nothing, kwargs...,
+    )
+    frames = Array(volume)                       # drops NamedDims wrappers; `selectdim` wants a plain array
+    mags = abs.(frames)
+    shared = clim === nothing ? (minimum(mags), maximum(mags)) : clim
+    anim = @animate for i in axes(frames, dim)
+        jim(selectdim(frames, dim, i); title = title(i), clim = shared, kwargs...)
+    end
+    return gif(anim; fps, show_msg = false)
+end
+
+"""
+    animate_frames(render, nframes; fps = 6)
+
+An animated GIF whose `i`-th frame is whatever `render(i)` returns — the general form of
+[`animate_slices`](@ref), for an animation whose every frame is a *figure* rather than a single
+panel (several volumes side by side, an image next to the curve it comes from).
+
+`render` is responsible for its own colour scales; pass an explicit `clim` to each panel, since
+anything left to autoscale is recomputed per frame and the animation flickers.
+
+```julia
+animate_frames(nt) do i
+    jim(jim(A[:, :, i]; clim = ca), jim(B[:, :, i]; clim = cb); layout = (1, 2))
+end
+```
+"""
+function animate_frames(render, nframes::Integer; fps::Real = 6)
+    anim = @animate for i in 1:nframes
+        render(i)
+    end
+    return gif(anim; fps, show_msg = false)
 end
 
 """

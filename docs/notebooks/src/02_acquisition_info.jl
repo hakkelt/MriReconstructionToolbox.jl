@@ -41,9 +41,10 @@ using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator,
     get_sensitivity_map_operator, get_subsampling_operator
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
 using Random
-using FFTW: ifftshift
+using MIRTjim: jim
+using FFTW: ifftshift, fftshift, fft
 
-Random.seed!(0)
+Random.seed!(0);
 
 # %% [markdown]
 # ## 1. Constructing it
@@ -51,8 +52,9 @@ Random.seed!(0)
 # The first (positional) argument is the k-space data. It can be a plain array, a
 # `NamedDimsArray`, or `nothing` when the acquisition has not happened yet.
 #
-# With a plain array, `is3D` has to be stated: MRT cannot tell a 3D volume from a multi-slice
-# 2D stack by shape alone.
+# With a plain array — or with no data at all — `is3D` has to be stated: MRT cannot tell a 3D
+# volume from a multi-slice 2D stack by shape alone, and with no data there is not even a shape
+# to go on.
 
 # %%
 ksp_plain = rand(ComplexF32, 64, 64, 8)
@@ -110,7 +112,7 @@ mask[25:40, 25:40] .= true                    # fully sampled centre
 AcquisitionInfo(nothing; is3D = false, image_size = (64, 64), subsampling = mask)
 
 # %%
-# The realistic Cartesian case: every readout is acquired, phase encodes are undersampled.
+# The realistic Cartesian case: the full readout is acquired, phase encodes are undersampled.
 mask_ky = rand(Bool, 64)
 mask_ky[28:36] .= true
 AcquisitionInfo(nothing; is3D = false, image_size = (64, 64), subsampling = (:, mask_ky))
@@ -147,9 +149,25 @@ side_by_side(
 # %% [markdown]
 # ## 4. FFT-shift conventions
 #
-# MRT assumes DC sits at the centre of the array. Data that comes off a scanner unshifted
-# (DC at index 1), or that needs an image-space shift, is declared rather than pre-processed:
-# the shift is folded into the Fourier operator instead of costing a copy.
+# MRT assumes DC sits at the centre of the array ([k-space parts](https://mriquestions.com/parts-of-k-space.html)
+# on mriquestions.com is the physical picture). Data that comes off a scanner unshifted (DC at
+# index 1), or that needs an image-space shift, is *declared* rather than pre-processed: the shift
+# is folded into the Fourier operator.
+#
+# The reason it is a declaration rather than a preprocessing step is that only one of the two
+# shifts can be applied as preprocessing in general:
+#
+# - `shifted_kspace_dims` says the k-space array is `ifftshift`ed. Undoing that on the data means
+#   circularly shifting the array, which presupposes a **full Cartesian grid**. A subsampled
+#   acquisition stored as the acquired samples only has no grid to rotate, and a non-Cartesian
+#   acquisition has no grid at all.
+# - `shifted_image_dims` is a half-FOV shift of the *image*, which on the data side is a
+#   sign alternation — elementwise, per sample, and therefore applicable to any Cartesian
+#   acquisition, sampled or not, once each sample's k-index is known. (Its non-Cartesian
+#   generalization is a per-sample linear phase ramp.)
+#
+# Folding both into the operator makes the two uniform, which is why `AcquisitionInfo` takes them
+# as descriptions of what the data means instead of rewriting the data.
 
 # %%
 ksp = rand(ComplexF32, 64, 64)
@@ -157,70 +175,68 @@ ksp = rand(ComplexF32, 64, 64)
 # DC already at the first index in both encoded dimensions
 AcquisitionInfo(ksp; is3D = false, shifted_kspace_dims = (1, 2))
 
+# %% [markdown]
+# A shift declaration changes *what the array means*, not the numbers in it, so it is only visible
+# once something acts on the data. Below, the same phantom's k-space is reconstructed in both
+# conventions: `ksp_dc1` genuinely has DC at index 1, and is reconstructed once declaring that and
+# once forgetting to.
+#
+# The trap is that the magnitude images are **identical**. Leaving the shift undeclared multiplies
+# the reconstructed image by $(-1)^{i+j}$, and a sign flip does not change $|x|$ — so a
+# magnitude-only look at the result says nothing is wrong. It shows up wherever the sign survives
+# — in the real part, which the checkerboard turns from a smooth image into an alternating one —
+# and in the k-space of the reconstruction: modulating the image by $(-1)^{i+j}$ shifts its transform by half
+# the array, which is what the two right-hand panels show. Anything that touches the phase or the
+# reconstructed k-space — partial Fourier, field-map correction, flow, any k-space-domain method —
+# is then silently wrong.
+
 # %%
-# Image-space shift (equivalent to sign alternation in k-space)
-AcquisitionInfo(ksp; is3D = false, shifted_image_dims = (1,))
+x_shift_demo = create_shepp_logan_phantom(64, 64, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
+acq_centred = simulate_acquisition(x_shift_demo, AcquisitionInfo(nothing; is3D = false, image_size = (64, 64)))
+ksp_dc1 = ifftshift(unname(acq_centred.kspace_data))   # move the centre of k-space to index (1, 1)
+
+x_declared = reconstruct(AcquisitionInfo(ksp_dc1; is3D = false, shifted_kspace_dims = (1, 2)))
+x_forgotten = reconstruct(AcquisitionInfo(ksp_dc1; is3D = false))
+
+spectrum(x) = log1p.(abs.(fftshift(fft(unname(x)))))
+println("magnitudes agree: ", isapprox(abs.(unname(x_declared)), abs.(unname(x_forgotten))))
+# Built panel by panel rather than through `side_by_side`, for two reasons: the real parts and the
+# log-spectra are not in the same units, so each panel has to carry its own colour scale (one
+# shared scale flattens the real-part panels, which are exactly the ones the point rests on), and
+# the two spectra are k-space panels, so they are labelled kx/ky while the image panels are not.
+jim(
+    jim(real.(unname(x_declared)); title = "declared, Re x"),
+    jim(real.(unname(x_forgotten)); title = "undeclared, Re x"),
+    jim(spectrum(x_declared); title = "FT(declared), log|k|", kaxes...),
+    jim(spectrum(x_forgotten); title = "FT(undeclared), log|k|", kaxes...);
+    layout = (2, 2), size = (750, 700),
+)
+
+# %% [markdown]
+# `shifted_image_dims` is the mirror statement: the *image* the data corresponds to is centred at
+# index 1 along those dimensions rather than in the middle. Declaring it on data that is in fact
+# centred moves the reconstructed object by half the FOV along each declared dimension — exactly
+# the artefact the declaration exists to undo when the data really does have that convention.
+
+# %%
+x_no_shift = reconstruct(acq_centred)
+x_img_shift = reconstruct(AcquisitionInfo(acq_centred; shifted_image_dims = (1,)))
+
+# Per-panel colour scales again: the two images run 0 to 1 and the two log-spectra 0 to about 10,
+# so one shared scale would squash the images into the bottom tenth of the colour map and leave
+# them looking uniformly dark.
+jim(
+    jim(x_no_shift; title = "no image shift"),
+    jim(x_img_shift; title = "shifted_image_dims = (1,)"),
+    jim(spectrum(x_no_shift); title = "FT(no shift), log|k|", kaxes...),
+    jim(spectrum(x_img_shift); title = "FT(shifted), log|k|", kaxes...);
+    layout = (2, 2), size = (750, 700),
+)
 
 # %%
 # With named dimensions the shifts are named too.
 ksp_n = NamedDimsArray{(:kx, :ky)}(rand(ComplexF32, 64, 64))
 AcquisitionInfo(ksp_n; shifted_kspace_dims = (:kx, :ky))
-
-# %% [markdown]
-# ### The k-space-domain shift, seen
-#
-# A shift declaration changes *what the array means*, not the numbers in it, so it is only visible
-# once something acts on the data. Take the same phantom's k-space in both conventions — centred
-# (MRT's default) and DC-at-index-1 (what comes off a scanner) — and reconstruct the DC-at-index-1
-# array twice: once declaring the convention, once forgetting to. The undeclared one is not
-# slightly wrong; the missing half-array shift becomes a sign alternation in image space, which
-# wraps the object around the FOV corners.
-
-# %%
-x_shift_demo = create_shepp_logan_phantom(64, 64, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
-acq_centred = simulate_acquisition(x_shift_demo, AcquisitionInfo(nothing; is3D = false, image_size = (64, 64)))
-
-# A genuinely DC-at-index-1 array: move the centre of the centred k-space to index (1, 1).
-ksp_dc1 = ifftshift(unname(acq_centred.kspace_data))
-side_by_side(
-    log1p.(abs.(unname(acq_centred.kspace_data))), log1p.(abs.(ksp_dc1));
-    titles = ("centred k-space (log|k|)", "DC at index 1 (log|k|)"),
-)
-
-# %%
-acq_dc1_declared = AcquisitionInfo(ksp_dc1; is3D = false, shifted_kspace_dims = (1, 2))
-acq_dc1_forgotten = AcquisitionInfo(ksp_dc1; is3D = false)
-
-x_declared = get_fourier_operator(acq_dc1_declared)' * acq_dc1_declared.kspace_data
-x_forgotten = get_fourier_operator(acq_dc1_forgotten)' * acq_dc1_forgotten.kspace_data
-x_centred = get_fourier_operator(acq_centred)' * acq_centred.kspace_data
-
-side_by_side(
-    x_centred, x_declared, x_forgotten;
-    titles = ("centred data", "DC-at-1, declared", "DC-at-1, undeclared"),
-)
-println("declared vs. centred:   ", round(nrmse(x_declared, x_centred), digits = 6))
-println("undeclared vs. centred: ", round(nrmse(x_forgotten, x_centred), digits = 4))
-
-# %% [markdown]
-# ### The image-domain shift, seen
-#
-# `shifted_image_dims` is the mirror statement: the *image* the data corresponds to is centred at
-# index 1 along those dimensions rather than in the middle. Declaring it on data that is in fact
-# centred moves the reconstructed object by half the FOV — which is exactly the artefact the
-# declaration exists to undo when the data really does have that convention.
-
-# %%
-acq_img_shift = AcquisitionInfo(acq_centred; shifted_image_dims = (1,))
-x_img_shift = get_fourier_operator(acq_img_shift)' * acq_img_shift.kspace_data
-
-acq_img_shift_both = AcquisitionInfo(acq_centred; shifted_image_dims = (1, 2))
-x_img_shift_both = get_fourier_operator(acq_img_shift_both)' * acq_img_shift_both.kspace_data
-
-side_by_side(
-    x_centred, x_img_shift, x_img_shift_both;
-    titles = ("no image shift", "shifted_image_dims=(1,)", "shifted_image_dims=(1,2)"),
-)
 
 # %% [markdown]
 # ## 5. What the validation catches
@@ -293,34 +309,29 @@ AcquisitionInfo(info_with_maps; kspace_data = noisy)
 #
 # `AcquisitionInfo` is an abstract type and also a constructor that dispatches on its keywords:
 # pass a `trajectory` and you get a `NonCartesianAcquisitionInfo`, otherwise a
-# `CartesianAcquisitionInfo`. Only the Cartesian concrete type is exported and can be named
-# directly; `NonCartesianAcquisitionInfo` is `public` but not exported, so non-Cartesian
-# acquisitions are always built through the `AcquisitionInfo(; trajectory, ...)` dispatch.
-
-# %%
-nsamp, nspokes = 64, 32
-traj = zeros(Float32, 2, nsamp, nspokes)         # first dimension = coordinate axes
-for s in 1:nspokes, k in 1:nsamp
-    θ = Float32((s - 1) * π / nspokes)
-    r = Float32((k - 1 - nsamp / 2) / nsamp * 0.99)
-    traj[1, k, s] = r * cos(θ)
-    traj[2, k, s] = r * sin(θ)
-end
-
-acq_radial = AcquisitionInfo(;
-    trajectory = traj, image_size = (64, 64)
-)
-
-# %%
-println(typeof(AcquisitionInfo(rand(ComplexF32, 64, 64); is3D = false)))
-println(typeof(acq_radial))
-println("is3D: ", acq_radial.is3D, "  image_size: ", acq_radial.image_size)
+# `CartesianAcquisitionInfo`. Neither concrete type is exported — both are `public`, so both can
+# be dispatched on and named, but only after an explicit import
+# (`using MriReconstructionToolbox: CartesianAcquisitionInfo`). Nothing needs them: every
+# acquisition is built through the `AcquisitionInfo(...)` dispatch, and the concrete type is what
+# comes back. `08_non_cartesian.ipynb` builds one from a radial trajectory.
 
 # %% [markdown]
 # ## 8. Getting the operators back out
 #
 # Every operator MRT would build internally is available from the configuration. These names
 # are `public` but not exported, so they have to be imported explicitly.
+#
+# The encoding operator is the composition of the other three,
+#
+# $$ \mathcal{A} = \mathcal{P}\,\mathcal{F}\,\mathcal{S}, $$
+#
+# read right to left: $\mathcal{S}$ multiplies the image by each coil sensitivity, $\mathcal{F}$
+# transforms every channel to k-space, and $\mathcal{P}$ keeps the acquired samples. The three
+# are exactly the three physical steps between an image and a measurement, and the sizes printed
+# below chain accordingly — $\mathcal{A}$'s domain is $\mathcal{S}$'s, its codomain $\mathcal{P}$'s.
+# Whichever piece an acquisition does not have drops out: no sensitivity maps, no $\mathcal{S}$;
+# no subsampling, no $\mathcal{P}$. (`get_encoding_operator` builds the composition directly, so
+# `𝒜` is not literally `𝒫 * ℱ * 𝒮` as a Julia object — but it is that map.)
 
 # %%
 mask_acq = rand(Bool, 64, 64)
@@ -345,12 +356,29 @@ println("𝒮 : ", size(𝒮)[2], " → ", size(𝒮)[1])
 println("𝒫 : ", size(𝒫)[2], " → ", size(𝒫)[1])
 
 # %%
-# The forward model, applied by hand.
+# The forward model, applied by hand — and the composition spelled out: applying the three
+# operators in turn gives the same measurement as applying 𝒜.
 img = rand(ComplexF32, 64, 64)
 y = 𝒜 * img
 x̂ = 𝒜' * y
 println("𝒜  (forward): ", size(img), " → ", size(y))
 println("𝒜' (adjoint): ", size(y), " → ", size(x̂))
+println("𝒜 x == 𝒫(ℱ(𝒮 x)): ", isapprox(unname(y), unname(𝒫 * (ℱ * (𝒮 * img)))))
+
+# %% [markdown]
+# ## Further reading
+#
+# Background on the physics this notebook's bookkeeping describes, from
+# *Questions and Answers in MRI*:
+#
+# - [What is k-space?](https://mriquestions.com/what-is-k-space.html) — the measurement domain
+#   `kspace_data` holds.
+# - [k-space: parts](https://mriquestions.com/parts-of-k-space.html) — why DC belongs at the
+#   centre, and what the periphery carries (§4 above).
+# - [k-space: data](https://mriquestions.com/data-for-k-space.html) — how the samples get there,
+#   and what a phase encode is (§3).
+# - [Parallel imaging](https://mriquestions.com/what-is-pi.html) — what the sensitivity maps of
+#   §2 are for.
 
 # %% [markdown]
 # ## Environment
