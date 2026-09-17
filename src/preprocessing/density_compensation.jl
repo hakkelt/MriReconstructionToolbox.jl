@@ -6,23 +6,35 @@ Abstract base type for k-space density compensation methods.
 abstract type DensityCompensation end
 
 """
-    PipeMenonDCF(; maxit::Int = 20) <: DensityCompensation
+    PipeMenonDCF(; maxit = 20, edge_correction = true, edge_samples = 3) <: DensityCompensation
 
 Iterative sample density compensation factor (DCF) estimation based on the algorithm of
 Pipe & Menon (1999) using NFFT operators.
+
+`edge_correction` repairs the two ends of the radial profile; see [`correct_dcf_edges`](@ref) for
+what it does and when to switch it off.
 """
 Base.@kwdef struct PipeMenonDCF <: DensityCompensation
     maxit::Int = 20
+    edge_correction::Bool = true
+    edge_samples::Int = 3
 end
 
 """
-    VoronoiDCF(; bounds = nothing) <: DensityCompensation
+    VoronoiDCF(; bounds = nothing, edge_correction = true, edge_samples = 3) <: DensityCompensation
 
 Geometric sample density compensation calculating Voronoi cell areas for 2D k-space trajectories.
 Points are clipped within `bounds = (xmin, xmax, ymin, ymax)` (defaulting to `(-0.5, 0.5, -0.5, 0.5)`).
+
+`edge_correction` repairs the two ends of the radial profile; see [`correct_dcf_edges`](@ref) for
+what it does and when to switch it off. It matters more here than for [`PipeMenonDCF`](@ref): the
+cells of the outermost samples are unbounded, so what they are actually given is the area of the
+clip against `bounds`, which has nothing to do with the sampling density.
 """
 Base.@kwdef struct VoronoiDCF{B} <: DensityCompensation
     bounds::B = nothing
+    edge_correction::Bool = true
+    edge_samples::Int = 3
 end
 
 """
@@ -83,6 +95,9 @@ function compute_dcf(
     plan = NFFT.plan_nfft(traj_flat, image_size)
     raw_dcf = NFFTTools.sdc(plan; iters = method.maxit)
     dcf_arr = reshape(raw_dcf, ksp_shape)
+    if method.edge_correction
+        dcf_arr = correct_dcf_edges(dcf_arr; edge_samples = method.edge_samples)
+    end
 
     if trajectory isa NamedDimsArray
         return NamedDimsArray{dimnames(trajectory)[2:end]}(dcf_arr)
@@ -105,11 +120,80 @@ function compute_dcf(
 
     raw_dcf = _compute_voronoi_2d(traj_flat; bounds)
     dcf_arr = reshape(raw_dcf, ksp_shape)
+    if method.edge_correction
+        dcf_arr = correct_dcf_edges(dcf_arr; edge_samples = method.edge_samples)
+    end
 
     if trajectory isa NamedDimsArray
         return NamedDimsArray{dimnames(trajectory)[2:end]}(dcf_arr)
     end
     return dcf_arr
+end
+
+"""
+    correct_dcf_edges(dcf::AbstractArray; edge_samples = 3, fit_samples = 8)
+
+Replace the density compensation factors of the samples at the two ends of every readout by the
+trend of the samples just inside them, and return the corrected weights. The first dimension of
+`dcf` is the readout; every remaining dimension is treated as a separate readout.
+
+The ends of a readout are where a density estimate stops being a density estimate, and both
+estimators MRT ships show it:
+
+- A sample at the end of a readout has no neighbour beyond it. [`VoronoiDCF`](@ref)'s cell there is
+  unbounded, so what it is actually given is the area of the clip against `bounds` — on a radial
+  trajectory the outermost sample of each spoke comes out about 50% too heavy. [`PipeMenonDCF`](@ref)'s
+  iteration sees the same one-sided neighbourhood and rings over the last few samples. Left alone
+  those weights amplify the noisiest, highest-frequency samples of the acquisition.
+- Where a readout starts or turns at the centre of k-space, the samples of every readout pile up on
+  nearly the same point, and how an estimator treats near-coincident samples decides the DC weight —
+  a spike or a hole there is a scaling error on the brightest part of the image.
+
+The correction fits `fit_samples` weights just inside each end against sample index by least squares
+and evaluates the fit at the `edge_samples` positions being replaced, so a ramp stays a ramp instead
+of jumping. Fitting along the readout rather than against k-space radius is what keeps it honest on
+a trajectory whose density is not a function of radius alone: a golden-angle radial acquisition has
+a different angular gap either side of every spoke, so its true weights differ from spoke to spoke
+at the same radius, and a fit pooled over spokes would replace each end with the average of all of
+them.
+
+Switch it off with `edge_correction = false` on [`PipeMenonDCF`](@ref) or [`VoronoiDCF`](@ref) when
+the weights at the ends are meant to be discontinuous, or to see what the estimator produced on its
+own. The weights are also left untouched rather than guessed at when a readout is too short to hold
+both bands.
+"""
+function correct_dcf_edges(dcf::AbstractArray{T}; edge_samples::Int = 3, fit_samples::Int = 8) where {T <: Real}
+    @argcheck edge_samples >= 1 "`edge_samples` must be at least 1"
+    @argcheck fit_samples >= 2 "`fit_samples` must be at least 2 for a line to be determined"
+    nsamples = size(dcf, 1)
+    nsamples >= 2 * (edge_samples + fit_samples) || return dcf
+
+    corrected = collect(dcf)
+    flat = reshape(corrected, nsamples, :)
+    for readout in axes(flat, 2)
+        w = @view flat[:, readout]
+        _extrapolate_end!(w, 1:edge_samples, (edge_samples + 1):(edge_samples + fit_samples))
+        _extrapolate_end!(
+            w, (nsamples - edge_samples + 1):nsamples,
+            (nsamples - edge_samples - fit_samples + 1):(nsamples - edge_samples),
+        )
+    end
+    return corrected
+end
+
+# Fit `w ≈ a + b·i` over the reference samples of one readout by least squares and write it into the
+# target ones. Weights are densities, so a fit that extrapolates below zero is clamped there.
+function _extrapolate_end!(w::AbstractVector, target, reference)
+    x = collect(float(first(reference)):float(last(reference)))
+    y = float.(@view w[reference])
+    x̄ = mean(x)
+    ȳ = mean(y)
+    b = sum((x .- x̄) .* (y .- ȳ)) / sum(abs2, x .- x̄)
+    a = ȳ - b * x̄
+    for i in target
+        w[i] = max(zero(eltype(w)), oftype(w[i], a + b * i))
+    end
+    return w
 end
 
 # 2D Voronoi polygon clipping helpers

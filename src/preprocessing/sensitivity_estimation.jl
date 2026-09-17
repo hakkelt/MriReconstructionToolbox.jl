@@ -54,7 +54,8 @@ struct ESPIRiT{T1, T2, T3, T4} <: SensitivityEstimation
 end
 
 """
-    estimate_sensitivities(acq::AcquisitionInfo; method = SelfCalibrating())
+    estimate_sensitivities(acq::CartesianAcquisitionInfo; method = SelfCalibrating())
+    estimate_sensitivities(acq::NonCartesianAcquisitionInfo; method = SelfCalibrating(), dcf = acq.dcf, average_dims = (:time,), threaded = true)
     estimate_sensitivities(kspace::AbstractArray; method = SelfCalibrating(), is3D = false, coil_dim = nothing, image_size = nothing)
 
 Estimates coil sensitivity maps from multi-coil k-space data using the specified method.
@@ -65,6 +66,27 @@ of a subsampled acquisition). Passing `image_size` explicitly has the same effec
 K-space with batch dimensions past the coil axis (`:z` slices, `:time` frames, `:contrast`, ...)
 is estimated slab by slab — coil sensitivities differ from slice to slice — and the maps come
 back in the k-space's own layout, e.g. `(:x, :y, :coil, :z)` for multi-slice data.
+
+## Non-Cartesian acquisitions
+
+Every estimator here reads a calibration window out of a Cartesian grid, which non-Cartesian
+samples are not. The `NonCartesianAcquisitionInfo` method therefore grids first: a
+density-compensated NFFT adjoint gives one image per coil, a spatial FFT puts those back on a
+Cartesian grid of `acq.image_size`, and the estimator runs on that. `dcf` is what weights the
+gridding — `acq.dcf` when the acquisition carries one (vendor weights, or the output of
+[`density_compensation`](@ref)), otherwise `:auto`, which lets NFFTOperators estimate it.
+Gridding without any density compensation would hand the estimator a k-space centre weighted by
+how densely the trajectory samples it, so `nothing` is rejected.
+
+Batch dimensions are treated as for Cartesian data — one set of maps per slab — except for those
+named in `average_dims` (`(:time,)` by default), which are averaged over before calibration — on
+the samples, which the shared trajectory and the linearity of gridding make equivalent to
+averaging the images, at one gridding pass instead of one per frame. A single frame of a
+real-time or cine non-Cartesian series is usually far too
+undersampled to calibrate from, while the coils do not move between frames, so the temporal mean
+is both the better-conditioned and the physically correct calibration input. Pass
+`average_dims = ()` to get one set of maps per frame instead; integers (indexing the gridded
+image array) work in place of names, and are the only form available for unnamed k-space.
 
 ## FFT-shift convention
 
@@ -79,13 +101,10 @@ Maps estimated by hand from a raw array must be shifted the same way before bein
 shifted acquisition.
 """
 function estimate_sensitivities(
-        acq::AcquisitionInfo;
+        acq::CartesianAcquisitionInfo;
         method::SensitivityEstimation = SelfCalibrating(),
     )
     _reject_partitioned(acq.kspace_data, "sensitivity estimation")
-    # Every estimator here reads a calibration window out of a Cartesian grid; non-Cartesian
-    # samples have no such window (their k-space axes are `:sample`/`:readout`, not `:kx`/`:ky`).
-    @argcheck acq isa CartesianAcquisitionInfo "sensitivity estimation needs Cartesian k-space; grid the non-Cartesian samples onto a Cartesian grid first, or pass `sensitivity_maps` estimated by hand"
     is3D = acq.is3D
     sens = estimate_sensitivities(
         acq.kspace_data;
@@ -93,10 +112,106 @@ function estimate_sensitivities(
         is3D,
         image_size = acq.image_size,
     )
-    if acq isa CartesianAcquisitionInfo && !isempty(acq.shifted_image_dims)
+    if !isempty(acq.shifted_image_dims)
         sens = _shift_sensitivity_maps(sens, acq.shifted_image_dims, acq.kspace_data, is3D)
     end
     return AcquisitionInfo(acq; sensitivity_maps = sens)
+end
+
+function estimate_sensitivities(
+        acq::NonCartesianAcquisitionInfo;
+        method::SensitivityEstimation = SelfCalibrating(),
+        dcf = isnothing(acq.dcf) ? :auto : acq.dcf,
+        average_dims = (:time,),
+        threaded::Bool = true,
+    )
+    @argcheck !isnothing(acq.kspace_data) "sensitivity estimation needs k-space data, and this NonCartesianAcquisitionInfo carries none"
+    _reject_partitioned(acq.kspace_data, "sensitivity estimation")
+    @argcheck !isnothing(dcf) "gridding for sensitivity estimation needs density compensation: pass `dcf = :auto` to estimate it, or attach one with `density_compensation`"
+
+    is3D = acq.is3D
+    nspatial = is3D ? 3 : 2
+    spatial_dims = ntuple(identity, nspatial)
+
+    # Averaging is done on the samples rather than on the gridded images: the whole series shares
+    # one trajectory, and gridding is linear, so the two are the same answer — but this way the
+    # NFFT adjoint runs once instead of once per frame.
+    nfourier = ndims(acq.trajectory) - 1
+    averaged_ksp = _average_calibration_dims(acq.kspace_data, average_dims, nfourier, nspatial)
+
+    # One image per coil (and per remaining batch slab) from the density-compensated gridding
+    # adjoint. The NFFT convention puts the image origin at the centre of the matrix, so the
+    # k-space this produces below is centred too, and so are the maps that come out of it.
+    averaged = _grid_coil_images(averaged_ksp, acq, dcf, threaded)
+
+    raw_images = unname(averaged)
+    ksp_gridded = fftshift(fft(ifftshift(raw_images, spatial_dims), spatial_dims), spatial_dims)
+    sens = _estimate_sensitivities_batched(ksp_gridded, method, nspatial + 1, is3D, nothing)
+    sens = _shift_sensitivity_maps(sens, spatial_dims, ksp_gridded, is3D)
+
+    if averaged isa NamedDimsArray
+        sens = NamedDimsArray{dimnames(averaged)}(sens)
+    end
+    return AcquisitionInfo(acq; sensitivity_maps = sens)
+end
+
+# The gridding adjoint, built from the acquisition's own trajectory with the density compensation
+# the caller chose. Symbol dimension names on the trajectory are only meaningful when the k-space
+# carries them too, so an unnamed k-space grids through the plain-array operator.
+function _grid_coil_images(ksp::AbstractArray, acq::NonCartesianAcquisitionInfo, dcf, threaded::Bool)
+    return if ksp isa NamedDimsArray
+        𝒩 = get_fourier_operator(ksp, acq.image_size, acq.trajectory; dcf, threaded)
+        𝒩' * ksp
+    else
+        traj = acq.trajectory isa NamedDimsArray ? unname(acq.trajectory) : acq.trajectory
+        raw_dcf = dcf isa NamedDimsArray ? unname(dcf) : dcf
+        𝒩 = get_fourier_operator(ksp, acq.image_size, traj; dcf = raw_dcf, threaded)
+        𝒩' * ksp
+    end
+end
+
+"""
+    _average_calibration_dims(kspace, average_dims, nfourier, nspatial)
+
+Average non-Cartesian k-space over the batch dimensions named (or indexed) in `average_dims`,
+dropping those dimensions. Names are resolved against the k-space's own dimension names and
+silently ignored when the array carries none or does not have that dimension — `(:time,)`, the
+default, must be a no-op for the many acquisitions that have no time axis. Integers index the
+*gridded image* array the caller sees (`(:x, :y, :coil, batch...)`), which differs from the
+k-space layout whenever the trajectory's sample axes do not number `nspatial`. Sample axes and
+the coil axis are never averaged.
+"""
+function _average_calibration_dims(kspace::AbstractArray, average_dims, nfourier::Int, nspatial::Int)
+    dims = average_dims isa Union{Integer, Symbol} ? (average_dims,) : average_dims
+    names = kspace isa NamedDimsArray ? dimnames(kspace) : ()
+    idx = Int[]
+    for d in dims
+        i = if d isa Integer
+            # From an image-array position to the matching k-space position: both layouts end in
+            # the same `(coil, batch...)` tail, they only differ in how many axes come before it.
+            k = Int(d) - nspatial + nfourier
+            k <= ndims(kspace) ? k : nothing
+        else
+            @argcheck d isa Symbol "average_dims entries must be Integer or Symbol, got $d"
+            isempty(names) ? nothing : findfirst(==(d), names)
+        end
+        if isnothing(i)
+            # A name the k-space does not carry is a no-op (`:time` on data that has no time
+            # axis), unless it is a spatial image axis, which is never something to average over.
+            @argcheck d ∉ (:x, :y, :z) "average_dims names $d, a spatial image dimension, not a batch dimension"
+            continue
+        end
+        @argcheck i > nfourier + 1 "average_dims names dimension $d, which is a sample or coil dimension of the k-space, not a batch dimension"
+        i in idx || push!(idx, i)
+    end
+    isempty(idx) && return kspace
+
+    averaged = dropdims(mean(unname(kspace), dims = Tuple(idx)), dims = Tuple(idx))
+    return if kspace isa NamedDimsArray
+        NamedDimsArray{Tuple(n for (i, n) in enumerate(names) if i ∉ idx)}(averaged)
+    else
+        averaged
+    end
 end
 
 # `shifted_image_dims` names *spatial* image axes (`:x`, `:y`, `:z`, or 1/2/3); the maps carry
@@ -382,6 +497,13 @@ function _estimate_sensitivities_core(
         val = F_eig.values[end]
         vec_max = F_eig.vectors[:, end]
         if val >= method.eigenvalue_threshold
+            # An eigenvector is only defined up to a phase, and LAPACK's choice of it varies from
+            # pixel to pixel and from run to run, which would leave the maps — and the phase of
+            # every image reconstructed with them — arbitrary. Reference the phase to the first
+            # coil, as `AdaptiveCombine` does.
+            if abs(vec_max[1]) > 1.0e-6
+                vec_max = vec_max .* cis(-angle(vec_max[1]))
+            end
             sens_trailing[idx, :] = vec_max
         end
     end

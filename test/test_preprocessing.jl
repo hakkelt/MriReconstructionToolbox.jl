@@ -1,4 +1,5 @@
 @testitem "Prewhitening and noise covariance estimation" tags = [:acquisition, :encoding] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
@@ -48,6 +49,7 @@
 end
 
 @testitem "Coil compression with SVDCompression" tags = [:acquisition, :encoding] setup = [SyntheticCoils] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
@@ -89,6 +91,7 @@ end
 end
 
 @testitem "Sensitivity map estimation: SelfCalibrating, AdaptiveCombine, ESPIRiT" tags = [:acquisition, :encoding, :simulation] setup = [SyntheticCoils] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
@@ -148,6 +151,7 @@ end
 @testitem "Sensitivity estimation: batch dimensions get their own maps" tags = [:preprocessing, :acquisition, :simulation] setup = [SyntheticCoils] begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using LinearAlgebra: norm
     using NamedDims
 
@@ -197,22 +201,107 @@ end
     end
 end
 
-@testitem "Sensitivity estimation: non-Cartesian k-space is refused" tags = [:preprocessing, :acquisition] begin
+@testitem "Sensitivity estimation: non-Cartesian data calibrates through gridding" tags = [:preprocessing, :acquisition, :nfft] setup = [RadialCalibration] begin
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: NonCartesianAcquisitionInfo
     using NamedDims
 
-    # A non-Cartesian acquisition has no calibration window to read: its k-space axes are
-    # `:sample`/`:readout`, and padding them to `image_size` used to index out of bounds.
-    nsamp, nspoke, ncoil = 16, 8, 2
-    traj = NamedDimsArray{(:coord, :sample, :readout)}(
-        Float32.(reshape(range(-0.4f0, 0.4f0; length = 2 * nsamp * nspoke), 2, nsamp, nspoke))
+    case = radial_case()
+    acq = NonCartesianAcquisitionInfo(
+        case.kspace; trajectory = case.traj, image_size = (case.N, case.N)
     )
-    ksp = NamedDimsArray{(:sample, :readout, :coil)}(randn(ComplexF32, nsamp, nspoke, ncoil))
-    acq = NonCartesianAcquisitionInfo(ksp; trajectory = traj, image_size = (16, 16))
 
-    @test_throws ArgumentError estimate_sensitivities(acq)
+    for method in (ESPIRiT(calib_size = 24, kernel_size = 6), SelfCalibrating(calib_size = 24))
+        maps = estimate_sensitivities(acq; method).sensitivity_maps
+        @test maps isa NamedDimsArray
+        @test dimnames(maps) == (:x, :y, :coil)
+        @test size(maps) == (case.N, case.N, case.ncoil)
+        # The maps must sit on the same (centred) image grid the NFFT adjoint reconstructs onto,
+        # which is what makes them agree with the simulated ones pixel by pixel.
+        @test map_alignment(maps, case.smaps, case.mask) > 0.99
+    end
+
+    # ... and the maps are good enough to reconstruct with: a SENSE reconstruction of a flat
+    # object is flat inside it and dark outside.
+    acq_maps = estimate_sensitivities(acq; method = ESPIRiT(calib_size = 24, kernel_size = 6))
+    rec = abs.(unname(reconstruct(density_compensation(acq_maps))))
+    inside = rec[case.mask]
+    @test maximum(abs.(inside ./ (sum(inside) / length(inside)) .- 1)) < 0.25
+    @test (sum(rec[.!case.mask]) / count(.!case.mask)) < 0.1 * (sum(inside) / length(inside))
+
+    # Unnamed k-space grids through the plain-array operator and returns plain maps.
+    acq_unnamed = NonCartesianAcquisitionInfo(
+        unname(case.kspace); trajectory = unname(case.traj), image_size = (case.N, case.N)
+    )
+    maps_unnamed = estimate_sensitivities(
+        acq_unnamed; method = ESPIRiT(calib_size = 24, kernel_size = 6)
+    ).sensitivity_maps
+    @test !(maps_unnamed isa NamedDimsArray)
+    @test size(maps_unnamed) == (case.N, case.N, case.ncoil)
+    @test map_alignment(maps_unnamed, case.smaps, case.mask) > 0.99
+end
+
+@testitem "Sensitivity estimation: non-Cartesian batch dimensions and average_dims" tags = [:preprocessing, :acquisition, :nfft] setup = [RadialCalibration] begin
+    using Test
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using NamedDims
+
+    case = radial_case()
+    nframes = 3
+    ksp_t = NamedDimsArray{(:sample, :spoke, :coil, :time)}(
+        repeat(unname(case.kspace), 1, 1, 1, nframes)
+    )
+    acq = NonCartesianAcquisitionInfo(
+        ksp_t; trajectory = case.traj, image_size = (case.N, case.N)
+    )
+    method = ESPIRiT(calib_size = 24, kernel_size = 6)
+
+    # `:time` is averaged over by default, so one set of maps comes back for the whole series.
+    averaged = estimate_sensitivities(acq; method).sensitivity_maps
+    @test dimnames(averaged) == (:x, :y, :coil)
+    @test map_alignment(averaged, case.smaps, case.mask) > 0.99
+
+    # `average_dims = ()` estimates every frame on its own, in the k-space's own layout.
+    per_frame = estimate_sensitivities(acq; method, average_dims = ()).sensitivity_maps
+    @test dimnames(per_frame) == (:x, :y, :coil, :time)
+    @test size(per_frame, 4) == nframes
+    for t in 1:nframes
+        @test map_alignment(unname(per_frame)[:, :, :, t], case.smaps, case.mask) > 0.99
+    end
+
+    # A spatial or coil axis is not a batch dimension, and density compensation is not optional.
+    @test_throws ArgumentError estimate_sensitivities(acq; method, average_dims = (:x,))
+    @test_throws ArgumentError estimate_sensitivities(acq; method, dcf = nothing)
+end
+
+@testitem "Sensitivity estimation: ESPIRiT maps are phase-referenced to the first coil" tags = [:preprocessing, :acquisition] begin
+    using Test
+    using MriReconstructionToolbox
+    using NamedDims
+    using FFTW: fft, fftshift, ifftshift
+
+    # An eigenvector is defined only up to a phase, and LAPACK's choice varies from pixel to
+    # pixel, so without a gauge the maps — and the phase of every image reconstructed with them —
+    # would be arbitrary.
+    N, ncoil = 32, 4
+    img = zeros(ComplexF32, N, N)
+    img[8:24, 10:22] .= 1
+    smaps = ComplexF32.(coil_sensitivities(N, N, ncoil))
+    coil_imgs = img .* smaps
+    ksp = NamedDimsArray{(:kx, :ky, :coil)}(
+        ComplexF32.(fftshift(fft(ifftshift(coil_imgs, (1, 2)), (1, 2)), (1, 2)))
+    )
+
+    maps = estimate_sensitivities(
+        AcquisitionInfo(ksp; is3D = false, shifted_image_dims = (:x, :y));
+        method = ESPIRiT(calib_size = 16, kernel_size = 6),
+    ).sensitivity_maps
+    first_coil = unname(maps)[:, :, 1]
+    nonzero = abs.(first_coil) .> 1.0f-3
+    @test any(nonzero)
+    @test maximum(abs.(angle.(first_coil[nonzero]))) < 1.0f-4
 end
 
 @testitem "Sensitivity estimation: all-zero maps are reported, not returned silently" tags = [:preprocessing, :acquisition] begin
@@ -244,6 +333,7 @@ end
 end
 
 @testitem "Sensitivity estimation: measured k-space smaller than image_size is zero-padded" tags = [:preprocessing, :acquisition] setup = [SyntheticCoils] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using NamedDims
@@ -281,6 +371,7 @@ end
 end
 
 @testitem "Sensitivity estimation follows the acquisition's shifted_image_dims" tags = [:preprocessing, :acquisition, :reconstruction] setup = [SyntheticCoils] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using NamedDims: NamedDimsArray, unname
@@ -379,6 +470,7 @@ end
 end
 
 @testitem "Gradient delay correction in non-Cartesian MRI" tags = [:preprocessing, :acquisition, :nfft] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: NonCartesianAcquisitionInfo
