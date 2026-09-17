@@ -43,16 +43,16 @@ using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator,
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
 using MIRTjim: jim
 using Plots
-using AbstractOperators
-using StructuredOptimization
-using ProximalOperators
+using MriReconstructionToolbox.AbstractOperators
+using MriReconstructionToolbox.StructuredOptimization
+using MriReconstructionToolbox.ProximalOperators
 using ProximalCore
-using ProximalAlgorithms
-using WaveletOperators: WaveletOp, WT, wavelet
+using MriReconstructionToolbox.ProximalAlgorithms
+using MriReconstructionToolbox.WaveletOperators: WaveletOp, WT, wavelet
 using LinearAlgebra
 using Random
 
-Random.seed!(0)
+Random.seed!(0);
 
 # %% [markdown]
 # ## 1. The encoding operator and its parts
@@ -132,7 +132,7 @@ println("ratio      = ", round(real(lhs / rhs), digits = 3), "   (nx·ny = ", nx
 # approximate inverse.
 
 # %%
-using NFFTOperators: NFFTOp
+using MriReconstructionToolbox.NFFTOperators: NFFTOp
 
 traj = Float32.(rand(2, 64, 32) .- 0.5f0)         # a small throwaway radial-ish trajectory
 𝒩_true_adjoint = NFFTOp((nx, ny), traj)            # dcf = nothing (the default): op' is the true adjoint
@@ -206,7 +206,7 @@ println("converged in ", iterations, " iterations")
 nrmse(x) = norm(abs.(x) - abs.(x_true)) / norm(abs.(x_true))
 println("hand-written NRMSE:  ", round(nrmse(~x̂), digits = 4))
 
-x_api = reconstruct(data, IterativeReconstruction(L1Wavelet2D(λ); maxit = 60); verbosity = Silent())
+x_api = reconstruct(data, IterativeReconstruction(L1Wavelet2D(λ); maxit = 60))
 println("`reconstruct` NRMSE: ", round(nrmse(x_api), digits = 4))
 
 # The two are the same problem but not the same run: `reconstruct` also scales the data, hands
@@ -338,9 +338,9 @@ end
 radius = [sqrt((i - nx / 2)^2 + (j - ny / 2)^2) for i in 1:nx, j in 1:ny]
 weights = Float32.(ifelse.(radius .< 0.42nx, 0.1, 1.0))
 
-x_masked = reconstruct(data, IterativeReconstruction(MaskedL1(5.0f-3, weights); maxit = 60); verbosity = Silent())
+x_masked = reconstruct(data, IterativeReconstruction(MaskedL1(5.0f-3, weights); maxit = 60))
 println("MaskedL1 NRMSE: ", round(nrmse(x_masked), digits = 4))
-println("plain L1Image:  ", round(nrmse(reconstruct(data, IterativeReconstruction(L1Image(5.0f-3); maxit = 60); verbosity = Silent())), digits = 4))
+println("plain L1Image:  ", round(nrmse(reconstruct(data, IterativeReconstruction(L1Image(5.0f-3); maxit = 60))), digits = 4))
 
 jim(
     jim(weights; title = "penalty weights"),
@@ -496,8 +496,7 @@ x̂_custom, _ = solve(p_custom, FISTA(maxit = 60, verbose = false))
 
 x_mynorm = reconstruct(
     data,
-    IterativeReconstruction(L1Image(5.0f-3); maxit = 60);   # MRT's own L1Image, for reference
-    verbosity = Silent()
+    IterativeReconstruction(L1Image(5.0f-3); maxit = 60)   # MRT's own L1Image, for reference
 )
 println("MRT's L1Image NRMSE:    ", round(nrmse(x_mynorm), digits = 4))
 println("hand-written MyNormL1:  ", round(nrmse(~v_custom), digits = 4))
@@ -527,7 +526,7 @@ println("hand-written MyNormL1:  ", round(nrmse(~v_custom), digits = 4))
 # which is the only honest way to know a from-scratch implementation is right.
 
 # %%
-using ProximalAlgorithms: IterativeAlgorithm, AssumptionGroup, SimpleTerm, get_assumptions,
+using MriReconstructionToolbox.ProximalAlgorithms: IterativeAlgorithm, AssumptionGroup, SimpleTerm, get_assumptions,
     value_and_gradient, lower_bound_smoothness_constant, default_display
 using ProximalCore: is_smooth, is_convex, is_proximable
 
@@ -620,12 +619,10 @@ println("ISTA:   ", get_assumptions(ISTA()))
 
 # %%
 x_myista = reconstruct(
-    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = MyISTA(), maxit = 60, tol = 0.0);
-    verbosity = Silent()
+    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = MyISTA(), maxit = 60, reltol = 0.0)
 )
 x_ista = reconstruct(
-    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = ISTA(), maxit = 60, tol = 0.0);
-    verbosity = Silent()
+    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = ISTA(), maxit = 60, reltol = 0.0)
 )
 
 println("MyISTA NRMSE:            ", round(nrmse(x_myista), digits = 4))
@@ -642,13 +639,12 @@ side_by_side(
 # quasi-Newton accelerated proximal-gradient method, declares the same model shape:
 
 # %%
-using ProximalAlgorithms: ZeroFPR, ZeroFPRIteration
+using MriReconstructionToolbox.ProximalAlgorithms: ZeroFPR, ZeroFPRIteration
 
 println("ZeroFPR: ", get_assumptions(ZeroFPR()))
 
 x_zerofpr = reconstruct(
-    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = ZeroFPR(), maxit = 60);
-    verbosity = Silent()
+    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = ZeroFPR(), maxit = 60)
 )
 println("FISTA   NRMSE: ", round(nrmse(x_api), digits = 4))
 println("ZeroFPR NRMSE: ", round(nrmse(x_zerofpr), digits = 4))
@@ -658,6 +654,16 @@ println("ZeroFPR NRMSE: ", round(nrmse(x_zerofpr), digits = 4))
 # off the type MRT is handed, so any `ProximalAlgorithms`-shaped iteration — the package's own, or
 # one written in a notebook cell — plugs into the same solver selection `DEFAULT_ALGORITHMS` uses,
 # with no registration step.
+
+# %% [markdown]
+# ## Further reading
+#
+# What the operators in this notebook stand for physically, from *Questions and Answers in MRI*:
+#
+# - [What is k-space?](https://mriquestions.com/what-is-k-space.html) — the codomain of $\mathcal{F}$.
+# - [k-space: trajectories](https://mriquestions.com/k-space-trajectories.html) — what the NFFT
+#   operator's trajectory argument describes.
+# - [Parallel imaging](https://mriquestions.com/what-is-pi.html) — what $\mathcal{S}$ models.
 
 # %% [markdown]
 # ## Environment

@@ -198,7 +198,7 @@ error for a partitioned acquisition instead of quietly reading the wrong samples
 works, since noise is well defined per frame.
 
 ```@docs
-CartesianAcquisitionInfo
+MriReconstructionToolbox.CartesianAcquisitionInfo
 PartitionedKSpace
 MriReconstructionToolbox.is_partitioned
 ```
@@ -576,6 +576,9 @@ acq_dcf = density_compensation(acq; method = PipeMenonDCF(maxit = 20))
 
 # Or compute geometric Voronoi DCF for 2D trajectories
 acq_vor = density_compensation(acq; method = VoronoiDCF())
+
+# Both repair the two ends of each readout by default; this is how to see what they produced raw
+acq_raw = density_compensation(acq; method = VoronoiDCF(; edge_correction = false))
 ```
 
 ```@docs
@@ -583,6 +586,7 @@ density_compensation
 DensityCompensation
 PipeMenonDCF
 VoronoiDCF
+correct_dcf_edges
 ```
 
 ## Integration with Other Functions

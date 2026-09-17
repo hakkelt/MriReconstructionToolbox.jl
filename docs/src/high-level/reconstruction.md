@@ -91,24 +91,24 @@ println("L2Image reconstruction completed")
 There are two separate places a parameter can live, and which one it belongs to is decided by
 one question: *does it mean anything without knowing the method?*
 
-- **Method parameters** — `maxit`, `tol`, `algorithm`, and everything else only a particular
+- **Method parameters** — `maxit`, `reltol`, `algorithm`, and everything else only a particular
   method can act on — go to that method's constructor. They are keyword-only there.
 - **Run settings** — scaling, output, threading, task splitting — go to `ReconstructionConfig`, or
   straight to `reconstruct` as keywords.
 
-Passing `maxit`, `tol` or `algorithm` to `reconstruct` throws rather than being silently
+Passing `maxit`, `reltol` or `algorithm` to `reconstruct` throws rather than being silently
 ignored, which is what happened before this split.
 
 ```@example recon
 # Method 1: keyword arguments for the run, constructor arguments for the method
-x1 = reconstruct(data, IterativeReconstruction(L2Image(0.01); maxit = 50, tol = 1e-5); verbosity = Silent())
+x1 = reconstruct(data, IterativeReconstruction(L2Image(0.01); maxit = 50, reltol = 1e-5); verbosity = Silent())
 nothing # hide
 ```
 
 ```@example recon
 # Method 2: a ReconstructionConfig object, reusable across methods
 config = ReconstructionConfig(; verbosity = Silent(), scaling = BartScaling())
-x2 = reconstruct(data, IterativeReconstruction(L2Image(0.01); maxit = 50, tol = 1e-5); config = config)
+x2 = reconstruct(data, IterativeReconstruction(L2Image(0.01); maxit = 50, reltol = 1e-5); config = config)
 nothing # hide
 ```
 
@@ -128,13 +128,13 @@ nothing # hide
 IterativeReconstruction(
     L2Image(0.01);
     maxit = 100,          # Maximum iterations
-    tol = 1e-4,           # Relative stopping tolerance (`nothing` defers to the algorithm)
+    reltol = 1e-4,        # Relative stopping tolerance (`nothing` defers to the algorithm)
     algorithm = FISTA(),  # Solver
 )
 ```
 
-`tol` is relative: the absolute threshold handed to the solver is
-`max(10*eps, tol * maximum(abs, x₀))`. Setting `maxit = nothing` or `tol = nothing` leaves the
+`reltol` is relative, hence the name: the absolute threshold handed to the solver is
+`max(10*eps, reltol * maximum(abs, x₀))`. Setting `maxit = nothing` or `reltol = nothing` leaves the
 corresponding parameter to the `algorithm` itself, so
 `IterativeReconstruction(reg; algorithm = FISTA(maxit = 500), maxit = nothing)` really runs 500
 iterations.

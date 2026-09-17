@@ -284,6 +284,37 @@ For volumetric / multislice data, promotes piecewise-constant structure in 3D:
 TotalVariation3D
 ```
 
+#### Anisotropic Total Variation
+
+The same finite differences, summed with an ℓ₁ norm instead of the isotropic ℓ₂,₁ mixed norm — the
+directional derivatives are penalized independently rather than as a gradient vector per pixel:
+
+```@docs
+AnisotropicTotalVariation2D
+AnisotropicTotalVariation3D
+```
+
+**When to use:**
+- Structure that is genuinely axis-aligned (phantoms, grids, rectangular hardware)
+- When the separable prox matters: it is plain soft thresholding of the difference coefficients
+
+**The trade-off:** the penalty is not rotation invariant. It is cheapest for horizontal and vertical
+edges, so diagonal boundaries can pick up a faint staircase texture that
+[`TotalVariation2D`](@ref) does not produce. Isotropic TV remains the default for anatomy.
+
+```@example imports
+img_aniso = reconstruct(data, IterativeReconstruction(AnisotropicTotalVariation2D(1e-3)); verbosity = Silent())
+img_iso = reconstruct(data, IterativeReconstruction(TotalVariation2D(1e-3)); verbosity = Silent())
+jim(
+    jim(img_iso; title="isotropic TV"),
+    jim(img_aniso; title="anisotropic TV");
+    layout=(1, 2), size=(600,250)
+)
+savefig("anisotropic_tv.png"); nothing # hide
+```
+
+![anisotropic_tv.png](anisotropic_tv.png)
+
 #### Second-Order Total Variation
 
 Penalizes the second derivatives instead of the first, so a smooth intensity ramp costs nothing:
@@ -786,6 +817,7 @@ The regularization parameter λ controls the trade-off between data fidelity and
 - L1Image: `1e-4` to `1e-2`
 - L1Wavelet: `1e-3` to `1e-2`
 - TotalVariation: `1e-4` to `5e-3`
+- AnisotropicTotalVariation: `1e-4` to `5e-3`, the same range as the isotropic term
 - SecondOrderTotalVariation: `1e-4` to `1e-2` (roughly 2× the first-order λ when the two are combined)
 - TotalGeneralizedVariation2D/3D: `1e-4` to `5e-3`, i.e. the same range as `TotalVariation2D`; leave `ratio` at `2.0`
 - EdgePreservingRoughness: `1e-4` to `5e-3` for λ; `δ` from the gradient magnitudes of a preliminary reconstruction

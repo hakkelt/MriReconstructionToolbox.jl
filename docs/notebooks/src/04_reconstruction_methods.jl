@@ -21,8 +21,13 @@
 # **what kind of reconstruction this is** — how the measurements become an image. This notebook is
 # a tour of the methods that are not "iterative SENSE with a regularizer": direct reconstruction
 # and coil combination, partial Fourier, and autocalibrated parallel imaging (GRAPPA, SPIRiT).
-# Data-fidelity choices and signal models — including calibrationless structured low-rank k-space
-# filling — are the subject of
+#
+# **Iterative SENSE with a regularizer has its own notebook.** That is
+# `IterativeReconstruction(reg...)` — the standard compressed-sensing formulation — and *which*
+# regularizer to put in it, what each one costs and what it is good at, is the whole subject of
+# [`05_regularization`](05_regularization.ipynb). It appears here only as a reference line in a
+# couple of comparisons. Data-fidelity choices and signal models — including calibrationless
+# structured low-rank k-space filling — are the subject of
 # [`11_advanced_reconstruction`](11_advanced_reconstruction.ipynb).
 #
 # ```
@@ -44,6 +49,7 @@
 # 2. Partial Fourier — Homodyne, phase-constrained, POCS
 # 3. GRAPPA and SPIRiT
 # 4. Checking applicability
+# 5. References and further reading
 
 # %%
 include("NotebookUtils.jl")
@@ -60,7 +66,7 @@ using LinearAlgebra
 using Statistics
 using Random
 
-Random.seed!(0)
+Random.seed!(0);
 
 # %% [markdown]
 # ## 1. Direct reconstruction and coil combination
@@ -73,15 +79,16 @@ Random.seed!(0)
 # - `RootSumSquares()` — $\sqrt{\sum_c |x_c|^2}$, needs no maps but discards the phase.
 # - `NoCoilCombination()` — keep the coil channels separate.
 #
-# All three are honored by `DirectReconstruction` on Cartesian data, and by the methods that
-# synthesize k-space (`GRAPPA`, `SPIRiT`, and the `KSpaceToImage` signal model — those three
-# default to `RootSumSquares()`, since they do not need maps for anything else). On non-Cartesian
-# data `DirectReconstruction` supports `AdjointSensitivity()` only; the other two raise an error
-# rather than silently ignoring the request.
+# All three are honored by `DirectReconstruction` on Cartesian and non-Cartesian data, and by the
+# methods that synthesize k-space (`GRAPPA`, `SPIRiT`, and the `KSpaceToImage` signal model — those
+# three default to `RootSumSquares()`, since they do not need maps for anything else).
 #
-# When the acquisition carries no sensitivity maps and the combination is the default
-# `AdjointSensitivity()`, there is nothing to combine with, so the reconstruction comes back per
-# coil.
+# **Without sensitivity maps there is nothing to combine.** The coil axis is then not part of the
+# signal model at all: it is a batch dimension, and the reconstruction is one independent image per
+# channel. `DirectReconstruction()`'s default therefore *resolves* to `NoCoilCombination()` on such
+# an acquisition — and naming `AdjointSensitivity()` or `RootSumSquares()` explicitly raises an
+# error that says so, instead of silently handing back uncombined coils under a name that promises
+# a combined image.
 
 # %%
 nx, ny, nc = 128, 128, 8
@@ -97,21 +104,28 @@ acq_full = AcquisitionInfo(
 data_full = simulate_acquisition(x_true, acq_full)
 
 # With sensitivity maps and the default combination: one combined image.
-x_adj = reconstruct(data_full, DirectReconstruction(); verbosity = Silent())
+x_adj = reconstruct(data_full, DirectReconstruction())
 println("AdjointSensitivity: ", size(x_adj), " ", dimnames(x_adj))
 
 # Same data, root sum of squares: also one image, but no phase.
-x_rss = reconstruct(data_full, DirectReconstruction(RootSumSquares()); verbosity = Silent())
+x_rss = reconstruct(data_full, DirectReconstruction(RootSumSquares()))
 println("RootSumSquares:     ", size(x_rss), " ", dimnames(x_rss))
 
 # Same data, coils kept apart.
-x_coils = reconstruct(data_full, DirectReconstruction(NoCoilCombination()); verbosity = Silent())
+x_coils = reconstruct(data_full, DirectReconstruction(NoCoilCombination()))
 println("NoCoilCombination:  ", size(x_coils), " ", dimnames(x_coils))
 
-# The same k-space described *without* maps also comes back per coil under the default.
+# The same k-space described *without* maps: the default resolves to NoCoilCombination.
 acq_nomaps = AcquisitionInfo(data_full.kspace_data; is3D = false)
-x_nomaps = reconstruct(acq_nomaps, DirectReconstruction(); verbosity = Silent())
+x_nomaps = reconstruct(acq_nomaps, DirectReconstruction())
 println("no maps, default:   ", size(x_nomaps), " ", dimnames(x_nomaps))
+
+# Asking for a combination that needs maps is an error, not a silently uncombined result.
+try
+    reconstruct(acq_nomaps, DirectReconstruction(AdjointSensitivity()))
+catch e
+    println("\nno maps, AdjointSensitivity: ", sprint(showerror, e))
+end
 
 # %%
 jim(x_coils; title = "uncombined coil images", nrow = 2, size = (800, 400))
@@ -136,8 +150,8 @@ jim(x_coils; title = "uncombined coil images", nrow = 2, size = (800, 400))
 # %%
 data_noisy = add_noise(data_full; snr_db = 12)
 
-xn_adj = reconstruct(data_noisy, DirectReconstruction(); verbosity = Silent())
-xn_rss = reconstruct(data_noisy, DirectReconstruction(RootSumSquares()); verbosity = Silent())
+xn_adj = reconstruct(data_noisy, DirectReconstruction())
+xn_rss = reconstruct(data_noisy, DirectReconstruction(RootSumSquares()))
 
 println("NRMSE vs. truth")
 println("  AdjointSensitivity ", round(nrmse(xn_adj, x_true), digits = 4))
@@ -149,15 +163,15 @@ println("  AdjointSensitivity ", round(mean(abs.(unname(xn_adj))[background]), d
 println("  RootSumSquares     ", round(mean(abs.(unname(xn_rss))[background]), digits = 4))
 
 # %%
-side_by_side(
-    unname(xn_adj), unname(xn_rss);
-    titles = ("adjoint sensitivity", "root sum of squares"), size = (1100, 360)
-)
-
-# %%
-difference_image(
-    unname(xn_rss), unname(xn_adj);
-    title = "|RSS| - |adjoint sensitivity|", size = (450, 380)
+# The two magnitude images share a colour scale; the difference panel needs its own (the error is
+# far smaller than either image), so the figure is assembled from the two shared-scale panels plus
+# the difference panel rather than through `side_by_side` alone.
+clim_shared = (0.0, maximum(max.(abs.(unname(xn_adj)), abs.(unname(xn_rss)))))
+jim(
+    jim(abs.(unname(xn_adj)); title = "adjoint sensitivity", clim = clim_shared),
+    jim(abs.(unname(xn_rss)); title = "root sum of squares", clim = clim_shared),
+    difference_image(unname(xn_rss), unname(xn_adj); title = "|RSS| − |adjoint|");
+    layout = (1, 3), size = (1200, 380)
 )
 
 # %% [markdown]
@@ -181,15 +195,14 @@ X = [(x - Nx / 2) / Nx for x in 1:Nx, y in 1:Ny]
 Y = [(y - Ny / 2) / Ny for x in 1:Nx, y in 1:Ny]
 img_pf = ComplexF32.(mag .* cis.(0.8f0 .* (X .+ Y)))
 
-# 65% of the phase encodes, on one side
-frac = 0.65
-mask_y = falses(Ny)
-mask_y[1:round(Int, frac * Ny)] .= true
+# 65% of the phase encodes, on one side: `PartialFourierSampling` states exactly this
+# (notebook 03 §3).
+subsampling_pf = create_sampling_pattern(PartialFourierSampling(0.65), (Nx, Ny))
 
 acq_pf = simulate_acquisition(
     img_pf,
-    CartesianAcquisitionInfo(;
-        is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_y)
+    AcquisitionInfo(;
+        is3D = false, image_size = (Nx, Ny), subsampling = subsampling_pf
     )
 )
 println("acquired k-space: ", size(acq_pf.kspace_data), " of ", (Nx, Ny))
@@ -202,11 +215,11 @@ println("partial-Fourier band: dimension ", band.dim, ", lines ", first(band.acq
 # partial-Fourier methods and the phantom are all on one scale, so a plain NRMSE against the
 # magnitude phantom is meaningful with no amplitude alignment. (The least-squares scale factor
 # that would align them is printed below to make that concrete: it is 1 to within a percent.)
-x_zf = reconstruct(acq_pf; verbosity = Silent())
-x_hom_lin = reconstruct(acq_pf, Homodyne(filter = LinearRamp()); verbosity = Silent())
-x_hom_step = reconstruct(acq_pf, Homodyne(filter = StepRamp()); verbosity = Silent())
-x_pc = reconstruct(acq_pf, PhaseConstrained(); verbosity = Silent())
-x_pocs = reconstruct(acq_pf, POCS(maxit = 30); verbosity = Silent())
+x_zf = reconstruct(acq_pf)
+x_hom_lin = reconstruct(acq_pf, Homodyne(filter = LinearRamp()))
+x_hom_step = reconstruct(acq_pf, Homodyne(filter = StepRamp()))
+x_pc = reconstruct(acq_pf, PhaseConstrained())
+x_pocs = reconstruct(acq_pf, POCS(maxit = 30))
 
 for (label, x̂) in (
         ("zero-filled", x_zf), ("Homodyne / LinearRamp", x_hom_lin), ("Homodyne / StepRamp", x_hom_step),
@@ -251,30 +264,28 @@ Nc = 8
 img_pi = ComplexF32.(abs.(create_shepp_logan_phantom(Nx, Ny, :axial; ti = MRISheppLoganIntensities())))
 sens = coil_sensitivities(Nx, Ny, Nc)
 
-# R = 2 with a 24-line ACS block in the centre
+# R = 2 with a 24-line ACS block in the centre — `RegularLatticeSampling` states exactly this
+# (notebook 03 §3): every second phase encode, plus a fully sampled centre 24/128 of k-space wide.
 R = 2
-acs = (Ny ÷ 2 - 11):(Ny ÷ 2 + 12)
-mask_pi = falses(Ny)
-mask_pi[1:R:Ny] .= true
-mask_pi[acs] .= true
-println("net acceleration: ", round(Ny / sum(mask_pi), digits = 2), "×")
+subsampling_pi = create_sampling_pattern(RegularLatticeSampling(R; center_fraction = 24 / Ny), (Nx, Ny))
+println("net acceleration: ", round(Ny / sum(subsampling_pi[2]), digits = 2), "×")
 
 # Noise is what makes this a comparison rather than a formality: on noiseless data at R = 2 every
 # method below recovers the phantom to within a fraction of a percent.
 acq_pi = add_noise(
     simulate_acquisition(
         img_pi,
-        CartesianAcquisitionInfo(;
-            is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_pi), sensitivity_maps = sens
+        AcquisitionInfo(;
+            is3D = false, image_size = (Nx, Ny), subsampling = subsampling_pi, sensitivity_maps = sens
         )
     );
     snr_db = 30
 )
 
 # %%
-x_grappa = reconstruct(acq_pi, GRAPPA(kernel_size = (3, 2), calib_size = (Nx, 24)); verbosity = Silent())
-x_spirit = reconstruct(acq_pi, SPIRiT(kernel_size = (5, 5), calib_size = (Nx, 24), maxit = 30); verbosity = Silent())
-x_sense = reconstruct(acq_pi, IterativeReconstruction(L2Image(1.0f-3); maxit = 30); verbosity = Silent())
+x_grappa = reconstruct(acq_pi, GRAPPA(kernel_size = (3, 2), calib_size = (Nx, 24)))
+x_spirit = reconstruct(acq_pi, SPIRiT(kernel_size = (5, 5), calib_size = (Nx, 24), maxit = 30))
+x_sense = reconstruct(acq_pi, IterativeReconstruction(L2Image(1.0f-3); maxit = 30))
 
 println("GRAPPA         ", round(nrmse(x_grappa, img_pi), digits = 4))
 println("SPIRiT         ", round(nrmse(x_spirit, img_pi), digits = 4))
@@ -291,19 +302,23 @@ side_by_side(
 # autocalibrated methods SPIRiT is the more accurate, which is what its extra work buys: a 5×5
 # kernel over all coils, applied to every k-space location rather than only to the holes.
 #
-# !!! note "A tuning knob worth knowing about"
-#     `SPIRiT(; calib_λ = 1e-4)` is a relative Tikhonov penalty on the *calibration* solve (not on
-#     the reconstruction). Neighbouring ACS samples are highly correlated, so the fit is close to
-#     rank-deficient and the unregularized kernel amplifies noise. The default is small; raise it
-#     on low-SNR data, set it to `0` for the plain least-squares fit.
+# > **A tuning knob worth knowing about.** `SPIRiT(; calib_λ = 1e-4)` is a relative Tikhonov
+# > penalty on the *calibration* solve (not on the reconstruction). Neighbouring ACS samples are
+# > highly correlated, so the fit is close to rank-deficient and the unregularized kernel amplifies
+# > noise. The default is small; raise it on low-SNR data, set it to `0` for the plain
+# > least-squares fit.
+
+# %% [markdown]
+# CG-SENSE's advantage above comes from being handed the *true* sensitivity maps, which no real
+# acquisition comes with; estimating them from the data is its own subject, and every estimator MRT
+# offers is compared in [`09_real_data_cartesian`](09_real_data_cartesian.ipynb).
 
 # %%
 # SPIRiT can also be run as an iterative k-space problem: the SPIRiT kernel becomes a
 # consistency term on the full multi-channel k-space (`KSpaceToImage` signal model, notebook 11
 # §2.2).
 x_spirit_it = reconstruct(
-    acq_pi, SPIRiT(kernel_size = (5, 5), calib_size = (Nx, 24), maxit = 30, iterative = true);
-    verbosity = Silent()
+    acq_pi, SPIRiT(kernel_size = (5, 5), calib_size = (Nx, 24), maxit = 30, iterative = true)
 )
 println("SPIRiT (fixed point) ", round(nrmse(x_spirit, img_pi), digits = 4))
 println("SPIRiT (iterative)   ", round(nrmse(x_spirit_it, img_pi), digits = 4))
@@ -379,12 +394,39 @@ println("GRAPPA is applicable to the R = 2 + ACS acquisition")
 # %% [markdown]
 # ## References
 #
-# - Griswold M. A. *et al.*, *Generalized autocalibrating partially parallel acquisitions
-#   (GRAPPA)*, Magn. Reson. Med. 47:1202–1210 (2002).
-# - Lustig M., Pauly J. M., *SPIRiT: Iterative self-consistent parallel imaging reconstruction from
-#   arbitrary k-space*, Magn. Reson. Med. 64:457–471 (2010).
-# - Noll D. C., Nishimura D. G., Macovski A., *Homodyne detection in magnetic resonance imaging*,
-#   IEEE Trans. Med. Imaging 10:154–163 (1991).
+# [1] M. A. Griswold, P. M. Jakob, R. M. Heidemann, M. Nittka, V. Jellus, J. Wang, B. Kiefer, and
+# A. Haase, "Generalized autocalibrating partially parallel acquisitions (GRAPPA),"
+# *Magnetic Resonance in Medicine*, vol. 47, no. 6, pp. 1202–1210, 2002,
+# doi: [10.1002/mrm.10171](https://doi.org/10.1002/mrm.10171).
+#
+# [2] M. Lustig and J. M. Pauly, "SPIRiT: Iterative self-consistent parallel imaging reconstruction
+# from arbitrary k-space," *Magnetic Resonance in Medicine*, vol. 64, no. 2, pp. 457–471, 2010,
+# doi: [10.1002/mrm.22428](https://doi.org/10.1002/mrm.22428).
+#
+# [3] D. C. Noll, D. G. Nishimura, and A. Macovski, "Homodyne detection in magnetic resonance
+# imaging," *IEEE Transactions on Medical Imaging*, vol. 10, no. 2, pp. 154–163, 1991,
+# doi: [10.1109/42.79473](https://doi.org/10.1109/42.79473).
+#
+# [4] K. P. Pruessmann, M. Weiger, M. B. Scheidegger, and P. Boesiger, "SENSE: Sensitivity encoding
+# for fast MRI," *Magnetic Resonance in Medicine*, vol. 42, no. 5, pp. 952–962, 1999,
+# doi: `10.1002/(SICI)1522-2594(199911)42:5<952::AID-MRM16>3.0.CO;2-S`
+# ([doi.org](https://doi.org/10.1002/%28SICI%291522-2594%28199911%2942:5%3C952::AID-MRM16%3E3.0.CO;2-S)).
+
+# %% [markdown]
+# ## Further reading
+#
+# The clinical picture behind these methods, from *Questions and Answers in MRI*:
+#
+# - [Parallel imaging](https://mriquestions.com/what-is-pi.html) and
+#   [PI: the two types](https://mriquestions.com/two-types-of-pi.html) — where SENSE-like and
+#   GRAPPA-like methods differ, in the same terms §1 and §3 use.
+# - [GRAPPA / ARC](https://mriquestions.com/grappaarc.html) — the vendor names for §3's method.
+# - [Parallel imaging: noise](https://mriquestions.com/noise-in-pi.html) and
+#   [PI: artifacts](https://mriquestions.com/artifacts-in-pi.html) — the g-factor and the failure
+#   modes the NRMSE numbers above only summarize.
+# - [Partial Fourier](https://mriquestions.com/partial-fourier.html) and
+#   [phase conjugate symmetry](https://mriquestions.com/phase-symmetry.html) — the physics §2
+#   exploits, and the vendor names (half scan, fractional NEX).
 
 # %% [markdown]
 # ## Environment

@@ -28,6 +28,8 @@ kernel installed (`Pkg.build("IJulia")` from the docs/notebooks environment regi
 README.md).
 =#
 
+using Downloads: Downloads
+
 const NOTEBOOK_DIR = @__DIR__
 const SRC_DIR = joinpath(NOTEBOOK_DIR, "src")
 const BUILD_DIR = joinpath(NOTEBOOK_DIR, "build")
@@ -91,7 +93,155 @@ function export_one(nb_file::AbstractString, timeout::Int)
         close(watchdog)
     end
     elapsed = time() - t0
+    ok && postprocess_html!(joinpath(BUILD_DIR, replace(nb_file, r"\.ipynb$" => ".html")))
     return (; nb_file, ok, msg, elapsed)
+end
+
+# Marks a page as already patched, so a re-run of the exporter does not stack the block twice.
+const POSTPROCESS_MARKER = "MRT-postprocess-marker"
+
+# Long source lines must stay reachable on a narrow screen. The element that actually clips them
+# is `div.CodeMirror`, which the template gives `overflow: hidden` (the `.jp-InputArea` rules are
+# clipping too, but they are only the outer box); the same goes for wide text output and wide
+# tables.
+const OVERFLOW_CSS = """
+<style type="text/css">
+/* $POSTPROCESS_MARKER: appended by docs/notebooks/export.jl -- see postprocess_html!. */
+.jp-InputArea, .jp-InputArea-editor { overflow-x: auto !important; }
+.jp-CodeMirrorEditor .CodeMirror, div.CodeMirror { overflow-x: auto !important; overflow-y: visible !important; }
+.jp-InputArea-editor .highlight, .jp-InputArea-editor .highlight pre { overflow-x: auto; }
+.jp-OutputArea-output { overflow-x: auto; }
+.jp-RenderedHTMLCommon table { display: block; width: fit-content; max-width: 100%; overflow-x: auto; }
+</style>"""
+
+# MathJax 3 with SVG output, embedded in the page rather than loaded from a CDN. Two separate
+# things have to hold for a sandboxed viewer to render an equation at all:
+#
+#  - no runtime fetches. The combined MathJax 2 build the template pulls in needs its config file
+#    and web fonts (`@font-face`) at run time, both of which a content-security policy blocks. The
+#    SVG build draws every glyph from paths inside a single script file: no stylesheet, no font
+#    files, no XHR.
+#  - no cross-origin script either. A viewer that blocks the CDN request leaves the page with raw
+#    LaTeX and no visible error, which is exactly what a `<script src=...>` loader looks like when
+#    it fails. Since the SVG build *is* one file, the whole renderer can be inlined, and then
+#    rendering depends on nothing outside the page.
+#
+# The file is cached under `cache/` (gitignored) so only the first export downloads it; a compute
+# node with no outbound network reuses that copy.
+const MATHJAX_VERSION = "3.2.2"
+const MATHJAX_URL = "https://cdnjs.cloudflare.com/ajax/libs/mathjax/$MATHJAX_VERSION/es5/tex-mml-svg.js"
+const MATHJAX_CACHE = joinpath(NOTEBOOK_DIR, "cache", "mathjax-$MATHJAX_VERSION-tex-mml-svg.js")
+
+const MATHJAX_CONFIG = """
+<script type="text/javascript">
+window.MathJax = {
+  tex: {
+    inlineMath: [['\$', '\$'], ['\\\\(', '\\\\)']],
+    displayMath: [['\$\$', '\$\$'], ['\\\\[', '\\\\]']],
+    processEscapes: true,
+    processEnvironments: true,
+    tags: 'ams'
+  },
+  options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] },
+  svg: { fontCache: 'local' }
+};
+</script>"""
+
+# Matches whichever loader a page already carries, so an older export can be re-patched in place
+# (see `postprocess_html!`) without executing the notebook again.
+const MATHJAX_LOADER_RE = r"<script id=\"MathJax-script\".*?</script>"s
+
+"""
+    mathjax_bundle() -> String or nothing
+
+The MathJax SVG build as a string, downloading it into [`MATHJAX_CACHE`](@ref) once. Returns
+`nothing` when it cannot be embedded, in which case the page falls back to the CDN loader.
+"""
+function mathjax_bundle()
+    if !isfile(MATHJAX_CACHE)
+        mkpath(dirname(MATHJAX_CACHE))
+        try
+            Downloads.download(MATHJAX_URL, MATHJAX_CACHE)
+        catch err
+            @warn "could not fetch the MathJax bundle; falling back to the CDN loader, which a " *
+                "sandboxed viewer may block" exception = err
+            return nothing
+        end
+    end
+    js = read(MATHJAX_CACHE, String)
+    # An inlined script ends at the first `</script` in its text, and a `<script` can flip the
+    # parser into a state where that is no longer true. The 3.2.2 bundle contains neither; refuse
+    # to inline anything that does rather than emit a page that stops parsing halfway.
+    if occursin("</script", js) || occursin("<script", js)
+        @warn "the MathJax bundle contains a script tag and cannot be inlined; using the CDN loader"
+        return nothing
+    end
+    return js
+end
+
+"""
+    mathjax_loader() -> String
+
+The `<script>` element that brings in the renderer: the bundle itself when it can be embedded,
+the CDN loader otherwise. Built once and reused — the bundle is ~2 MB, and every page gets it.
+"""
+function mathjax_loader()
+    if !isassigned(MATHJAX_LOADER)
+        js = mathjax_bundle()
+        MATHJAX_LOADER[] = if js === nothing
+            "<script id=\"MathJax-script\" async src=\"$MATHJAX_URL\"></script>"
+        else
+            "<script id=\"MathJax-script\" type=\"text/javascript\">\n$js\n</script>"
+        end
+    end
+    return MATHJAX_LOADER[]
+end
+
+const MATHJAX_LOADER = Ref{String}()
+
+"""
+    mathjax_html() -> String
+
+The configuration block plus the renderer itself.
+"""
+mathjax_html() = MATHJAX_CONFIG * "\n" * mathjax_loader()
+
+"""
+    postprocess_html!(html_file)
+
+Patch the two defects nbconvert's bundled HTML template bakes into every exported page.
+
+1. Its MathJax 2 setup never renders in a sandboxed viewer: the URL it hardcodes 404s
+   (`mathjax/<ver>/latest.js` — cdnjs never served an unversioned `latest.js` alias), and even
+   with that corrected the combined build needs runtime fetches a content-security policy blocks.
+   The whole block is replaced by [`mathjax_html`](@ref), a MathJax 3 SVG build embedded in the
+   page.
+2. `overflow: hidden` on the code editor clips long source lines instead of letting the reader
+   scroll to them. Overridden by [`OVERFLOW_CSS`](@ref).
+
+Both are appended to the end of the document head, so they win on source order over the
+template's own rules. Idempotent, and re-patchable: a page already carrying
+[`POSTPROCESS_MARKER`](@ref) keeps its CSS but has its MathJax loader replaced, so a page exported
+before the renderer was embedded can be upgraded without executing the notebook again.
+"""
+function postprocess_html!(html_file::AbstractString)
+    isfile(html_file) || return nothing
+    content = read(html_file, String)
+    # Substituted through a function, never a replacement string: the bundle is full of `\\1`-like
+    # sequences that `replace` would otherwise read as capture-group references.
+    fixed = if occursin(POSTPROCESS_MARKER, content)
+        replace(content, MATHJAX_LOADER_RE => _ -> mathjax_loader(); count = 1)
+    else
+        # The template writes the loader and its `text/x-mathjax-config` block between these
+        # comments.
+        stripped = replace(content, r"<!-- Load mathjax -->.*?<!-- End of mathjax configuration -->"s => "")
+        replace(
+            stripped, "</head>" => _ -> OVERFLOW_CSS * "\n" * mathjax_html() * "\n</head>";
+            count = 1
+        )
+    end
+    fixed == content || write(html_file, fixed)
+    return nothing
 end
 
 function verify_no_outputs(nb_file::AbstractString)

@@ -41,7 +41,7 @@ using MIRTjim: jim
 using Plots
 using Random
 
-Random.seed!(0)
+Random.seed!(0);
 jim(:colorbar, true);
 
 # %% [markdown]
@@ -69,13 +69,13 @@ smaps = coil_sensitivities(nx, ny, nc)
 jim(smaps; title = "Coil sensitivity maps", nrow = 2, size = (800, 400))
 
 # %%
-# Variable-density random sampling: 4× acceleration, fully sampled 5% centre.
-pdf = VariableDensitySampling(PolynomialDistribution(3), 4.0, 0.05)
+# Variable-density random sampling: 4× acceleration, fully sampled 15% centre.
+pdf = VariableDensitySampling(PolynomialDistribution(3), 4.0, 0.15)
 pattern = create_sampling_pattern(pdf, (nx, ny))
 
 mask = to_displayable_mask(pattern, (nx, ny))
 println("acceleration: ", round(nx * ny / sum(mask), digits = 2), "×")
-jim(mask; title = "Sampling pattern (white = acquired)", size = (400, 350))
+jim(mask; title = "Sampling pattern (white = acquired)", size = (400, 350), kaxes...)
 
 # %% [markdown]
 # ## 2. Simulating k-space
@@ -118,8 +118,8 @@ jim(jim(x_direct; title = "Direct (adjoint)"), difference_image(x_direct, x_true
 #
 # The undersampling is random, so the aliasing is incoherent and an $\ell_1$ penalty on the
 # wavelet coefficients can remove it. `IterativeReconstruction` takes the regularizers as
-# positional arguments; everything that tunes the solve (`maxit`, `tol`, `algorithm`) is a
-# keyword of the method, not of `reconstruct`.
+# positional arguments and everything that tunes the solve as keywords — `maxit`, `reltol` and
+# `algorithm` are all set on the method itself.
 
 # %%
 method = IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 60)
@@ -149,6 +149,18 @@ side_by_side(x_true, x_direct, x_cs; titles = ("Ground truth", "Direct", "CS"), 
 # | `10_real_data_dynamic.ipynb` | real 1.5 T cardiac cine, low-rank + sparse |
 # | `11_advanced_reconstruction.ipynb` | data fidelity, signal models, calibrationless k-space |
 # | `12_low_level_interface.ipynb` | operators, `StructuredOptimization`, custom terms |
+
+# %% [markdown]
+# ## Further reading
+#
+# The physics this notebook's five lines of code stand on, from *Questions and Answers in MRI*:
+#
+# - [What is k-space?](https://mriquestions.com/what-is-k-space.html) — what `kspace_data` is.
+# - [k-space: parts](https://mriquestions.com/parts-of-k-space.html) — centre versus periphery.
+# - [Parallel imaging](https://mriquestions.com/what-is-pi.html) — why an acquisition has coils
+#   and sensitivity maps at all.
+# - [Compressed sensing](https://mriquestions.com/compressed-sensing.html) — why undersampled data
+#   needs a regularizer.
 
 # %% [markdown]
 # ## Environment

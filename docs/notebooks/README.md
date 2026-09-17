@@ -9,19 +9,19 @@ tracked in git — see [Editing workflow](#editing-workflow-jupytext) for why, a
 |---|---|
 | `01_getting_started` | A complete reconstruction in twenty lines: phantom → k-space → direct → compressed sensing |
 | `02_acquisition_info` | `AcquisitionInfo`: named dimensions, sensitivity maps, sampling patterns, FFT-shift conventions, validation, Cartesian vs. non-Cartesian |
-| `03_simulation` | Phantoms, coil sensitivities, every sampling-pattern generator, `simulate_acquisition`, noise, dynamic series |
-| `04_reconstruction_methods` | Coil combination, partial Fourier (Homodyne, phase-constrained, POCS), GRAPPA, SPIRiT |
-| `05_regularization` | Every spatial regularizer: ℓ₂/ℓ₁, wavelets, contourlets, TV, second-order TV, TGV, Huber, hard thresholding, plug-and-play, joint sparsity, reference priors, constraints |
-| `06_algorithms_and_configuration` | CG/CGNR, ISTA/FISTA, ADMM, Douglas–Rachford; `maxit`/`tol`, verbosity, `ReconstructionConfig`, scaling, warm starts, operator-norm options, task splitting |
+| `03_simulation` | Phantoms, coil sensitivities, every sampling-pattern generator (random, variable density, Poisson disc, regular lattice, partial Fourier), `simulate_acquisition`, noise, dynamic series |
+| `04_reconstruction_methods` | Coil combination, partial Fourier (Homodyne, phase-constrained, POCS), GRAPPA, SPIRiT, ESPIRiT |
+| `05_regularization` | Every spatial regularizer: ℓ₂/ℓ₁, wavelets, contourlets, TV (isotropic and anisotropic), second-order TV, TGV, Huber, hard thresholding, plug-and-play, joint sparsity, reference priors, constraints |
+| `06_algorithms_and_configuration` | CG/CGNR (and preconditioned CG-SENSE), ISTA/FISTA, ADMM, Douglas–Rachford; `maxit`/`tol`, verbosity, `ReconstructionConfig`, scaling, warm starts, operator-norm options, task splitting |
 | `07_dynamic_and_decomposition` | Temporal and low-rank regularizers, image decomposition (L+S), infimal-convolution TV |
 | `08_non_cartesian` | Radial and spiral trajectories, NFFT encoding, Pipe–Menon and Voronoi density compensation, gradient-delay correction, gridding accuracy vs. speed |
 | `09_real_data_cartesian` | Real 0.3 T brain data (M4Raw) end to end: assembly, prewhitening, coil compression, ESPIRiT, retrospective undersampling, CS and parallel imaging, pseudo-replica noise analysis |
-| `10_real_data_dynamic` | Real 1.5 T cardiac cine (OCMR): temporal, low-rank and L+S reconstruction, temporal profiles |
+| `10_real_data_dynamic` | Real 1.5 T cardiac cine (OCMR): temporal, low-rank and L+S reconstruction, temporal profiles, real spiral real-time speech data (USC SPAN) |
 | `11_advanced_reconstruction` | Data-fidelity choices, `TemporalBasis` and `KSpaceToImage` signal models, calibrationless structured low-rank (SAKE / LORAKS-C) |
 | `12_low_level_interface` | Operators by hand, `build_model`, `StructuredOptimization` problems, proximal operators, writing a regularizer of your own |
 
 Notebooks 1–8, 11 and 12 need nothing but the environment in this directory. Notebooks 9 and 10
-download real datasets (~12 MB and ~200 MB) on first run and cache them.
+download real datasets (~12 MB, and ~200 MB plus ~60 MB) on first run and cache them.
 
 ## Setup
 
@@ -81,8 +81,8 @@ node:
 | `06_algorithms_and_configuration` | 3m 58s | |
 | `07_dynamic_and_decomposition` | 4m 53s | |
 | `08_non_cartesian` | 1m 19s | plus NFFT precompilation on the first call |
-| `09_real_data_cartesian` | 3m 16s | after the ~12 MB download |
-| `10_real_data_dynamic` | 17m 02s | after the ~200 MB download; the λ sweep is most of it |
+| `09_real_data_cartesian` | 2m 55s | after the ~12 MB download |
+| `10_real_data_dynamic` | 21m 13s | after the ~200 MB and ~60 MB downloads; the λ sweep is most of it |
 | `11_advanced_reconstruction` | 4m 04s | |
 | `12_low_level_interface` | 1m 51s | |
 

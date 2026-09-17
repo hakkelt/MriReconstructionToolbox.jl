@@ -251,6 +251,49 @@ savefig("poisson_disk_sampling_pattern.png"); nothing # hide
 - More uniform coverage than random
 - Good incoherence properties
 
+### Regular Lattice Sampling
+
+The product parallel-imaging pattern: every R-th phase encode, optionally with a fully sampled
+autocalibration (ACS) band. Unlike the random generators it is deterministic, and it is the
+pattern [`GRAPPA`](@ref) requires — its kernel is defined by a fixed geometric relation between a
+hole and its neighbours, which only a regular lattice has.
+
+```@docs
+RegularLatticeSampling
+```
+
+### Partial Fourier Sampling
+
+A contiguous band from one end of k-space, everything past it left unacquired. It exploits the
+Hermitian symmetry of k-space instead of coil encoding, so it is its own scheme rather than a
+modifier of the lattice; reconstruct it with [`Homodyne`](@ref) or [`POCS`](@ref).
+
+```@docs
+PartialFourierSampling
+```
+
+```@example imports
+# R = 3 with a 10% ACS band: the GRAPPA/SPIRiT calibration pattern
+grappa_pdf = RegularLatticeSampling(3; center_fraction = 0.1)
+grappa_pattern = create_sampling_pattern(grappa_pdf, (256, 256))
+
+# 6/8 partial Fourier
+pf_pdf = PartialFourierSampling(0.75)
+pf_pattern = create_sampling_pattern(pf_pdf, (256, 256))
+
+jim(
+    jim(to_displayable_mask(grappa_pattern, (256, 256)); title = "R=3 + ACS"),
+    jim(to_displayable_mask(pf_pattern, (256, 256)); title = "75% partial Fourier");
+    layout = (1, 2), size = (600, 300)
+)
+savefig("systematic_sampling_pattern.png"); nothing # hide
+```
+
+![systematic_sampling_pattern.png](systematic_sampling_pattern.png)
+
+Over two subsampled dimensions (a 3D acquisition) the lattice acceleration is factored into a
+stride per dimension, as close to equal as its divisors allow: `4` becomes 2×2, `3` becomes 3×1.
+
 ## Non-Cartesian Trajectories
 
 Ready-made generators for the common non-Cartesian sampling patterns, returned as
@@ -264,10 +307,21 @@ kooshball_trajectory
 spiral_trajectory
 ```
 
+The spoke ordering and the spiral growth law are chosen with a type rather than a symbol, so each
+carries its own parameters and a typo is a `MethodError` instead of a runtime `ArgumentError`:
+
+```@docs
+LinearOrdering
+GoldenAngle
+TinyGoldenAngle
+Archimedean
+VariableDensity
+```
+
 ```@example imports
 using NamedDims
 
-traj = radial_trajectory(128, 96; ordering = :golden_angle)
+traj = radial_trajectory(128, 96; ordering = GoldenAngle())
 acq_radial = AcquisitionInfo(; trajectory = traj, image_size = (256, 256))
 data_radial = simulate_acquisition(img, acq_radial)
 size(data_radial.kspace_data)
@@ -290,6 +344,27 @@ to the RMS of the data) or as an absolute standard deviation. It accepts a plain
 
 ```@docs
 add_noise
+```
+
+Noise can also be added to an **image** rather than to k-space, targeting the clinical SNR — a bare
+ratio measured the way a scanner acceptance test measures it, rather than a decibel figure relative
+to the data RMS. [`estimate_snr`](@ref) measures that same quantity back from an image:
+
+```@docs
+estimate_snr
+```
+
+```@example imports
+noisy_image = add_noise(img; snr = 20)
+estimate_snr(noisy_image)
+```
+
+Both regions are boxes whose size the caller gives in voxels — a centred one for the signal, one in
+each corner for the noise — so nothing about where they sit depends on the image being measured.
+They can be displayed rather than trusted:
+
+```@docs
+snr_masks
 ```
 
 ```@example imports

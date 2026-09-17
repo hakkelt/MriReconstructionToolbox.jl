@@ -44,13 +44,14 @@ IterativeReconstruction(
     disable_operator_normalization = false,
     disable_normalop_optimization = false,
     maxit = 100,
-    tol = 1e-4,
+    reltol = 1e-4,
 )
 ```
 
-`maxit` and `tol` are keyword-only, as is every other tuning parameter: regularization terms are
-the only positional arguments. `tol` is *relative* — the absolute threshold given to the solver is
-`max(10*eps, tol * maximum(abs, x₀))`. Setting either to `nothing` defers to the `algorithm`'s own
+`maxit` and `reltol` are keyword-only, as is every other tuning parameter: regularization terms are
+the only positional arguments. `reltol` is *relative*, hence the name — the absolute threshold given
+to the solver is `max(10*eps, reltol * maximum(abs, x₀))`, unlike `ProximalAlgorithms`' absolute
+`tol` on the algorithm object. Setting either to `nothing` defers to the `algorithm`'s own
 value, which is how `algorithm = FISTA(maxit = 500)` becomes reachable.
 
 #### Signal Models
@@ -72,7 +73,7 @@ The `signal_model` keyword sets how the optimization variable maps to the image:
 
 #### Solver Selection and Configuration
 
-- `algorithm`: Solver algorithm (e.g., `FISTA()`, `ADMM()`, `DouglasRachford()`, `CG()`, `CGNR()`) or candidate tuple. Defaults to `DEFAULT_ALGORITHMS` (`(CG(), CGNR(), FISTA(), ADMM(), DouglasRachford())`), where the appropriate solver is selected based on model convexity and smoothness.
+- `algorithm`: Solver algorithm (e.g., `FISTA()`, `ADMM()`, `DouglasRachford()`, `CG()`, `CGNR()`) or candidate tuple. Defaults to `DEFAULT_ALGORITHMS` (`(CG(), CGNR(), POGM(), ADMM(), DouglasRachford())`), where the appropriate solver is selected based on model convexity and smoothness.
 - `exact_opnorm`: Compute $\|\mathcal{A}\|$ with a fully converged power iteration instead of the
   20-iteration estimate. The estimate converges from below, so it is a slight *under*-estimate.
 - `disable_operator_normalization`: Skip the $\|\mathcal{A}\|$ estimate and let the algorithm derive
@@ -117,7 +118,7 @@ The default warm start is one Landweber step, $x_0 = \mathcal{A}^*y/L^2$, rather
 adjoint $\mathcal{A}^*y$: the adjoint alone is only on the image's scale when
 $\mathcal{A}^*\mathcal{A} \approx I$, which holds for an orthonormal Cartesian FFT but not for an
 uncompensated non-Cartesian (e.g. radial NFFT) operator, where $\mathcal{A}^*y$ can be off by
-several orders of magnitude and a finite-`maxit`/`tol` solve never fully corrects it — CG-SENSE is
+several orders of magnitude and a finite-`maxit`/`reltol` solve never fully corrects it — CG-SENSE is
 the case that motivated this: run on radial data, it used to be *worse* than the plain adjoint.
 For every proximal algorithm this reuses the same $L$ computed above at no extra cost. A pure
 unregularized CG/CGNR solve does not otherwise need $L$ (it derives its own step size), and there
