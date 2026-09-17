@@ -6,8 +6,8 @@ using TestItems
     using MriReconstructionToolbox: Regularization, get_operator, get_affected_dims,
         materialize, materialize_with_auxiliaries, materialize_all,
         scale_regularization, bind_dimensions, calculate
-    using AbstractOperators
-    using StructuredOptimization
+    using MriReconstructionToolbox.AbstractOperators
+    using MriReconstructionToolbox.StructuredOptimization
     using NamedDims
     using Wavelets
 end
@@ -55,6 +55,7 @@ end
 @testsnippet IterationCallbackSetup begin
     using Test
     using MriReconstructionToolbox
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Random
 
     # Fully sampled and single-coil, so the encoding operator is square and every algorithm in
@@ -92,15 +93,49 @@ end
     end
 end
 
+@testsnippet RadialCalibration begin
+    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using NamedDims
+    using LinearAlgebra: dot, norm
+
+    # A radial acquisition of a block phantom through known coil sensitivities: everything the
+    # non-Cartesian sensitivity-estimation tests calibrate from.
+    function radial_case(; N = 64, ncoil = 4, nsamp = 128, nspokes = 96)
+        img = zeros(ComplexF32, N, N)
+        img[16:48, 20:44] .= 1
+        smaps = ComplexF32.(coil_sensitivities(N, N, ncoil))
+        traj = Float32.(radial_trajectory(nsamp, nspokes))
+        sim = simulate_acquisition(
+            NamedDimsArray{(:x, :y)}(img),
+            NonCartesianAcquisitionInfo(
+                nothing; trajectory = traj, image_size = (N, N),
+                sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps),
+            ),
+        )
+        return (; img, smaps, traj, kspace = sim.kspace_data, mask = abs.(img) .> 0.5, N, ncoil)
+    end
+
+    # Sensitivity maps are defined only up to a common phase per pixel, so maps are compared by
+    # the direction of the coil vector, not by its phase: 1 is a perfect match.
+    function map_alignment(a, b, mask)
+        a, b = unname(a), unname(b)
+        vals = [
+            abs(dot(a[i, j, :], b[i, j, :])) / (norm(a[i, j, :]) * norm(b[i, j, :]) + eps(Float32))
+                for i in axes(a, 1), j in axes(a, 2)
+        ]
+        return sum(vals[mask]) / count(mask)
+    end
+end
+
 @testsnippet WaveletHelpers begin
-    using WaveletOperators: WaveletOp
+    using MriReconstructionToolbox.WaveletOperators: WaveletOp
 
     # The inverse must recover the original signal, whether or not the forward pass padded it.
     check_wavelet_roundtrip(op, x, result) = (Test.@test op' * result ≈ x rtol = 1.0e-10)
 end
 
 @testsnippet ModelEval begin
-    using StructuredOptimization
+    using MriReconstructionToolbox.StructuredOptimization
 
     function eval_term(terms)
         vars = StructuredOptimization.extract_variables(terms)

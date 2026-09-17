@@ -1,8 +1,8 @@
 using Documenter
 using MriReconstructionToolbox
-using ProximalAlgorithms
-using ProximalOperators
-using ContourletOperators
+using MriReconstructionToolbox.ProximalAlgorithms
+using MriReconstructionToolbox.ProximalOperators
+using MriReconstructionToolbox.ContourletOperators
 
 # The extension surface is `public` but not exported (see NAMING.md §6), so bring the names
 # documented here into scope for the `@docs` and `@ref` blocks that reference them unqualified.

@@ -104,8 +104,8 @@ end
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, NonCartesianAcquisitionInfo
-    using NFFTOperators: NFFTOp
-    import NFFTOperators
+    using MriReconstructionToolbox.NFFTOperators: NFFTOp
+    import MriReconstructionToolbox: NFFTOperators
     using LinearAlgebra, Random
 
     Random.seed!(0)
@@ -155,7 +155,7 @@ end
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
-    using AbstractOperators
+    using MriReconstructionToolbox.AbstractOperators
     using NamedDims
 
     @testset "Sensitivity Map Operator" begin
@@ -694,6 +694,7 @@ end
 end
 
 @testitem "Fourier operator helpers match raw FFT (even and odd sizes)" tags = [:reconstruction, :encoding] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator

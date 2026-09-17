@@ -111,4 +111,9 @@ include("functions/maximum.jl")
 include("functions/normLinf.jl")
 include("functions/sumLargest.jl")
 
+# `RecursiveArrayTools` is always available in `MriReconstructionToolbox` (unlike
+# the standalone ProximalOperators.jl package, where it is only a weakdep behind
+# a package extension), so this support is included unconditionally.
+include("recursive_array_tools.jl")
+
 end

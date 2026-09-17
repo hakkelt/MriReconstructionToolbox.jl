@@ -5,8 +5,8 @@ using TestItems
     using LinearAlgebra
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_operator, get_encoding_operator, materialize, get_affected_dims, scale_regularization
-    using StructuredOptimization
-    using AbstractOperators
+    using MriReconstructionToolbox.StructuredOptimization
+    using MriReconstructionToolbox.AbstractOperators
     using NamedDims
 
     const MRT = MriReconstructionToolbox
@@ -79,8 +79,8 @@ end
     using Random
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_operator, get_encoding_operator, materialize, get_affected_dims, scale_regularization
-    using StructuredOptimization
-    using AbstractOperators
+    using MriReconstructionToolbox.StructuredOptimization
+    using MriReconstructionToolbox.AbstractOperators
 
     const MRT = MriReconstructionToolbox
 
@@ -135,8 +135,8 @@ end
     using Random
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_operator, get_encoding_operator, materialize, get_affected_dims, scale_regularization
-    using StructuredOptimization
-    using AbstractOperators
+    using MriReconstructionToolbox.StructuredOptimization
+    using MriReconstructionToolbox.AbstractOperators
 
     const MRT = MriReconstructionToolbox
 
@@ -179,7 +179,7 @@ end
     using Random
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
-    using StructuredOptimization
+    using MriReconstructionToolbox.StructuredOptimization
 
     # Regression: TGV was only ever exercised through hand-built models passed to `solve`, so the
     # public entry point had no coverage. `build_model_with_variables` chose the `normalop_ls` data
@@ -220,8 +220,8 @@ end
     using LinearAlgebra
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_operator, materialize, get_affected_dims, scale_regularization
-    using StructuredOptimization
-    using AbstractOperators
+    using MriReconstructionToolbox.StructuredOptimization
+    using MriReconstructionToolbox.AbstractOperators
 
     const MRT = MriReconstructionToolbox
 
@@ -287,8 +287,8 @@ end
     using LinearAlgebra
     using Random
     using MriReconstructionToolbox
-    using StructuredOptimization
-    using AbstractOperators
+    using MriReconstructionToolbox.StructuredOptimization
+    using MriReconstructionToolbox.AbstractOperators
 
     const MRT = MriReconstructionToolbox
 

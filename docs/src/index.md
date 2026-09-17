@@ -184,8 +184,8 @@ savefig("cs_reconstruction.png"); nothing # hide
 
 ```@example imports
 # The low-level interface is built on packages this one does not reexport.
-using StructuredOptimization
-using WaveletOperators: WaveletOp
+using MriReconstructionToolbox.StructuredOptimization
+using MriReconstructionToolbox.WaveletOperators: WaveletOp
 
 # Prepare encoding operator
 ℳ = get_subsampling_operator(data)

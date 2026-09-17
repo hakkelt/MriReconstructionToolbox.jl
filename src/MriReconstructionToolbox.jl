@@ -3,25 +3,40 @@ module MriReconstructionToolbox
 using LinearAlgebra
 using Random: Random, AbstractRNG
 using Base.Cartesian
-using ProximalOperators
 using ProximalCore
-using ProximalAlgorithms
 import ProgressMeter
-using AbstractOperators
-using AbstractOperators: Sum  # resolve ambiguity with ProximalOperators.Sum
 using NamedDims
-using StructuredOptimization
-using NFFTOperators: NFFTOp, NFFT
+
+# Vendored packages, inlined as submodules so MriReconstructionToolbox has no
+# unregistered dependencies (registration requires every dependency to be
+# registered). OperatorCore and ProximalCore are excluded from this: they stay
+# as normal registered dependencies (see [deps]/[compat] in Project.toml).
+include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "src", "AbstractOperators.jl"))
+include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "ContourletOperators", "src", "ContourletOperators.jl"))
+include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "DSPOperators", "src", "DSPOperators.jl"))
+include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "FFTWOperators", "src", "FFTWOperators.jl"))
+include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "NFFTOperators", "src", "NFFTOperators.jl"))
+include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "WaveletOperators", "src", "WaveletOperators.jl"))
+include(joinpath(@__DIR__, "..", "deps", "ProximalOperators", "src", "ProximalOperators.jl"))
+include(joinpath(@__DIR__, "..", "deps", "ProximalAlgorithms", "src", "ProximalAlgorithms.jl"))
+include(joinpath(@__DIR__, "..", "deps", "StructuredOptimization", "src", "StructuredOptimization.jl"))
+
+using .ProximalOperators
+using .ProximalAlgorithms
+using .AbstractOperators
+using .AbstractOperators: Sum  # resolve ambiguity with ProximalOperators.Sum
+using .StructuredOptimization
+using .NFFTOperators: NFFTOp, NFFT
 
 using NestedThreading: @budgeted_threads, capacity, with_full_threads, with_restricted_threads, with_thread_budget
-using WaveletOperators: WaveletOp, WT, wavelet
-using ContourletOperators: ContourletOp, NSCTOp, ContourletParams, parabolic_levels
-using FFTWOperators: FFTWOperators, DFT, fftshift_op, ifftshift_op, alternate_sign!
+using .WaveletOperators: WaveletOp, WT, wavelet
+using .ContourletOperators: ContourletOp, NSCTOp, ContourletParams, parabolic_levels
+using .FFTWOperators: FFTWOperators, DFT, fftshift_op, ifftshift_op, alternate_sign!
 using RecursiveArrayTools: ArrayPartition
 using FFTW: FFTW, fft, ifft, fftshift, ifftshift
 using ArgCheck: @argcheck
 using Printf: @sprintf
-using Statistics: quantile, median, mean
+using Statistics: quantile, median, mean, std
 using Base.Threads: @threads, @spawn, nthreads
 using StatsBase: sample, ProbabilityWeights
 
@@ -39,6 +54,7 @@ const POGM = ProximalAlgorithms.POGM
 
 # Regularization terms
 export L2Image, L1Image, L1Wavelet2D, L1Wavelet3D, L1Contourlet, TotalVariation2D, TotalVariation3D, L1TemporalFourier, LowRank, RankLimit
+export AnisotropicTotalVariation2D, AnisotropicTotalVariation3D
 export TemporalTotalVariation, JointSparsity, LocallyLowRank, ReferencePrior, NonNegative, BoxConstraint
 export SecondOrderTotalVariation2D, SecondOrderTotalVariation3D, MultiScaleLowRank, StructuredLowRank
 export EdgePreservingRoughness2D, EdgePreservingRoughness3D, TotalGeneralizedVariation2D, TotalGeneralizedVariation3D
@@ -63,25 +79,26 @@ export SPIRiT, SPIRiTConsistency
 export partial_fourier_band
 
 # Acquisition data and signal models
-export AcquisitionInfo, CartesianAcquisitionInfo, PartitionedKSpace
+export AcquisitionInfo, PartitionedKSpace
 export TemporalBasis, KSpaceToImage
 
 # Image decomposition
 export Component, DecomposedImage, components, total_image
 
 # Preprocessing
-export density_compensation, PipeMenonDCF, VoronoiDCF
+export density_compensation, PipeMenonDCF, VoronoiDCF, correct_dcf_edges
 export prewhiten, estimate_noise_covariance
 export compress_coils, SVDCompression, GeometricCompression
 export estimate_sensitivities, SelfCalibrating, AdaptiveCombine, ESPIRiT
 export correct_gradient_delays, estimate_gradient_delays, OpposingSpokes, RING
 
 # Analysis and simulation
-export pseudo_replica
+export pseudo_replica, estimate_snr, snr_masks
 export simulate_acquisition, coil_sensitivities, add_noise
-export UniformRandomSampling, VariableDensitySampling, PoissonDiskSampling, GaussianDistribution, PolynomialDistribution
+export UniformRandomSampling, VariableDensitySampling, PoissonDiskSampling, RegularLatticeSampling, PartialFourierSampling, GaussianDistribution, PolynomialDistribution
 export create_sampling_pattern, to_displayable_mask
 export radial_trajectory, stack_of_stars_trajectory, kooshball_trajectory, spiral_trajectory
+export LinearOrdering, GoldenAngle, TinyGoldenAngle, Archimedean, VariableDensity
 
 # Individual names reexported from dependencies because a non-expert has to type them.
 # Never reexport a whole dependency (NAMING.md rule 6.4).
@@ -91,10 +108,11 @@ export ContourletParams, parabolic_levels # L1Contourlet
 
 # Extension surface: dispatch on these, subtype them, or implement them for a new component.
 # Documented and stable, but not exported.
-public NonCartesianAcquisitionInfo
+public CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
 public Regularization, ReconstructionMethod, IterativeMethod, DirectMethod
 public Scaling, CoilCombination, DataFidelity, Verbosity, ReconstructionExecutor
 public Subsampling, VariableDensityDistribution, PartialFourierFilter
+public RadialOrdering, SpiralVariant
 public is_partitioned, parts, nparts, ragged_dim, to_array_partition
 public DensityCompensation, CoilCompression, SensitivityEstimation, GradientDelay
 public get_operator, materialize, materialize_with_auxiliaries, materialize_all
@@ -178,6 +196,7 @@ include("reconstruction/solve_core.jl")
 include("reconstruction/reconstruct.jl")
 
 include("analysis/pseudo_replica.jl")
+include("analysis/snr.jl")
 
 include("simulation/subsampling.jl")
 include("simulation/sensitivities.jl")

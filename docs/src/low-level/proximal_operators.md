@@ -37,7 +37,7 @@ The following constructors (all exported) cover the majority of regularization n
 ## Quick Usage Examples
 
 ```@example
-using ProximalOperators
+using MriReconstructionToolbox.ProximalOperators
 x = randn(10)
 
 # L1 norm
@@ -79,7 +79,7 @@ Key steps:
 
 ```@example proxops
 import ProximalCore: is_proximable, is_separable, is_convex, is_locally_smooth, prox!, gradient!
-using ProximalOperators
+using MriReconstructionToolbox.ProximalOperators
 using LinearAlgebra: norm
 
 struct MyNormL2{R}

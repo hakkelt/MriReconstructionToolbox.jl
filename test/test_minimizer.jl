@@ -2,7 +2,7 @@
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
-    using AbstractOperators
+    using MriReconstructionToolbox.AbstractOperators
 
     @testset "Eye + L1Image" for threaded in (false, true)
         x = rand(8, 8)
@@ -24,7 +24,7 @@ end
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
-    using AbstractOperators
+    using MriReconstructionToolbox.AbstractOperators
 
     @testset "Eye + L1Image + L2Image" for threaded in (false, true)
         x = rand(6, 6)
@@ -47,7 +47,7 @@ end
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
-    using AbstractOperators
+    using MriReconstructionToolbox.AbstractOperators
 
     @testset "Linear op + L2Image" for threaded in (false, true)
         x = rand(8, 8)
@@ -81,7 +81,7 @@ end
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
     using NamedDims
-    using AbstractOperators
+    using MriReconstructionToolbox.AbstractOperators
 
     @testset "NamedDims y and A" for threaded in (false, true)
         x = rand(8, 8)
@@ -103,7 +103,7 @@ end
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
-    using AbstractOperators
+    using MriReconstructionToolbox.AbstractOperators
 
     @testset "overload parity" for threaded in (false, true)
         x = rand(5, 5)
@@ -134,12 +134,13 @@ end
 end
 
 @testitem "HardConsistency projection fast path vs inner-CG" tags = [:minimizer] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
     using LinearAlgebra
     using ProximalCore
-    using ProximalOperators
+    using MriReconstructionToolbox.ProximalOperators
 
     nx, ny = 16, 16
     x = rand(ComplexF32, nx, ny)
@@ -169,6 +170,7 @@ end
 end
 
 @testitem "Reconstruction with HardConsistency + DouglasRachford" tags = [:minimizer, :reconstruction] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
@@ -190,6 +192,7 @@ end
 end
 
 @testitem "Unregularized Iterative Least-Squares with CGNR" tags = [:minimizer, :reconstruction] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
@@ -220,7 +223,7 @@ end
     nx, ny = 32, 32
     img = zeros(ComplexF32, nx, ny)
     img[10:22, 10:22] .= 1
-    traj = radial_trajectory(64, 64; ordering = :golden_angle)
+    traj = radial_trajectory(64, 64; ordering = GoldenAngle())
     smaps = coil_sensitivities(nx, ny, 4)
     acq = NonCartesianAcquisitionInfo(nothing; trajectory = traj, image_size = (nx, ny), sensitivity_maps = smaps)
     data = simulate_acquisition(img, acq)
@@ -239,6 +242,7 @@ end
 end
 
 @testitem "POGM matches FISTA on a single L1 regularizer" tags = [:minimizer, :reconstruction] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
 
@@ -260,7 +264,53 @@ end
     @test isapprox(pogm_rec, fista_rec; rtol = 1.0e-2, atol = 1.0e-3)
 end
 
+@testitem "POGM survives an under-estimated Lf" tags = [:minimizer, :reconstruction] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo, get_encoding_operator
+    using Test
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox.AbstractOperators: estimate_opnorm
+    using LinearAlgebra: norm
+
+    # POGM's worst-case rate is tight, so a stepsize above `1/Lf` makes it diverge rather than
+    # converge slowly — and `estimate_opnorm`'s power iteration, which is where MRT's `Lf` comes
+    # from, converges from *below*. The adaptive restart of Kim & Fessler (2018) is what keeps
+    # that safe; this pins it, by handing POGM an `Lf` deliberately 15% too small.
+    nx, ny = 32, 32
+    x_true = zeros(ComplexF32, nx, ny)
+    x_true[10:22, 10:22] .= 1
+    acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny))
+    acq_data = simulate_acquisition(x_true, acq)
+
+    reg = L1Image(1.0e-3)
+    L = estimate_opnorm(get_encoding_operator(acq_data))
+    too_small = Float32(0.85 * L^2)
+
+    reference = reconstruct(
+        acq_data, IterativeReconstruction(reg; algorithm = FISTA(maxit = 300), reltol = 0.0);
+        verbosity = Silent(),
+    )
+    with_restart = reconstruct(
+        acq_data,
+        IterativeReconstruction(reg; algorithm = POGM(Lf = too_small, maxit = 300), reltol = 0.0);
+        verbosity = Silent(),
+    )
+    without_restart = reconstruct(
+        acq_data,
+        IterativeReconstruction(
+            reg; algorithm = POGM(Lf = too_small, adaptive_restart = false, maxit = 300),
+            reltol = 0.0,
+        );
+        verbosity = Silent(),
+    )
+
+    @test all(isfinite, with_restart)
+    @test isapprox(with_restart, reference; rtol = 5.0e-2, atol = 1.0e-2)
+    # Without the restart the same run leaves the neighbourhood of the solution entirely.
+    @test norm(without_restart .- reference) > 10 * norm(with_restart .- reference)
+end
+
 @testitem "NoFidelity and error handling" tags = [:minimizer] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
@@ -277,6 +327,7 @@ end
 end
 
 @testitem "Diagnostic ArgumentError on single-solver parse failure" tags = [:minimizer, :reconstruction] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
@@ -301,10 +352,11 @@ end
 end
 
 @testitem "Preconditioned CGNR: λ is honoured and convergence accelerates" tags = [:minimizer, :reconstruction] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
-    using AbstractOperators: DiagOp
+    using MriReconstructionToolbox.AbstractOperators: DiagOp
     using LinearAlgebra
     using Random
 
@@ -364,7 +416,7 @@ end
             reconstruct(
                 data,
                 IterativeReconstruction(
-                    L2Image(λ); algorithm = CGNR(; tol = 1.0e-14, kwargs...), maxit = k, tol = nothing,
+                    L2Image(λ); algorithm = CGNR(; tol = 1.0e-14, kwargs...), maxit = k, reltol = nothing,
                     fidelity = L2Loss(),
                 );
                 verbosity = Silent(),

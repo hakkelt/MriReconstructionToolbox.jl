@@ -91,11 +91,11 @@ Pkg.add(url="https://github.com/hakkelt/AbstractOperators.jl", subdir="WaveletOp
 ### Simple Operator Example
 
 ```@setup imports
-using AbstractOperators, FFTW, FFTWOperators, LinearAlgebra
+using MriReconstructionToolbox.AbstractOperators, FFTW, MriReconstructionToolbox.FFTWOperators, LinearAlgebra
 ```
 
 ```@repl imports
-using AbstractOperators, FFTW, FFTWOperators, LinearAlgebra
+using MriReconstructionToolbox.AbstractOperators, FFTW, MriReconstructionToolbox.FFTWOperators, LinearAlgebra
 
 nx, ny = 64, 64
 F = ℱ = DFT(ComplexF32, (nx, ny)) # A 2D DFT operator for 64x64 images
@@ -173,7 +173,7 @@ println("Image size: $(size(x)), k-space size: $(size(ksp))")
 You can easily define custom operators for domain-specific operations. Here's a minimal example:
 
 ```julia
-using AbstractOperators
+using MriReconstructionToolbox.AbstractOperators
 
 # Define the operator struct
 struct MyCustomLinOp{N,M,D,C} <: LinearOperator
@@ -305,7 +305,7 @@ MriReconstructionToolbox.jl is built entirely on AbstractOperators.jl. All encod
 𝒲 = MyCustomWavelet(...)  # Your custom operator
 
 # Build optimization problem
-using StructuredOptimization
+using MriReconstructionToolbox.StructuredOptimization
 v = Variable(𝒜' * ksp)  # Initial guess
 
 # Solve custom problem

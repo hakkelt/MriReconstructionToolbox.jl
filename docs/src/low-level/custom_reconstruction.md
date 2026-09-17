@@ -39,12 +39,12 @@ We build a toy reconstruction with two variables and two regularizers:
 - Data fidelity: simple least-squares to synthetic observation `b`.
 
 ```@example so
-using StructuredOptimization
-using AbstractOperators
-using ProximalOperators
-using WaveletOperators: WaveletOp, WT, wavelet
+using MriReconstructionToolbox.StructuredOptimization
+using MriReconstructionToolbox.AbstractOperators
+using MriReconstructionToolbox.ProximalOperators
+using MriReconstructionToolbox.WaveletOperators: WaveletOp, WT, wavelet
 using SparseArrays: sprandn
-using ProximalAlgorithms: FastForwardBackward, PANOCplus
+using MriReconstructionToolbox.ProximalAlgorithms: FastForwardBackward, PANOCplus
 
 # Problem size (kept small for docs)
 nx, ny = 32, 32
@@ -110,10 +110,10 @@ println("L1 term: ", round(val_l1, digits=4), "; Nuclear term: ", round(val_nuc,
 ## Anatomy: Basics in One Place
 
 ```@example so
-using StructuredOptimization
-using AbstractOperators
-using ProximalOperators
-using ProximalAlgorithms: FastForwardBackward
+using MriReconstructionToolbox.StructuredOptimization
+using MriReconstructionToolbox.AbstractOperators
+using MriReconstructionToolbox.ProximalOperators
+using MriReconstructionToolbox.ProximalAlgorithms: FastForwardBackward
 
 # Variables and access
 u = Variable(10); v = Variable(10)

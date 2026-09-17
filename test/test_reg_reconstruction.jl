@@ -7,7 +7,7 @@ using TestItems
     using MriReconstructionToolbox: Regularization
     using NamedDims
     using Random
-    using AbstractOperators
+    using MriReconstructionToolbox.AbstractOperators
 
     Random.seed!(42)
     nx, ny, nt = 16, 16, 6

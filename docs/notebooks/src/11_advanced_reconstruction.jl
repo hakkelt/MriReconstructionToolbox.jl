@@ -35,13 +35,13 @@ using MriReconstructionToolbox
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, create_tubes_phantom, MRISheppLoganIntensities, TubesIntensities, TubesMask
 using MIRTjim: jim
 using Plots
-using AbstractOperators: Hankel
+using MriReconstructionToolbox.AbstractOperators: Hankel
 using NamedDims
 using LinearAlgebra
 using Statistics
 using Random
 
-Random.seed!(0)
+Random.seed!(0);
 
 # %% [markdown]
 # `img_pi`, `sens` and `acq_pi` below are the same R = 2, 8-channel, 24-line-ACS phantom setup
@@ -61,7 +61,7 @@ mask_pi[acs] .= true
 acq_pi = add_noise(
     simulate_acquisition(
         img_pi,
-        CartesianAcquisitionInfo(;
+        AcquisitionInfo(;
             is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_pi), sensitivity_maps = sens
         )
     );
@@ -83,8 +83,10 @@ acq_pi = add_noise(
 # constraint says the measurements are *exact*. That is why the comparison below is run on
 # noiseless data first — and why the second cell then shows what noise does to it.
 #
-# The algorithms named below (`DouglasRachford`, `FISTA`) are picked because they accept the
-# corresponding term; notebook 6 covers which solver goes with which problem.
+# The algorithms named below (`DouglasRachford`, `POGM`) are picked because they accept the
+# corresponding term; notebook 6 covers which solver goes with which problem. `POGM` is the
+# default proximal-gradient solver, and is named explicitly here only so the comparison reads as
+# a statement about the *fidelity term* with everything else held fixed.
 
 # %%
 # A 4x variable-density mask, first with exact (noiseless) measurements.
@@ -97,22 +99,20 @@ acq_us = AcquisitionInfo(;
 data_clean = simulate_acquisition(img_pi, acq_us)
 data_us = add_noise(data_clean; snr_db = 30)
 
-x_l2 = reconstruct(data_clean, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40); verbosity = Silent())
+x_l2 = reconstruct(data_clean, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40))
 x_hc = reconstruct(
     data_clean,
     IterativeReconstruction(
         L1Wavelet2D(2.0f-3); fidelity = HardConsistency(maxit = 20),
         algorithm = DouglasRachford(), maxit = 40
-    );
-    verbosity = Silent()
+    )
 )
 x_nf = reconstruct(
     data_clean,
-    IterativeReconstruction(L1Wavelet2D(2.0f-3); fidelity = NoFidelity(), algorithm = FISTA(), maxit = 20);
-    verbosity = Silent()
+    IterativeReconstruction(L1Wavelet2D(2.0f-3); fidelity = NoFidelity(), algorithm = POGM(), maxit = 20)
 )
 
-println("zero-filled     ", round(nrmse(reconstruct(data_clean; verbosity = Silent()), img_pi), digits = 4))
+println("zero-filled     ", round(nrmse(reconstruct(data_clean), img_pi), digits = 4))
 println("L2Loss          ", round(nrmse(x_l2, img_pi), digits = 4))
 println("HardConsistency ", round(nrmse(x_hc, img_pi), digits = 4))
 println("NoFidelity      ", round(nrmse(x_nf, img_pi), digits = 4), "   (denoising of the initial estimate)")
@@ -147,15 +147,14 @@ for label in ("noiseless", "SNR 30 dB")
             IterativeReconstruction(
                 L1Wavelet2D(2.0f-3); fidelity = HardConsistency(maxit = 20),
                 algorithm = DouglasRachford(), maxit = maxit
-            );
-            verbosity = Silent()
+            )
         )
         round(nrmse(x̂, img_pi), digits = 4)
     end
     println(rpad(label, 12), " HardConsistency NRMSE at maxit = 10 / 40 / 100: ", join(errs, "  "))
 end
 
-x_l2_noisy = reconstruct(data_us, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40); verbosity = Silent())
+x_l2_noisy = reconstruct(data_us, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40))
 println("SNR 30 dB    L2Loss NRMSE at maxit = 40:                ", round(nrmse(x_l2_noisy, img_pi), digits = 4))
 
 # %% [markdown]
@@ -375,8 +374,8 @@ data_dyn = add_noise(simulate_acquisition(series, acq_dyn); snr_db = 25)
 println("k-space: ", size(data_dyn.kspace_data), " ", dimnames(data_dyn.kspace_data))
 
 # %%
-x_zf_dyn = reconstruct(data_dyn; verbosity = Silent())
-x_cg_dyn = reconstruct(data_dyn, IterativeReconstruction(; algorithm = CGNR(), maxit = 40); verbosity = Silent())
+x_zf_dyn = reconstruct(data_dyn)
+x_cg_dyn = reconstruct(data_dyn, IterativeReconstruction(; algorithm = CGNR(), maxit = 40))
 
 println("zero-filled           ", round(nrmse(x_zf_dyn, series), digits = 4))
 println("CG, no signal model   ", round(nrmse(x_cg_dyn, series), digits = 4))
@@ -388,8 +387,7 @@ for K in (1, 2, 4, 8)
         IterativeReconstruction(;
             signal_model = TemporalBasis(Φ_full[:, 1:K]; time_dim = :time),
             algorithm = CGNR(), maxit = 40
-        );
-        verbosity = Silent()
+        )
     )
     subspace_recons[K] = x̂
     println("TemporalBasis, K = ", rpad(K, 2), "   ", round(nrmse(x̂, series), digits = 4))
@@ -485,8 +483,7 @@ x_ksp = reconstruct(
     acq_pi,
     IterativeReconstruction(;
         signal_model = KSpaceToImage(AdjointSensitivity()), algorithm = CGNR(), maxit = 10
-    );
-    verbosity = Silent()
+    )
 )
 println("KSpaceToImage, no k-space prior  ", round(nrmse(x_ksp, img_pi), digits = 4))
 
@@ -500,9 +497,10 @@ x_ksp_spirit = reconstruct(
     IterativeReconstruction(
         SPIRiTConsistency(kernel; λ = 1.0);
         signal_model = KSpaceToImage(RootSumSquares()),
-        fidelity = HardConsistency(), algorithm = FISTA(adaptive = true), maxit = 30
-    );
-    verbosity = Silent()
+        # POGM carries the gradient-based adaptive restart by default, which is what the
+        # `FISTA(adaptive = true)` this cell used to name was after.
+        fidelity = HardConsistency(), algorithm = POGM(), maxit = 30
+    )
 )
 println("KSpaceToImage + SPIRiTConsistency ", round(nrmse(x_ksp_spirit, img_pi), digits = 4))
 
@@ -549,7 +547,7 @@ println("sampled ky lines: ", sum(mask_cl[2]), " / ", Ny, "  (no ACS block)")
 acq_cl_maps = add_noise(
     simulate_acquisition(
         img_pi,
-        CartesianAcquisitionInfo(;
+        AcquisitionInfo(;
             is3D = false, image_size = (Nx, Ny), subsampling = mask_cl, sensitivity_maps = sens
         )
     );
@@ -558,13 +556,13 @@ acq_cl_maps = add_noise(
 
 # The reconstruction is handed the coil data and nothing else -- rebuilding the acquisition
 # without `sensitivity_maps` is what makes this calibrationless.
-acq_cl = CartesianAcquisitionInfo(
+acq_cl = AcquisitionInfo(
     acq_cl_maps.kspace_data; is3D = false, image_size = (Nx, Ny), subsampling = mask_cl
 )
 
 # Without maps, `DirectReconstruction` returns the individual coil images, so combine them here.
 rss(x) = sqrt.(dropdims(sum(abs2, unname(x); dims = 3); dims = 3))
-x_zf = rss(reconstruct(acq_cl, DirectReconstruction(); verbosity = Silent()))
+x_zf = rss(reconstruct(acq_cl, DirectReconstruction()))
 println("zero-filled RSS  ", round(nrmse(x_zf, img_pi), digits = 4))
 
 # %% [markdown]
@@ -594,8 +592,7 @@ slr(reg) = reconstruct(
     acq_cl,
     IterativeReconstruction(
         reg; signal_model = KSpaceToImage(RootSumSquares()), algorithm = ADMM(), maxit = 40
-    );
-    verbosity = Silent()
+    )
 )
 
 x_loraks = slr(StructuredLowRank(; λ = 1.0f-2, window = (5, 5)))     # convex, LORAKS-C
@@ -617,21 +614,38 @@ side_by_side(
 # nuclear norm shrinks *every* singular value, including the ones carrying signal, so it pays a
 # bias for its convexity.
 #
-# !!! warning "`max_rank` gives up convexity"
-#     A rank cap is a projection onto a non-convex set, and it is applied to the lifted matrix
-#     rather than to k-space itself, so a splitting algorithm using it is a heuristic: there is no
-#     convergence guarantee, and the answer depends on where the iteration starts. The `λ` form is
-#     convex and will not surprise you. Treat a good SAKE result as "this initialization worked",
-#     not as "this is the global optimum".
+# > ⚠️ **`max_rank` gives up convexity.**
+# > A rank cap is a projection onto a non-convex set, and it is applied to the lifted matrix
+# > rather than to k-space itself, so a splitting algorithm using it is a heuristic: there is no
+# > convergence guarantee, and the answer depends on where the iteration starts. The `λ` form is
+# > convex and will not surprise you. Treat a good SAKE result as "this initialization worked",
+# > not as "this is the global optimum".
 #
 # Two practical notes:
 #
 # - Cost is one economy SVD of the lifted matrix per iteration — here a
 #   $(N_x - 4)(N_y - 4) \times 25 N_c$ matrix — so the `window` is the knob that decides whether
 #   this is affordable. `(5, 5)` or `(6, 6)` in 2D, `(4, 4, 4)` in 3D.
-# - Only the plain block-Hankel structure is implemented (`structure = :c`). LORAKS' S- and
-#   G-matrices, which additionally impose conjugate symmetry and phase constraints, are not
-#   available.
+# - `structure` chooses *which* matrix is lifted, and the three available are not
+#   interchangeable — they encode different priors:
+#   - `:c` (the default, used above) — the plain block-Hankel (C) matrix. Low rank through the
+#     coil relations, and through limited spatial support. This is SAKE / LORAKS-C / ALOHA, and
+#     the only structure `weights` (section 2.4) applies to.
+#   - `:s` — LORAKS' S-matrix, which reads k-space on both sides of DC and is low rank when the
+#     image *phase* varies smoothly. That is the phase constraint of P-LORAKS, and it needs no
+#     phase calibration. Because it constrains phase rather than coil relations, it is useful on
+#     single-channel data too, where `:c` has almost nothing to work with.
+#   - `:g` — Haldar's other phase construction, the G-matrix. Offered as the weaker sibling of
+#     `:s`: by the paper's own analysis `G` is rank-deficient but not necessarily *low* rank
+#     unless the support is limited as well, so prefer `:s` unless you are reproducing G-matrix
+#     results.
+#
+#   `:s` and `:g` are real matrices with twice the rows and columns of `C`, so their prox costs
+#   about 2.7× as much per iteration (76 ms against ~210 ms on a 64²×8 slab with a `(5, 5)`
+#   window). LORAKS proper imposes both constraints at once, which here means two `Component`
+#   terms — one `:c`, one `:s` — each with its own `λ`.
+# - `kspace_center` tells `:s` and `:g` where DC sits. It defaults to MRT's centered convention
+#   (`N ÷ 2 + 1`); data declared with `shifted_kspace_dims`, where DC is at index 1, has to say so.
 
 
 # %% [markdown]
@@ -675,20 +689,54 @@ side_by_side(
 # %% [markdown]
 # ## References
 #
-# - Shin P. J. *et al.*, *Calibrationless parallel imaging reconstruction based on structured
-#   low-rank matrix completion*, Magn. Reson. Med. 72:959–970 (2014). — SAKE.
-# - Haldar J. P., *Low-rank modeling of local k-space neighborhoods (LORAKS) for constrained MRI*,
-#   IEEE Trans. Med. Imaging 33:668–681 (2014). — LORAKS.
-# - Jin K. H., Lee D., Ye J. C., *A general framework for compressed sensing and parallel MRI
-#   using annihilating filter based low-rank Hankel matrix*, IEEE Trans. Comput. Imaging
-#   2(4):480–495 (2016). — ALOHA, the `weights` argument.
-# - Liang Z.-P., *Spatiotemporal imaging with partially separable functions*, ISBI 2007, 988–991.
-# - Pedersen H. *et al.*, *k-t PCA: temporally constrained k-t BLAST reconstruction using principal
-#   component analysis*, Magn. Reson. Med. 62:706–716 (2009).
-# - Petzschner F. H. *et al.*, *Fast MR parameter mapping using k-t principal component analysis*,
-#   Magn. Reson. Med. 66:706–716 (2011).
-# - Tamir J. I. *et al.*, *T2 shuffling: sharp, multicontrast, volumetric fast spin-echo imaging*,
-#   Magn. Reson. Med. 77:180–195 (2017).
+# [1] P. J. Shin, P. E. Z. Larson, M. A. Ohliger, M. Elad, J. M. Pauly, D. B. Vigneron, and
+# M. Lustig, "Calibrationless parallel imaging reconstruction based on structured low-rank matrix
+# completion," *Magnetic Resonance in Medicine*, vol. 72, no. 4, pp. 959–970, 2014,
+# doi: [10.1002/mrm.24997](https://doi.org/10.1002/mrm.24997)
+# — SAKE.
+#
+# [2] J. P. Haldar, "Low-rank modeling of local k-space neighborhoods (LORAKS) for constrained
+# MRI," *IEEE Transactions on Medical Imaging*, vol. 33, no. 3, pp. 668–681, 2014,
+# doi: [10.1109/TMI.2013.2293974](https://doi.org/10.1109/TMI.2013.2293974)
+# — LORAKS.
+#
+# [3] K. H. Jin, D. Lee, and J. C. Ye, "A general framework for compressed sensing and parallel MRI
+# using annihilating filter based low-rank Hankel matrix," *IEEE Transactions on Computational
+# Imaging*, vol. 2, no. 4, pp. 480–495, 2016,
+# doi: [10.1109/TCI.2016.2601296](https://doi.org/10.1109/TCI.2016.2601296)
+# ([arXiv:1504.00532](https://arxiv.org/abs/1504.00532), open access) — ALOHA, the `weights`
+# argument.
+#
+# [4] Z.-P. Liang, "Spatiotemporal imaging with partially separable functions," in *Proc. IEEE
+# International Symposium on Biomedical Imaging (ISBI)*, 2007, pp. 988–991,
+# doi: [10.1109/ISBI.2007.357020](https://doi.org/10.1109/ISBI.2007.357020).
+#
+# [5] H. Pedersen, S. Kozerke, S. Ringgaard, K. Nehrke, and W. Y. Kim, "k-t PCA: Temporally
+# constrained k-t BLAST reconstruction using principal component analysis," *Magnetic Resonance in
+# Medicine*, vol. 62, no. 3, pp. 706–716, 2009,
+# doi: [10.1002/mrm.22052](https://doi.org/10.1002/mrm.22052).
+#
+# [6] F. H. Petzschner, I. P. Ponce, M. Blaimer, P. M. Jakob, and F. A. Breuer, "Fast MR parameter
+# mapping using k-t principal component analysis," *Magnetic Resonance in Medicine*, vol. 66,
+# no. 3, pp. 706–716, 2011, doi: [10.1002/mrm.22826](https://doi.org/10.1002/mrm.22826).
+#
+# [7] J. I. Tamir, M. Uecker, W. Chen, P. Lai, M. T. Alley, S. S. Vasanawala, and M. Lustig,
+# "T2 shuffling: Sharp, multicontrast, volumetric fast spin-echo imaging," *Magnetic Resonance in
+# Medicine*, vol. 77, no. 1, pp. 180–195, 2017,
+# doi: [10.1002/mrm.26102](https://doi.org/10.1002/mrm.26102).
+
+# %% [markdown]
+# ## Further reading
+#
+# From *Questions and Answers in MRI*:
+#
+# - [Parallel imaging: the two types](https://mriquestions.com/two-types-of-pi.html) — the
+#   image-domain / k-space-domain split the signal models here sit on either side of.
+# - [Partial Fourier](https://mriquestions.com/partial-fourier.html) and
+#   [phase conjugate symmetry](https://mriquestions.com/phase-symmetry.html) — the symmetry the
+#   structured low-rank methods exploit without being told about it.
+# - [Compressed sensing](https://mriquestions.com/compressed-sensing.html) — the background for
+#   calibrationless reconstruction.
 
 # %% [markdown]
 # ## Environment

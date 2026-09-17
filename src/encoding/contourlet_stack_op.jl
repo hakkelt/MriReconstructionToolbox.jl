@@ -1,6 +1,6 @@
 import Base: size
 import LinearAlgebra: mul!
-import AbstractOperators: domain_type, codomain_type, fun_name, is_thread_safe, is_invertible
+import .AbstractOperators: domain_type, codomain_type, fun_name, is_thread_safe, is_invertible
 
 """
     StackedNSCTOp(T, op)
