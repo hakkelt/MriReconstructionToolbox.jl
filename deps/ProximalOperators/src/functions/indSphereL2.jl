@@ -3,17 +3,20 @@
 export IndSphereL2
 
 """
-    IndSphereL2(r=1)
+    IndSphereL2(r=1; threaded=true)
 
 Return the indicator function of the Euclidean sphere
 ```math
 S = \\{ x : \\|x\\| = r \\},
 ```
 where ``\\|\\cdot\\|`` is the ``L_2`` (Euclidean) norm. Parameter `r` must be positive.
+
+`threaded = false` forbids this operator from using more than one thread; see
+[`is_threaded`](@ref).
 """
-struct IndSphereL2{R}
+struct IndSphereL2{R, Th}
     r::R
-    function IndSphereL2{R}(r::R) where R
+    function IndSphereL2{R, Th}(r::R) where {R, Th}
         if r <= 0
             error("parameter r must be positive")
         else
@@ -24,7 +27,9 @@ end
 
 is_set_indicator(f::Type{<:IndSphereL2}) = true
 
-IndSphereL2(r::R=1) where R = IndSphereL2{R}(r)
+@threadable IndSphereL2{<:Any, Th} MemoryBound
+
+IndSphereL2(r::R=1; threaded::Bool=true) where R = IndSphereL2{R, threaded}(r)
 
 function (f::IndSphereL2)(x)
     R = real(eltype(x))
@@ -39,9 +44,7 @@ function prox!(y, f::IndSphereL2, x, gamma)
     normx = norm(x)
     if normx > 0 # zero-zero?
         scal = f.r/normx
-        for k in eachindex(x)
-            y[k] = scal*x[k]
-        end
+        map_prox!(f, y, xk -> scal * xk, x)
     else
         normy = R(0)
         for k in eachindex(x)

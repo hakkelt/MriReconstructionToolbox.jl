@@ -27,11 +27,36 @@ I.e. when when `scaling=true`, let `X,Y` be matrices and
 
 then `prox!(Y, f, X)` is equivalent to `prox!(y, f, x)`.
 """
-struct IndPSD
+struct IndPSD{B}
     scaling::Bool
+    buf::B
 end
 
-IndPSD(; scaling=false) = IndPSD(scaling)
+IndPSD(scaling::Bool) = IndPSD{Nothing}(scaling, nothing)
+IndPSD(; scaling=false, buf=nothing) = IndPSD{typeof(buf)}(scaling, buf)
+
+sym_uplo(c::Char) = c == 'U' ? (:U) : (:L)
+
+# `eigen` copies its argument internally; `eigen!` on an owned copy does the
+# same amount of work with one allocation less. The eigenvalues/vectors are
+# still allocated by LAPACK on every call.
+preallocate(f::IndPSD, X::Union{Symmetric, Hermitian}) = IndPSD(
+    scaling = f.scaling,
+    buf = (sig = input_signature(X), data = similar(parent(X))),
+)
+
+function preallocate(f::IndPSD, x::AbstractVector{Float64})
+    n = Int(sqrt(1/4 + 2*length(x)) - 1/2)
+    return IndPSD(
+        scaling = f.scaling,
+        buf = (
+            sig = input_signature(x),
+            W = similar(x, n),
+            M1 = similar(x, n, n),
+            M2 = similar(x, n, n),
+        ),
+    )
+end
 
 function (::IndPSD)(X::Union{Symmetric, Hermitian})
     R = real(eltype(X))
@@ -48,10 +73,18 @@ end
 is_convex(f::Type{<:IndPSD}) = true
 is_cone_indicator(f::Type{<:IndPSD}) = true
 
-function prox!(Y::Union{Symmetric, Hermitian}, ::IndPSD, X::Union{Symmetric, Hermitian}, gamma)
+function prox!(Y::Union{Symmetric, Hermitian}, f::IndPSD, X::Union{Symmetric, Hermitian}, gamma)
+    # Falls back to the host when the storage has no device factorization. The question is
+    # asked of the method table rather than of the array type: `svd!` exists for a `CuMatrix`
+    # and this then runs natively on the device, while a backend that has not implemented it
+    # is served correctly by a round-trip instead of failing.
+    runs_natively(eigen!, X) || return host_prox!(Y, f, X, gamma)
     R = real(eltype(X))
     n = size(X, 1)
-    F = eigen(X)
+    b = get_buffers(f, X)
+    copyto!(b.data, parent(X))
+    Xc = X isa Symmetric ? Symmetric(b.data, sym_uplo(X.uplo)) : Hermitian(b.data, sym_uplo(X.uplo))
+    F = eigen!(Xc)
     for i in eachindex(F.values)
         F.values[i] = max.(R(0), F.values[i])
     end
@@ -110,13 +143,15 @@ function prox!(y::AbstractVector{Float64}, f::IndPSD, x::AbstractVector{Float64}
     # If scaling, scale diagonal
     f.scaling && scale_diagonal!(y, sqrt(2))
 
+    b = get_buffers(f, x)
+
     (W, Z) = dspevV!(:L, y)
     # NonNeg eigenvalues
-    W = max.(W, 0.0)
+    b.W .= max.(W, 0.0)
     # Equivalent to Z*diagm(W) without constructing W matrix
-    M = Z.*W'
+    b.M1 .= Z .* b.W'
     # Now let M = Z*diagm(W)*Z'
-    M = M*Z'
+    M = mul!(b.M2, b.M1, Z')
     n = length(W)
     k = firstindex(y)
     # Store lower diagonal of M in y
@@ -180,6 +215,11 @@ function (f::IndPSD)(X::AbstractMatrix{R}) where R <: Real
 end
     
 function prox!(y::AbstractMatrix{R}, f::IndPSD, x::AbstractMatrix{R}, gamma) where R <: Real
+    # Falls back to the host when the storage has no device factorization. The question is
+    # asked of the method table rather than of the array type: `svd!` exists for a `CuMatrix`
+    # and this then runs natively on the device, while a backend that has not implemented it
+    # is served correctly by a round-trip instead of failing.
+    runs_natively(eigen!, x) || return host_prox!(y, f, x, gamma)
     prox!(Symmetric(y), f, Symmetric(x), gamma)
 end
 
@@ -192,9 +232,17 @@ function (f::IndPSD)(X::AbstractMatrix{C}) where C <: Complex
 end
     
 function prox!(y::AbstractMatrix{C}, f::IndPSD, x::AbstractMatrix{C}, gamma) where C <: Complex
+    # Falls back to the host when the storage has no device factorization. The question is
+    # asked of the method table rather than of the array type: `svd!` exists for a `CuMatrix`
+    # and this then runs natively on the device, while a backend that has not implemented it
+    # is served correctly by a round-trip instead of failing.
+    runs_natively(eigen!, x) || return host_prox!(y, f, x, gamma)
     prox!(Hermitian(y), f, Hermitian(x), gamma)
 end
 
 function prox_naive(f::IndPSD, X::AbstractMatrix{C}, gamma) where C <: Complex
     prox_naive(f, Hermitian(X), gamma)
 end
+
+# see `device_tier` in src/utilities/hostfallback.jl
+device_tier(::Type{<:IndPSD}) = :device_lapack

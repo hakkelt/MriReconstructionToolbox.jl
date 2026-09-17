@@ -55,3 +55,6 @@ function prox_naive(f::IndGraphSparse, c, d, gamma)
   xy = f.F \ res
   return xy[1:f.n], xy[f.n + 1:f.n + f.m], real(eltype(c))(0)
 end
+
+# see `device_tier` in src/utilities/hostfallback.jl
+device_tier(::Type{<:IndGraphSparse}) = :host

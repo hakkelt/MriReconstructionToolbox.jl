@@ -3,6 +3,9 @@
 module ProximalOperators
 
 using LinearAlgebra
+using LoopVectorization: LoopVectorization
+using NestedThreading: NestedThreading
+using Polyester: Polyester
 import ProximalCore: prox, prox!, gradient, gradient!
 import ProximalCore:
 	is_convex,
@@ -30,6 +33,11 @@ export prox, prox!, gradient, gradient!
 
 # Utilities
 
+include("utilities/execution.jl")
+include("utilities/kernels.jl")
+include("utilities/bisection.jl")
+include("utilities/hostfallback.jl")
+include("utilities/preallocation.jl")
 include("utilities/approx_inequality.jl")
 include("utilities/linops.jl")
 include("utilities/symmetricpacked.jl")

@@ -25,6 +25,10 @@ is_convex(f::Type{<:IndSOC}) = true
 is_cone_indicator(f::Type{<:IndSOC}) = true
 
 function prox!(y, ::IndSOC, x, gamma)
+    # A single cone is a handful of scalars, so there is nothing here to parallelise and the
+    # few reads would each be a separate device transfer. Applied to *many* cones through
+    # `SlicedSeparableSum` the slices parallelise at that level instead.
+    is_cpu_storage(typeof(x)) || return host_prox!(y, IndSOC(), x, gamma)
     T = eltype(x)
     @views nx = norm(x[2:end])
     t = x[1]
@@ -87,6 +91,10 @@ is_convex(f::IndRotatedSOC) = true
 is_set_indicator(f::IndRotatedSOC) = true
 
 function prox!(y, ::IndRotatedSOC, x, gamma)
+    # A single cone is a handful of scalars, so there is nothing here to parallelise and the
+    # few reads would each be a separate device transfer. Applied to *many* cones through
+    # `SlicedSeparableSum` the slices parallelise at that level instead.
+    is_cpu_storage(typeof(x)) || return host_prox!(y, IndRotatedSOC(), x, gamma)
     T = eltype(x)
     # sin(pi/4) = cos(pi/4) = 0.7071067811865475
     # rotate x ccw by pi/4
@@ -127,3 +135,7 @@ function prox_naive(::IndRotatedSOC, x, gamma)
     y[2] = y2
     return y, eltype(x)(0)
 end
+
+# see `device_tier` in src/utilities/hostfallback.jl
+device_tier(::Type{<:IndSOC}) = :host
+device_tier(::Type{<:IndRotatedSOC}) = :host

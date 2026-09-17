@@ -3,17 +3,20 @@
 export IndBallL2
 
 """
-    IndBallL2(r=1.0)
+    IndBallL2(r=1.0; threaded=true)
 
 Return the indicator function of the Euclidean ball
 ```math
 S = \\{ x : \\|x\\| \\leq r \\},
 ```
 where ``\\|\\cdot\\|`` is the ``L_2`` (Euclidean) norm. Parameter `r` must be positive.
+
+`threaded = false` forbids this operator from using more than one thread; see
+[`is_threaded`](@ref).
 """
-struct IndBallL2{R}
+struct IndBallL2{R, Th}
     r::R
-    function IndBallL2{R}(r::R) where {R}
+    function IndBallL2{R, Th}(r::R) where {R, Th}
         if r <= 0
             error("parameter r must be positive")
         else
@@ -25,7 +28,9 @@ end
 is_convex(f::Type{<:IndBallL2}) = true
 is_set_indicator(f::Type{<:IndBallL2}) = true
 
-IndBallL2(r::R=1) where R = IndBallL2{R}(r)
+@threadable IndBallL2{<:Any, Th} MemoryBound
+
+IndBallL2(r::R=1; threaded::Bool=true) where R = IndBallL2{R, threaded}(r)
 
 function (f::IndBallL2)(x)
     R = real(eltype(x))
@@ -42,9 +47,7 @@ function prox!(y, f::IndBallL2, x, gamma)
         y .= x
         return R(0)
     end
-    for k in eachindex(x)
-        y[k] = scal*x[k]
-    end
+    map_prox!(f, y, xk -> scal * xk, x)
     return R(0)
 end
 

@@ -3,18 +3,21 @@
 export ElasticNet
 
 """
-    ElasticNet(μ=1, λ=1)
+    ElasticNet(μ=1, λ=1; threaded=true)
 
 Return the function
 ```math
 f(x) = μ\\|x\\|_1 + (λ/2)\\|x\\|^2,
 ```
 for nonnegative parameters `μ` and `λ`.
+
+`threaded = false` forbids this operator from using more than one thread; see
+[`is_threaded`](@ref).
 """
-struct ElasticNet{R, S}
+struct ElasticNet{R, S, Th}
     mu::R
     lambda::S
-    function ElasticNet{R, S}(mu::R, lambda::S) where {R, S}
+    function ElasticNet{R, S, Th}(mu::R, lambda::S) where {R, S, Th}
         if lambda < 0 || mu < 0
             error("parameters `μ` and `λ` must be nonnegative")
         else
@@ -28,7 +31,10 @@ is_proximable(f::Type{<:ElasticNet}) = true
 is_convex(f::Type{<:ElasticNet}) = true
 is_locally_smooth(f::Type{<:ElasticNet}) = true
 
-ElasticNet(mu::R=1, lambda::S=1) where {R, S} = ElasticNet{R, S}(mu, lambda)
+@threadable ElasticNet{<:Any, <:Any, Th} Arithmetic
+
+ElasticNet(mu::R=1, lambda::S=1; threaded::Bool=true) where {R, S} =
+    ElasticNet{R, S, threaded}(mu, lambda)
 
 function (f::ElasticNet)(x)
     R = real(eltype(x))
@@ -37,57 +43,51 @@ end
 
 function prox!(y, f::ElasticNet, x, gamma)
     R = real(eltype(x))
-    sqnorm2x = R(0)
-    norm1x = R(0)
     gm = gamma * f.mu
     gl = gamma * f.lambda
-    for i in eachindex(x)
-        y[i] = (x[i] + (x[i] <= -gm ? gm : (x[i] >= gm ? -gm : -x[i])))/(1 + gl)
-        sqnorm2x += abs2(y[i])
-        norm1x += abs(y[i])
-    end
+    sqnorm2x, norm1x = map_reduce2_prox!(
+        f, y, xi -> (xi + (xi <= -gm ? gm : (xi >= gm ? -gm : -xi))) / (1 + gl), abs2, abs, x
+    )
     return f.mu * norm1x + f.lambda / R(2) * sqnorm2x
 end
 
 function prox!(y, f::ElasticNet, x, gamma::AbstractArray)
     R = real(eltype(x))
-    sqnorm2x = R(0)
-    norm1x = R(0)
-    for i in eachindex(x)
-        gm = gamma[i] * f.mu
-        gl = gamma[i] * f.lambda
-        y[i] = (x[i] + (x[i] <= -gm ? gm : (x[i] >= gm ? -gm : -x[i])))/(1 + gl)
-        sqnorm2x += abs2(y[i])
-        norm1x += abs(y[i])
-    end
+    mu, lambda = f.mu, f.lambda
+    sqnorm2x, norm1x = map_reduce2_prox_idx!(
+        f, y,
+        function (i, xi)
+            gm = gamma[i] * mu
+            gl = gamma[i] * lambda
+            (xi + (xi <= -gm ? gm : (xi >= gm ? -gm : -xi))) / (1 + gl)
+        end,
+        abs2, abs, x,
+    )
     return f.mu * norm1x + f.lambda / R(2) * sqnorm2x
 end
 
 function prox!(y, f::ElasticNet, x::AbstractArray{<:Complex}, gamma)
     R = real(eltype(x))
-    sqnorm2x = R(0)
-    norm1x = R(0)
     gm = gamma * f.mu
     gl = gamma * f.lambda
-    for i in eachindex(x)
-        y[i] = sign(x[i]) * max(0, abs(x[i]) - gm)/(1 + gl)
-        sqnorm2x += abs2(y[i])
-        norm1x += abs(y[i])
-    end
+    sqnorm2x, norm1x = map_reduce2_prox!(
+        f, y, xi -> sign(xi) * max(0, abs(xi) - gm) / (1 + gl), abs2, abs, x
+    )
     return f.mu * norm1x + f.lambda / R(2) * sqnorm2x
 end
 
 function prox!(y, f::ElasticNet, x::AbstractArray{<:Complex}, gamma::AbstractArray)
     R = real(eltype(x))
-    sqnorm2x = R(0)
-    norm1x = R(0)
-    for i in eachindex(x)
-        gm = gamma[i] * f.mu
-        gl = gamma[i] * f.lambda
-        y[i] = sign(x[i]) * max(0, abs(x[i]) - gm)/(1 + gl)
-        sqnorm2x += abs2(y[i])
-        norm1x += abs(y[i])
-    end
+    mu, lambda = f.mu, f.lambda
+    sqnorm2x, norm1x = map_reduce2_prox_idx!(
+        f, y,
+        function (i, xi)
+            gm = gamma[i] * mu
+            gl = gamma[i] * lambda
+            sign(xi) * max(0, abs(xi) - gm) / (1 + gl)
+        end,
+        abs2, abs, x,
+    )
     return f.mu * norm1x + f.lambda / R(2) * sqnorm2x
 end
 

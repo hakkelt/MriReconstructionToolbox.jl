@@ -28,7 +28,8 @@ IndBallL0(r::I) where {I} = IndBallL0{I}(r)
 
 function (f::IndBallL0)(x)
     R = real(eltype(x))
-    if count(!isequal(0), x) > f.r
+    # a `sum` over a 0/1 map rather than `count`, which is not available on every backend
+    if sum(xi -> iszero(xi) ? 0 : 1, x) > f.r
         return R(Inf)
     end
     return R(0)

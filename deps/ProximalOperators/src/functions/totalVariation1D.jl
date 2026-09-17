@@ -28,6 +28,7 @@ is_positively_homogeneous(f::Type{<:TotalVariation1D}) = true
 TotalVariation1D(lambda::R=1) where R = TotalVariation1D{R}(lambda)
 
 function (f::TotalVariation1D)(x)
+    is_cpu_storage(typeof(x)) || return host_call(f, x)
     return f.lambda * norm(x[2:end] - x[1:end-1], 1)
 end
 
@@ -107,7 +108,14 @@ function tvnorm_prox_condat(y, x, lambda)
 end
 
 function prox!(y, f::TotalVariation1D, x, gamma)
+    # No device formulation: the algorithm is sequential in the length of the input, with no
+    # independent blocks to spread over work-items. Correct on device storage via a
+    # round-trip, and documented as such rather than refused.
+    is_cpu_storage(typeof(x)) || return host_prox!(y, f, x, gamma)
     a = gamma * f.lambda
     tvnorm_prox_condat(y, x, a)
     return f.lambda * norm(y[2:end] - y[1:end-1], 1)
 end
+
+# see `device_tier` in src/utilities/hostfallback.jl
+device_tier(::Type{<:TotalVariation1D}) = :host

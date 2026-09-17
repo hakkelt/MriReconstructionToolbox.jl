@@ -3,48 +3,49 @@
 export IndBinary
 
 """
-    IndBinary(low, up)
+    IndBinary(low, up; threaded=true)
 
 Return the indicator function of the set
 ```math
 S = \\{ x : x_i = low_i\\ \\text{or}\\ x_i = up_i \\},
 ```
 Parameters `low` and `up` can be either scalars or arrays of the same dimension as the space.
+
+`threaded = false` forbids this operator from using more than one thread; see
+[`is_threaded`](@ref).
 """
-struct IndBinary{T, S}
+struct IndBinary{T, S, Th}
     low::T
     high::S
 end
 
+IndBinary(low::T, high::S; threaded::Bool=true) where {T, S} =
+    IndBinary{T, S, threaded}(low, high)
+
 is_set_indicator(f::Type{<:IndBinary}) = true
+
+@threadable IndBinary{<:Any, <:Any, Th} Arithmetic
 
 IndBinary() = IndBinary(0, 1)
 
-IndBinary_low(f::IndBinary{<: Number, S}, i) where S = f.low
-IndBinary_low(f::IndBinary{T, S}, i) where {T, S} = f.low[i]
-IndBinary_high(f::IndBinary{T, <: Number}, i) where T = f.high
-IndBinary_high(f::IndBinary{T, S}, i) where {T, S} = f.high[i]
+IndBinary_low(f::IndBinary{<: Number}, i) = f.low
+IndBinary_low(f::IndBinary, i) = f.low[i]
+IndBinary_high(f::IndBinary{<:Any, <: Number}, i) = f.high
+IndBinary_high(f::IndBinary, i) = f.high[i]
 
 function (f::IndBinary)(x)
     R = real(eltype(x))
-    for k in eachindex(x)
-        if x[k] != IndBinary_low(f, k) && x[k] != IndBinary_high(f, k)
-            return R(Inf)
-        end
-    end
-    return R(0)
+    ok = all_satisfy_idx(f, (k, xk) -> xk == IndBinary_low(f, k) || xk == IndBinary_high(f, k), x)
+    return ok ? R(0) : R(Inf)
 end
 
 function prox!(y, f::IndBinary, x, gamma)
-    for k in eachindex(x)
-        low = eltype(y)(IndBinary_low(f, k))
-        high = eltype(y)(IndBinary_high(f, k))
-        if abs(x[k] - low) < abs(x[k] - high)
-            y[k] = low
-        else
-            y[k] = high
-        end
-    end
+    T = eltype(y)
+    map_prox_idx!(f, y, function (k, xk)
+        low = T(IndBinary_low(f, k))
+        high = T(IndBinary_high(f, k))
+        abs(xk - low) < abs(xk - high) ? low : high
+    end, x)
     return real(eltype(x))(0)
 end
 

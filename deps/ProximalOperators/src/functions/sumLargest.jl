@@ -23,10 +23,17 @@ function (f::Conjugate{<:IndSimplex})(x)
     if f.f.a == 1
         return maximum(x)
     end
-    p = if ndims(x) == 1
-        partialsortperm(x, 1:f.f.a, rev=true)
-    else
-        partialsortperm(x[:], 1:f.f.a, rev=true)
+    if is_cpu_storage(typeof(x))
+        p = if ndims(x) == 1
+            partialsortperm(x, 1:f.f.a, rev=true)
+        else
+            partialsortperm(x[:], 1:f.f.a, rev=true)
+        end
+        return sum(x[p])
     end
-    return sum(x[p])
+    # Storage that cannot be sorted: bisect for the threshold that leaves the `a` largest
+    # entries above it, then add those up. Two reductions per step, no indexing.
+    R = real(eltype(x))
+    tau = kth_largest(x, f.f.a, R)
+    return sum(xi -> xi > tau ? xi : zero(eltype(x)), x)
 end
