@@ -157,11 +157,11 @@ function _tgv_materialize(reg::_TGV, x::Variable{T}, ::Val{N}; threaded::Bool) w
     λ = R(reg.λ)
     λ₀ = R(reg.λ * reg.ratio)
     first_order = StructuredOptimization.Term(
-        1, NormL21(λ, 2), ∇_inner * x - w,
+        1, NormL21(λ, 2; threaded), ∇_inner * x - w,
         @sprintf("%g ⋅ ‖∇%s − w‖₂,₁", λ, get_name(x))
     )
     second_order = StructuredOptimization.Term(
-        1, NormL21(λ₀, 2), ℰ * w,
+        1, NormL21(λ₀, 2; threaded), ℰ * w,
         @sprintf("%g ⋅ ‖Ɛw‖₂,₁", λ₀)
     )
     return first_order + second_order, (w,)

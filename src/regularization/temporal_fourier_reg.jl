@@ -52,5 +52,5 @@ function materialize(reg::L1TemporalFourier, x::Variable{T}; threaded::Bool) whe
     else
         @sprintf "%g ⋅ ‖𝓕ₜ%s‖₁" λ get_name(x)
     end
-    return StructuredOptimization.Term(1, NormL1(λ), op * x, repr)
+    return StructuredOptimization.Term(1, NormL1(λ; threaded), op * x, repr)
 end

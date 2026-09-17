@@ -90,7 +90,7 @@ end
 function materialize(reg::NonNegative, x::Variable{T}; threaded::Bool) where {T}
     _check_complex_handling(reg, T)
     op = get_operator(reg, ~x; threaded)
-    f = T <: Real ? IndNonnegative() : IndRealNonnegative()
+    f = T <: Real ? IndNonnegative(; threaded) : IndRealNonnegative()
     return StructuredOptimization.Term(1, f, op * x, "$(get_name(x)) ≥ 0")
 end
 
@@ -111,6 +111,6 @@ function materialize(reg::BoxConstraint, x::Variable{T}; threaded::Bool) where {
     else
         @sprintf "%g ≤ %s ≤ %g" lower get_name(x) upper
     end
-    f = T <: Real ? IndBox(lower, upper) : IndRealBox(lower, upper)
+    f = T <: Real ? IndBox(lower, upper; threaded) : IndRealBox(lower, upper)
     return StructuredOptimization.Term(1, f, op * x, repr)
 end

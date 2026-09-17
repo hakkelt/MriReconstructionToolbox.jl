@@ -55,5 +55,5 @@ function materialize(reg::L1Contourlet, x::Variable{T}; threaded::Bool) where {T
     𝒩 = get_operator(reg, ~x; threaded)
     λ = real(T)(reg.λ)
     repr = @sprintf "%g ⋅ ‖𝒩%s‖₁" λ get_name(x)
-    return StructuredOptimization.Term(1, NormL1(λ), 𝒩 * x, repr)
+    return StructuredOptimization.Term(1, NormL1(λ; threaded), 𝒩 * x, repr)
 end
