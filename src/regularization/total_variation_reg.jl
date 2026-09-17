@@ -81,6 +81,75 @@ end
 # λ‖Δx‖_{2,1} is homogeneous of degree 1, so λ scales linearly (see scale_regularization docstring).
 scale_regularization(reg::TotalVariation3D, factor::Real) = TotalVariation3D(reg.λ .* factor)
 
+"""
+	AnisotropicTotalVariation2D(λ)
+
+Create an anisotropic Total Variation regularization term for 2D images with parameter `λ`. The
+regularization term is `λ‖Δx‖_1 = λ(‖Δˣx‖_1 + ‖Δʸx‖_1)`, the sum of the absolute finite differences
+along each spatial dimension separately.
+
+Unlike [`TotalVariation2D`](@ref), which sums the ℓ₂ norm of the gradient *vector* at each pixel,
+this term treats the directional derivatives independently. The penalty is therefore separable, so
+its proximal map is plain soft thresholding of the difference coefficients — cheaper, and usable by
+a proximal-gradient algorithm. The price is that the penalty is no longer rotation invariant: it is
+smallest for edges aligned with the sampling grid, so it favours horizontal and vertical structure
+and can leave a faint blocky, axis-aligned texture on diagonal edges.
+
+# Arguments
+- `λ`: Regularization parameter, must be a scalar.
+"""
+struct AnisotropicTotalVariation2D{T} <: Regularization
+    λ::T
+end
+
+"""
+	AnisotropicTotalVariation3D(λ)
+
+Create an anisotropic Total Variation regularization term for 3D images with parameter `λ`: the
+regularization term is `λ(‖Δˣx‖_1 + ‖Δʸx‖_1 + ‖Δᶻx‖_1)`. See [`AnisotropicTotalVariation2D`](@ref)
+for how it differs from the isotropic [`TotalVariation3D`](@ref).
+
+# Arguments
+- `λ`: Regularization parameter, must be a scalar.
+"""
+struct AnisotropicTotalVariation3D{T} <: Regularization
+    λ::T
+end
+
+# The operator is the same finite-difference stack as the isotropic terms; only the norm applied
+# to it differs, so the operator and dimension bookkeeping are shared verbatim.
+function get_operator(::AnisotropicTotalVariation2D, x::AbstractArray; threaded::Bool = true)
+    @argcheck ndims(x) >= 2 "AnisotropicTotalVariation2D requires at least 2 dimensions in the input variable"
+    return get_operator(TotalVariation2D(0), x; threaded)
+end
+function get_operator(::AnisotropicTotalVariation3D, x::AbstractArray; threaded::Bool = true)
+    @argcheck ndims(x) >= 3 "AnisotropicTotalVariation3D requires at least 3 dimensions in the input variable"
+    return get_operator(TotalVariation3D(0), x; threaded)
+end
+
+get_affected_dims(::AnisotropicTotalVariation2D, ::Nothing, image_dims) = image_dims[1:2]
+get_affected_dims(::AnisotropicTotalVariation3D, ::Nothing, image_dims) = image_dims[1:3]
+
+# λ‖Δx‖₁ is homogeneous of degree 1, so λ scales linearly (see scale_regularization docstring).
+scale_regularization(reg::AnisotropicTotalVariation2D, factor::Real) = AnisotropicTotalVariation2D(reg.λ .* factor)
+scale_regularization(reg::AnisotropicTotalVariation3D, factor::Real) = AnisotropicTotalVariation3D(reg.λ .* factor)
+
+function materialize(
+        reg::Union{AnisotropicTotalVariation2D, AnisotropicTotalVariation3D}, x::Variable{T}; threaded::Bool
+    ) where {T}
+    Δ = get_operator(reg, ~x; threaded)
+    Δ = _collapse_direction_axes(Δ, ~x, size(Δ, 1)[end])
+    λ = real(T)(reg.λ)
+    λ_repr = @sprintf "%g" λ
+    x_repr = get_name(x)
+    repr = if reg isa AnisotropicTotalVariation2D
+        "$λ_repr ⋅ (‖Δˣ$(x_repr)‖₁ + ‖Δʸ$(x_repr)‖₁)"
+    else
+        "$λ_repr ⋅ (‖Δˣ$(x_repr)‖₁ + ‖Δʸ$(x_repr)‖₁ + ‖Δᶻ$(x_repr)‖₁)"
+    end
+    return StructuredOptimization.Term(1, NormL1(λ), Δ * x, repr)
+end
+
 function materialize(
         reg::Union{TotalVariation2D, TotalVariation3D}, x::Variable{T}; threaded::Bool
     ) where {T}

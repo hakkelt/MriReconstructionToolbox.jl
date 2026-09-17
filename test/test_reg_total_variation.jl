@@ -292,3 +292,66 @@ end
     outs = MriReconstructionToolbox.get_operator(TotalVariation2D(0.1), xs; threaded = false) * xs
     @test dimnames(outs) == (:x, :y, :direction)
 end
+
+@testitem "AnisotropicTotalVariation2D/3D" tags = [:regularization] setup = [RegTestSetup, FiniteDiff] begin
+    using LinearAlgebra
+
+    @testset "operator matches the isotropic term's" for threaded in [false, true]
+        x = rand(10, 10)
+        aniso = MriReconstructionToolbox.get_operator(AnisotropicTotalVariation2D(0.1), x; threaded)
+        iso = MriReconstructionToolbox.get_operator(TotalVariation2D(0.1), x; threaded)
+        @test aniso * x == iso * x
+        @test aniso * x == manual_gradient(x, 2)
+    end
+
+    @testset "value is the ℓ₁ norm of the differences, not the ℓ₂,₁ norm" for threaded in [false, true]
+        x = rand(8, 8)
+        λ = 0.3
+        grad = MriReconstructionToolbox.get_operator(AnisotropicTotalVariation2D(λ), x; threaded) * x
+        value = MriReconstructionToolbox.calculate(AnisotropicTotalVariation2D(λ), x; threaded)
+        @test value ≈ λ * sum(abs, grad)
+        # The two norms coincide only when one direction is zero everywhere, so on a generic image
+        # the anisotropic value is the strictly larger of the two.
+        @test value > MriReconstructionToolbox.calculate(TotalVariation2D(λ), x; threaded)
+    end
+
+    @testset "3D" for threaded in [false, true]
+        x = rand(6, 6, 6)
+        λ = 0.2
+        grad = MriReconstructionToolbox.get_operator(AnisotropicTotalVariation3D(λ), x; threaded) * x
+        @test grad == manual_gradient(x, 3)
+        @test MriReconstructionToolbox.calculate(AnisotropicTotalVariation3D(λ), x; threaded) ≈ λ * sum(abs, grad)
+    end
+
+    @testset "constant image has zero variation" begin
+        @test MriReconstructionToolbox.calculate(AnisotropicTotalVariation2D(0.5), ones(6, 6); threaded = false) ≈ 0.0 atol = 1.0e-10
+    end
+
+    @testset "dimension checks" begin
+        @test_throws ArgumentError MriReconstructionToolbox.get_operator(AnisotropicTotalVariation2D(0.1), rand(10); threaded = false)
+        @test_throws ArgumentError MriReconstructionToolbox.get_operator(AnisotropicTotalVariation3D(0.1), rand(10, 10); threaded = false)
+    end
+
+    @testset "scale_regularization scales λ linearly" begin
+        @test MriReconstructionToolbox.scale_regularization(AnisotropicTotalVariation2D(0.1), 2).λ ≈ 0.2
+        @test MriReconstructionToolbox.scale_regularization(AnisotropicTotalVariation3D(0.1), 2).λ ≈ 0.2
+    end
+
+    @testset "reconstructs an undersampled acquisition" begin
+        nx, ny, nc = 32, 32, 4
+        img = zeros(ComplexF32, nx, ny)
+        img[9:24, 9:24] .= 1.0f0                 # piecewise constant: the ideal case for TV
+        data = simulate_acquisition(
+            img,
+            AcquisitionInfo(;
+                is3D = false, image_size = (nx, ny),
+                sensitivity_maps = coil_sensitivities(nx, ny, nc),
+                subsampling = create_sampling_pattern(RegularLatticeSampling(2; center_fraction = 0.2), (nx, ny)),
+            )
+        )
+        x̂ = reconstruct(data, IterativeReconstruction(AnisotropicTotalVariation2D(1.0f-3); maxit = 40); verbosity = Silent())
+        x_direct = reconstruct(data; verbosity = Silent())
+        @test size(x̂) == (nx, ny)
+        @test norm(x̂ - img) / norm(img) < norm(x_direct - img) / norm(img)
+    end
+end
