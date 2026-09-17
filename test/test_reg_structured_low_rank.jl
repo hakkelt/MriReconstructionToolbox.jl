@@ -256,6 +256,7 @@ using TestItems
 end
 
 @testitem "StructuredLowRank end-to-end calibrationless" tags = [:regularization, :reconstruction, :integration] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using MriReconstructionToolbox
     using LinearAlgebra, NamedDims
     import Random
@@ -507,6 +508,7 @@ end
 end
 
 @testitem "LORAKS S-matrix partial-Fourier reconstruction" tags = [:regularization, :reconstruction, :integration] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using MriReconstructionToolbox
     using LinearAlgebra, NamedDims
 

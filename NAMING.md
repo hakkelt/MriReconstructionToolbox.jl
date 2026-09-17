@@ -144,18 +144,23 @@ built-in pieces. Anything needed only to *extend* the package is `public` but no
 - algorithm aliases (`ISTA`, `FISTA`, `ADMM`, `DouglasRachford`, `CG`, `CGNR`);
 - the concrete members of each configuration family — coil combination, data fidelity, verbosity,
   scaling, executors, partial-Fourier filters, sampling patterns, preprocessing methods;
-- `AcquisitionInfo` and its two concrete subtypes;
+- `AcquisitionInfo` (its two concrete subtypes are `public`, see Rule 6.2);
 - the top-level verbs, `ReconstructionConfig`, `Component`, `DecomposedImage`, `components`,
   `total_image`, `TemporalBasis`, `KSpaceToImage`, `pseudo_replica`.
 
 `AcquisitionInfo` is exported despite being abstract because it is also a constructor: it dispatches
 to `CartesianAcquisitionInfo` or `NonCartesianAcquisitionInfo`. That is the *only* justification for
-exporting an abstract type — an abstract type with no constructor methods is `public` at most.
+exporting an abstract type — an abstract type with no constructor methods is `public` at most. The
+two concrete subtypes are *not* exported, in either direction: `AcquisitionInfo(...)` reaches both,
+so a user never has to name one, and naming one is a statement about dispatch — the extension
+surface, which Rule 6.2 governs.
 
 **Rule 6.2 — `public`** for the extension surface: everything a third party must dispatch on,
 subtype, or implement.
 
 - every abstract supertype without a constructor (Rule 4.1's list);
+- `CartesianAcquisitionInfo` and `NonCartesianAcquisitionInfo`, the two concrete acquisition types
+  `AcquisitionInfo(...)` dispatches to;
 - the regularizer interface: `get_operator`, `materialize`, `materialize_with_auxiliaries`,
   `materialize_all`, `get_affected_dims`, `scale_regularization`, `bind_dimensions`, `calculate`;
 - the method interface hook a new method may override: `check_applicable`;
