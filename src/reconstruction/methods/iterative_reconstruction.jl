@@ -24,15 +24,16 @@ what changed and how to migrate a `λ` tuned against the previous behaviour.
 - `disable_normalop_optimization::Bool`: Disable normal operator optimization (default `false`).
 - `maxit::Union{Nothing, Int}`: Maximum solver iterations (default `100`). `nothing` defers to the
   `algorithm`'s own `maxit`, which is how an `algorithm = FISTA(maxit = 500)` is honoured.
-- `tol::Union{Nothing, Float64}`: Stopping tolerance (default `1e-4`), **relative**: the absolute
-  threshold handed to the solver is `max(10*eps, tol * maximum(abs, x₀))`, which differs from
-  `ProximalAlgorithms`' absolute `tol`. `0` disables the tolerance test and `nothing` defers to the
+- `reltol::Union{Nothing, Float64}`: Stopping tolerance (default `1e-4`), **relative** — hence the
+  name: the absolute threshold handed to the solver is `max(10*eps, reltol * maximum(abs, x₀))`,
+  where `x₀` is the initial guess. `ProximalAlgorithms`' own `tol` is absolute, which is why this
+  one is not called `tol`. `0` disables the tolerance test and `nothing` defers to the
   `algorithm`'s own stopping criterion.
 
 - `on_iteration::C`: `nothing` (default) or a callback invoked once per solver iteration; see
   "Observing the iterations" below.
 
-`maxit` and `tol` are keyword-only on every constructor; regularization terms are the only
+`maxit` and `reltol` are keyword-only on every constructor; regularization terms are the only
 positional arguments.
 
 # Observing the iterations
@@ -52,7 +53,7 @@ Algorithm-dependent fields are present only where the algorithm actually compute
 
 | algorithm | extra fields |
 |---|---|
-| `FISTA` / `ISTA` (forward-backward) | `objective`, `smooth_value`, `nonsmooth_value`, `stepsize`, `fixed_point_residual` |
+| `POGM` / `FISTA` / `ISTA` (forward-backward) | `objective`, `smooth_value`, `nonsmooth_value`, `stepsize`, `fixed_point_residual` |
 | `DouglasRachford` | `objective`, `smooth_value`, `nonsmooth_value`, `fixed_point_residual` |
 | `ADMM` | `primal_residual`, `dual_residual`, `iterate_change` |
 | `CG` / `CGNR` | `residual_norm` |
@@ -80,7 +81,7 @@ struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M, C} <: Iterat
     disable_operator_normalization::Union{Nothing, Bool}
     disable_normalop_optimization::Bool
     maxit::Union{Nothing, Int}
-    tol::Union{Nothing, Float64}
+    reltol::Union{Nothing, Float64}
     on_iteration::C
 
     function IterativeReconstruction(
@@ -92,7 +93,7 @@ struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M, C} <: Iterat
             disable_operator_normalization::Union{Nothing, Bool},
             disable_normalop_optimization::Bool;
             maxit::Union{Nothing, Integer} = 100,
-            tol::Union{Nothing, Real} = 1.0e-4,
+            reltol::Union{Nothing, Real} = 1.0e-4,
             on_iteration::C = nothing,
         ) where {F <: DataFidelity, M, C}
         _validate_regularization(regularization)
@@ -105,7 +106,7 @@ struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M, C} <: Iterat
             disable_operator_normalization,
             disable_normalop_optimization,
             isnothing(maxit) ? nothing : Int(maxit),
-            isnothing(tol) ? nothing : Float64(tol),
+            isnothing(reltol) ? nothing : Float64(reltol),
             on_iteration,
         )
     end
@@ -130,7 +131,7 @@ function IterativeReconstruction(;
         disable_operator_normalization::Union{Nothing, Bool} = nothing,
         disable_normalop_optimization::Bool = false,
         maxit::Union{Nothing, Integer} = 100,
-        tol::Union{Nothing, Real} = 1.0e-4,
+        reltol::Union{Nothing, Real} = 1.0e-4,
         on_iteration = nothing,
     )
     regs_tuple = ensure_tuple(regularization)
@@ -143,7 +144,7 @@ function IterativeReconstruction(;
         disable_operator_normalization,
         disable_normalop_optimization;
         maxit,
-        tol,
+        reltol,
         on_iteration,
     )
 end
@@ -159,7 +160,7 @@ function IterativeReconstruction(
         disable_operator_normalization::Union{Nothing, Bool} = nothing,
         disable_normalop_optimization::Bool = false,
         maxit::Union{Nothing, Integer} = 100,
-        tol::Union{Nothing, Real} = 1.0e-4,
+        reltol::Union{Nothing, Real} = 1.0e-4,
         on_iteration = nothing,
     )
     regs = (reg, more_regs...)
@@ -172,7 +173,7 @@ function IterativeReconstruction(
         disable_operator_normalization,
         disable_normalop_optimization,
         maxit,
-        tol,
+        reltol,
         on_iteration,
     )
 end
@@ -190,7 +191,7 @@ function _with_regularization(method::IterativeReconstruction, regs::Tuple)
         disable_operator_normalization = method.disable_operator_normalization,
         disable_normalop_optimization = method.disable_normalop_optimization,
         maxit = method.maxit,
-        tol = method.tol,
+        reltol = method.reltol,
         on_iteration = method.on_iteration,
     )
 end

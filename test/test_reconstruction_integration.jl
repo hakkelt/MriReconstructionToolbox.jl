@@ -192,7 +192,7 @@ end
     using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
     using LinearAlgebra
     using GeometricMedicalPhantoms
-    using StructuredOptimization
+    using MriReconstructionToolbox.StructuredOptimization
 
     @testset "Multi-slice 2D Reconstruction" begin
         @testset "Multi-slice with task splitting" begin
@@ -314,15 +314,15 @@ end
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern)
             acq_with_data = simulate_acquisition(img_true, acq)
 
-            img1 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 20, tol = 1.0e-5); verbosity = Silent()))
+            img1 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 20, reltol = 1.0e-5); verbosity = Silent()))
             config = ReconstructionConfig(; verbosity = Silent())
-            img2 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 20, tol = 1.0e-5); config = config))
+            img2 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 20, reltol = 1.0e-5); config = config))
             # Iteration control lives on the method, so extending a `ReconstructionConfig` cannot change it;
             # only the run settings come from the config.
             config_base = ReconstructionConfig(; verbosity = Verbose())
-            img3 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 20, tol = 1.0e-5); config = config_base, verbosity = Silent()))
+            img3 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 20, reltol = 1.0e-5); config = config_base, verbosity = Silent()))
 
-            # `maxit`/`tol`/`verbose` at `reconstruct` are rejected, not silently ignored.
+            # `maxit`/`reltol`/`verbose` at `reconstruct` are rejected, not silently ignored.
             @test_throws ArgumentError reconstruct(acq_with_data, DirectReconstruction(); maxit = 5)
             @test_throws ArgumentError reconstruct(acq_with_data, DirectReconstruction(); tol = 1.0e-5)
             @test_throws ArgumentError reconstruct(acq_with_data, DirectReconstruction(); verbose = false)
@@ -381,8 +381,8 @@ end
             scale = MriReconstructionToolbox.get_scale(BartScaling(), acq_with_data, img_true)
             # Only the output shape is checked here, so a single iteration is enough -- 20 iterations
             # bought no extra coverage, just a slower test.
-            img_fixed = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 1, tol = 0.0); scaling = FixedScaling(scale), verbosity = Silent()))
-            img_bart = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 1, tol = 0.0); scaling = BartScaling(), verbosity = Silent()))
+            img_fixed = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 1, reltol = 0.0); scaling = FixedScaling(scale), verbosity = Silent()))
+            img_bart = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 1, reltol = 0.0); scaling = BartScaling(), verbosity = Silent()))
             @test size(img_fixed) == size(img_bart)
         end
     end
@@ -436,7 +436,7 @@ end
     using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
     using LinearAlgebra
     using GeometricMedicalPhantoms
-    using StructuredOptimization
+    using MriReconstructionToolbox.StructuredOptimization
 
     @testset "Operator Options" begin
         @testset "Operator normalization" begin
@@ -728,7 +728,7 @@ end
 @testitem "Per-frame subsampling: one ky mask per frame" tags = [:reconstruction, :integration] begin
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
-    using AbstractOperators: get_normal_op
+    using MriReconstructionToolbox.AbstractOperators: get_normal_op
     using NamedDims: NamedDimsArray, dimnames, unname
     using LinearAlgebra: mul!
     using Random: Xoshiro, randn!
@@ -796,6 +796,7 @@ end
 end
 
 @testitem "Per-frame subsampling: unequal sample counts per frame" tags = [:reconstruction, :integration] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator, parts, nparts, is_partitioned,
         to_array_partition
@@ -867,7 +868,7 @@ end
 
     # ... and so must an iterative solve with a separable regularizer. `NoScaling` because a shared
     # scale across frames is what otherwise separates the joint solve from the per-frame ones.
-    method = IterativeReconstruction(L2Image(1.0f-2); maxit = 300, tol = 1.0f-12)
+    method = IterativeReconstruction(L2Image(1.0f-2); maxit = 300, reltol = 1.0f-12)
     x_l2 = reconstruct(acq, method; verbosity = Silent(), scaling = NoScaling())
     for t in 1:nframes
         acq_t = CartesianAcquisitionInfo(

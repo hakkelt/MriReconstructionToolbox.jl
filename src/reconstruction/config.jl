@@ -10,7 +10,7 @@ keywords rather than silently ignoring them.
 
 Fields (with defaults):
 - `scaling::Scaling = BartScaling()` — scaling applied to operators/data (see also `NoScaling`, `MeasurementBasedScaling`, `FixedScaling`)
-- `verbosity::Verbosity = Verbose()` — output mode: `Silent()`, `ProgressBar()` or `Verbose()`
+- `verbosity::Verbosity = Silent()` — output mode: `Silent()`, `ProgressBar()` or `Verbose()`
 - `threaded::Bool = (Threads.nthreads() > 1)` — enable threaded execution when available
 - `task_executor::Union{Nothing,ReconstructionExecutor} = nothing` — override executor for task splitting
 - `disable_inverse_scale_output::Bool = false` — skip rescaling the final output
@@ -19,8 +19,8 @@ Fields (with defaults):
   slab currently being solved, and surfaced to an `on_iteration` callback as its `slice` field.
   Not meant to be passed by hand.
 
-`verbosity` also accepts `true`/`false` and the symbols `:verbose`, `:progress`, `:silent`,
-which are normalized to the corresponding [`Verbosity`](@ref) via `as_verbosity`.
+`verbosity` also accepts the symbols `:verbose`, `:progress` and `:silent`, which are normalized
+to the corresponding [`Verbosity`](@ref) via `as_verbosity`.
 
 Constructors:
 - `ReconstructionConfig(; kwargs...)` — build from defaults, override selected fields
@@ -33,14 +33,15 @@ using MriReconstructionToolbox
 # Default config
 conf = ReconstructionConfig()
 
-# A progress bar instead of the textual log
+# A reconstruction is silent by default; ask for a progress bar or the textual log
 conf = ReconstructionConfig(; verbosity = ProgressBar())
+conf = ReconstructionConfig(; verbosity = Verbose())
 
 # Extend an existing config
 conf2 = ReconstructionConfig(conf; disable_task_splitting = true)
 
 # Iteration control belongs to the method, not the config
-x̂ = reconstruct(acq, IterativeReconstruction(reg; maxit = 50, tol = 1e-6); config = conf2)
+x̂ = reconstruct(acq, IterativeReconstruction(reg; maxit = 50, reltol = 1e-6); config = conf2)
 ```
 """
 struct ReconstructionConfig
@@ -54,7 +55,7 @@ struct ReconstructionConfig
 
     function ReconstructionConfig(;
             scaling::Scaling = BartScaling(),
-            verbosity = Verbose(),
+            verbosity = Silent(),
             threaded::Bool = nthreads() > 1,
             task_executor::Union{Nothing, ReconstructionExecutor} = nothing,
             disable_inverse_scale_output::Bool = false,
@@ -103,7 +104,8 @@ end
 # parameter went.
 const _METHOD_OWNED_KWARGS = Dict{Symbol, String}(
     :maxit => "Pass `maxit` to the reconstruction method instead, e.g. `IterativeReconstruction(reg; maxit = 50)` or `POCS(; maxit = 20)`.",
-    :tol => "Pass `tol` to the reconstruction method instead, e.g. `IterativeReconstruction(reg; tol = 1e-6)`.",
+    :tol => "The stopping tolerance is `reltol`, and it belongs to the reconstruction method, e.g. `IterativeReconstruction(reg; reltol = 1e-6)`.",
+    :reltol => "Pass `reltol` to the reconstruction method instead, e.g. `IterativeReconstruction(reg; reltol = 1e-6)`.",
     :algorithm => "Pass `algorithm` to `IterativeReconstruction`, e.g. `IterativeReconstruction(reg; algorithm = FISTA())`.",
     :verbose => "Use `verbosity` instead: `verbosity = Verbose()` / `Silent()` / `ProgressBar()`.",
     :printfunc => "Use `verbosity = Verbose(; printfunc = ...)` instead.",

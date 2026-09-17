@@ -23,8 +23,17 @@ abstract type DirectMethod <: ReconstructionMethod end
 	DEFAULT_ALGORITHMS
 
 Default solver tuple dispatched when no specific algorithm is provided.
+
+`POGM` rather than `FISTA` carries the proximal-gradient slot: it has the same problem shape and
+per-iteration cost, and a better worst-case convergence rate, so it is the better default wherever
+either would be picked. `FISTA` remains available as an explicit `algorithm`.
+
+The tuple holds one entry per *problem shape*, not one per algorithm: a candidate whose
+`get_assumptions` duplicates an earlier entry's could never be reached, so `FISTA` and `ISTA` —
+which declare exactly what `POGM` declares — are reached through `algorithm = FISTA()` /
+`algorithm = ISTA()` instead of sitting here as unreachable fallbacks.
 """
-const DEFAULT_ALGORITHMS = (CG(), CGNR(), FISTA(), ADMM(), DouglasRachford())
+const DEFAULT_ALGORITHMS = (CG(), CGNR(), POGM(), ADMM(), DouglasRachford())
 
 """
 	lower(method::ReconstructionMethod)

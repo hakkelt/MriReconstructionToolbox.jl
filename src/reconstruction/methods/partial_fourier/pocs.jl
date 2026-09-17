@@ -6,20 +6,20 @@ Alternates between data consistency in acquired k-space and phase consistency in
 
 # Fields
 - `maxit`: Maximum number of projection iterations (default `20`).
-- `tol`: Relative change in k-space at which the iteration stops early; `0` runs the full
+- `reltol`: Relative change in k-space at which the iteration stops early; `0` runs the full
   `maxit` iterations (default `1e-4`).
 - `coil_combination`: Coil combination method (`AdjointSensitivity()` or `RootSumSquares()`).
 """
 struct POCS{C <: CoilCombination} <: DirectMethod
     maxit::Int
-    tol::Float64
+    reltol::Float64
     coil_combination::C
     function POCS(;
             maxit::Int = 20,
-            tol::Real = 1.0e-4,
+            reltol::Real = 1.0e-4,
             coil_combination::CoilCombination = AdjointSensitivity(),
         )
-        return new{typeof(coil_combination)}(maxit, Float64(tol), coil_combination)
+        return new{typeof(coil_combination)}(maxit, Float64(reltol), coil_combination)
     end
 end
 
@@ -57,12 +57,12 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::POCS; progre
         ksp_updated = _direct_fft(ℱ, img_constrained)
         ksp_next = ifelse.(mask_nd, ksp, ksp_updated)
         isnothing(progress) || progress()
-        # `tol` is relative to the norm of the measured k-space, matching
+        # `reltol` is relative to the norm of the measured k-space, matching
         # `IterativeReconstruction`'s relative tolerance rather than an absolute residual
-        # threshold. `tol = 0` runs the full `maxit` iterations.
+        # threshold. `reltol = 0` runs the full `maxit` iterations.
         Δ = sqrt(sum(abs2, ksp_next .- ksp_pocs))
         ksp_pocs = ksp_next
-        method.tol > 0 && Δ <= method.tol * max(ref_norm, eps(real(eltype(ksp)))) && break
+        method.reltol > 0 && Δ <= method.reltol * max(ref_norm, eps(real(eltype(ksp)))) && break
     end
 
     c_dim = _pf_coil_dim(acq)

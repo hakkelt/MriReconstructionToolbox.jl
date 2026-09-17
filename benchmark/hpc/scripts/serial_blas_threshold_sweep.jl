@@ -78,7 +78,7 @@ function static_case(N; Nc = 8)
     )
     bytes = N * N * sizeof(ComplexF32)
     run = (threaded) -> reconstruct(
-        acq, IterativeReconstruction(regularization = TotalVariation2D(0.01); maxit = MAXIT, tol = 1.0e-5); threaded = threaded, verbosity = Silent())
+        acq, IterativeReconstruction(regularization = TotalVariation2D(0.01); maxit = MAXIT, reltol = 1.0e-5); threaded = threaded, verbosity = Silent())
     return Case(@sprintf("TV %d²", N), bytes, run)
 end
 
@@ -96,7 +96,7 @@ function dynamic_case(N, Nt; Nc = 4)
     )
     bytes = N * N * Nt * sizeof(ComplexF32)
     run = (threaded) -> reconstruct(
-        acq, IterativeReconstruction(regularization = TemporalTotalVariation(0.01; time_dim = :time), maxit = MAXIT, tol = 1.0e-4); threaded = threaded, verbosity = Silent())
+        acq, IterativeReconstruction(regularization = TemporalTotalVariation(0.01; time_dim = :time), maxit = MAXIT, reltol = 1.0e-4); threaded = threaded, verbosity = Silent())
     return Case(@sprintf("tTV %d²×%d", N, Nt), bytes, run)
 end
 

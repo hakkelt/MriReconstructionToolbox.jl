@@ -168,7 +168,7 @@ sp_mri = pyimport("sigpy.mri")
 
         @testset "CG-SENSE" begin
             # MRT CG-SENSE (with tight tolerance to run all 10 iterations)
-            method = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 1.0e-14); maxit = 10, tol = 1.0e-14)
+            method = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 1.0e-14); maxit = 10, reltol = 1.0e-14)
             x_mrt = reconstruct(acq_mc, method)
 
             # Compare MRT CG-SENSE to Ground Truth
@@ -220,7 +220,7 @@ sp_mri = pyimport("sigpy.mri")
             λ_tv = 0.01
 
             # MRT TV
-            method_tv = IterativeReconstruction(regularization = TotalVariation2D(λ_tv); maxit = 30, tol = 1.0e-5)
+            method_tv = IterativeReconstruction(regularization = TotalVariation2D(λ_tv); maxit = 30, reltol = 1.0e-5)
             x_mrt_tv = reconstruct(acq_reg_us, method_tv)
             check_nrmse(x_mrt_tv, img_mc, 0.05; label = "MRT TV vs Ground Truth")
 
@@ -249,7 +249,7 @@ sp_mri = pyimport("sigpy.mri")
             λ_wav = 0.005
 
             # MRT L1-Wavelet
-            method_wav = IterativeReconstruction(regularization = L1Wavelet2D(λ_wav); maxit = 30, tol = 1.0e-5)
+            method_wav = IterativeReconstruction(regularization = L1Wavelet2D(λ_wav); maxit = 30, reltol = 1.0e-5)
             x_mrt_wav = reconstruct(acq_reg_us, method_wav)
             check_nrmse(x_mrt_wav, img_mc, 0.05; label = "MRT Wavelet vs Ground Truth")
 
@@ -269,7 +269,7 @@ sp_mri = pyimport("sigpy.mri")
             λ_tgv = 0.01
 
             # MRT TGV
-            method_tgv = IterativeReconstruction(regularization = TotalGeneralizedVariation2D(λ_tgv; ratio = 2.0); maxit = 30, tol = 1.0e-5)
+            method_tgv = IterativeReconstruction(regularization = TotalGeneralizedVariation2D(λ_tgv; ratio = 2.0); maxit = 30, reltol = 1.0e-5)
             x_mrt_tgv = reconstruct(acq_reg_us, method_tgv)
             check_nrmse(x_mrt_tgv, img_mc, 0.05; label = "MRT TGV vs Ground Truth")
 
@@ -313,7 +313,7 @@ sp_mri = pyimport("sigpy.mri")
             λ_lr = 0.01
 
             # MRT Low-Rank
-            method_lr = IterativeReconstruction(regularization = LowRank(λ_lr; time_dim = :time); maxit = 20, tol = 1.0e-4)
+            method_lr = IterativeReconstruction(regularization = LowRank(λ_lr; time_dim = :time); maxit = 20, reltol = 1.0e-4)
             x_mrt_lr = reconstruct(acq_dyn, method_lr)
             check_nrmse(x_mrt_lr, img_dyn, 0.2; label = "MRT Low-Rank vs Ground Truth")
         end
@@ -322,7 +322,7 @@ sp_mri = pyimport("sigpy.mri")
             λ_llr = 0.01
 
             # MRT Locally Low-Rank
-            method_llr = IterativeReconstruction(regularization = LocallyLowRank(λ_llr; block_size = (8, 8), time_dim = :time); maxit = 20, tol = 1.0e-4)
+            method_llr = IterativeReconstruction(regularization = LocallyLowRank(λ_llr; block_size = (8, 8), time_dim = :time); maxit = 20, reltol = 1.0e-4)
             x_mrt_llr = reconstruct(acq_dyn, method_llr)
             check_nrmse(x_mrt_llr, img_dyn, 0.2; label = "MRT LLR vs Ground Truth")
 
@@ -337,7 +337,7 @@ sp_mri = pyimport("sigpy.mri")
             λ_ttv = 0.01
 
             # MRT Temporal TV
-            method_ttv = IterativeReconstruction(regularization = TemporalTotalVariation(λ_ttv; time_dim = :time); maxit = 20, tol = 1.0e-4)
+            method_ttv = IterativeReconstruction(regularization = TemporalTotalVariation(λ_ttv; time_dim = :time); maxit = 20, reltol = 1.0e-4)
             x_mrt_ttv = reconstruct(acq_dyn, method_ttv)
             check_nrmse(x_mrt_ttv, img_dyn, 0.2; label = "MRT Temporal TV vs Ground Truth")
 

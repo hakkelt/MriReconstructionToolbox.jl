@@ -78,7 +78,10 @@ function _pf_coil_dim(acq::CartesianAcquisitionInfo)
     return ndims(acq.kspace_data) >= 3 ? 3 : 0
 end
 
-function _pf_finalize(acq::CartesianAcquisitionInfo, img_out, coil_reduced::Bool, c_dim::Int)
+# Takes any `AcquisitionInfo`: the partial-Fourier methods that named it only ever pass a
+# Cartesian one, but `DirectReconstruction`'s non-Cartesian coil combination needs exactly the
+# same "drop the reduced axis, then reconcile the image's dimension names" step.
+function _pf_finalize(acq::AcquisitionInfo, img_out, coil_reduced::Bool, c_dim::Int)
     if coil_reduced && c_dim > 0
         img_out = dropdims(img_out; dims = c_dim)
     end
