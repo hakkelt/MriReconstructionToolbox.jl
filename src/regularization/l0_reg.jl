@@ -90,7 +90,7 @@ function materialize(reg::L0Image, x::Variable{T}; threaded::Bool) where {T}
     if reg.threshold !== nothing
         λ = real(T)(reg.threshold)
         repr = @sprintf "%g ⋅ ‖%s‖₀" λ get_name(x)
-        return StructuredOptimization.Term(1, NormL0(λ), op * x, repr)
+        return StructuredOptimization.Term(1, NormL0(λ; threaded), op * x, repr)
     else
         repr = @sprintf "nnz(%s) ≤ %d" get_name(x) reg.count
         return StructuredOptimization.Term(1, IndBallL0(reg.count), op * x, repr)
@@ -149,7 +149,7 @@ function materialize(reg::L0Wavelet2D, x::Variable{T}; threaded::Bool) where {T}
     if reg.threshold !== nothing
         λ = real(T)(reg.threshold)
         repr = @sprintf "%g ⋅ ‖%s%s‖₀" λ _sparsifying_repr(Val(:wavelet2d)) get_name(x)
-        return StructuredOptimization.Term(1, NormL0(λ), op * x, repr)
+        return StructuredOptimization.Term(1, NormL0(λ; threaded), op * x, repr)
     else
         repr = @sprintf "nnz(%s%s) ≤ %d" _sparsifying_repr(Val(:wavelet2d)) get_name(x) reg.count
         return StructuredOptimization.Term(1, IndBallL0(reg.count), op * x, repr)
@@ -208,7 +208,7 @@ function materialize(reg::L0Wavelet3D, x::Variable{T}; threaded::Bool) where {T}
     if reg.threshold !== nothing
         λ = real(T)(reg.threshold)
         repr = @sprintf "%g ⋅ ‖%s%s‖₀" λ _sparsifying_repr(Val(:wavelet3d)) get_name(x)
-        return StructuredOptimization.Term(1, NormL0(λ), op * x, repr)
+        return StructuredOptimization.Term(1, NormL0(λ; threaded), op * x, repr)
     else
         repr = @sprintf "nnz(%s%s) ≤ %d" _sparsifying_repr(Val(:wavelet3d)) get_name(x) reg.count
         return StructuredOptimization.Term(1, IndBallL0(reg.count), op * x, repr)

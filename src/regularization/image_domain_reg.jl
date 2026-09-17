@@ -45,7 +45,7 @@ function materialize(reg::L2Image, x::Variable{T}; threaded::Bool) where {T}
     else
         @sprintf "‖%g ⋅ %s‖₂²" λ get_name(x)
     end
-    return StructuredOptimization.Term(1, SqrNormL2(2 .* λ .^ 2), op * x, repr)
+    return StructuredOptimization.Term(1, SqrNormL2(2 .* λ .^ 2; threaded), op * x, repr)
 end
 
 """
@@ -79,5 +79,5 @@ function materialize(reg::L1Image, x::Variable{T}; threaded::Bool) where {T}
     else
         @sprintf "%g ⋅ ‖%s‖₁" λ get_name(x)
     end
-    return StructuredOptimization.Term(1, NormL1(λ), op * x, repr)
+    return StructuredOptimization.Term(1, NormL1(λ; threaded), op * x, repr)
 end

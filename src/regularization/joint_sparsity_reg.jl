@@ -77,9 +77,9 @@ function materialize(reg::JointSparsity, x::Variable{T}; threaded::Bool) where {
     # dimension. For more than one trailing slice the prox is applied slice by slice, which is exactly the
     # same separable problem.
     f = if trailing == 1
-        NormL21(λ, 2)
+        NormL21(λ, 2; threaded)
     else
-        SlicedSeparableSum(NormL21(λ, 2), Tuple((Colon(), Colon(), i) for i in 1:trailing))
+        SlicedSeparableSum(NormL21(λ, 2; threaded), Tuple((Colon(), Colon(), i) for i in 1:trailing); threaded)
     end
     repr = @sprintf "%g ⋅ ‖%s‖₂,₁" λ get_name(x)
     return StructuredOptimization.Term(1, f, op * x, repr)

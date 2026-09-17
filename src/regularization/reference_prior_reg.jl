@@ -55,5 +55,5 @@ function materialize(reg::ReferencePrior, x::Variable{T}; threaded::Bool) where 
         @sprintf "%g ⋅ ‖%s - xᵣₑ‖₁" λ get_name(x)
     end
     # `Translate(f, b)` evaluates `f(x + b)`, hence the negated reference.
-    return StructuredOptimization.Term(1, Translate(NormL1(λ), -reference), op * x, repr)
+    return StructuredOptimization.Term(1, Translate(NormL1(λ; threaded), -reference), op * x, repr)
 end

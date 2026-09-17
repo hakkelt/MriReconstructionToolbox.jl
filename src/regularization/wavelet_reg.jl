@@ -119,5 +119,5 @@ function materialize(
     else
         @sprintf "%g ⋅ ‖𝒲%s‖₁" λ get_name(x)
     end
-    return StructuredOptimization.Term(1, NormL1(λ), 𝒲 * x, repr)
+    return StructuredOptimization.Term(1, NormL1(λ; threaded), 𝒲 * x, repr)
 end

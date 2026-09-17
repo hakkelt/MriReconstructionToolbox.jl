@@ -147,7 +147,7 @@ function materialize(
     else
         "$λ_repr ⋅ (‖Δˣ$(x_repr)‖₁ + ‖Δʸ$(x_repr)‖₁ + ‖Δᶻ$(x_repr)‖₁)"
     end
-    return StructuredOptimization.Term(1, NormL1(λ), Δ * x, repr)
+    return StructuredOptimization.Term(1, NormL1(λ; threaded), Δ * x, repr)
 end
 
 function materialize(
@@ -164,5 +164,5 @@ function materialize(
     else
         "$λ_repr ⋅ (‖Δˣ$(x_repr)‖₂ + ‖Δʸ$(x_repr)‖₂ + ‖Δᶻ$(x_repr)‖₂)"
     end
-    return StructuredOptimization.Term(1, NormL21(λ, 2), Δ * x, repr)
+    return StructuredOptimization.Term(1, NormL21(λ, 2; threaded), Δ * x, repr)
 end

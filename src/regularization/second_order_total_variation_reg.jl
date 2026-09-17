@@ -111,5 +111,5 @@ function materialize(
     Δ² = _collapse_direction_axes(Δ², ~x, n_spatial^2)
     λ = real(T)(reg.λ)
     repr = @sprintf "%g ⋅ ‖∇²%s‖₂,₁" λ get_name(x)
-    return StructuredOptimization.Term(1, NormL21(λ, 2), Δ² * x, repr)
+    return StructuredOptimization.Term(1, NormL21(λ, 2; threaded), Δ² * x, repr)
 end
