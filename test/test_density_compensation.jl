@@ -1,4 +1,5 @@
 @testitem "Density compensation on Cartesian errors" tags = [:acquisition] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
@@ -136,4 +137,55 @@ end
     corr_vor = abs(dot(vec(rec_vor), vec(img_true))) / (norm(rec_vor) * norm(img_true))
     @test corr_pm > 0.85
     @test corr_vor > 0.5
+end
+
+@testitem "DCF edge correction" tags = [:acquisition, :nfft] begin
+    using Test
+    using MriReconstructionToolbox
+    using NamedDims
+
+    traj = radial_trajectory(128, 64; ordering = GoldenAngle())
+    unnamed(a) = a isa NamedDimsArray ? parent(a) : a
+
+    # How far the outermost weight of each spoke sits from the ramp the interior is on, as a
+    # fraction of it: a smooth continuation gives ≈ 0.
+    function edge_deviation(w)
+        return [
+            let predicted = 2 * Float64(w[6, s]) - Float64(w[7, s])
+                    abs(Float64(w[1, s]) - predicted) / abs(predicted)
+            end for s in axes(w, 2)
+        ]
+    end
+
+    @testset "the jump at the end of each readout is removed" begin
+        for method in (VoronoiDCF, PipeMenonDCF)
+            raw = unnamed(MriReconstructionToolbox.compute_dcf(traj, (128, 128), method(; edge_correction = false)))
+            fixed = unnamed(MriReconstructionToolbox.compute_dcf(traj, (128, 128), method()))
+
+            # Voronoi's unbounded outer cell is the extreme case (tens of times the right weight);
+            # Pipe-Menon's one-sided neighbourhood is milder but still tens of percent off.
+            @test maximum(edge_deviation(raw)) > 0.4
+            @test maximum(edge_deviation(fixed)) < 0.1
+            @test all(>=(0), fixed)
+        end
+    end
+
+    @testset "only the ends of a readout are touched" begin
+        raw = unnamed(MriReconstructionToolbox.compute_dcf(traj, (128, 128), VoronoiDCF(; edge_correction = false)))
+        fixed = unnamed(MriReconstructionToolbox.compute_dcf(traj, (128, 128), VoronoiDCF()))
+        @test fixed[4:(end - 3), :] == raw[4:(end - 3), :]
+    end
+
+    @testset "correct_dcf_edges extrapolates the trend and leaves a short readout alone" begin
+        ramp = repeat(Float64.(1:20), 1, 3)
+        ramp[1, :] .= 99.0
+        ramp[end, :] .= -5.0
+        fixed = correct_dcf_edges(ramp; edge_samples = 1, fit_samples = 5)
+        @test fixed[1, :] ≈ fill(1.0, 3)
+        @test fixed[end, :] ≈ fill(20.0, 3)
+        @test fixed[2:(end - 1), :] == ramp[2:(end - 1), :]
+
+        short = Float64.(1:8)
+        @test correct_dcf_edges(short; edge_samples = 3, fit_samples = 8) === short
+    end
 end
