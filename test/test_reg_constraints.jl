@@ -75,6 +75,7 @@ using TestItems
 end
 
 @testitem "TotalVariation2D + NonNegative(:real) selects ADMM and beats TV alone" tags = [:regularization, :reconstruction, :minimizer] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra: norm

@@ -1,4 +1,5 @@
 @testitem "Pseudo-replica analysis and g-factor maps" tags = [:reconstruction, :acquisition] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
@@ -32,6 +33,7 @@
 end
 
 @testitem "Subspace reconstruction: T2 decay simulation with TemporalBasis" tags = [:reconstruction, :simulation] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra

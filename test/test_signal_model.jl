@@ -1,4 +1,5 @@
 @testitem "Signal model operator: TemporalBasis forward and adjoint" tags = [:encoding, :reconstruction] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: build_encoding_operator, signal_model_operator
@@ -37,6 +38,7 @@
 end
 
 @testitem "build_encoding_operator with signal model" tags = [:encoding] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: build_encoding_operator, signal_model_operator
@@ -63,6 +65,7 @@ end
 end
 
 @testitem "KSpaceToImage signal model: dim queries and encoding operator" tags = [:encoding, :reconstruction] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: build_encoding_operator, signal_model_operator
@@ -91,6 +94,7 @@ end
 end
 
 @testitem "Subspace reconstruction with TemporalBasis identity and permutation" tags = [:reconstruction, :minimizer] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: build_encoding_operator, signal_model_operator
@@ -124,6 +128,7 @@ end
 end
 
 @testitem "Signal model: non-trailing time dimension" tags = [:reconstruction, :minimizer] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: build_encoding_operator, signal_model_operator
