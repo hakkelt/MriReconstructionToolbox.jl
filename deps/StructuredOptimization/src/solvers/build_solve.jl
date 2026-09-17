@@ -1,5 +1,14 @@
 export suggest_algorithm
 
+# Every function `prepare`/`parse_problem` placed in `term_kwargs` (`:f`, `:g`, ...) is called by
+# the solver once per iteration with an `x0`-shaped input (the operator each term is built over
+# always spans the full `variables` tuple), so every term's domain is the same combined space
+# `x0` lives in. `preallocate` is called once here, before the iteration starts, so any scratch
+# space those calls need is allocated once instead of on every iteration; values with nothing to
+# preallocate come back unchanged.
+_preallocate_kwargs(term_kwargs, x0) =
+    Dict(key => preallocate(value, x0) for (key, value) in term_kwargs)
+
 """
 	parse_problem(terms::TermSet, solver::IterativeAlgorithm)
 
@@ -138,7 +147,9 @@ function solve(terms::Union{Term,TermSet}, solvers::Union{<:AbstractVector{Itera
         end
         _, term_kwargs, x = result
         solver = override_parameters(solver; kwargs...)
-        x_star, it = solver(; x0 = ~x, term_kwargs...)
+        x0 = ~x
+        term_kwargs = _preallocate_kwargs(term_kwargs, x0)
+        x_star, it = solver(; x0 = x0, term_kwargs...)
         ~x .= x_star isa Tuple ? x_star[1] : x_star
         return x, it
     end
@@ -160,7 +171,9 @@ function solve(terms::Union{Term,TermSet}, solver::IterativeAlgorithm; kwargs...
 	end
 	_, term_kwargs, x = result
     solver = override_parameters(solver; kwargs...)
-    x_star, it = solver(; x0 = ~x, term_kwargs...)
+    x0 = ~x
+    term_kwargs = _preallocate_kwargs(term_kwargs, x0)
+    x_star, it = solver(; x0 = x0, term_kwargs...)
 	~x .= x_star isa Tuple ? x_star[1] : x_star
 	return x, it
 end
@@ -174,7 +187,9 @@ function solve(terms::Union{Term,TermSet}; kwargs...)
 	end
 	solver, term_kwargs, x = result
     solver = override_parameters(solver; kwargs...)
-    x_star, it = solver(; x0 = ~x, term_kwargs...)
+    x0 = ~x
+    term_kwargs = _preallocate_kwargs(term_kwargs, x0)
+    x_star, it = solver(; x0 = x0, term_kwargs...)
 	~x .= x_star
 	return x, it
 end
