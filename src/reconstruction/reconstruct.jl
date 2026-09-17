@@ -14,15 +14,15 @@ Performs MRI reconstruction from k-space data using the specified reconstruction
 - `x₀::Union{Nothing,AbstractArray,Tuple,NamedTuple}=nothing`: Optional initial guess for the image (default is 𝒜' * y).
 - `config::ReconstructionConfig`: an existing [`ReconstructionConfig`](@ref) to extend; the keywords below override its fields.
 - `scaling::Scaling = BartScaling()`: scaling applied to operators/data (see also `NoScaling`, `MeasurementBasedScaling`, `FixedScaling`)
-- `verbosity::Verbosity = Verbose()`: output mode — [`Silent`](@ref), [`ProgressBar`](@ref) or [`Verbose`](@ref)
+- `verbosity::Verbosity = Silent()`: output mode — [`Silent`](@ref), [`ProgressBar`](@ref) or [`Verbose`](@ref)
 - `threaded::Bool = (Threads.nthreads() > 1)`: enable threaded execution when available
 - `task_executor::Union{Nothing,ReconstructionExecutor} = nothing`: override executor for task splitting
 - `disable_inverse_scale_output::Bool = false`: skip rescaling the final output
 - `disable_task_splitting::Bool = false`: disable automatic task splitting
 
-Iteration control is *not* accepted here: `maxit`, `tol` and `algorithm` are properties of the
+Iteration control is *not* accepted here: `maxit`, `reltol` and `algorithm` are properties of the
 method and are passed to its constructor, e.g.
-`reconstruct(acq, IterativeReconstruction(reg; maxit = 50, tol = 1e-6))` or
+`reconstruct(acq, IterativeReconstruction(reg; maxit = 50, reltol = 1e-6))` or
 `reconstruct(acq, POCS(; maxit = 20))`. Passing them to `reconstruct` throws.
 
 # Returns

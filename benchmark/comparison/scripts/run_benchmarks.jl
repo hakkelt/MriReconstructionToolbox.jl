@@ -280,7 +280,7 @@ push!(results, BenchResult("Non-Cartesian", "DCF Adjoint (Gridding)", "MRIReco",
 
 # --- CG-SENSE (10 Iterations) ---
 println("--> Benchmarking CG-SENSE (10 Iterations)...")
-method_cg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 1.0e-14); maxit = 10, tol = 1.0e-14)
+method_cg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 1.0e-14); maxit = 10, reltol = 1.0e-14)
 t_min_mrt_cg, _, x_mrt_cg = time_mrt("Base MC", "CG-SENSE (10 it)", () -> reconstruct(acq_mc, method_cg))
 e_gt_mrt_cg = nrmse(x_mrt_cg .* (norm(abs.(img_mc)) / norm(abs.(x_mrt_cg))), img_mc)
 push!(results, BenchResult("Base MC", "CG-SENSE (10 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_cg * 1000, e_gt_mrt_cg, 0.0))
@@ -316,7 +316,7 @@ kdata_bart_reg = reshape(kspace_reg_sp, N, N, 1, Nc)
 
 # --- Total Variation (TV, 30 Iterations) ---
 println("--> Benchmarking Total Variation (30 Iterations)...")
-method_tv = IterativeReconstruction(regularization = TotalVariation2D(0.01); maxit = 30, tol = 1.0e-5)
+method_tv = IterativeReconstruction(regularization = TotalVariation2D(0.01); maxit = 30, reltol = 1.0e-5)
 t_min_mrt_tv, _, x_mrt_tv = time_mrt("Sparsity", "Total Variation (30 it)", () -> reconstruct(acq_reg_us, method_tv))
 e_gt_mrt_tv = nrmse(x_mrt_tv .* (norm(abs.(img_mc)) / norm(abs.(x_mrt_tv))), img_mc)
 push!(results, BenchResult("Sparsity", "Total Variation (30 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_tv * 1000, e_gt_mrt_tv, 0.0))
@@ -330,7 +330,7 @@ push!(results, BenchResult("Sparsity", "Total Variation (30 it)", "BART ($(use_m
 
 # --- L1-Wavelet (30 Iterations) ---
 println("--> Benchmarking L1-Wavelet (30 Iterations)...")
-method_wav = IterativeReconstruction(regularization = L1Wavelet2D(0.005); maxit = 30, tol = 1.0e-5)
+method_wav = IterativeReconstruction(regularization = L1Wavelet2D(0.005); maxit = 30, reltol = 1.0e-5)
 t_min_mrt_wav, _, x_mrt_wav = time_mrt("Sparsity", "L1-Wavelet (30 it)", () -> reconstruct(acq_reg_us, method_wav))
 e_gt_mrt_wav = nrmse(x_mrt_wav .* (norm(abs.(img_mc)) / norm(abs.(x_mrt_wav))), img_mc)
 push!(results, BenchResult("Sparsity", "L1-Wavelet (30 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_wav * 1000, e_gt_mrt_wav, 0.0))
@@ -344,7 +344,7 @@ push!(results, BenchResult("Sparsity", "L1-Wavelet (30 it)", "BART ($(use_mkl ? 
 
 # --- Total Generalized Variation (TGV, 30 Iterations) ---
 println("--> Benchmarking Total Generalized Variation (30 Iterations)...")
-method_tgv = IterativeReconstruction(regularization = TotalGeneralizedVariation2D(0.01; ratio = 2.0); maxit = 30, tol = 1.0e-5)
+method_tgv = IterativeReconstruction(regularization = TotalGeneralizedVariation2D(0.01; ratio = 2.0); maxit = 30, reltol = 1.0e-5)
 t_min_mrt_tgv, _, x_mrt_tgv = time_mrt("Sparsity", "TGV (30 it)", () -> reconstruct(acq_reg_us, method_tgv))
 e_gt_mrt_tgv = nrmse(x_mrt_tgv .* (norm(abs.(img_mc)) / norm(abs.(x_mrt_tgv))), img_mc)
 push!(results, BenchResult("Sparsity", "TGV (30 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_tgv * 1000, e_gt_mrt_tgv, 0.0))
@@ -388,14 +388,14 @@ smaps_bart_dyn = reshape(ComplexF32.(cmap_dyn), Nd, Nd, 1, Ncd)
 
 # --- Global Low-Rank (20 Iterations) ---
 println("--> Benchmarking Global Low-Rank (20 Iterations)...")
-method_lr = IterativeReconstruction(regularization = LowRank(0.01; time_dim = :time); maxit = 20, tol = 1.0e-4)
+method_lr = IterativeReconstruction(regularization = LowRank(0.01; time_dim = :time); maxit = 20, reltol = 1.0e-4)
 t_min_mrt_lr, _, x_mrt_lr = time_mrt("Dynamic", "Global Low-Rank (20 it)", () -> reconstruct(acq_dyn, method_lr))
 e_gt_mrt_lr = nrmse(x_mrt_lr .* (norm(abs.(img_dyn)) / norm(abs.(x_mrt_lr))), img_dyn)
 push!(results, BenchResult("Dynamic", "Global Low-Rank (20 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_lr * 1000, e_gt_mrt_lr, 0.0))
 
 # --- Locally Low-Rank (LLR, 20 Iterations) ---
 println("--> Benchmarking Locally Low-Rank (20 Iterations)...")
-method_llr = IterativeReconstruction(regularization = LocallyLowRank(0.01; block_size = (8, 8), time_dim = :time); maxit = 20, tol = 1.0e-4)
+method_llr = IterativeReconstruction(regularization = LocallyLowRank(0.01; block_size = (8, 8), time_dim = :time); maxit = 20, reltol = 1.0e-4)
 t_min_mrt_llr, _, x_mrt_llr = time_mrt("Dynamic", "Locally Low-Rank (20 it)", () -> reconstruct(acq_dyn, method_llr))
 e_gt_mrt_llr = nrmse(x_mrt_llr .* (norm(abs.(img_dyn)) / norm(abs.(x_mrt_llr))), img_dyn)
 push!(results, BenchResult("Dynamic", "Locally Low-Rank (20 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_llr * 1000, e_gt_mrt_llr, 0.0))
@@ -409,7 +409,7 @@ push!(results, BenchResult("Dynamic", "Locally Low-Rank (20 it)", "BART ($(use_m
 
 # --- Temporal TV (20 Iterations) ---
 println("--> Benchmarking Temporal TV (20 Iterations)...")
-method_ttv = IterativeReconstruction(regularization = TemporalTotalVariation(0.01; time_dim = :time); maxit = 20, tol = 1.0e-4)
+method_ttv = IterativeReconstruction(regularization = TemporalTotalVariation(0.01; time_dim = :time); maxit = 20, reltol = 1.0e-4)
 t_min_mrt_ttv, _, x_mrt_ttv = time_mrt("Dynamic", "Temporal TV (20 it)", () -> reconstruct(acq_dyn, method_ttv))
 e_gt_mrt_ttv = nrmse(x_mrt_ttv .* (norm(abs.(img_dyn)) / norm(abs.(x_mrt_ttv))), img_dyn)
 push!(results, BenchResult("Dynamic", "Temporal TV (20 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_ttv * 1000, e_gt_mrt_ttv, 0.0))
@@ -473,7 +473,7 @@ function real_data_block!(results, category, rc)
     cmap_real = parent(rc.smaps)
 
     acq_real = CartesianAcquisitionInfo(rc.kspace; is3D = false, sensitivity_maps = rc.smaps, shifted_image_dims = (:x, :y))
-    method_cg_real = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 1.0e-14); maxit = 10, tol = 1.0e-14)
+    method_cg_real = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 1.0e-14); maxit = 10, reltol = 1.0e-14)
     t_min_mrt_rcg, _, x_mrt_rcg = time_reconstruction(() -> reconstruct(acq_real, method_cg_real; verbosity = Silent()))
     push!(results, BenchResult(category, "CG-SENSE (10 it)", "MRT ($(use_mkl ? "MKL" : "OpenBLAS"))", num_threads, t_min_mrt_rcg * 1000, mag_nrmse(x_mrt_rcg, img_real), 0.0))
 

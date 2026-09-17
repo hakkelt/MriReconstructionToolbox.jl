@@ -1,4 +1,5 @@
 @testitem "Partial Fourier reconstruction: Homodyne, StepRamp, POCS" tags = [:reconstruction, :acquisition] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: Verbosity
@@ -53,6 +54,7 @@
 end
 
 @testitem "Parallel imaging: GRAPPA and SPIRiT" tags = [:reconstruction, :acquisition, :encoding] setup = [SyntheticCoils] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: Verbosity
@@ -110,6 +112,7 @@ end
 end
 
 @testitem "Partial Fourier: PhaseConstrained recovers a phased phantom" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: Verbosity
@@ -147,6 +150,7 @@ end
 end
 
 @testitem "GRAPPA: arbitrary undersampling factor and default even kernel" tags = [:reconstruction, :acquisition, :encoding] setup = [SyntheticCoils] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: Verbosity
@@ -185,6 +189,7 @@ end
 end
 
 @testitem "Direct methods: trailing time batch dimension is preserved" tags = [:reconstruction, :acquisition, :encoding] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: Verbosity
@@ -235,13 +240,14 @@ end
 end
 
 @testitem "SPIRiTConsistency: operator adjoint test and KSpaceToImage reconstruction" tags = [:reconstruction, :regularization] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: Verbosity
     using NamedDims
     using LinearAlgebra
     using FFTW
-    using StructuredOptimization
+    using MriReconstructionToolbox.StructuredOptimization
 
     Nx, Ny, Nc = 16, 16, 4
     Kx, Ky = 3, 3
@@ -284,6 +290,7 @@ end
 end
 
 @testitem "Iterative SPIRiT reconstruction (lowering)" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: Verbosity
@@ -325,6 +332,7 @@ end
 end
 
 @testitem "Direct FFT methods respect shifted_kspace_dims" tags = [:reconstruction, :acquisition] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: Verbosity
@@ -356,6 +364,72 @@ end
     rec_shifted = reconstruct(acq_shifted, DirectReconstruction(); verbosity = Silent())
 
     @test isapprox(abs.(unname(rec_default)), abs.(unname(rec_shifted)); atol = 1.0e-5)
+end
+
+@testitem "DirectReconstruction: coil combination without sensitivity maps" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
+    using Test
+    using MriReconstructionToolbox
+    using NamedDims
+
+    Nx, Ny, Nc = 32, 32, 4
+    img_true = ComplexF32.(reshape(range(0.0f0, 1.0f0; length = Nx * Ny), Nx, Ny))
+    sens = synthetic_sensitivities(ComplexF32, Nx, Ny, Nc)
+    data = simulate_acquisition(
+        img_true, AcquisitionInfo(is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens)
+    )
+    # The same k-space, described without maps: its coil axis is a batch dimension, so no
+    # combination is possible and only NoCoilCombination is accepted.
+    no_maps = AcquisitionInfo(data.kspace_data; is3D = false, image_size = (Nx, Ny))
+
+    # The default resolves to NoCoilCombination; naming a map-requiring combination is an error.
+    @test_throws ArgumentError reconstruct(no_maps, DirectReconstruction(AdjointSensitivity()); verbosity = Silent())
+    @test_throws ArgumentError reconstruct(no_maps, DirectReconstruction(RootSumSquares()); verbosity = Silent())
+    @test MriReconstructionToolbox.lower(DirectReconstruction(), no_maps).coil_combination === NoCoilCombination()
+    rec_default = reconstruct(no_maps, DirectReconstruction(); verbosity = Silent())
+    rec = reconstruct(no_maps, DirectReconstruction(NoCoilCombination()); verbosity = Silent())
+    @test size(rec) == (Nx, Ny, Nc)
+    @test unname(rec_default) == unname(rec)
+
+    # Single-channel data has no coil axis at all: the default still works.
+    single = AcquisitionInfo(
+        simulate_acquisition(img_true, AcquisitionInfo(is3D = false, image_size = (Nx, Ny))).kspace_data;
+        is3D = false, image_size = (Nx, Ny)
+    )
+    @test size(reconstruct(single, DirectReconstruction(); verbosity = Silent())) == (Nx, Ny)
+end
+
+@testitem "DirectReconstruction: coil combination on non-Cartesian data" tags = [:reconstruction, :acquisition, :nfft] setup = [SyntheticCoils] begin
+    using Test
+    using MriReconstructionToolbox
+    using NamedDims
+
+    N, Nc = 32, 4
+    img_true = ComplexF32.(reshape(range(0.0f0, 1.0f0; length = N * N), N, N))
+    sens = synthetic_sensitivities(ComplexF32, N, N, Nc)
+    traj = Float32.(radial_trajectory(N, 24))
+    data = simulate_acquisition(
+        img_true, AcquisitionInfo(; trajectory = traj, image_size = (N, N), sensitivity_maps = sens)
+    )
+
+    rec_adj = reconstruct(data, DirectReconstruction(); verbosity = Silent())
+    rec_rss = reconstruct(data, DirectReconstruction(RootSumSquares()); verbosity = Silent())
+    rec_none = reconstruct(data, DirectReconstruction(NoCoilCombination()); verbosity = Silent())
+    @test size(rec_adj) == (N, N)
+    @test size(rec_rss) == (N, N)
+    @test size(rec_none) == (N, N, Nc)
+    # Root sum of squares of the per-coil images is what `NoCoilCombination` leaves reconstructible.
+    @test unname(rec_rss) ≈ sqrt.(sum(abs2, unname(rec_none); dims = 3))[:, :, 1]
+    @test !isapprox(abs.(unname(rec_adj)), unname(rec_rss))
+
+    # Dimension names survive the combination.
+    traj_named = NamedDimsArray{(:coord, :sample, :spoke)}(traj)
+    sens_named = NamedDimsArray{(:x, :y, :coil)}(unname(sens))
+    data_named = simulate_acquisition(
+        NamedDimsArray{(:x, :y)}(img_true),
+        AcquisitionInfo(; trajectory = traj_named, image_size = (N, N), sensitivity_maps = sens_named)
+    )
+    @test dimnames(reconstruct(data_named, DirectReconstruction(RootSumSquares()); verbosity = Silent())) == (:x, :y)
+    @test dimnames(reconstruct(data_named, DirectReconstruction(NoCoilCombination()); verbosity = Silent())) == (:x, :y, :coil)
 end
 
 @testitem "DirectReconstruction: coil_combination actually changes the result" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
@@ -420,6 +494,7 @@ end
 
 
 @testitem "Verbosity modes and method-owned iteration parameters" tags = [:reconstruction, :integration] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: Verbosity
@@ -449,6 +524,7 @@ end
     @testset "run keywords reject method parameters" begin
         @test_throws ArgumentError reconstruct(acq, DirectReconstruction(); maxit = 5)
         @test_throws ArgumentError reconstruct(acq, DirectReconstruction(); tol = 1.0e-5)
+        @test_throws ArgumentError reconstruct(acq, DirectReconstruction(); reltol = 1.0e-5)
         @test_throws ArgumentError reconstruct(acq, DirectReconstruction(); algorithm = FISTA())
         @test_throws ArgumentError reconstruct(acq, DirectReconstruction(); verbose = false)
         @test_throws ArgumentError reconstruct(acq, DirectReconstruction(); printfunc = println)
@@ -458,12 +534,15 @@ end
     end
 
     @testset "as_verbosity shorthands" begin
-        @test MriReconstructionToolbox.as_verbosity(false) === Silent()
         @test MriReconstructionToolbox.as_verbosity(:silent) === Silent()
         @test MriReconstructionToolbox.as_verbosity(:progress) isa ProgressBar
-        @test MriReconstructionToolbox.as_verbosity(true) isa Verbose
-        @test ReconstructionConfig(; verbosity = false).verbosity === Silent()
+        @test MriReconstructionToolbox.as_verbosity(:verbose) isa Verbose
+        @test ReconstructionConfig(; verbosity = :silent).verbosity === Silent()
         @test_throws ArgumentError ReconstructionConfig(; verbosity = :loud)
+        # Three modes, so a Bool cannot name one.
+        @test_throws ArgumentError MriReconstructionToolbox.as_verbosity(true)
+        @test_throws ArgumentError MriReconstructionToolbox.as_verbosity(false)
+        @test_throws ArgumentError ReconstructionConfig(; verbosity = false)
     end
 
     @testset "Silent produces no output" begin
@@ -482,7 +561,7 @@ end
         @test !isempty(lines)
     end
 
-    # `IterativeReconstruction`'s own `maxit`/`tol` win over the algorithm object's, and `nothing`
+    # `IterativeReconstruction`'s own `maxit`/`reltol` win over the algorithm object's, and `nothing`
     # hands them back to it -- this pair is the regression test for the silent clobber that made
     # `algorithm = FISTA(maxit = ...)` unreachable.
     function iteration_numbers(method)
@@ -495,22 +574,22 @@ end
         return seen
     end
 
-    @testset "maxit/tol are method-owned" begin
+    @testset "maxit/reltol are method-owned" begin
         reg = L1Wavelet2D(1.0f-3)
         @test iteration_numbers(
-            IterativeReconstruction(reg; algorithm = FISTA(maxit = 7), maxit = nothing, tol = nothing)
+            IterativeReconstruction(reg; algorithm = FISTA(maxit = 7), maxit = nothing, reltol = nothing)
         ) == collect(1:7)
         @test iteration_numbers(
-            IterativeReconstruction(reg; algorithm = FISTA(maxit = 7), maxit = 4, tol = 0)
+            IterativeReconstruction(reg; algorithm = FISTA(maxit = 7), maxit = 4, reltol = 0)
         ) == collect(1:4)
         # keyword-only: there is no positional form
         @test_throws MethodError IterativeReconstruction(reg, 5)
     end
 
-    @testset "direct methods honour maxit/tol" begin
-        # `POCS.tol` used to be a dead field: a loose tolerance must now stop the loop early.
-        loose = reconstruct(acq_pf, POCS(; maxit = 200, tol = 1.0e-1); verbosity = Silent())
-        tight = reconstruct(acq_pf, POCS(; maxit = 200, tol = 0.0); verbosity = Silent())
+    @testset "direct methods honour maxit/reltol" begin
+        # `POCS.reltol` used to be a dead field: a loose tolerance must now stop the loop early.
+        loose = reconstruct(acq_pf, POCS(; maxit = 200, reltol = 1.0e-1); verbosity = Silent())
+        tight = reconstruct(acq_pf, POCS(; maxit = 200, reltol = 0.0); verbosity = Silent())
         @test size(loose) == size(tight)
         @test norm(loose - tight) > 0
 
@@ -539,9 +618,9 @@ end
     @testset "one progress bar per reconstruct" begin
         cases = (
             (acq, DirectReconstruction(), false),                          # indeterminate indicator
-            (acq_pf, POCS(; maxit = 5, tol = 0.0), true),                  # determinate
+            (acq_pf, POCS(; maxit = 5, reltol = 0.0), true),                # determinate
             (acq_pf, PhaseConstrained(; maxit = 5), true),                 # determinate
-            (acq, IterativeReconstruction(L2Image(0.01f0); maxit = 5, tol = 0), true),
+            (acq, IterativeReconstruction(L2Image(0.01f0); maxit = 5, reltol = 0), true),
         )
         for (src, method, determinate) in cases
             io = IOBuffer()
@@ -618,6 +697,7 @@ end
 end
 
 @testitem "SPIRiT: calibration regularization stabilizes a noisy kernel fit" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using LinearAlgebra
@@ -661,6 +741,7 @@ end
 end
 
 @testitem "GRAPPA: check_applicable rejects unsupported sampling patterns" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: check_applicable

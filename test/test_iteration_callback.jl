@@ -5,7 +5,7 @@ using TestItems
 
     calls = NamedTuple[]
     method = IterativeReconstruction(
-        L1Image(0.01); algorithm = FISTA(), maxit = 7, tol = 0,
+        L1Image(0.01); algorithm = FISTA(), maxit = 7, reltol = 0,
         on_iteration = info -> push!(calls, info),
     )
     x̂ = reconstruct(acq, method; verbosity = Silent())
@@ -23,7 +23,7 @@ end
 
     counter = Ref(0)
     method = IterativeReconstruction(
-        L1Image(0.01); algorithm = FISTA(), maxit = 50, tol = 1.0e-1,
+        L1Image(0.01); algorithm = FISTA(), maxit = 50, reltol = 1.0e-1,
         on_iteration = _ -> (counter[] += 1),
     )
     reconstruct(acq, method; verbosity = Silent())
@@ -57,7 +57,7 @@ end
     @testset "$(nameof(typeof(algorithm)))" for (algorithm, regs, fidelity, metric_keys) in cases
         trace = IterationTrace(x -> Float64(sum(abs2, x)))
         method = IterativeReconstruction(;
-            regularization = regs, algorithm, fidelity, maxit = 6, tol = 0,
+            regularization = regs, algorithm, fidelity, maxit = 6, reltol = 0,
             on_iteration = trace,
         )
         x̂ = reconstruct(acq, method; verbosity = Silent())
@@ -77,7 +77,7 @@ end
         (MriReconstructionToolbox.SequentialExecutor(), MriReconstructionToolbox.MultiThreadingExecutor())
         trace = IterationTrace(x -> Float64(sum(abs2, x)))
         method = IterativeReconstruction(
-            L2Image(0.01); algorithm = FISTA(), maxit = 5, tol = 0, on_iteration = trace,
+            L2Image(0.01); algorithm = FISTA(), maxit = 5, reltol = 0, on_iteration = trace,
         )
         reconstruct(acq, method; task_executor = executor, verbosity = Silent())
 
@@ -96,7 +96,7 @@ end
     trace = IterationTrace()
     method = IterativeReconstruction(
         Component(:sparse, L1Image(0.01)), Component(:smooth, L2Image(0.01));
-        algorithm = FISTA(), maxit = 4, tol = 0, on_iteration = trace,
+        algorithm = FISTA(), maxit = 4, reltol = 0, on_iteration = trace,
     )
     img = reconstruct(acq, method; verbosity = Silent())
 
@@ -113,7 +113,7 @@ end
     lines = String[]
     trace = IterationTrace()
     method = IterativeReconstruction(
-        L1Image(0.01); algorithm = FISTA(), maxit = 6, tol = 0, on_iteration = trace,
+        L1Image(0.01); algorithm = FISTA(), maxit = 6, reltol = 0, on_iteration = trace,
     )
     reconstruct(
         acq, method;

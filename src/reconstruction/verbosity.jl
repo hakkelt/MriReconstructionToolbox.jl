@@ -4,7 +4,7 @@
 Abstract supertype of the three progress-reporting modes a reconstruction can run in. Pass one
 as the `verbosity` field of [`ReconstructionConfig`](@ref) (or as the `verbosity` keyword of `reconstruct`):
 
-- [`Silent`](@ref) — no output at all.
+- [`Silent`](@ref) — no output at all. This is the default.
 - [`ProgressBar`](@ref) — a single progress bar, nothing else.
 - [`Verbose`](@ref) — the textual step/timing log plus periodic solver output.
 
@@ -15,7 +15,8 @@ abstract type Verbosity end
 """
     Silent() <: Verbosity
 
-Produce no output whatsoever.
+Produce no output whatsoever. This is what a reconstruction does unless asked otherwise: a library
+call is quiet by default, and the log is something the caller opts into.
 """
 struct Silent <: Verbosity end
 
@@ -75,11 +76,16 @@ end
 """
     as_verbosity(x) -> Verbosity
 
-Normalize the `verbosity` keyword. A `Verbosity` passes through; `true`/`false` map to
-`Verbose()`/`Silent()`; `:silent`, `:progress` and `:verbose` map to the corresponding types.
+Normalize the `verbosity` keyword. A `Verbosity` passes through, and `:silent`, `:progress` and
+`:verbose` map to the corresponding types. Anything else is an `ArgumentError`.
 """
 as_verbosity(v::Verbosity) = v
-as_verbosity(b::Bool) = b ? Verbose() : Silent()
+as_verbosity(b::Bool) = throw(
+    ArgumentError(
+        "`verbosity` does not accept `$b`: there are three modes, so name the one you want — " *
+            "`Silent()`, `ProgressBar()` or `Verbose()` (or `:silent`, `:progress`, `:verbose`)"
+    )
+)
 function as_verbosity(s::Symbol)
     s === :silent && return Silent()
     (s === :progress || s === :progressbar || s === :bar) && return ProgressBar()

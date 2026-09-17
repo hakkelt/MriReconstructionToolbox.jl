@@ -1,5 +1,6 @@
 using BenchmarkTools
 using MriReconstructionToolbox
+using MriReconstructionToolbox: CartesianAcquisitionInfo
 using GeometricMedicalPhantoms
 using Random
 
@@ -112,7 +113,7 @@ if get(ENV, "MRT_BENCH_REAL_DATA", "0") == "1"
         )
         SUITE["real_data"] = BenchmarkGroup()
         SUITE["real_data"]["CG_SENSE"] = @benchmarkable reconstruct(
-            $acq_real, $method_cg; verbosity = Silent(), maxit = 10, tol = 1.0e-14
+            $acq_real, $method_cg; verbosity = Silent(), maxit = 10, reltol = 1.0e-14
         )
         SUITE["real_data"]["FISTA_wavelet"] = @benchmarkable reconstruct(
             $acq_real, $method_fista; verbosity = Silent()

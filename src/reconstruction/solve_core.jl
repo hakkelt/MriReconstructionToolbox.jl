@@ -44,7 +44,7 @@ function _iterative_reconstruct_core(
     end
     @printing_step "Reconstructing image" config begin
         verbose, freq, display = solver_output(config.verbosity, something(method.maxit, 100))
-        # `method.maxit` / `method.tol` are `nothing` when the caller wants the algorithm's own
+        # `method.maxit` / `method.reltol` are `nothing` when the caller wants the algorithm's own
         # values: the corresponding keyword is then left out of the `solve` call entirely, because
         # `ProximalAlgorithms.override_parameters` merges what is passed here *last* and would
         # otherwise silently overwrite e.g. `algorithm = FISTA(maxit = 500)`.
@@ -53,9 +53,10 @@ function _iterative_reconstruct_core(
         if !isnothing(method.maxit)
             solver_kwargs = (; solver_kwargs..., maxit = method.maxit)
         end
-        if !isnothing(method.tol)
-            # MRT's `tol` is relative to the initial estimate; ProximalAlgorithms' is absolute.
-            tol = method.tol == 0 ? 0 : max(ϵ * 10, method.tol * _max_abs(x₀_or_x₀s))
+        if !isnothing(method.reltol)
+            # MRT's `reltol` is relative to the initial estimate; ProximalAlgorithms' `tol` is
+            # absolute, and this is where the one is turned into the other.
+            tol = method.reltol == 0 ? 0 : max(ϵ * 10, method.reltol * _max_abs(x₀_or_x₀s))
             stop =
                 (iter, state) -> ProximalAlgorithms.default_stopping_criterion(tol, iter, state)
             solver_kwargs = (; solver_kwargs..., stop)
@@ -269,7 +270,7 @@ Whether the default warm start `𝒜'y` needs the `‖𝒜‖²` correction (`_d
 `_direct_reconstruct_components`) to be on the image's scale. Unlike
 [`_should_estimate_operator_norm`](@ref), this does **not** auto-skip pure Krylov solvers: a
 Krylov method derives its own step size regardless of warm-start scale, but a badly-scaled warm
-start still costs it iterations before `maxit`/`tol` are reached (the CG-SENSE case this fixes).
+start still costs it iterations before `maxit`/`reltol` are reached (the CG-SENSE case this fixes).
 Only an explicit `disable_operator_normalization = true` skips it, preserving today's behavior for
 callers who deliberately opted out of the operator-norm estimate altogether.
 """

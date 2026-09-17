@@ -52,9 +52,9 @@ function real_case_rows!(category, ksp3_raw, smaps3, ref)
         image_size = (nx, ny), sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(ComplexF64.(smaps3)),
         shifted_image_dims = (:x, :y), subsampling = sampled
     )
-    # `tol = 0.0`, as in `run_cgsense.jl`: the other three toolkits are given `CMP_TOL_INNER = 0` and
+    # `reltol = 0.0`, as in `run_cgsense.jl`: the other three toolkits are given `CMP_TOL_INNER = 0` and
     # run their full 10 iterations, so MRT must not be allowed to exit early here either.
-    mcg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0); maxit = 10, tol = 0.0)
+    mcg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0); maxit = 10, reltol = 0.0)
     tm, _, xm = time_reconstruction(() -> reconstruct(acqf, mcg; verbosity = Silent()))
     add("CG-SENSE (10 it)", FW, tm * 1000, xm, nothing)
     for (fw, f) in (

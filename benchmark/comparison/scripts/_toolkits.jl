@@ -183,12 +183,12 @@ end
 
 `reconstruct` with a fixed-ρ ADMM (`kind = :admm`, for TV / TGV / low-rank) or FISTA
 (`kind = :fista`, for L1-wavelet — forcing wavelet through ADMM with a fixed ρ wrecks it).
-`maxit` and `tol = 0` are set on `IterativeReconstruction` as well as on the algorithm object: the
+`maxit` and `reltol = 0` are set on `IterativeReconstruction` as well as on the algorithm object: the
 method's own values win over the algorithm's, so both must agree to actually run the full count
 with no early stop.
 """
 mrt_run(acq, reg; maxit::Int, kind::Symbol = :admm, rho::Real = CMP_RHO) =
-    reconstruct(acq, IterativeReconstruction(regularization = reg, algorithm = _mrt_alg(kind, maxit, rho); maxit = maxit, tol = 0.0); verbosity = Silent())
+    reconstruct(acq, IterativeReconstruction(regularization = reg, algorithm = _mrt_alg(kind, maxit, rho); maxit = maxit, reltol = 0.0); verbosity = Silent())
 
 # --- MRIReco (Julia) ------------------------------------------------------------------------
 # `MRIBase` accepts a 6D `(x, y, z, channel, echo, rep)` k-space array directly (`enc2D` for a
