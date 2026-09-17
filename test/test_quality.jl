@@ -19,10 +19,11 @@ end
 end
 
 @testitem "JET exported API @test_opt" tags = [:quality, :jet] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using JET
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator, calculate, NonCartesianAcquisitionInfo
-    using AbstractOperators
+    using MriReconstructionToolbox.AbstractOperators
     using NamedDims
 
     const MRT = MriReconstructionToolbox
@@ -78,7 +79,7 @@ end
     using JET
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator, calculate
-    using AbstractOperators
+    using MriReconstructionToolbox.AbstractOperators
     using NamedDims
 
     const MRT = MriReconstructionToolbox

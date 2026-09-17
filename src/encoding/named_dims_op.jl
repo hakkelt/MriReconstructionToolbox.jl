@@ -1,6 +1,6 @@
 import Base: size
 import LinearAlgebra: mul!
-import AbstractOperators:
+import .AbstractOperators:
     fun_name,
     domain_type,
     codomain_type,

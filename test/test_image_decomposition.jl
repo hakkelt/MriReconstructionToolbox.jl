@@ -22,7 +22,7 @@ end
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: bind_dimensions
-    using StructuredOptimization
+    using MriReconstructionToolbox.StructuredOptimization
 
     c = Component(:lowrank, LowRank(0.05))
     factor = 2.0
@@ -145,8 +145,8 @@ end
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: bind_dimensions
-    using AbstractOperators
-    using StructuredOptimization
+    using MriReconstructionToolbox.AbstractOperators
+    using MriReconstructionToolbox.StructuredOptimization
 
     x_true = rand(8, 8)
     y_true = rand(8, 8)
@@ -214,8 +214,8 @@ end
 @testitem "reconstruct: Lf=n_components required for convergence" tags = [:components] begin
     using Test
     using MriReconstructionToolbox
-    using AbstractOperators
-    using StructuredOptimization
+    using MriReconstructionToolbox.AbstractOperators
+    using MriReconstructionToolbox.StructuredOptimization
 
     x_true = rand(6, 6)
     y_true = rand(6, 6)
@@ -276,7 +276,7 @@ end
     using Test
     using MriReconstructionToolbox
     using GeometricMedicalPhantoms
-    using StructuredOptimization
+    using MriReconstructionToolbox.StructuredOptimization
 
     nx, ny, nslices, nc = 16, 16, 3, 2
     img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)

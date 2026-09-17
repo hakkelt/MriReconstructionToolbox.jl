@@ -3,14 +3,14 @@ module NFFTOperators
 export NFFTOp
 
 using LinearAlgebra
-using AbstractOperators
+using ..AbstractOperators
 using FastBroadcast
 using NestedThreading: with_full_threads, with_restricted_threads
 import LinearAlgebra: mul!
 import Base: size
 import NFFT: NFFT
 import NFFTTools: NFFTTools
-import AbstractOperators:
+import ..AbstractOperators:
     domain_type,
     codomain_type,
     fun_name,

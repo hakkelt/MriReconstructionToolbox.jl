@@ -1,4 +1,4 @@
-import ProximalOperators: gradient!, gradient # this can be removed when moved to Prox
+import ..ProximalOperators: gradient!, gradient # this can be removed when moved to Prox
 
 export PrecomposeNonlinear
 

@@ -5,7 +5,7 @@ using TestItems
     using LinearAlgebra
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_operator, calculate, materialize, get_affected_dims, scale_regularization
-    using AbstractOperators
+    using MriReconstructionToolbox.AbstractOperators
     using NamedDims
 
     huber(t, λ, δ) = abs(t) <= δ ? λ * abs(t)^2 / (2δ) : λ * (abs(t) - δ / 2)
@@ -119,7 +119,7 @@ end
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_operator, calculate, materialize, get_affected_dims, scale_regularization
-    using StructuredOptimization
+    using MriReconstructionToolbox.StructuredOptimization
 
     # Regression: the constructor accepts λ >= 0, but materialize built SeparableHuberLoss(δ, λ/δ),
     # which rejects μ == 0 -- so disabling the term raised an opaque error from inside
