@@ -78,6 +78,7 @@
 end
 
 @testitem "AcquisitionInfo copy constructors field round-trips" tags = [:acquisition] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, NonCartesianAcquisitionInfo
 
@@ -295,6 +296,90 @@ end
     end
 end
 
+@testitem "RegularLatticeSampling" tags = [:simulation] begin
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: check_applicable
+
+    @testset "plain regular lattice" begin
+        _, mask = create_sampling_pattern(RegularLatticeSampling(4), (128, 128))
+        @test findall(mask) == collect(1:4:128)
+        @test length(mask) / sum(mask) ≈ 4
+    end
+
+    @testset "ACS band" begin
+        _, mask = create_sampling_pattern(RegularLatticeSampling(4; center_fraction = 0.1), (128, 128))
+        acs = 58:70   # the fully sampled centre `get_fully_sampled_region` picks for cf = 0.1
+        @test all(mask[acs])
+        # Every lattice line is still acquired, so the net acceleration is below the nominal one.
+        @test all(mask[1:4:128])
+        @test 1 < length(mask) / sum(mask) < 4
+    end
+
+    @testset "acceleration is factored over two subsampled dimensions" begin
+        _, mask = create_sampling_pattern(RegularLatticeSampling(4), (64, 64, 32))
+        @test size(mask) == (64, 32)
+        @test length(mask) / sum(mask) ≈ 4      # 2 × 2
+        # 3 × 1: only the divisors of R are candidates. 64 is not a multiple of 3, so the last
+        # partial stride makes the realized acceleration slightly below the nominal one.
+        _, mask3 = create_sampling_pattern(RegularLatticeSampling(3), (64, 64, 32))
+        @test length(mask3) / sum(mask3) ≈ 3 rtol = 0.05
+    end
+
+    @testset "deterministic" begin
+        a = create_sampling_pattern(RegularLatticeSampling(3; center_fraction = 0.05), (64, 64))
+        b = create_sampling_pattern(RegularLatticeSampling(3; center_fraction = 0.05), (64, 64))
+        @test a[2] == b[2]
+    end
+
+    @testset "argument validation" begin
+        @test_throws ArgumentError RegularLatticeSampling(2.5)
+        @test_throws ArgumentError RegularLatticeSampling(0.5)
+        @test_throws ArgumentError RegularLatticeSampling(2; center_fraction = 1.0)
+    end
+
+    @testset "GRAPPA accepts the generated pattern" begin
+        nx, ny, nc = 64, 64, 4
+        img = ComplexF32.(reshape(range(0.0f0, 1.0f0; length = nx * ny), nx, ny))
+        pattern = create_sampling_pattern(RegularLatticeSampling(2; center_fraction = 0.15), (nx, ny))
+        data = simulate_acquisition(
+            img,
+            AcquisitionInfo(;
+                is3D = false, image_size = (nx, ny), subsampling = pattern,
+                sensitivity_maps = coil_sensitivities(nx, ny, nc),
+            )
+        )
+        @test check_applicable(GRAPPA(), data) === nothing
+    end
+end
+
+@testitem "PartialFourierSampling" tags = [:simulation] begin
+    using MriReconstructionToolbox
+
+    @testset "contiguous band from the first index" begin
+        _, mask = create_sampling_pattern(PartialFourierSampling(0.7), (128, 128))
+        last_acquired = round(Int, 0.7 * 128)
+        @test findall(mask) == collect(1:last_acquired)
+        # The acquired band covers the k-space centre, which is what makes it recoverable.
+        @test any(mask[60:70])
+    end
+
+    @testset "no truncation at fraction 1" begin
+        _, mask = create_sampling_pattern(PartialFourierSampling(1.0), (64, 64))
+        @test all(mask)
+    end
+
+    @testset "deterministic" begin
+        a = create_sampling_pattern(PartialFourierSampling(0.625), (64, 64))
+        b = create_sampling_pattern(PartialFourierSampling(0.625), (64, 64))
+        @test a[2] == b[2]
+    end
+
+    @testset "argument validation" begin
+        @test_throws ArgumentError PartialFourierSampling(1.5)
+        @test_throws ArgumentError PartialFourierSampling(0.0)
+    end
+end
+
 @testitem "Sampling patterns" tags = [:simulation] begin
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator
@@ -386,6 +471,7 @@ end
 end
 
 @testitem "CartesianAcquisitionInfo shifted dims" tags = [:acquisition] begin
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator
     using NamedDims

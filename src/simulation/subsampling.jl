@@ -85,6 +85,107 @@ struct PoissonDiskSampling <: Subsampling
 end
 
 """
+    RegularLatticeSampling(acceleration::Real; center_fraction=0.0)
+
+Regular (equispaced) undersampling: every `acceleration`-th phase encode is acquired, optionally
+with a fully sampled autocalibration (ACS) band in the centre. This is the pattern GRAPPA and
+every product parallel-imaging sequence use, and unlike the random generators it is
+deterministic, so a single realisation is the pattern.
+
+- `acceleration` must be a whole number. Over two subsampled dimensions (a 3D acquisition) it is
+  factored into a stride per dimension, as close to equal as its divisors allow — `4` becomes
+  2×2, `3` becomes 3×1.
+- `center_fraction` is the fraction of k-space positions held in the fully sampled ACS band, the
+  same meaning it has for the random generators. The default of `0` is a pure regular lattice;
+  GRAPPA and SPIRiT need a non-zero value to calibrate on.
+
+The net acceleration is `acceleration` only when `center_fraction` is at its default: the ACS
+band adds samples on top of the lattice.
+
+Partial Fourier is a separate scheme, not a modifier of this one — see
+[`PartialFourierSampling`](@ref).
+
+See also [`create_sampling_pattern`](@ref).
+"""
+struct RegularLatticeSampling <: Subsampling
+    acceleration::Float64
+    center_fraction::Float64
+    function RegularLatticeSampling(acceleration::Real; center_fraction::Real = 0.0)
+        @argcheck 1 <= acceleration "Acceleration factor must be >= 1"
+        @argcheck isinteger(acceleration) "Regular lattice sampling acquires every R-th line, so the acceleration factor must be a whole number; got $acceleration"
+        @argcheck 0 <= center_fraction < 1 "Center fraction must be in [0, 1)"
+        return new(acceleration, center_fraction)
+    end
+end
+
+"""
+    PartialFourierSampling(fraction::Real)
+
+Partial-Fourier truncation: every phase encode of the first `fraction` of the last subsampled
+dimension is acquired, and nothing past it. It exploits the Hermitian symmetry of k-space rather
+than parallel imaging, so it is a scheme of its own and not a modifier of
+[`RegularLatticeSampling`](@ref) — combining a lattice with a truncated band would leave a
+pattern neither a homodyne/POCS reconstruction nor a GRAPPA kernel handles as intended.
+
+`fraction` must be in `(0, 1]` and, for the acquired band to cover the k-space centre at all,
+above `0.5`. The net acceleration is `1 / fraction`.
+
+See also [`create_sampling_pattern`](@ref), [`Homodyne`](@ref), [`POCS`](@ref).
+"""
+struct PartialFourierSampling <: Subsampling
+    partial_fourier::Float64
+    function PartialFourierSampling(fraction::Real)
+        @argcheck 0 < fraction <= 1 "Partial Fourier fraction must be in (0, 1]"
+        return new(fraction)
+    end
+end
+
+"""
+    _center_fraction(subsampling::Subsampling) -> Float64
+
+The fraction of k-space every generator keeps fully sampled in the centre. All but
+[`PartialFourierSampling`](@ref) carry it as a field; partial Fourier has no calibration band, so
+its centre band is empty.
+"""
+_center_fraction(subsampling::Subsampling) = subsampling.center_fraction
+_center_fraction(::PartialFourierSampling) = 0.0
+
+"""
+    _systematic_strides(R::Int, ndims::Int) -> NTuple{ndims, Int}
+
+Factor a total acceleration `R` into one stride per subsampled dimension, each factor as close to
+`R^(1/ndims)` as the divisors of `R` allow. Only the divisors are candidates, so the strides
+multiply back to exactly `R` (a 3 spread over two dimensions stays 3×1 rather than becoming a
+non-integer stride).
+"""
+function _systematic_strides(R::Int, n::Int)
+    n == 1 && return (R,)
+    target = R^(1 / n)
+    divisors = [d for d in 1:R if R % d == 0]
+    _, best = findmin(d -> abs(d - target), divisors)
+    d = divisors[best]
+    return (d, _systematic_strides(R ÷ d, n - 1)...)
+end
+
+function _create_sampling_pattern(subsampling::RegularLatticeSampling, dims, center_region)
+    mask = falses(dims)
+    strides = _systematic_strides(round(Int, subsampling.acceleration), length(dims))
+    mask[ntuple(i -> 1:strides[i]:dims[i], length(dims))...] .= true
+    if !isnothing(center_region)
+        mask[center_region...] .= true
+    end
+    return mask
+end
+
+function _create_sampling_pattern(subsampling::PartialFourierSampling, dims, center_region)
+    mask = falses(dims)
+    # The acquired band is the first `partial_fourier` of the last dimension, fully sampled.
+    last_acquired = round(Int, subsampling.partial_fourier * dims[end])
+    selectdim(mask, length(dims), 1:last_acquired) .= true
+    return mask
+end
+
+"""
     create_sampling_pattern(subsampling::Subsampling, dims; subsample_freq_encoding=false, number_of_trials=5)
 
 Create a k-space sampling pattern for the given subsampling strategy and k-space size `dims`
@@ -103,11 +204,14 @@ function create_sampling_pattern(subsampling::Subsampling, dims::NTuple{N, Int};
     if subsampling isa PoissonDiskSampling
         @argcheck (N == 2 && subsample_freq_encoding) || (N == 3 && !subsample_freq_encoding) "Only 2D Poisson disk sampling patterns are supported"
         number_of_trials = 1
+    elseif subsampling isa Union{RegularLatticeSampling, PartialFourierSampling}
+        # Deterministic: every trial would return the same pattern.
+        number_of_trials = 1
     end
     if !subsample_freq_encoding
         dims = dims[2:end]
     end
-    center_region = get_fully_sampled_region(dims, subsampling.center_fraction)
+    center_region = get_fully_sampled_region(dims, _center_fraction(subsampling))
     if number_of_trials == 1
         mask = _create_sampling_pattern(subsampling, dims, center_region)
     else
