@@ -106,3 +106,32 @@ end
     end
 end
 
+# sqrNormL2WithNormalOp.jl — an operator whose `'` is not its adjoint. A `BACKWARD`-normalized
+# `DFT` has `A' = A⁻¹ = Aᴴ/N`, so the gradient the caller gets is the gradient of `‖Ax+d‖²/(2N)`.
+# The returned value has to be that same function: recovering `‖Ax+d‖²/2` instead leaves the
+# value dominated by a constant `‖d‖²/2` that the gradient never moves — a solver then prints an
+# objective that does not change, and a backtracking line search compares incomparable numbers.
+@testset "SqrNormL2WithNormalOp with a non-adjoint pair, λ=$lambda" for lambda in (1, 0.75)
+    n = 8
+    A = FFTWOperators.DFT(zeros(ComplexF64, n); normalization = FFTWOperators.BACKWARD)
+    bvec = randn(ComplexF64, n)
+    f = StructuredOptimization.SqrNormL2WithNormalOp(AffineAdd(A, bvec, false), lambda)
+    @test f.inv_scaling ≈ 1 / n
+
+    xv = randn(ComplexF64, n)
+    yv = zero(xv)
+    fval = lambda / 2 * norm(A * xv - bvec)^2 / n
+    @test abs(f(xv) - fval) < 1.0e-10
+    @test abs(gradient!(yv, f, xv) - fval) < 1.0e-8
+    @test norm(yv - lambda * (A' * (A * xv - bvec))) < 1.0e-10
+
+    # the value and the gradient are the same function (central differences, real parametrization)
+    h = 1.0e-6
+    for k in eachindex(xv)
+        δ = zero(xv)
+        δ[k] = h
+        fd = (f(xv + δ) - f(xv - δ)) / (2h)
+        @test abs(fd - real(yv[k])) < 1.0e-5 * max(1, abs(yv[k]))
+    end
+end
+
