@@ -4,11 +4,16 @@
     using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator, calculate
     Aqua.test_all(
         MriReconstructionToolbox;
-        ambiguities = true,
+        ambiguities = false,
         piracies = false,
         persistent_tasks = false,
         stale_deps = false,
     )
+    # The vendored dependencies live in submodules of this package, so a recursive ambiguity
+    # check would report their ambiguities as ours. They are checked -- and, where they are
+    # unavoidable consequences of the operator syntax, tolerated -- by their own test suites,
+    # so only this package's own methods are checked here.
+    Aqua.test_ambiguities(MriReconstructionToolbox; recursive = false)
 end
 
 @testitem "JET test_package" tags = [:quality, :jet] begin
