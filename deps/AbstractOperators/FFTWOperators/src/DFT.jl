@@ -337,18 +337,24 @@ is_invertible(L::DFT) = true
 is_full_row_rank(L::DFT) = true
 is_full_column_rank(L::DFT) = true
 
+# In the operator's own real element type: `_dft_scaling` is a `Float64` (it types the
+# stored `scale` field), but these two are consumed as scalings of the *data* -- as
+# `ProximalOperators.Precompose`'s `mu`, for one -- where a `Float64` handed to a `Float32`
+# problem widens everything downstream of it.
 function diag_AcA(L::DFT{N, C, D, Dir, S}) where {N, C, D, Dir, S}
+    R = real(C)
     return if L.normalization == UNNORMALIZED
-        _dft_scaling(size(L, 1), Dir, FORWARD)
+        R(_dft_scaling(size(L, 1), Dir, FORWARD))
     else
-        one(real(C))
+        one(R)
     end
 end
 function diag_AAc(L::DFT{N, C, D, Dir, S}) where {N, C, D, Dir, S}
+    R = real(C)
     return if L.normalization == UNNORMALIZED
-        _dft_scaling(size(L, 2), Dir, FORWARD)
+        R(_dft_scaling(size(L, 2), Dir, FORWARD))
     else
-        one(real(C))
+        one(R)
     end
 end
 
