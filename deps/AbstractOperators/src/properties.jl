@@ -283,15 +283,20 @@ function displacement(S::AbstractOperator)
     x = allocate_in_domain(S)
     fill!(x, 0)
     d = S * x
-    # Checked on a host copy: `d[1]`/iterating `d` directly would be scalar indexing
-    # on a GPU array. `d` itself (returned below) keeps its original storage type.
-    dc = Array(d)
-    if all(y -> y == dc[1], dc)
-        return dc[1]
-    else
-        return d
-    end
+    # `d[1]`/iterating `d` directly would be scalar indexing on a GPU array, so the first
+    # element comes back through a one-element host copy and the comparison is a reduction.
+    # `d` itself (returned below) keeps its original storage type.
+    v = _first_element(d)
+    return _all_equal_to(d, v) ? v : d
 end
+
+_first_element(d::AbstractArray) = only(Array(@view vec(d)[1:1]))
+# An `ArrayPartition` cannot be flattened when its blocks have incompatible shapes -- which is
+# exactly what a per-frame operator with unequal sample counts produces -- so recurse instead.
+_first_element(d::ArrayPartition) = _first_element(first(d.x))
+
+_all_equal_to(d::AbstractArray, v) = all(==(v), d)
+_all_equal_to(d::ArrayPartition, v) = all(b -> _all_equal_to(b, v), d.x)
 
 """
 	remove_displacement(A::AbstractOperator)
