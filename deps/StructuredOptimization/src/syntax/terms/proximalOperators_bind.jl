@@ -85,7 +85,7 @@ function ls(ex::AbstractExpression)
     ex = convert(Expression, ex)
     L = operator(ex)
     (length(ex.x) != 1 || !is_linear(L) || is_eye(L)) && return Term(SqrNormL2(), ex)
-    eye_op = Eye(domain_type(ex.L), size(ex.L, 2))
+    eye_op = Eye(AbstractOperators.allocate_in_domain(ex.L))
     return Term(SqrNormL2WithNormalOp(ex.L), Expression(ex.x, eye_op))
 end
 
@@ -113,7 +113,7 @@ f( \\mathbf{x} ) = \\sum_{i} \\max\\{0, 1 - y_i x_i \\},
 ```
 where `y` is an array containing ``y_i``.
 """
-hingeloss(ex::AbstractExpression, b::Array{R,1}) where {R <: Real} =
+hingeloss(ex::AbstractExpression, b::AbstractVector{R}) where {R <: Real} =
 Term(HingeLoss(b), ex)
 
 # HingeLoss
@@ -129,7 +129,7 @@ f( \\mathbf{x} ) = \\sum_{i} \\max\\{0, 1 - y_i x_i \\}^2,
 ```
 where `y` is an array containing ``y_i``.
 """
-sqrhingeloss(ex::AbstractExpression, b::Array{R,1}) where {R <: Real} =
+sqrhingeloss(ex::AbstractExpression, b::AbstractVector{R}) where {R <: Real} =
 Term(SqrHingeLoss(b), ex)
 
 # CrossEntropy
@@ -145,7 +145,7 @@ f(\\mathbf{x}) = -1/N \\sum_{i}^{N} y_i \\log (x_i)+(1-y_i) \\log (1-x_i),
 ```
 where `y` is an array of length ``N`` containing ``y_i`` having ``0 \\leq y_i \\leq 1``.
 """
-crossentropy(ex::AbstractExpression, b::Array{R,1}) where {R <: Real} =
+crossentropy(ex::AbstractExpression, b::AbstractVector{R}) where {R <: Real} =
 Term(CrossEntropy(b), ex)
 
 # LogisticLoss
