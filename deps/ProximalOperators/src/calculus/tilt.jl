@@ -39,6 +39,7 @@ is_proximable(::Type{<:Tilt{T}}) where T = is_proximable(T)
 is_convex(::Type{<:Tilt{T}}) where T = is_convex(T)
 is_singleton_indicator(::Type{<:Tilt{T}}) where T = is_singleton_indicator(T)
 is_smooth(::Type{<:Tilt{T}}) where T = is_smooth(T)
+is_locally_smooth(::Type{<:Tilt{T}}) where T = is_locally_smooth(T)
 is_generalized_quadratic(::Type{<:Tilt{T}}) where T = is_generalized_quadratic(T)
 is_strongly_convex(::Type{<:Tilt{T}}) where T = is_strongly_convex(T)
 

@@ -143,6 +143,7 @@ end
 @generated is_cone_indicator(::Type{T}) where T <: SlicedSeparableSum = return all(is_cone_indicator, component_types(T)) ? :(true) : :(false)
 @generated is_affine_indicator(::Type{T}) where T <: SlicedSeparableSum = return all(is_affine_indicator, component_types(T)) ? :(true) : :(false)
 @generated is_smooth(::Type{T}) where T <: SlicedSeparableSum = return all(is_smooth, component_types(T)) ? :(true) : :(false)
+@generated is_locally_smooth(::Type{T}) where T <: SlicedSeparableSum = return all(is_locally_smooth, component_types(T)) ? :(true) : :(false)
 @generated is_generalized_quadratic(::Type{T}) where T <: SlicedSeparableSum = return all(is_generalized_quadratic, component_types(T)) ? :(true) : :(false)
 @generated is_strongly_convex(::Type{T}) where T <: SlicedSeparableSum = return all(is_strongly_convex, component_types(T)) ? :(true) : :(false)
 
