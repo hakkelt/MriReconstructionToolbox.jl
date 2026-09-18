@@ -24,6 +24,7 @@ import ..AbstractOperators:
     supports_threading,
     _resolve_threaded,
     is_thread_safe,
+    is_symmetric,
     _copy_operator_impl,
     AdjointOperator
 

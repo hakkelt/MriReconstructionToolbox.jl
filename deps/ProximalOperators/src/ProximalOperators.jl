@@ -19,6 +19,11 @@ import ProximalCore:
 	is_set_indicator,
 	is_smooth,
 	is_locally_smooth,
+	# Without this one, every `is_positively_homogeneous` method below would land on a
+	# ProximalOperators-local function of the same name instead of on ProximalCore's, and
+	# `ProximalCore.is_support` -- which is defined in terms of it -- would report `false`
+	# for every norm in this package.
+	is_positively_homogeneous,
 	is_support
 
 const RealOrComplex{R<:Real} = Union{R,Complex{R}}
