@@ -54,27 +54,36 @@ end
 function gradient!(y, f::SqrNormL2{<:Real}, x)
     R = real(eltype(x))
     lambda = f.lambda
-    # the reduction is over `x`, not over the written `y`, so it is spelled out rather than
-    # routed through `map_reduce_prox!`
-    sqnx = R(0)
-    strategy = execution_strategy(f, x)
-    @elementwise_loop strategy reduction = ((+, sqnx),) for k in eachindex(x, y)
-        y[k] = lambda * x[k]
-        sqnx += abs2(x[k])
+    # The reduction is over `x`, not over the written `y`, so no `map_reduce_prox!` seam
+    # fits and the loop is spelled out. It is therefore guarded by `is_cpu_storage`, like
+    # the inlined loops in `sqrHingeLoss.jl`: on device storage it would scalar-index.
+    if is_cpu_storage(x)
+        sqnx = R(0)
+        strategy = execution_strategy(f, x)
+        @elementwise_loop strategy reduction = ((+, sqnx),) for k in eachindex(x, y)
+            y[k] = lambda * x[k]
+            sqnx += abs2(x[k])
+        end
+        return f.lambda / R(2) * sqnx
     end
-    return f.lambda / R(2) * sqnx
+    y .= lambda .* x
+    return f.lambda / R(2) * sum(abs2, x)
 end
 
 function gradient!(y, f::SqrNormL2{<:AbstractArray}, x)
     R = real(eltype(x))
     lambda = f.lambda
-    sqnx = R(0)
-    strategy = execution_strategy(f, x)
-    @elementwise_loop strategy reduction = ((+, sqnx),) for k in eachindex(x, y)
-        y[k] = lambda[k] * x[k]
-        sqnx += lambda[k] * abs2(x[k])
+    if is_cpu_storage(x)
+        sqnx = R(0)
+        strategy = execution_strategy(f, x)
+        @elementwise_loop strategy reduction = ((+, sqnx),) for k in eachindex(x, y)
+            y[k] = lambda[k] * x[k]
+            sqnx += lambda[k] * abs2(x[k])
+        end
+        return sqnx / R(2)
     end
-    return sqnx / R(2)
+    y .= lambda .* x
+    return sum(lambda .* abs2.(x)) / R(2)
 end
 
 function prox!(y, f::SqrNormL2{<:Real}, x, gamma::Number)
