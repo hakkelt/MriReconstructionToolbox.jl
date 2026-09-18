@@ -186,15 +186,18 @@ is_null(L::MatrixOp) = L.A == 0 * I
 is_eye(L::MatrixOp) = L.A == I
 function is_invertible(L::MatrixOp)
     return size(L.A, 1) == size(L.A, 2) &&
-        !isapprox(det(BigFloat.(L.A)), 0; atol = eps(eltype(L.A)) * 10)
+        !isapprox(det(BigFloat.(Array(L.A))), 0; atol = eps(eltype(L.A)) * 10)
 end
 function is_orthogonal(L::MatrixOp)
     return size(L.A, 1) == size(L.A, 2) && all(<(eps(eltype(L.A)) * 10), L.A' * L.A - I)
 end
-is_full_row_rank(L::MatrixOp) = rank(L.A) == size(L.A, 1)
-is_full_column_rank(L::MatrixOp) = rank(L.A) == size(L.A, 2)
-is_positive_definite(L::MatrixOp) = isposdef(L.A)
-is_positive_semidefinite(L::MatrixOp) = issymmetric(L.A) && all(eigvals(Symmetric(L.A)) .>= 0)
+# `rank`/`det`/`eigvals` are SVD/LAPACK-bound: no generic GPU implementation exists, so
+# these always run on a host copy (cheap relative to the O(n^3) decomposition itself, and
+# these predicates are constructor-time metadata, not something called per solver iteration).
+is_full_row_rank(L::MatrixOp) = rank(Array(L.A)) == size(L.A, 1)
+is_full_column_rank(L::MatrixOp) = rank(Array(L.A)) == size(L.A, 2)
+is_positive_definite(L::MatrixOp) = isposdef(Array(L.A))
+is_positive_semidefinite(L::MatrixOp) = issymmetric(L.A) && all(eigvals(Symmetric(Array(L.A))) .>= 0)
 
 has_optimized_normalop(::MatrixOp) = true
 get_normal_op(L::MatrixOp) = MatrixOp(domain_type(L), size(L, 2), L.A' * L.A; threaded = L.threaded)

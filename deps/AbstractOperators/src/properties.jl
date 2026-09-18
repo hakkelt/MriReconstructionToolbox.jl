@@ -283,8 +283,11 @@ function displacement(S::AbstractOperator)
     x = allocate_in_domain(S)
     fill!(x, 0)
     d = S * x
-    if all(y -> y == d[1], d)
-        return d[1]
+    # Checked on a host copy: `d[1]`/iterating `d` directly would be scalar indexing
+    # on a GPU array. `d` itself (returned below) keeps its original storage type.
+    dc = Array(d)
+    if all(y -> y == dc[1], dc)
+        return dc[1]
     else
         return d
     end

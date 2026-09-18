@@ -15,11 +15,9 @@ struct PrecomposeNonlinear{P,
 end
 
 function PrecomposeNonlinear(g::P, G::T) where {P, T}
-  t, s = domain_type(G), size(G,2)
-  bufD = eltype(s) <: Int ? zeros(t,s) : ArrayPartition(zeros.(t,s))
-  t, s = codomain_type(G), size(G,1)
-  bufC = eltype(s) <: Int ? zeros(t,s) : ArrayPartition(zeros.(t,s))
-  bufC2 = eltype(s) <: Int ? zeros(t,s) : ArrayPartition(zeros.(t,s))
+  bufD = AbstractOperators.allocate_in_domain(G)
+  bufC = AbstractOperators.allocate_in_codomain(G)
+  bufC2 = AbstractOperators.allocate_in_codomain(G)
   # `g` sees `bufC`-shaped input on every call (see `gradient!` below), so it can be
   # preallocated for that shape right away instead of paying its own scratch
   # allocation (if any) on every solver iteration.
