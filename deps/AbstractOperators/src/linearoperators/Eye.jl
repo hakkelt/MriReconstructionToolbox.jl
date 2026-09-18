@@ -56,9 +56,13 @@ function mul!(y::AbstractArray, L::Eye, b::AbstractArray)
 end
 
 # Properties
-diag(::Eye) = 1.0
-diag_AcA(::Eye) = 1.0
-diag_AAc(::Eye) = 1.0
+# In the operator's own real element type, not `Float64`: these values are consumed as a
+# scaling (`ProximalOperators.Precompose`'s `mu`, say), and a `Float64` handed to a `Float32`
+# problem widens whatever it touches -- which surfaces as a `TypeError` in a kernel that
+# accumulates in the problem's own type.
+diag(::Eye{T}) where {T} = one(real(T))
+diag_AcA(::Eye{T}) where {T} = one(real(T))
+diag_AAc(::Eye{T}) where {T} = one(real(T))
 
 domain_type(::Eye{T, N}) where {T, N} = T
 codomain_type(::Eye{T, N}) where {T, N} = T
