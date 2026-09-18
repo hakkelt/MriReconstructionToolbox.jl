@@ -21,7 +21,6 @@ data fidelity, and signal modeling options.
 solved is `½‖𝒜x - y‖² + R(x)`: `λ` weights the regularizer in the data's own units and the result
 comes back in them. See "Operator norm, step size and λ" in `docs/src/high-level/methods.md` for
 what changed and how to migrate a `λ` tuned against the previous behaviour.
-- `disable_normalop_optimization::Bool`: Disable normal operator optimization (default `false`).
 - `maxit::Union{Nothing, Int}`: Maximum solver iterations (default `100`). `nothing` defers to the
   `algorithm`'s own `maxit`, which is how an `algorithm = FISTA(maxit = 500)` is honoured.
 - `reltol::Union{Nothing, Float64}`: Stopping tolerance (default `1e-4`), **relative** — hence the
@@ -79,7 +78,6 @@ struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M, C} <: Iterat
     signal_model::M
     exact_opnorm::Bool
     disable_operator_normalization::Union{Nothing, Bool}
-    disable_normalop_optimization::Bool
     maxit::Union{Nothing, Int}
     reltol::Union{Nothing, Float64}
     on_iteration::C
@@ -90,8 +88,7 @@ struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M, C} <: Iterat
             fidelity::F,
             signal_model::M,
             exact_opnorm::Bool,
-            disable_operator_normalization::Union{Nothing, Bool},
-            disable_normalop_optimization::Bool;
+            disable_operator_normalization::Union{Nothing, Bool};
             maxit::Union{Nothing, Integer} = 100,
             reltol::Union{Nothing, Real} = 1.0e-4,
             on_iteration::C = nothing,
@@ -104,7 +101,6 @@ struct IterativeReconstruction{R <: Tuple, A, F <: DataFidelity, M, C} <: Iterat
             signal_model,
             exact_opnorm,
             disable_operator_normalization,
-            disable_normalop_optimization,
             isnothing(maxit) ? nothing : Int(maxit),
             isnothing(reltol) ? nothing : Float64(reltol),
             on_iteration,
@@ -129,7 +125,6 @@ function IterativeReconstruction(;
         signal_model = nothing,
         exact_opnorm::Bool = false,
         disable_operator_normalization::Union{Nothing, Bool} = nothing,
-        disable_normalop_optimization::Bool = false,
         maxit::Union{Nothing, Integer} = 100,
         reltol::Union{Nothing, Real} = 1.0e-4,
         on_iteration = nothing,
@@ -141,8 +136,7 @@ function IterativeReconstruction(;
         fidelity,
         signal_model,
         exact_opnorm,
-        disable_operator_normalization,
-        disable_normalop_optimization;
+        disable_operator_normalization;
         maxit,
         reltol,
         on_iteration,
@@ -158,7 +152,6 @@ function IterativeReconstruction(
         signal_model = nothing,
         exact_opnorm::Bool = false,
         disable_operator_normalization::Union{Nothing, Bool} = nothing,
-        disable_normalop_optimization::Bool = false,
         maxit::Union{Nothing, Integer} = 100,
         reltol::Union{Nothing, Real} = 1.0e-4,
         on_iteration = nothing,
@@ -171,7 +164,6 @@ function IterativeReconstruction(
         signal_model,
         exact_opnorm,
         disable_operator_normalization,
-        disable_normalop_optimization,
         maxit,
         reltol,
         on_iteration,
@@ -189,7 +181,6 @@ function _with_regularization(method::IterativeReconstruction, regs::Tuple)
         signal_model = method.signal_model,
         exact_opnorm = method.exact_opnorm,
         disable_operator_normalization = method.disable_operator_normalization,
-        disable_normalop_optimization = method.disable_normalop_optimization,
         maxit = method.maxit,
         reltol = method.reltol,
         on_iteration = method.on_iteration,

@@ -24,8 +24,8 @@ julia> reg = L1Image(0.2)
 julia> terms = build_model(𝒜, y, reg; threaded=false)
 ```
 """
-function build_model(𝒜::AbstractOperator, y::AbstractArray, reg::Regularization; threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing, disable_normalop_optimization::Bool = false)
-    return build_model(𝒜, y, (reg,); threaded, x₀, disable_normalop_optimization)
+function build_model(𝒜::AbstractOperator, y::AbstractArray, reg::Regularization; threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing)
+    return build_model(𝒜, y, (reg,); threaded, x₀)
 end
 
 """
@@ -106,17 +106,14 @@ end
 function build_model(
         𝒜::AbstractOperator, y::AbstractArray, regs::Tuple;
         threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing,
-        disable_normalop_optimization::Bool = false,
         fidelity::DataFidelity = L2Loss(),
     )
-    terms, _, _ = build_model_with_variables(
-        𝒜, y, regs; threaded, x₀, disable_normalop_optimization, fidelity
-    )
+    terms, _, _ = build_model_with_variables(𝒜, y, regs; threaded, x₀, fidelity)
     return terms
 end
 
 """
-	build_model_with_variables(𝒜, y, regs; threaded, x₀, disable_normalop_optimization, fidelity)
+	build_model_with_variables(𝒜, y, regs; threaded, x₀, fidelity)
 
 Same as [`build_model`](@ref), but also returns the variables the model was built from:
 `(terms, x, auxiliary_variables)`, where `x` is the image variable and `auxiliary_variables` is a tuple of
@@ -129,7 +126,6 @@ an implementation detail of `extract_variables`, not something to rely on.
 function build_model_with_variables(
         𝒜::AbstractOperator, y::AbstractArray, regs::Tuple;
         threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing,
-        disable_normalop_optimization::Bool = false,
         fidelity::DataFidelity = L2Loss(),
     )
     x₀ = isnothing(x₀) ? 𝒜' * y : copy(x₀)
@@ -137,18 +133,15 @@ function build_model_with_variables(
     x = Variable(unname(x₀))
     𝒜 = unname(𝒜)
     y = unname(y)
-    # The regularizations are materialized first because whether any of them introduces an auxiliary
-    # variable decides which form the data term may take.
     reg_term_list, auxiliaries = materialize_all(regs, x; threaded)
 
     terms = if fidelity isa L2Loss
-        # `normalop_ls` precomputes 𝒜'𝒜 and stores it inside the term, but that operator spans the image
-        # variable alone. Once a regularization adds an auxiliary variable (total generalized variation),
-        # the solver's `x0` spans (image, auxiliary...) while the stored operator still does not, and ADMM
-        # rejects the pair with "A'b must have the same size as x0". The plain `ls` form is assembled
-        # against the full variable tuple by `extract_operators`, so it lifts correctly.
-        use_normalop = !disable_normalop_optimization && isempty(auxiliaries)
-        use_normalop ? (@term normalop_ls(𝒜 * x - y)) : (@term ls(𝒜 * x - y))
+        # A plain least-squares term: it keeps `𝒜` in the expression, and StructuredOptimization
+        # decides at parse time whether to differentiate through the fused normal operator `𝒜'𝒜`
+        # instead. That decision belongs there and nowhere else, because only the parser sees the
+        # operator expanded over the problem's full variable tuple — image alone, or
+        # (image, auxiliary...) once a regularization such as total generalized variation adds one.
+        @term ls(𝒜 * x - y)
     elseif fidelity isa HardConsistency
         prox = hard_consistency_prox(𝒜, y, fidelity.maxit, fidelity.tol)
         StructuredOptimization.Term(1, prox, identity_operator(unname(~x)) * x, "HardConsistency(𝒜x=y)")
@@ -186,9 +179,9 @@ The data term applies `𝒜` to the *sum* of the component variables
 component (requires `Compose`'s `getindex`/`permute` to distribute over a
 multi-domain inner factor, upstream AbstractOperators fix).
 
-`normalop_ls` fusion does not apply here (see `disable_normalop_optimization` docs);
-plain `ls` is always used, since the fast normal-operator path for a sum of shared
-operators requires the upstream `HCAT` normal-op fusion.
+The data term is the same plain least-squares term the single-variable path builds; whether its
+gradient goes through the fused normal operator is decided when the problem is parsed, against
+the joint domain of every component variable.
 
 # Returns
 - `(terms, vars, auxiliaries)`: `terms::StructuredOptimization.TermSet`, `vars::NTuple{n,Variable}` in

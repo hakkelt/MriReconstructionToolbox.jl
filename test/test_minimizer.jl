@@ -203,15 +203,12 @@ end
     acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny))
     acq_data = simulate_acquisition(x_true, acq)
 
-    for disable_normalop in (false, true)
-        method = IterativeReconstruction(;
-            algorithm = CGNR(maxit = 20, tol = 1.0e-6),
-            fidelity = L2Loss(),
-            disable_normalop_optimization = disable_normalop,
-        )
-        rec = reconstruct(acq_data, method; verbosity = Silent())
-        @test isapprox(rec, x_true; rtol = 1.0e-4, atol = 1.0e-4)
-    end
+    method = IterativeReconstruction(;
+        algorithm = CGNR(maxit = 20, tol = 1.0e-6),
+        fidelity = L2Loss(),
+    )
+    rec = reconstruct(acq_data, method; verbosity = Silent())
+    @test isapprox(rec, x_true; rtol = 1.0e-4, atol = 1.0e-4)
 end
 
 @testitem "CGNR on radial data beats the plain adjoint" tags = [:reconstruction, :nfft, :quality] begin

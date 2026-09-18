@@ -651,33 +651,25 @@ end
 # For CG, CGNR and ADMM the setting is a no-op as far as the solve is concerned — they never use
 # `Lf` — so it only saves the estimate those runs would have discarded anyway.
 #
-# **`disable_normalop_optimization = true`** — the substitution this disables is not about
-# "least-squares models" in general. MRT builds the data term as `normalop_ls(𝒜x - y)` — which
-# precomputes $\mathcal{A}^*\mathcal{A}$ once and applies that instead of $\mathcal{A}$ followed
-# by $\mathcal{A}^*$ — exactly when **all three** hold: the fidelity is `L2Loss`, the model has a
-# single image variable (not `Component`s), and no regularizer contributed auxiliary variables
-# (`TotalGeneralizedVariation2D` does, and then the stored normal operator would not span the
-# solver's variable tuple). Otherwise plain `ls(𝒜x - y)` is used and the flag changes nothing.
-#
-# *Costs*, when disabled, **whatever the difference is between one application of
-# $\mathcal{A}^*\mathcal{A}$ and an application of $\mathcal{A}$ followed by one of
-# $\mathcal{A}^*$** — which is not the same as "one extra operator application", and is the whole
-# story of this flag. Both forms do one forward-and-adjoint's worth of work per gradient: plain
-# `ls(𝒜x - y)` forms the residual $r = \mathcal{A}x - y$, takes $\|r\|^2$ for the value and
+# **The normal-operator substitution** is not a switch at all, but it is worth knowing about
+# because it decides how much a gradient costs. The model always carries the plain least-squares
+# term `ls(𝒜x - y)`; when the problem is handed to a solver, the term's gradient is rewritten to
+# go through $\mathcal{A}^*\mathcal{A}$ wherever that product has an implementation cheaper than
+# applying $\mathcal{A}$ and then $\mathcal{A}^*$ — which the FFT- and NFFT-based encoding
+# operators do have. Both forms do one forward-and-adjoint's worth of work per gradient: the plain
+# one forms the residual $r = \mathcal{A}x - y$, takes $\|r\|^2$ for the value and
 # $\mathcal{A}^*r$ for the gradient. What the substitution buys is that the *composed* operator
-# $\mathcal{A}^*\mathcal{A}$ can be cheaper than its two factors run back to back — for an NFFT it
-# is a Toeplitz embedding, one FFT pair on a padded grid instead of two gridding passes — and it
-# also recovers the value from the gradient instead of applying $\mathcal{A}$ again. On a
-# Cartesian FFT there is nothing to collapse and the saving is a few per cent; on a radial NFFT it
-# is a large fraction of the run. The two cells below measure both.
-# *Reach for it* when debugging a custom operator whose adjoint or normal operator you suspect,
-# since the two forms should agree to round-off — and whenever the data-fidelity **value** has to
-# be the textbook one rather than only consistent with the gradient. The normal-operator form never
-# applies $\mathcal{A}$ a second time: it recovers the value from the gradient it already computed,
-# which makes it the potential of *that* gradient. With MRT's `BACKWARD`-normalized Fourier
-# operator $\mathcal{A}^*$ is the inverse rather than the true adjoint, so that potential is
-# $\tfrac12\|\mathcal{A}x - y\|^2 / \sigma$ with $\sigma = N$ — the right quantity for the solver
-# and for a line search, but scaled if you wanted to read off $\tfrac12\|\mathcal{A}x - y\|^2$.
+# can be cheaper than its two factors run back to back — for an NFFT it is a Toeplitz embedding,
+# one FFT pair on a padded grid instead of two gridding passes — and that it recovers the value
+# from the gradient instead of applying $\mathcal{A}$ again. On a Cartesian FFT there is little to
+# collapse and the saving is a few per cent; on a radial NFFT it is a large fraction of the run.
+#
+# One consequence to keep in mind when reading a printed objective: the substituted form never
+# applies $\mathcal{A}$ a second time, so its value is the potential of the gradient it already
+# computed. With MRT's `BACKWARD`-normalized Fourier operator $\mathcal{A}^*$ is the inverse
+# rather than the true adjoint, so that potential is $\tfrac12\|\mathcal{A}x - y\|^2 / \sigma$
+# with $\sigma = N$ — the right quantity for the solver and for a line search, but scaled if you
+# wanted to read off $\tfrac12\|\mathcal{A}x - y\|^2$ itself.
 
 # %%
 # `Lf = n‖𝒜‖²` with n = 1: computed once here (the same `𝒜` as above), then handed to the
@@ -696,13 +688,12 @@ x_manual = reconstruct(
 println("hand-supplied Lf reproduces the default run exactly: ", x_manual ≈ x_default)
 
 # %%
-# The four options on the Cartesian problem this notebook has used throughout.
+# The three options on the Cartesian problem this notebook has used throughout.
 function compare_options(acq_data, err; maxit = 40)
     for (label, kwargs) in (
             ("default", (;)),
             ("exact_opnorm", (; exact_opnorm = true)),
             ("no normalization", (; disable_operator_normalization = true)),
-            ("no normal-op", (; disable_normalop_optimization = true)),
         )
         m = IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit, kwargs...)
         reconstruct(acq_data, m)                           # warm up
@@ -717,11 +708,11 @@ println("--- Cartesian, 128², 8 coils ---")
 compare_options(data, nrmse1)
 
 # %% [markdown]
-# The same four options on a **non-Cartesian** acquisition — radial, 200 golden-angle spokes of
+# The same three options on a **non-Cartesian** acquisition — radial, 200 golden-angle spokes of
 # 256 samples over the same phantom and coils (notebook 08 is where non-Cartesian encoding is
-# covered properly). This is where `disable_normalop_optimization` stops being a footnote: for an
-# NFFT the normal operator is a Toeplitz embedding, one FFT pair on a padded grid, and running
-# $\mathcal{A}$ and $\mathcal{A}^*$ separately means two full gridding passes instead.
+# covered properly). This is also where the normal-operator substitution stops being a footnote:
+# for an NFFT the normal operator is a Toeplitz embedding, one FFT pair on a padded grid, where
+# running $\mathcal{A}$ and $\mathcal{A}^*$ separately means two full gridding passes instead.
 
 # %%
 traj_no = radial_trajectory(256, 200; ordering = GoldenAngle())
@@ -738,23 +729,13 @@ compare_options(data_noncart, nrmse1; maxit = 30)
 # Several rows in those two tables are worth explaining, because none of them is obvious.
 # (Wall-clock timings vary from run to run; the *reasons* below are the part to keep.)
 #
-# **Why `disable_normalop_optimization` barely registers on the Cartesian problem and is
-# expensive on the radial one.** This is the flag's whole character. Cartesian: the normal
-# operator is a masked FFT pair, which is what $\mathcal{A}$ then $\mathcal{A}^*$ already costs,
-# so collapsing them saves only the second value computation — a few per cent. Radial: the NFFT's
-# normal operator is a Toeplitz embedding, a single FFT pair on a padded grid, against two full
-# gridding passes with their interpolation kernels — so the substitution removes a large fraction
-# of the per-iteration cost, and disabling it makes the solve markedly slower for the same answer.
-# If you take one thing from this section: the flag is a debugging switch on Cartesian data and a
-# performance decision on non-Cartesian data.
-#
-# The two forms are not bit-identical, and at a truncated `maxit` that is visible in the NRMSE
-# column rather than only in the last digit. Both compute the same gradient to round-off, but they
-# report a differently *scaled* data-fidelity value (the normal-operator form returns the
-# potential of the gradient it actually produced — see the paragraph above), and POGM's restart
-# test reads that value. A different scaling fires the restart on different iterations, which
-# sends the two runs down slightly different paths to the same minimizer. Give both enough
-# iterations and they agree; compare them at iteration 40 and they will not.
+# **Why the per-iteration cost differs so much between the two acquisitions.** Cartesian: the
+# normal operator is a masked FFT pair, which is what $\mathcal{A}$ then $\mathcal{A}^*$ already
+# costs, so the substitution saves only the second value computation — a few per cent. Radial:
+# the NFFT's normal operator is a Toeplitz embedding, a single FFT pair on a padded grid, against
+# two full gridding passes with their interpolation kernels — so it removes a large fraction of
+# the per-iteration cost. The substitution is a footnote on Cartesian data and a large win on
+# non-Cartesian data, which is why it is applied wherever the operator supports it.
 #
 # **Why `exact_opnorm` costs so much wall-clock time.** Not because of the iterations — `maxit`
 # is unchanged — but because of the setup. The 20-step estimate took a few tens of milliseconds
@@ -1044,8 +1025,8 @@ plot!(
 #
 # The method-owned parameters stay on the method and are deliberately *rejected* here rather
 # than ignored: `maxit`, `reltol`, `algorithm`, `on_iteration` (§3, §9), and the operator-norm
-# switches `exact_opnorm`, `disable_operator_normalization`, `disable_normalop_optimization`
-# (§7), all of which are constructor keywords of `IterativeReconstruction`.
+# switches `exact_opnorm` and `disable_operator_normalization` (§7), all of which are
+# constructor keywords of `IterativeReconstruction`.
 
 # %%
 config = ReconstructionConfig(;

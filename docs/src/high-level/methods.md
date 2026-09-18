@@ -42,7 +42,6 @@ IterativeReconstruction(
     signal_model = nothing,
     exact_opnorm = false,
     disable_operator_normalization = false,
-    disable_normalop_optimization = false,
     maxit = 100,
     reltol = 1e-4,
 )
@@ -79,7 +78,6 @@ The `signal_model` keyword sets how the optimization variable maps to the image:
 - `disable_operator_normalization`: Skip the $\|\mathcal{A}\|$ estimate and let the algorithm derive
   its own step size. (The name predates the change described below — it no longer rescales
   $\mathcal{A}$, because nothing does.)
-- `disable_normalop_optimization`: Disable normal-operator substitution ($\mathcal{A}^*\mathcal{A}$) in least-squares models.
 
 #### Operator norm, step size and λ
 
