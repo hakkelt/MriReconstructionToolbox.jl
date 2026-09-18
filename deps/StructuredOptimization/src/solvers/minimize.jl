@@ -1,7 +1,7 @@
 export problem, @minimize, @term
 
 """
-	problems(terms...)
+	problem(terms...)
 
 Constructs a problem.
 

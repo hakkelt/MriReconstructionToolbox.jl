@@ -17,83 +17,83 @@ julia> reshape(A*x-b,2,5)
 ```
 """
 function reshape(a::AbstractExpression, dims...)
-  A = convert(Expression,a)
-  op = Reshape(A.L, dims...)
-  return Expression(A.x,op)
+    A = convert(Expression, a)
+    op = Reshape(A.L, dims...)
+    return Expression(A.x, op)
 end
 #Reshape
 
 imported = [
-            :getindex :GetIndex;
-            :exp      :Exp;
-            :cos      :Cos;
-            :sin      :Sin;
-            :atan     :Atan;
-            :tanh     :Tanh;
-           ]
+    :getindex :GetIndex;
+    :exp      :Exp;
+    :cos      :Cos;
+    :sin      :Sin;
+    :atan     :Atan;
+    :tanh     :Tanh;
+]
 
 importedFFTW = [
-                :fft      :DFT;
-                :rfft     :RDFT;
-                :irfft    :IRDFT;
-                :ifft     :IDFT;
-                :dct      :DCT;
-                :idct     :IDCT;
-               ]
+    :fft      :DFT;
+    :rfft     :RDFT;
+    :irfft    :IRDFT;
+    :ifft     :IDFT;
+    :dct      :DCT;
+    :idct     :IDCT;
+]
 
 importedDSP = [
-               :conv     :Conv;
-               :xcorr    :Xcorr;
-               :filt     :Filt;
-              ]
+    :conv     :Conv;
+    :xcorr    :Xcorr;
+    :filt     :Filt;
+]
 
 exported = [
-            :finitediff :FiniteDiff;
-            :variation  :Variation;
-            :mimofilt   :MIMOFilt;
-            :zeropad    :ZeroPad;
-            :sigmoid    :Sigmoid;
-            :σ          :Sigmoid; #alias
-            :pow        :Pow; #alias
-           ]
+    :finitediff :FiniteDiff;
+    :variation  :Variation;
+    :mimofilt   :MIMOFilt;
+    :zeropad    :ZeroPad;
+    :sigmoid    :Sigmoid;
+    :σ          :Sigmoid; #alias
+    :pow        :Pow; #alias
+]
 
 #importing functions from Base
-for f in  imported[:,1]
-  @eval begin
-    import Base: $f
-  end
+for f in imported[:, 1]
+    @eval begin
+        import Base: $f
+    end
 end
 #importing functions from FFTW
-for f in  importedFFTW[:,1]
-  @eval begin
-    import FFTW: $f
-    export $f
-  end
+for f in importedFFTW[:, 1]
+    @eval begin
+        import FFTW: $f
+        export $f
+    end
 end
 #importing functions from DSP
-for f in  importedDSP[:,1]
-  @eval begin
-    import DSP: $f
-    export $f
-  end
+for f in importedDSP[:, 1]
+    @eval begin
+        import DSP: $f
+        export $f
+    end
 end
 #exporting functions
-for f in  exported[:,1]
-  @eval begin
-    export $f
-  end
+for f in exported[:, 1]
+    @eval begin
+        export $f
+    end
 end
 
 fun = [imported; importedFFTW; importedDSP; exported]
-for i = 1:size(fun,1)
-  f,fAbsOp = fun[i,1],fun[i,2]
-  @eval begin
-    function $f(a::AbstractExpression, args...)
-      A = convert(Expression,a)
-      op = $fAbsOp(codomain_type(operator(A)),size(operator(A),1), args...)
-      return op*A
+for i in 1:size(fun, 1)
+    f, fAbsOp = fun[i, 1], fun[i, 2]
+    @eval begin
+        function $f(a::AbstractExpression, args...)
+            A = convert(Expression, a)
+            op = $fAbsOp(codomain_type(operator(A)), size(operator(A), 1), args...)
+            return op * A
+        end
     end
-  end
 end
 
 ## docs
@@ -182,7 +182,6 @@ julia> operator(ex)
 ```
 """
 ifft
-
 
 
 """

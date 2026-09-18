@@ -6,9 +6,6 @@ m,n1 = 5,3
 x1 = Variable(n1)
 A = randn(m,n1)
 # single term, single variable
-# (built with the plain `SqrNormL2` Term, not `ls`, since `ls` now auto-selects
-# `SqrNormL2WithNormalOp` for a non-identity operator — this section is testing the
-# generic Term-extraction machinery, independent of that selection)
 cf = StructuredOptimization.Term(SqrNormL2(), A*x1)
 xAll = StructuredOptimization.extract_variables(cf)
 @test xAll[1] == x1

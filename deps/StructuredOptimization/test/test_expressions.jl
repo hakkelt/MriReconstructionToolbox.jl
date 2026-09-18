@@ -322,3 +322,35 @@ let
     @test size(operator(ex_d), 1) == (10,)
 end
 
+# addition.jl — Usum_op multi-variable + single-variable generic-operator paths.
+# A nonlinear wrapper around a multi-variable expression (e.g. sin(A*x+B*y)) keeps
+# several variables but is NOT an HCAT, so `expr_multivar ± expr_single` dispatches
+# to the generic multi-var/single-var Usum_op methods (rather than the HCAT-
+# specialized ones). These are reachable from ordinary syntax; exercise both the
+# `multivar + single` and `single + multivar` orderings, and both +/-.
+let
+    x, y, z = Variable(4), Variable(4), Variable(4)
+    A, B, C = randn(4, 4), randn(4, 4), randn(4, 4)
+
+    # multivar (non-HCAT) + single, new variable
+    ex1 = sin(A*x + B*y) + C*z
+    @test Set(variables(ex1)) == Set((x, y, z))
+    out1 = operator(ex1) * ArrayPartition((~v for v in variables(ex1))...)
+    expected1 = sin.(A*(~x) + B*(~y)) + C*(~z)
+    @test norm(out1 - expected1) < 1e-12
+
+    # single + multivar (non-HCAT), new variable, subtraction
+    ex2 = C*z - sin(A*x + B*y)
+    @test Set(variables(ex2)) == Set((x, y, z))
+    out2 = operator(ex2) * ArrayPartition((~v for v in variables(ex2))...)
+    expected2 = C*(~z) - sin.(A*(~x) + B*(~y))
+    @test norm(out2 - expected2) < 1e-12
+
+    # multivar (non-HCAT) + single whose variable is already present (in-branch)
+    ex3 = sin(A*x + B*y) + C*x
+    @test Set(variables(ex3)) == Set((x, y))
+    out3 = operator(ex3) * ArrayPartition((~v for v in variables(ex3))...)
+    expected3 = sin.(A*(~x) + B*(~y)) + C*(~x)
+    @test norm(out3 - expected3) < 1e-12
+end
+

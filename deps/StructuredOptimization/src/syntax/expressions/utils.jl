@@ -4,7 +4,7 @@ import Base: convert
 import ..AbstractOperators: displacement
 
 convert(::Type{Expression}, x::Variable) =
-Expression((x,), Eye(~x))
+    Expression((x,), Eye(~x))
 
 """
     variables(ex::Expression)
@@ -24,8 +24,10 @@ julia> variables(ex)
 ```
 
 """
-variables(A::Expression)    = A.x
-variables(x::Variable)    = x
+variables(A::Expression) = A.x
+# Return a 1-tuple (matching `Expression`) so callers can treat any expression
+# uniformly and `Iterators.flatten(variables.(...))` never trips on a bare Variable.
+variables(x::Variable) = (x,)
 
 """
     operator(ex::Expression)
@@ -46,7 +48,7 @@ julia> operator(ex)
 ```
 """
 operator(A::Expression) = remove_displacement(A.L)
-operator(x::Variable)   = Eye(~x)
+operator(x::Variable) = Eye(~x)
 
 """
     affine(ex::Expression)
@@ -55,7 +57,7 @@ Returns the `AbstractOperator` of expression `ex` keeping any affine addition.
 
 """
 affine(A::Expression) = A.L
-affine(x::Variable)   = Eye(~x)
+affine(x::Variable) = Eye(~x)
 
 """
     displacement(ex::Expression)

@@ -1,52 +1,58 @@
-struct Expression{N,A<:AbstractOperator} <: AbstractExpression
-  x::NTuple{N,Variable}
-  L::A
-  function Expression(x::NTuple{N,Variable}, L::A) where {N,A<:AbstractOperator}
-    # checks on L
-    # A multi-domain codomain is normally unsupported (most Term machinery
-    # assumes a single-block codomain array), but an `is_eye` operator is a
-    # provable no-op — x flows through unchanged — so a block-identity like
-    # DCAT(Eye, Eye) over a joint multi-variable domain is safe to allow.
-    # A codomain stored as one `ArrayPartition` is also safe: it is a single array object --
-    # broadcast, `norm`, `dot`, `similar` and `mul!` all treat it as one -- so every Term
-    # assumption about a single-block codomain array holds. That is the shape a `VCAT` of
-    # per-block operators produces (an MRI acquisition whose frames select different numbers of
-    # samples, for instance), and rejecting it would leave that model unexpressible.
-    ndoms(L,1) > 1 && !is_eye(L) && !(codomain_array_type(L) <: ArrayPartition) && throw(ArgumentError(
-      "Cannot create expression with LinearOperator with `ndoms(L,1) > 1`"
-     ))
-    #checks on x
-    szL = size(L,2)
-    szx = size.(x)
-    check_sz = length(szx) == 1 ? szx[1] != szL : szx != szL
-    check_sz && throw(ArgumentError(
-      "Size of the operator domain $(size(L, 2)) must match size of the variable $(size.(x))"
-     ))
-    dmL = domain_type(L)
-    dmx = eltype.(x)
-    check_dm = length(dmx) == 1 ? dmx[1] != dmL : dmx != dmL
-    check_dm && throw(ArgumentError(
-      "Type of the operator domain $(domain_type(L)) must match type of the variable $(eltype.(x))"
-     ))
-    new{N,A}(x,L)
-  end
+struct Expression{N, A <: AbstractOperator} <: AbstractExpression
+    x::NTuple{N, Variable}
+    L::A
+    function Expression(x::NTuple{N, Variable}, L::A) where {N, A <: AbstractOperator}
+        # checks on L
+        # A multi-domain codomain is normally unsupported (most Term machinery assumes a
+        # single-block codomain array), but an `is_eye` operator is a provable no-op — x
+        # flows through unchanged — so a block-identity over a joint multi-variable domain
+        # is safe to allow.
+        # A codomain stored as one `ArrayPartition` is also safe: it is a single array object --
+        # broadcast, `norm`, `dot`, `similar` and `mul!` all treat it as one -- so every Term
+        # assumption about a single-block codomain array holds. That is the shape a `VCAT` of
+        # per-block operators produces (an MRI acquisition whose frames select different numbers of
+        # samples, for instance), and rejecting it would leave that model unexpressible.
+        ndoms(L, 1) > 1 && !is_eye(L) && !(codomain_array_type(L) <: ArrayPartition) && throw(
+            ArgumentError(
+                "Cannot create expression with LinearOperator with `ndoms(L,1) > 1`"
+            )
+        )
+        #checks on x
+        szL = size(L, 2)
+        szx = size.(x)
+        check_sz = length(szx) == 1 ? szx[1] != szL : szx != szL
+        check_sz && throw(
+            ArgumentError(
+                "Size of the operator domain $(size(L, 2)) must match size of the variable $(size.(x))"
+            )
+        )
+        dmL = domain_type(L)
+        dmx = eltype.(x)
+        check_dm = length(dmx) == 1 ? dmx[1] != dmL : dmx != dmL
+        check_dm && throw(
+            ArgumentError(
+                "Type of the operator domain $(domain_type(L)) must match type of the variable $(eltype.(x))"
+            )
+        )
+        return new{N, A}(x, L)
+    end
 end
 
 struct AdjointExpression{E <: AbstractExpression} <: AbstractExpression
-  ex::E
+    ex::E
 end
 
 import Base: adjoint, show
 
-adjoint(ex::AbstractExpression) = AdjointExpression(convert(Expression,ex))
+adjoint(ex::AbstractExpression) = AdjointExpression(convert(Expression, ex))
 adjoint(ex::AdjointExpression) = ex.ex
 
 function show(io::IO, ex::Expression)
-  if length(ex.x) == 1
-    print(io, AbstractOperators.fun_name(ex.L), " * ", ex.x[1])
-  else
-    print(io, AbstractOperators.fun_name(ex.L), " * (", join(ex.x, ", "), ")")
-  end
+    return if length(ex.x) == 1
+        print(io, AbstractOperators.fun_name(ex.L), " * ", ex.x[1])
+    else
+        print(io, AbstractOperators.fun_name(ex.L), " * (", join(ex.x, ", "), ")")
+    end
 end
 
 include("utils.jl")
