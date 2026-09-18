@@ -186,7 +186,9 @@ function _average_calibration_dims(kspace::AbstractArray, average_dims, nfourier
     names = kspace isa NamedDimsArray ? dimnames(kspace) : ()
     idx = Int[]
     for d in dims
-        i = if d isa Integer
+        # `average_dims` is untyped, so without this the resolved index stays `Any` and
+        # `i in idx` widens to every `in` method in scope, including the term-building one.
+        i::Union{Nothing, Int} = if d isa Integer
             # From an image-array position to the matching k-space position: both layouts end in
             # the same `(coil, batch...)` tail, they only differ in how many axes come before it.
             k = Int(d) - nspatial + nfourier

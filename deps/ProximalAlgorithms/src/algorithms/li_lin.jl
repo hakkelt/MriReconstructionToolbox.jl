@@ -103,7 +103,7 @@ function Base.iterate(iter::LiLinIteration{R}, state::LiLinState{R,Tx}) where {R
     else
         # TODO: re-use available space in state?
         # TODO: backtrack gamma at x
-        f_x, grad_f_x = value_and_gradient(iter.f, x)
+        f_x, grad_f_x = value_and_gradient(iter.f, state.x)
         x_forward = state.x - state.gamma .* grad_f_x
         v, g_v = prox(iter.g, x_forward, state.gamma)
         Fv = iter.f(v) + g_v
