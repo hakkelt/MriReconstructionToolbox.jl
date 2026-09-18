@@ -86,8 +86,7 @@ end
 
     function denoise(reg, noisy; maxit = 2000)
         model, x, _ = MRT.build_model_with_variables(
-            Eye(noisy), noisy, (reg,);
-            threaded = false, x₀ = copy(noisy), disable_normalop_optimization = true,
+            Eye(noisy), noisy, (reg,); threaded = false, x₀ = copy(noisy),
         )
         solve(model, ADMM(; maxit, rho = 1.0))
         return copy(~x)
@@ -165,8 +164,7 @@ end
     # It must also beat plain first-order TV on this ramp-plus-edge image, which is the whole point of
     # splitting the image into a cartoon and a ramp part.
     tv_model, tv_x, _ = MRT.build_model_with_variables(
-        Eye(noisy), noisy, (TotalVariation2D(0.05),);
-        threaded = false, x₀ = copy(noisy), disable_normalop_optimization = true,
+        Eye(noisy), noisy, (TotalVariation2D(0.05),); threaded = false, x₀ = copy(noisy),
     )
     solve(tv_model, ADMM(maxit = 1000, rho = 1.0))
     @test relative_error(total) < relative_error(copy(~tv_x))
@@ -182,11 +180,13 @@ end
     using MriReconstructionToolbox.StructuredOptimization
 
     # Regression: TGV was only ever exercised through hand-built models passed to `solve`, so the
-    # public entry point had no coverage. `build_model_with_variables` chose the `normalop_ls` data
-    # term before the regularizations declared their auxiliary variables, and the operator that form
-    # stores spans the image alone -- so once TGV added its auxiliary field the solver's `x0` spanned
+    # public entry point had no coverage. The data term used to be rewritten into its
+    # normal-operator form while the model was being built, before the regularizations had
+    # declared their auxiliary variables, and the operator that form stored spanned the image
+    # alone -- so once TGV added its auxiliary field the solver's `x0` spanned
     # (image, auxiliary) while the stored operator did not, and ADMM rejected the pair with
-    # "A'b must have the same size as x0".
+    # "A'b must have the same size as x0". The rewrite now happens when the problem is parsed,
+    # against the variables it actually has.
     Random.seed!(20260829)
     nx, ny, nc = 32, 32, 4
     img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
@@ -203,8 +203,7 @@ end
     # A sign-flipped or diverged solve lands near 2.0; measured ≈0.29 at 50 iterations.
     @test norm(img_recon - img_true) / norm(img_true) < 0.6
 
-    # The auxiliary variable is what forces the plain `ls` form; a term without one must keep the
-    # `normalop_ls` optimization.
+    # TGV is the term that contributes an auxiliary variable; a first-order TV term is not.
     _, _, tgv_aux = MriReconstructionToolbox.build_model_with_variables(
         get_encoding_operator(acq), acq.kspace_data, (TotalGeneralizedVariation2D(0.005),); threaded = false,
     )
@@ -213,7 +212,14 @@ end
         get_encoding_operator(acq), acq.kspace_data, (TotalVariation2D(0.001),); threaded = false,
     )
     @test tv_aux == ()
-    @test any(t -> t.f isa MriReconstructionToolbox.StructuredOptimization.SqrNormL2WithNormalOp, tv_terms)
+    # The data term itself is the plain least-squares one, in both models: the normal-operator
+    # form is what the parser makes of it, and for this encoding operator it does.
+    SO = MriReconstructionToolbox.StructuredOptimization
+    PO = MriReconstructionToolbox.ProximalOperators
+    ls_term = only(filter(t -> t.f isa PO.SqrNormL2, collect(tv_terms)))
+    ls_op = SO.extract_operators(SO.extract_variables(tv_terms), ls_term)
+    @test SO.with_normal_op(ls_term.f, ls_op, SO.displacement(ls_term), ls_term.lambda) isa
+        SO.SqrNormL2WithNormalOp
 end
 @testitem "TotalGeneralizedVariation3D regularization" tags = [:regularization] begin
     using Test
@@ -294,8 +300,7 @@ end
 
     function denoise(reg, noisy; maxit = 800)
         model, x, _ = MRT.build_model_with_variables(
-            Eye(noisy), noisy, (reg,);
-            threaded = false, x₀ = copy(noisy), disable_normalop_optimization = true,
+            Eye(noisy), noisy, (reg,); threaded = false, x₀ = copy(noisy),
         )
         solve(model, ADMM(; maxit, rho = 1.0))
         return copy(~x)

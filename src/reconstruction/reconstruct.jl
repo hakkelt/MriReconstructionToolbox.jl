@@ -134,7 +134,6 @@ function _reconstruct(
         build = (𝒜, y; x₀) -> build_model_with_variables(
             𝒜, y, bound_regs;
             threaded = config.threaded, x₀,
-            disable_normalop_optimization = method.disable_normalop_optimization,
             fidelity = method.fidelity,
         )
         # The same two post-processing steps the final image goes through below, so that an

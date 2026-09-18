@@ -231,11 +231,10 @@ errors.
 - The data term applies the encoding operator `𝒜` to the *sum* of the
   component variables (`𝒜*(x₁ + x₂ + …)`), not once per component, so its
   cost matches a single-image reconstruction with the same `𝒜`.
-- `disable_normalop_optimization` has no effect for image decomposition: the
-  fast normal-operator path (`normalop_ls`) requires the encoding operator's
-  normal operator to fuse across components (e.g. via the Toeplitz-embedded
-  NFFT normal operator), which does not currently happen for a sum of shared
-  operators — plain `ls` is always used instead.
+- The normal-operator substitution ($\mathcal{A}^*\mathcal{A}$) applies here as it does to a
+  single-image reconstruction: the data term is the same plain least-squares term, and whether
+  its gradient goes through the normal operator is decided when the problem is parsed, against
+  the joint domain of every component variable.
 - The Lipschitz constant of the data term scales with the number of
   components (for `n` components sharing a unit-norm operator `𝒜`,
   `‖[𝒜 … 𝒜]‖ = √n‖𝒜‖`), so `reconstruct` defaults `Lf = n_components` for

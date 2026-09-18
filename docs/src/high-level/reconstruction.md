@@ -247,16 +247,12 @@ println("Unnormalized reconstruction completed")
 
 ### Normal Operator Optimization
 
-For least-squares problems, `IterativeReconstruction` can exploit efficient normal operator implementations $\mathcal{A}^*\mathcal{A}$:
-
-```@example recon
-# Disable normal operator optimization for debugging
-method_noopt = IterativeReconstruction(
-    L2Image(0.01);
-    disable_normalop_optimization=true
-)
-nothing # hide
-```
+For least-squares problems the gradient of the data term can be evaluated through the normal
+operator $\mathcal{A}^*\mathcal{A}$ in a single pass, whenever that product has an
+implementation cheaper than applying $\mathcal{A}$ and then $\mathcal{A}^*$ — which it does for
+the FFT- and NFFT-based encoding operators this package builds. Nothing has to be requested:
+the model always carries the plain least-squares term, and the substitution is decided when the
+problem is handed to a solver, against the full set of variables the problem turns out to have.
 
 ### Output Scaling
 
