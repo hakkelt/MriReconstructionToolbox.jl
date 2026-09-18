@@ -52,9 +52,11 @@ function LeastSquaresDirect(A::Union{Transpose, Adjoint}, b, lambda)
     LeastSquaresDirect(copy(A), b, lambda)
 end
 
-function LeastSquaresDirect(A, b, lambda)
+function LeastSquaresDirect(A::M, b, lambda) where {M}
+    C = eltype(M)
+    R = real(C)
     @warn "Could not infer type of Factorization for $M in LeastSquaresDirect, this type will be type-unstable"
-    LeastSquaresDirect{N, R, C, M, V, Factorization, lambda >= 0}(A, b, lambda)
+    return LeastSquaresDirect{ndims(b), R, C, M, typeof(b), Factorization, lambda >= 0}(A, b, R(lambda))
 end
 
 function (f::LeastSquaresDirect)(x)
