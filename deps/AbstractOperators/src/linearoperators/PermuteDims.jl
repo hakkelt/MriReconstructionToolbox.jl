@@ -81,8 +81,8 @@ is_full_row_rank(::PermuteDims) = true
 is_full_column_rank(::PermuteDims) = true
 is_orthogonal(::PermuteDims) = true
 is_invertible(::PermuteDims) = true
-diag_AcA(::PermuteDims) = 1.0
-diag_AAc(::PermuteDims) = 1.0
+diag_AcA(L::PermuteDims) = one(real(domain_type(L)))
+diag_AAc(L::PermuteDims) = one(real(domain_type(L)))
 
 function _copy_operator_impl(op::PermuteDims{T, N, S}; storage_type = nothing, threaded = nothing) where {T, N, S}
     new_at = storage_type === nothing ? _array_wrapper_type(S) : storage_type

@@ -368,9 +368,9 @@ remove_displacement(D::DCAT) = DCAT(remove_displacement.(D.A), D.idxD, D.idxC)
 # special cases
 # Eye constructor
 Eye(x::ArrayPartition) = DCAT(Eye.(x.x)...)
-diag(L::DCAT{N, Tuple{E, Vararg{E, M}}}) where {N, M, E <: Eye} = 1.0
-diag_AAc(L::DCAT{N, Tuple{E, Vararg{E, M}}}) where {N, M, E <: Eye} = 1.0
-diag_AcA(L::DCAT{N, Tuple{E, Vararg{E, M}}}) where {N, M, E <: Eye} = 1.0
+diag(L::DCAT{N, Tuple{E, Vararg{E, M}}}) where {N, M, E <: Eye} = diag(L.A[1])
+diag_AAc(L::DCAT{N, Tuple{E, Vararg{E, M}}}) where {N, M, E <: Eye} = diag_AAc(L.A[1])
+diag_AcA(L::DCAT{N, Tuple{E, Vararg{E, M}}}) where {N, M, E <: Eye} = diag_AcA(L.A[1])
 
 has_fast_opnorm(L::DCAT) = all(has_fast_opnorm.(L.A))
 LinearAlgebra.opnorm(L::DCAT) = maximum(opnorm.(L.A))

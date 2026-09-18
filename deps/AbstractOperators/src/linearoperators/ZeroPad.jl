@@ -110,7 +110,7 @@ function diag_AAc(L::ZeroPad)
     return L * L' * input
 end
 is_AcA_diagonal(L::ZeroPad) = true
-diag_AcA(L::ZeroPad) = 1
+diag_AcA(L::ZeroPad) = one(real(domain_type(L)))
 
 is_full_column_rank(L::ZeroPad) = true
 

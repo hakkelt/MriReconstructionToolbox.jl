@@ -162,8 +162,8 @@ is_invertible(L::CosineTransform) = true
 is_full_row_rank(L::CosineTransform) = true
 is_full_column_rank(L::CosineTransform) = true
 
-diag_AcA(L::CosineTransform) = 1.0
-diag_AAc(L::CosineTransform) = 1.0
+diag_AcA(L::CosineTransform) = one(real(domain_type(L)))
+diag_AAc(L::CosineTransform) = one(real(domain_type(L)))
 
 has_optimized_normalop(L::CosineTransform) = true
 get_normal_op(L::CosineTransform) = Eye(allocate_in_domain(L))
