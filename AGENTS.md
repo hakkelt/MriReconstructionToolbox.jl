@@ -45,6 +45,25 @@ is unnamed into a `Variable`.
 `NestedThreading`. These are local checkouts under `deps/` — never `Pkg.add` an upstream version;
 `Pkg.instantiate` the existing Manifest.
 
+They are inlined as **submodules** of `MriReconstructionToolbox` (see the `include`s at the top of
+`src/MriReconstructionToolbox.jl`), which has two consequences worth knowing before editing them:
+
+- Every cross-package `using`/`import` inside `deps/` must be relative (`using ..AbstractOperators`).
+- A method that extends another package's function must have that function on an `import` list, or
+  it silently defines a *new* function of the same name in the submodule and the extension is never
+  seen. `FFTWOperators.has_optimized_normalop`, `NFFTOperators.is_symmetric` and
+  `ProximalOperators.is_positively_homogeneous` each shadowed this way at some point; if a trait
+  looks ignored, compare `Pkg.Mod.trait === Owner.trait` first.
+- Their `ext/` directories are carried along but never loaded: package extensions do not apply to a
+  submodule. Anything a vendored extension provides has to be wired in explicitly, as
+  `ProximalOperators`' `RecursiveArrayToolsExt` is (`deps/ProximalOperators/src/recursive_array_tools.jl`).
+
+`deps/` is excluded from MRT's own test run (`JuliaTestItems.toml`); each fork keeps its upstream
+test suite and runs it in its own environment.
+
+MRT is **ahead of** its upstreams in places (its own fixes are pushed there as branches), so a sync
+is a merge, not a copy: check whether the vendored side is the newer one before overwriting it.
+
 ### API gotchas
 
 - `materialize` / `materialize_with_auxiliaries` / `materialize_all` are `public` but not exported —
