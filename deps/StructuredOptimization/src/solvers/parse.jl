@@ -151,7 +151,9 @@ function prepare_proximable_single_var_per_term(variable_bags, variables::NTuple
                     op = operator(ti)
                     fxi = (fxi..., merge_function_with_operator(op, ti.f, displacement(ti), ti.lambda))
                     if AbstractOperators.ndoms(op, 2) > 1
-                        op = op[findfirst(==(var), variables(ti))]
+                        # `extract_variables`, not `variables`: the argument of the same name
+                        # shadows the function here.
+                        op = op[findfirst(==(var), extract_variables(ti))]
                     end
                     if typeof(op) <: Compose
                         idx = op.A[1].idx
