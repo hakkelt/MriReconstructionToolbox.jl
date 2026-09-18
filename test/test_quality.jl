@@ -36,7 +36,10 @@ end
     using MriReconstructionToolbox.AbstractOperators
     using NamedDims
 
-    const MRT = MriReconstructionToolbox
+    # The target of every `@test_call`/`@test_opt` below: this package's own frames only. A bare
+    # module would also match the vendored dependencies, which are submodules of it, and report
+    # their inference problems -- such as the keyword splat in `override_parameters` -- as ours.
+    const MRT = JET.LastFrameModuleExact(MriReconstructionToolbox)
     nx, ny, nc = 8, 8, 2
 
     img = rand(ComplexF32, nx, ny)
@@ -92,7 +95,10 @@ end
     using MriReconstructionToolbox.AbstractOperators
     using NamedDims
 
-    const MRT = MriReconstructionToolbox
+    # The target of every `@test_call`/`@test_opt` below: this package's own frames only. A bare
+    # module would also match the vendored dependencies, which are submodules of it, and report
+    # their inference problems -- such as the keyword splat in `override_parameters` -- as ours.
+    const MRT = JET.LastFrameModuleExact(MriReconstructionToolbox)
     nx, ny, nc = 8, 8, 2
 
     img = rand(ComplexF32, nx, ny)
