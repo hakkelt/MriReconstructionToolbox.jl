@@ -18,7 +18,8 @@ x3i = Variable(xx)
 @test xx == (~x3i)
 
 @test typeof(operator(x1)) <: Eye
-@test variables(x1) == x1
+# Phase 2.2: variables(::Variable) returns a 1-tuple, consistent with Expression.
+@test variables(x1) == (x1,)
 
 # Named variables
 xn = Variable(5; name="myvar")

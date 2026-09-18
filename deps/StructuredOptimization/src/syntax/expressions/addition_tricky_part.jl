@@ -3,12 +3,12 @@ abstract type OpStructure end
 
 struct HCatStructure{N} <: OpStructure
     op::AbstractOperators.AbstractOperator
-    structure::NTuple{N,Any}
+    structure::NTuple{N, Any}
 end
 
 struct SumStructure{N} <: OpStructure
     op::AbstractOperators.AbstractOperator
-    structure::NTuple{N,Any}
+    structure::NTuple{N, Any}
 end
 
 function get_structure(op::AbstractOperators.HCAT, vars)
@@ -18,7 +18,7 @@ function get_structure(op::AbstractOperators.HCAT, vars)
         result = ()
         var_group_counter = 1
         for suboperator in op.A
-            subvars = vars[var_group_counter:var_group_counter+AbstractOperators.ndoms(suboperator, 2)-1]
+            subvars = vars[var_group_counter:(var_group_counter + AbstractOperators.ndoms(suboperator, 2) - 1)]
             if AbstractOperators.ndoms(suboperator, 2) == 1
                 returned = subvars
             else
@@ -49,8 +49,13 @@ function get_structure(op, vars)
             if value isa AbstractOperators.AbstractOperator
                 return get_structure(value, vars)
             elseif value isa Tuple
+                # Recurse into the first operator-valued element (these pass-through
+                # wrappers wrap a single operand); a non-operator first element must
+                # not be recursed into.
                 for v in value
-                    return get_structure(v, vars)
+                    if v isa AbstractOperators.AbstractOperator
+                        return get_structure(v, vars)
+                    end
                 end
             end
         end
@@ -89,7 +94,7 @@ struct UnregularIndex{N}
 end
 
 Base.first(iter::UnregularIndex) = tuple(fill(1, length(iter.max))...)
-Base.length(iter::UnregularIndex) = sum(iter.max)
+Base.length(iter::UnregularIndex) = prod(iter.max)
 
 function Base.iterate(iter::UnregularIndex)
     state = first(iter)
@@ -101,7 +106,7 @@ function Base.iterate(iter::UnregularIndex{N}, state::NTuple{N, Int}) where {N}
         return nothing
     end
     currentdim = findfirst(i -> state[i] != iter.max[i], 1:N)
-    nextstate = tuple((j < currentdim ? 1 : (j == currentdim ? state[j]+1 : state[j]) for j in 1:N)...)
+    nextstate = tuple((j < currentdim ? 1 : (j == currentdim ? state[j] + 1 : state[j]) for j in 1:N)...)
     return nextstate, nextstate
 end
 
@@ -164,9 +169,9 @@ function add_missing_vars(old_vars, op, vars)
 end
 
 function Usum_op(
-	xA::NTuple{N,Variable}, xB::NTuple{M,Variable}, A::AbstractOperator, B::AbstractOperator, sign::Bool
-) where {N,M}
-    xNew  = tuple(unique((xA...,xB...))...)
+        xA::NTuple{N, Variable}, xB::NTuple{M, Variable}, A::AbstractOperator, B::AbstractOperator, sign::Bool
+    ) where {N, M}
+    xNew = tuple(unique((xA..., xB...))...)
     xA, A = add_missing_vars(xA, A, xNew)
     xB, B = add_missing_vars(xB, B, xNew)
     vars_index = tuple((i for i in eachindex(xNew))...)
@@ -184,6 +189,6 @@ function Usum_op(
     if var_perm != xB_index
         B = AbstractOperators.permute(B, invperm([xB_index...]))
     end
-    opNew = sign ? A+B : A-B
-	return xNew, opNew
+    opNew = sign ? A + B : A - B
+    return xNew, opNew
 end
