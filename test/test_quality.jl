@@ -20,7 +20,12 @@ end
     using JET
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator, calculate
-    JET.test_package(MriReconstructionToolbox; target_modules = (MriReconstructionToolbox,))
+    # `LastFrameModuleExact`, not the bare module: the vendored dependencies are submodules of
+    # this one, and a plain module target reports their inference problems as ours.
+    JET.test_package(
+        MriReconstructionToolbox;
+        target_modules = (JET.LastFrameModuleExact(MriReconstructionToolbox),),
+    )
 end
 
 @testitem "JET exported API @test_opt" tags = [:quality, :jet] begin
