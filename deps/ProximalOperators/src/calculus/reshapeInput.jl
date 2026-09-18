@@ -14,6 +14,7 @@ ReshapeInput(IndBallRank{Int64, Nothing}(5, nothing), (10, 10))
 
 julia> f(rand(100))
 Inf
+```
 """
 struct ReshapeInput{F, S}
     f::F
@@ -28,38 +29,34 @@ function preallocate(f::ReshapeInput, x)
 end
 
 function (f::ReshapeInput)(x)
-    # Check if the input x has the expected shape
     if size(x) != f.expected_shape
-        # Reshape the input to the expected shape
         x = reshape(x, f.expected_shape)
     end
     return f.f(x)
 end
 
 function prox!(y, f::ReshapeInput, x, gamma)
-    # Check if the input x has the expected shape
     if size(x) != f.expected_shape
-        # Reshape the input to the expected shape
         x = reshape(x, f.expected_shape)
+    end
+    if size(y) != f.expected_shape
         y = reshape(y, f.expected_shape)
     end
     return prox!(y, f.f, x, gamma)
 end
 
 function gradient!(y, f::ReshapeInput, x)
-    # Check if the input x has the expected shape
     if size(x) != f.expected_shape
-        # Reshape the input to the expected shape
         x = reshape(x, f.expected_shape)
+    end
+    if size(y) != f.expected_shape
         y = reshape(y, f.expected_shape)
     end
     return gradient!(y, f.f, x)
 end
 
 function prox_naive(f::ReshapeInput, x, gamma)
-    # Check if the input x has the expected shape
     if size(x) != f.expected_shape
-        # Reshape the input to the expected shape
         x = reshape(x, f.expected_shape)
     end
     return prox_naive(f.f, x, gamma)
