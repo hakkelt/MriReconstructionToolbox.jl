@@ -6,7 +6,10 @@ m,n1 = 5,3
 x1 = Variable(n1)
 A = randn(m,n1)
 # single term, single variable
-cf = ls(A*x1)
+# (built with the plain `SqrNormL2` Term, not `ls`, since `ls` now auto-selects
+# `SqrNormL2WithNormalOp` for a non-identity operator — this section is testing the
+# generic Term-extraction machinery, independent of that selection)
+cf = StructuredOptimization.Term(SqrNormL2(), A*x1)
 xAll = StructuredOptimization.extract_variables(cf)
 @test xAll[1] == x1
 L = StructuredOptimization.extract_operators(xAll,cf)
@@ -18,7 +21,7 @@ f = StructuredOptimization.extract_functions(cf)
 
 # multiple terms, single variable
 b1 = randn(n1)
-cf = ls(A*x1) + 2.5*norm(x1+b1,1)
+cf = StructuredOptimization.Term(SqrNormL2(), A*x1) + 2.5*norm(x1+b1,1)
 xAll = StructuredOptimization.extract_variables(cf)
 @test xAll[1] == x1
 V = StructuredOptimization.extract_operators(xAll,cf)
@@ -38,7 +41,7 @@ x = randn(n1)
 
 # single term, multiple variables
 x2 = Variable(m)
-cf = ls(A*x1+x2+20)
+cf = StructuredOptimization.Term(SqrNormL2(), A*x1+x2+20)
 xAll = StructuredOptimization.extract_variables(cf)
 xAll = (x2,x1) # change the order on pourpose
 H = StructuredOptimization.extract_operators(xAll,cf)
@@ -56,15 +59,15 @@ n1,n2,n3,n4,n5 = 3,3,4,4,7
 A = randn(n5,n1)
 x1,x2,x3,x4,x5 = Variable(randn(n1)),Variable(randn(n2)),Variable(randn(n3)),Variable(randn(n4)),Variable(randn(n5))
 
-cf = ls(x1+x2)
+cf = StructuredOptimization.Term(SqrNormL2(), x1+x2)
 xAll = StructuredOptimization.extract_variables(cf)
 @test xAll == (x1,x2)
 
-cf = ls(x1+x2)+ls(x1)
+cf = StructuredOptimization.Term(SqrNormL2(), x1+x2)+StructuredOptimization.Term(SqrNormL2(), x1)
 xAll = StructuredOptimization.extract_variables(cf)
 @test xAll == (x1,x2)
 
-cf = ls(x1+x2)+ls(x3+x4)+ls(x5)+ls(x5+A*x2)+ls(x1)+ls(x5)
+cf = StructuredOptimization.Term(SqrNormL2(), x1+x2)+StructuredOptimization.Term(SqrNormL2(), x3+x4)+StructuredOptimization.Term(SqrNormL2(), x5)+StructuredOptimization.Term(SqrNormL2(), x5+A*x2)+StructuredOptimization.Term(SqrNormL2(), x1)+StructuredOptimization.Term(SqrNormL2(), x5)
 xAll = StructuredOptimization.extract_variables(cf)
 @test xAll == (x1,x2,x3,x4,x5)
 

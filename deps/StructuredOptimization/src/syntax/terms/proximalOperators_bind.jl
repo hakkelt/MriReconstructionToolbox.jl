@@ -59,7 +59,7 @@ end
 
 # Least square terms
 
-export ls, normalop_ls
+export ls
 
 """
     ls(x::AbstractExpression)
@@ -69,38 +69,23 @@ Returns the squared norm (least squares) of `x`:
 f (\\mathbf{x}) = \\frac{1}{2} \\| \\mathbf{x} \\|^2
 ```
 (shorthand of `1/2*norm(x)^2`).
+
+When `x` is `L*v` (or `L*v - b`) for a single variable `v` and a non-identity *linear* `L`,
+the gradient is evaluated through the normal operator `Lᴴ * L` in a single pass instead of
+applying `L` and then `Lᴴ` — much faster whenever `Lᴴ * L` has an optimized implementation.
+The function value is unaffected: it is recovered from the gradient without a second
+application of `L` (see `SqrNormL2WithNormalOp`). Multi-variable expressions and nonlinear
+`L` always use the plain (non normal-op) path: a multi-variable normal-op term cannot be
+combined with unrelated-variable terms afterwards (its operator has to stay the identity on
+its own joint domain), and the normal-op optimization only makes sense for a linear `L`
+in the first place.
 """
-ls(ex) = Term(SqrNormL2(), ex)
-
-"""
-    normalop_ls(x::AbstractExpression)
-
-Returns the squared norm (least squares) of `L*x`:
-```math
-f (\\mathbf{L} * \\mathbf{x}) = \\frac{1}{2} \\| \\mathbf{L} * \\mathbf{x} \\|^2
-```
-(shorthand of `1/2*norm(x)^2`).
-
-The only difference with `ls` comes when gradient! is called: the gradient is evaluated
-through the normal operator `Lᴴ * L` in a single pass, which is much faster if `Lᴴ * L`
-has an optimized implementation. The returned function value is the same one `ls` would
-return — it is recovered from the gradient with two inner products, without a second
-application of `L` (see `SqrNormL2WithNormalOp`).
-"""
-
-normalop_ls(::Variable) = error("normalop_ls does not work with Variables alone. Use ls instead.")
-function normalop_ls(ex::Expression)
-    # eye_op must be the identity on the *joint* domain of ex.x, so that the
-    # Term's smooth function sees the original variables unchanged and
-    # SqrNormL2WithNormalOp's AᴴA = ex.Lᴴ*ex.L (which lives on that same
-    # joint domain) receives the right input. `Eye(ArrayPartition(...))`
-    # builds exactly that as a block-identity `DCAT` — allowed as an
-    # Expression codomain despite `ndoms > 1` because it `is_eye`.
-    eye_op = if length(ex.x) == 1
-        Eye(domain_type(ex.L), size(ex.L, 2))
-    else
-        Eye(ArrayPartition((~xi for xi in ex.x)...))
-    end
+ls(x::Variable) = Term(SqrNormL2(), x)
+function ls(ex::AbstractExpression)
+    ex = convert(Expression, ex)
+    L = operator(ex)
+    (length(ex.x) != 1 || !is_linear(L) || is_eye(L)) && return Term(SqrNormL2(), ex)
+    eye_op = Eye(domain_type(ex.L), size(ex.L, 2))
     return Term(SqrNormL2WithNormalOp(ex.L), Expression(ex.x, eye_op))
 end
 
