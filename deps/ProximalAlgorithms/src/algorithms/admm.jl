@@ -21,6 +21,7 @@ struct ADMMIteration{R,Tx,TA,Tb,TAHb,TAHA,Tg,TB,TP,Tyz,Tps}
 	y0::Tyz
 	z0::Tyz
 	penalty_sequence::Tps
+	threaded::Bool
 end
 
 """
@@ -61,6 +62,11 @@ See also: [`ADMM`](@ref).
   - `SpectralRadiusBoundPenalty(rho; tau=10.0, eta=100.0)`: adaptive penalty sequence based on spectral radius bounds [3]
   - `SpectralRadiusApproximationPenalty(rho; tau=10.0)`: adaptive penalty sequence based on spectral radius approximation [4]
   Note: rho can be specified either as the `rho` parameter or within the penalty sequence constructor, but not both.
+- `threaded=true`: run the per-regularizer loops (the adjoint accumulation of the x-update and
+  the whole z/y-update) over `Threads.@threads`. Set it to `false` from a caller that is
+  already threading at a coarser level — nested threading regions oversubscribe rather than
+  speed anything up. With a single regularizer block there is nothing to spread and the loops
+  stay serial either way.
 
 The adaptive penalty parameter schemes are implemented through the penalty sequence types, 
 following various strategies from the literature. See the individual penalty sequence types 
@@ -87,6 +93,7 @@ function ADMMIteration(;
 	y0=nothing,
 	z0=nothing,
 	penalty_sequence=nothing,
+	threaded=true,
 )
 	if isnothing(A) && !isnothing(b)
 		throw(ArgumentError("A must be provided if b is given"))
@@ -153,7 +160,7 @@ function ADMMIteration(;
 	end
 
 	return ADMMIteration(
-		x0, A, b, AHb, AHA, g, B, P, P_is_inverse, R(cg_tol), cg_maxit, y0, z0, ps
+		x0, A, b, AHb, AHA, g, B, P, P_is_inverse, R(cg_tol), cg_maxit, y0, z0, ps, threaded
 	)
 end
 
@@ -373,6 +380,24 @@ formulas.
 
 The function returns the updated state, allowing the ADMM algorithm to proceed iteratively until convergence.
 """
+# Run `body(i)` for every regularizer block, threaded or not as `iter.threaded` says. Both
+# per-block loops of one ADMM iteration are independent across blocks, so either is safe to
+# thread; a caller that is already threading at a coarser level passes `threaded = false`,
+# since nested threading regions oversubscribe rather than speed anything up. A single block
+# never gets a threading scope, because there is nothing to spread.
+function foreach_block(body, iter)
+	if length(iter.g) > 1 && iter.threaded
+		Threads.@threads for i in eachindex(iter.g)
+			body(i)
+		end
+	else
+		for i in eachindex(iter.g)
+			body(i)
+		end
+	end
+	return nothing
+end
+
 function Base.iterate(iter::ADMMIteration, state=ADMMState(iter))
 	# Get current rho values. `rho` aliases `iter.penalty_sequence.rho` and is mutated in place,
 	# so `state.cg_operator` (an `ADMMNormalOp` holding that same vector) always sees the current
@@ -390,7 +415,7 @@ function Base.iterate(iter::ADMMIteration, state=ADMMState(iter))
 	else
 		fill!(rhs, 0)
 	end
-	Threads.@threads for i in eachindex(iter.g)
+	foreach_block(iter) do i
 		temp = state.rᵏ[i] # reusing array of previous iteration's rᵏ as a temporary variable
 		temp .= state.z_old[i] .- state.u[i]
 		mul!(state.tempˣ[i], adjoint(iter.B[i]), temp)
@@ -417,7 +442,7 @@ function Base.iterate(iter::ADMMIteration, state=ADMMState(iter))
 	state.tempˣ[1] .= state.x .- x_old # Compute the change in x
 	state.Δx_norm = norm(state.tempˣ[1]) # Store the norm of the change in x
 
-	Threads.@threads for i in eachindex(iter.g)
+	foreach_block(iter) do i
 		# 2. Prox-step (z-update): zᵢ ← prox_{gᵢ, 1/ρᵢ}(Bᵢ⋅x + 1/ρᵢ⋅yᵢ)
 		mul!(state.Bx[i], iter.B[i], state.x)
 		temp = state.rᵏ[i] # reusing array of previous iteration's rᵏ as a temporary variable
