@@ -15,14 +15,14 @@ function extract_functions(t::Term)
   #TODO change this
   return f
 end
-extract_functions(t::TermSet) = SeparableSum(extract_functions.(t))
+extract_functions(t::TermSet) = SeparableSum(extract_functions.(t)...)
 
 # extract functions from terms without displacement
 function extract_functions_nodisp(t::Term)
   f = t.lambda == 1 ? t.f : Postcompose(t.f, t.lambda)
   return f
 end
-extract_functions_nodisp(t::TermSet) = SeparableSum(extract_functions_nodisp.(t))
+extract_functions_nodisp(t::TermSet) = SeparableSum(extract_functions_nodisp.(t)...)
 
 # extract operators from terms
 

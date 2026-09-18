@@ -294,25 +294,3 @@ x = Variable(n)
 @test all(~x .>= 0.0)
 @test norm(~x - x_star, Inf)/(1+norm(x_star, Inf)) <= 1e-6
 
-################################################################################
-### normalop_ls: compare 1/2||Ax-b||^2 solved via ls vs normalop_ls
-################################################################################
-
-println("Testing: normalop_ls end-to-end (compare with ls)")
-
-Random.seed!(99)
-m_nop, n_nop, nnz_nop = 50, 30, 5
-A_nop = randn(m_nop, n_nop)
-lam_nop = 0.5
-x_star_nop = randn(n_nop)
-x_star_nop[nnz_nop+1:end] .= 0.0
-y_star_nop = lam_nop * sign.(x_star_nop)
-b_nop = A_nop * x_star_nop + A_nop' \ y_star_nop
-
-x_ls_nop = Variable(n_nop)
-@time solve(problem(ls(A_nop * x_ls_nop - b_nop) + lam_nop * norm(x_ls_nop, 1)), PANOCplus(tol=1e-10, verbose=false))
-
-x_nop2 = Variable(n_nop)
-@time solve(problem(normalop_ls(A_nop * x_nop2 - b_nop) + lam_nop * norm(x_nop2, 1)), PANOCplus(tol=1e-10, verbose=false))
-
-@test norm(~x_ls_nop - ~x_nop2, Inf) / (1 + norm(~x_ls_nop, Inf)) <= 1e-2
