@@ -14,6 +14,7 @@
 # Measured, single thread, multi-coil adjoint: MRT 3.04 ms, MRIReco 4.57 ms, SigPy 6.05 ms — all at
 # NRMSE 0 against the phantom (a fully sampled adjoint is exact).
 include(joinpath(@__DIR__, "_setup.jl"))
+include(joinpath(@__DIR__, "_toolkits.jl"))
 
 img_mc, kspace_mc, cmap = IMG_MC, KSPACE_MC, CMAP
 smaps_mc = NamedDimsArray(cmap, (:x, :y, :coil))
@@ -68,6 +69,16 @@ try
     push!(results, BenchResult("Base MC", "Cartesian Adjoint", "MRIReco", NUM_THREADS, t_mr * 1000, mag_nrmse(mr, img_mc), mag_nrmse(recon, mr)))
 catch e
     @warn "MRIReco Cartesian adjoint failed" exception = (e, catch_backtrace())
+end
+
+# MIRT's `Asense'` already folds in the conjugate sensitivities, so only the `sum(abs2, smaps)`
+# division is left to match the other rows.
+try
+    t_mi, mi_adj = mirt_recon(:adjoint, kspace_mc, cmap)
+    mi = mi_adj ./ sum(abs2.(cmap), dims = 3)[:, :, 1]
+    push!(results, BenchResult("Base MC", "Cartesian Adjoint", "MIRT", NUM_THREADS, t_mi, mag_nrmse(mi, img_mc), mag_nrmse(recon, mi)))
+catch e
+    @warn "MIRT Cartesian adjoint failed" exception = (e, catch_backtrace())
 end
 
 write_section("base")

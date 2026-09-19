@@ -1,5 +1,5 @@
 using MriReconstructionToolbox
-using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+using MriReconstructionToolbox: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
 using GeometricMedicalPhantoms
 using Statistics
 using FFTW

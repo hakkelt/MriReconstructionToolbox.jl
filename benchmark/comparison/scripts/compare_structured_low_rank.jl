@@ -9,6 +9,7 @@
 #     julia --project=benchmark/comparison benchmark/comparison/scripts/compare_structured_low_rank.jl
 
 using MriReconstructionToolbox
+using MriReconstructionToolbox: CartesianAcquisitionInfo
 using NamedDims
 using LinearAlgebra
 using Random
