@@ -377,18 +377,41 @@ end
     data = simulate_acquisition(
         img_true, AcquisitionInfo(is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens)
     )
-    # The same k-space, described without maps: its coil axis is a batch dimension, so no
-    # combination is possible and only NoCoilCombination is accepted.
+    # The same k-space, described without maps: its coil axis is a batch dimension unless the
+    # method itself combines the channels.
     no_maps = AcquisitionInfo(data.kspace_data; is3D = false, image_size = (Nx, Ny))
 
-    # The default resolves to NoCoilCombination; naming a map-requiring combination is an error.
+    # The default resolves to NoCoilCombination; AdjointSensitivity is defined by the maps and is
+    # an error without them.
     @test_throws ArgumentError reconstruct(no_maps, DirectReconstruction(AdjointSensitivity()); verbosity = Silent())
-    @test_throws ArgumentError reconstruct(no_maps, DirectReconstruction(RootSumSquares()); verbosity = Silent())
+
+    # RootSumSquares needs no maps -- it is the maps-free reference -- so naming it explicitly
+    # combines the channels of a maps-less acquisition instead of failing.
+    rec_rss_no_maps = reconstruct(no_maps, DirectReconstruction(RootSumSquares()); verbosity = Silent())
+    @test size(rec_rss_no_maps) == (Nx, Ny)
+    per_coil = reconstruct(no_maps, DirectReconstruction(NoCoilCombination()); verbosity = Silent())
+    @test unname(rec_rss_no_maps) ≈ sqrt.(sum(abs2, unname(per_coil); dims = 3))[:, :, 1]
     @test MriReconstructionToolbox.lower(DirectReconstruction(), no_maps).coil_combination === NoCoilCombination()
     rec_default = reconstruct(no_maps, DirectReconstruction(); verbosity = Silent())
     rec = reconstruct(no_maps, DirectReconstruction(NoCoilCombination()); verbosity = Silent())
     @test size(rec) == (Nx, Ny, Nc)
     @test unname(rec_default) == unname(rec)
+
+    # With a second batch dimension the reconstruction is split over it, and the coil axis must
+    # stay out of the split: a per-coil slab would reduce one channel at a time and combine
+    # nothing. Named so the merged result can be checked to have lost exactly `:coil`.
+    Nz = 3
+    ksp_slices = NamedDimsArray{(:kx, :ky, :coil, :z)}(
+        cat((unname(data.kspace_data) for _ in 1:Nz)...; dims = 4)
+    )
+    no_maps_3d = AcquisitionInfo(ksp_slices; is3D = false, image_size = (Nx, Ny))
+    rec_rss_3d = reconstruct(no_maps_3d, DirectReconstruction(RootSumSquares()); verbosity = Silent())
+    @test :coil ∉ dimnames(rec_rss_3d)
+    @test last(dimnames(rec_rss_3d)) == :z
+    @test size(rec_rss_3d) == (Nx, Ny, Nz)
+    for z in 1:Nz
+        @test unname(rec_rss_3d)[:, :, z] ≈ unname(rec_rss_no_maps)
+    end
 
     # Single-channel data has no coil axis at all: the default still works.
     single = AcquisitionInfo(
