@@ -63,7 +63,7 @@ ENV["OMP_PROC_BIND"] = "close"
 ENV["OMP_PLACES"] = "{$cpu_str}"
 
 using MriReconstructionToolbox
-using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+using MriReconstructionToolbox: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
 using GeometricMedicalPhantoms
 using BenchmarkTools
 using LinearAlgebra
