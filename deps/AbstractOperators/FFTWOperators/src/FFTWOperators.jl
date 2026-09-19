@@ -1,18 +1,20 @@
 module FFTWOperators
 
-using AbstractOperators, FFTW, LinearAlgebra
+using ..AbstractOperators
+using FFTW, LinearAlgebra
 using Base.Cartesian: @ncall
 using Polyester: @batch
 import LinearAlgebra: mul!
 import Base: size, ndims
 
-import AbstractOperators:
+import ..AbstractOperators:
     _normalize_array_type,
     _array_wrapper_type,
     domain_type,
     codomain_type,
     fun_name,
     get_normal_op,
+    has_optimized_normalop,
     allocate_in_domain,
     allocate_in_codomain,
     domain_array_type,
