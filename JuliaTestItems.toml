@@ -1,9 +1,13 @@
 config-version = 1
 
-# deps/ vendors upstream package sources as git subtrees (AbstractOperators,
-# StructuredOptimization, ProximalOperators, ProximalAlgorithms) for the fixes
-# and additions MRT currently depends on. Their own
-# test suites are not part of MRT's test run — they use those packages' own
-# test environments (not MRT's test/Project.toml), and would otherwise be
-# picked up by `@run_package_tests`'s package-root scan.
-exclude = ["deps/"]
+# deps/ vendors upstream package sources (AbstractOperators, StructuredOptimization,
+# ProximalOperators, ProximalAlgorithms) for the fixes and additions MRT currently depends on.
+# Their own test suites are not part of MRT's test run — they use those packages' own test
+# environments (not MRT's test/Project.toml), and would otherwise be picked up by
+# `@run_package_tests`'s package-root scan. Since the vendored copies are pruned to what MRT
+# compiles, deps/ no longer carries test files at all, but the exclusion stays as a guard.
+#
+# .vendor-work/ holds the scratch worktrees in which `tools/vendor.jl rebuild` assembles each
+# fork's `integration` branch. Those are full checkouts of the dependency repositories, test
+# suites included, and a package-root scan finds every one of them.
+exclude = ["deps/", ".vendor-work/"]
