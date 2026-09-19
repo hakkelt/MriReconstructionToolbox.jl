@@ -282,6 +282,13 @@ function normal_op_applicable(f::SqrNormL2, op::AbstractOperator, disp, λ)
     (λ isa Real && f.lambda isa Real) || return false
     has_disp = !(disp isa Number && iszero(disp))
     (has_disp && !(disp isa AbstractArray)) && return false
+    # Same shortcut as `fused_normal_op`, and it has to be here too: this is the predicate the
+    # parser scores formulations with, so without it an operator that advertises an optimized
+    # normal operator is never even considered for the fold. Both remaining tests reject it --
+    # `normal_op_worthwhile` because such an operator typically maps into a *smaller* codomain
+    # than its domain, `normal_op_fuses` because `get_normal_op(::Compose)` fuses the innermost
+    # adjoint pair and legitimately stays a `Compose`.
+    AbstractOperators.has_optimized_normalop(op) && return true
     return normal_op_worthwhile(op) && normal_op_fuses(op)
 end
 
