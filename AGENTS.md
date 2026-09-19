@@ -87,9 +87,20 @@ one-directional:
 - **A bugfix does not get its own branch.** It is another commit on the branch that owns the
   code. Branch and PR count should track ideas, not mistakes.
 
+Where each fork is checked out is machine state, so it is **not** in `deps/vendor.toml`: it lives
+in the untracked `deps/vendor.local.toml`, one `<Package> = "/path/to/checkout"` line per fork
+that exists on this machine. A package with no entry there is simply not cloned here — `check`
+still reports everything GitHub can answer for it, and `rebuild`/`patch`/`sync` say which entry
+they need. Nothing tracked in this repository, and nothing pushed to a fork, may name a path of
+one machine; the `[sources]` block that points the vendored copy at its siblings under `deps/` is
+supplied by `deps/patches/<package>.patch` and belongs nowhere else.
+
 `julia tools/vendor.jl check` compares the manifest against GitHub and reports mis-based PRs,
-branches with no PR, and branches whose PR has already merged (whose code should come from
-upstream instead).
+branches with no PR, branches whose PR has already merged (whose code should come from upstream
+instead), branches the fork does not have or whose local tip is ahead of it, branches that push a
+path of one machine, and branches on the fork that no manifest entry refers to. Branch existence
+is read from GitHub via `gh`, not from remote-tracking refs, so a stale fetch cannot make an
+unpushed branch look pushed.
 
 `deps/patches/<package>.patch`, which `sync` re-applies, carries **only** what vendoring itself
 forces: the relative imports, the inlined extension, the OSQP removal, the vendored `[sources]`

@@ -27,6 +27,10 @@ benchmark/hpc/results/*__*.json
 # branch; they belong to the dependency checkouts, not to this repository.
 .vendor-work/
 
+# Where the vendored forks are checked out on this machine. Per-machine paths, and nothing
+# tracked here (or pushed to a fork) may name one -- see the header of deps/vendor.toml.
+/deps/vendor.local.toml
+
 # Images written by the example scripts, and the download-cache preference they set.
 /examples/output/
 /examples/LocalPreferences.toml
