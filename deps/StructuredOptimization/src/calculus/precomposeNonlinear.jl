@@ -2,6 +2,31 @@ import ..ProximalOperators: gradient!, gradient, preallocate # this can be remov
 
 export PrecomposeNonlinear
 
+"""
+    PrecomposeNonlinear(g, G::AbstractOperator)
+
+The composition ``f(\\mathbf{x}) = g(G(\\mathbf{x}))`` of a smooth function `g` with a
+*non-linear* operator `G`, exposing only a gradient:
+```math
+\\nabla f(\\mathbf{x}) = [\\mathrm{D}G(\\mathbf{x})]^* \\, \\nabla g(G(\\mathbf{x})),
+```
+where ``\\mathrm{D}G(\\mathbf{x})`` is the Jacobian of `G` at `x` — `AbstractOperators`
+provides it as `jacobian(G, x)`, so no automatic differentiation is involved.
+
+This is the last formulation [`merge_function_with_operator`](@ref) will pick, reached when
+`G` is not linear at all (`ls(sin(x) - b)`, say). It has **no** proximal operator: the
+composition of a prox-friendly `g` with a non-linear `G` generally has none in closed form,
+so a solver that needs one must not be offered this term. Convexity is likewise not
+preserved, which is why such problems only parse for algorithms that tolerate a non-convex
+smooth term (`ZeroFPR`, `PANOCplus`), not for `FastForwardBackward`.
+
+The domain, codomain and Jacobian-application buffers are allocated once at construction
+and `g` is `preallocate`d for the codomain shape, so a solver iteration allocates nothing
+here.
+
+See also [`SqrNormL2WithNormalOp`](@ref), which is the corresponding fused formulation for a
+*linear* operator.
+"""
 struct PrecomposeNonlinear{
         P,
         T <: AbstractOperator,

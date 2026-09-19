@@ -35,6 +35,27 @@ function Term(t::Term, repr::String)
     return Term(t.lambda, t.f, t.A, repr)
 end
 
+"""
+    TermSet(terms::Term...)
+
+A sum of `Term`s: the whole optimization problem, objective and constraints together (a
+constraint is a term whose function is a set indicator).
+
+`TermSet` is what `+` on terms produces and what [`problem`](@ref) returns, so it is rarely
+constructed directly. It iterates over its terms, supports `length` and integer indexing,
+and is what [`solve`](@ref), [`suggest_algorithm`](@ref) and [`print_diagnostics`](@ref)
+take. Multiplying by a scalar scales every term and gives back a `TermSet`.
+
+```julia
+julia> x = Variable(4); A, b = randn(10, 4), randn(10);
+
+julia> ts = ls(A * x - b) + 1e-2 * norm(x, 1)
+
+julia> length(ts), ts[1] isa StructuredOptimization.Term
+```
+
+See also [`problem`](@ref), [`@term`](@ref).
+"""
 struct TermSet{N, T}
     terms::T
     function TermSet(terms...)
