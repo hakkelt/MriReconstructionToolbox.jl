@@ -13,6 +13,12 @@ Container for non-Cartesian MRI acquisition settings.
 
 The trajectory stores coordinate axes in its first dimension. Its remaining
 dimensions must match the non-coil k-space sample layout.
+
+`dcf` is forwarded to `NFFTOp` unchanged and follows its contract: `nothing` (the default)
+applies **no** density compensation, so the encoding operator's adjoint is the true adjoint; an
+array matching the trajectory sample dimensions makes that adjoint a density-compensated
+approximate inverse — the gridding reconstruction — instead. Compute one with
+[`density_compensation`](@ref), which returns a copy of the acquisition carrying it.
 """
 struct NonCartesianAcquisitionInfo{K, T, D, S, I, SD, ID} <: AcquisitionInfo
     kspace_data::K
