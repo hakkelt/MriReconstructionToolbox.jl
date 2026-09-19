@@ -47,6 +47,11 @@ parent = ""
 pr = "kul-optec/AbstractOperators.jl#44"
 
 [[AbstractOperators.stack]]
+branch = "add-contourlet-operators"
+parent = "unified-threading"
+pr = "kul-optec/AbstractOperators.jl#46"
+
+[[AbstractOperators.stack]]
 branch = "fix/compose-getindex-multivar"
 parent = "unified-threading"
 pr = "hakkelt/AbstractOperators.jl#6"

@@ -217,29 +217,151 @@ end
 # rebuild
 
 """
+Scratch worktree in which a package's `integration` branch is built. A worktree rather than the
+package's own checkout, so that rebuilding never disturbs whatever branch is checked out there
+and never touches uncommitted work in it.
+"""
+worktree(pkg::Package) = joinpath(ROOT, ".vendor-work", pkg.name)
+
+"""
+Resolve a manifest branch to something git can merge: the fork's copy when it has one, otherwise
+a local branch of the same name. A branch that exists only locally is reported by `check`; it is
+still merged here, because `deps/` already contains its code.
+"""
+function resolve(pkg::Package, branch::AbstractString)
+    for ref in ("origin/$branch", branch)
+        git_or_nothing(pkg, "rev-parse", "--verify", "--quiet", ref) === nothing || return ref
+    end
+    error("$(pkg.name): neither `origin/$branch` nor `$branch` exists in $(pkg.path)")
+end
+
+"""
 Rebuild `integration` for each package: reset it to `base`, then merge every manifest branch in
 file order. Because a parent is always declared before the branches stacked on it, the merge
 order is the order the PRs are meant to land in, and the result is one ref meaning "everything I
 have" for that package.
+
+A merge conflict stops that package and leaves the worktree as it is, so the conflict can be
+resolved by hand; the resolution belongs on the branch that caused it, not in the worktree.
 """
-function rebuild(packages; push::Bool = true)
+function rebuild(packages; push::Bool = true, fetch::Bool = true)
+    failed = String[]
     for pkg in packages
         problems = validate(pkg)
         isempty(problems) || error(join(problems, "\n"))
         println("== ", pkg.name, " (", pkg.path, ")")
-        dirty = git(pkg, "status", "--porcelain")
-        isempty(dirty) || error("$(pkg.path) has uncommitted changes; refusing to rebuild")
-        git(pkg, "fetch", "--prune", "origin")
-        git(pkg, "fetch", "--prune", "upstream")
-        git(pkg, "checkout", "-B", "integration", pkg.base)
+        if fetch
+            git(pkg, "fetch", "--prune", "origin")
+            git(pkg, "fetch", "--prune", "upstream")
+        end
+        wt = worktree(pkg)
+        ispath(wt) && capture(
+            `git -C $(pkg.path) worktree remove --force $wt`;
+            nothing_on_error = true,
+        )
+        mkpath(dirname(wt))
+        git(pkg, "worktree", "add", "--force", "-B", "integration", wt, pkg.base)
+        conflict = nothing
         for b in pkg.stack
-            println("  merge ", b.name)
-            git(pkg, "merge", "--no-ff", "-m", "integration: $(b.name)", "origin/$(b.name)")
+            ref = resolve(pkg, b.name)
+            print("  merge ", rpad(b.name, 36), " (", ref, ")")
+            # `rerere` makes a conflict resolution a one-off: resolved by hand once in this
+            # worktree, replayed automatically on every later rebuild. Without it the same
+            # resolutions would have to be redone each time, since `integration` is disposable.
+            out = capture(
+                `git -C $wt -c rerere.enabled=true -c rerere.autoupdate=true
+                    merge --no-ff -m "integration: $(b.name)" $ref`;
+                nothing_on_error = true,
+            )
+            if out === nothing
+                # `rerere` stages a replayed resolution but never commits it, so a merge that
+                # leaves nothing unresolved is a success that only looks like a failure.
+                unresolved = capture(`git -C $wt diff --name-only --diff-filter=U`)
+                if isempty(unresolved)
+                    git_commit = capture(
+                        `git -C $wt commit --no-edit -m "integration: $(b.name)"`;
+                        nothing_on_error = true,
+                    )
+                    if git_commit !== nothing
+                        println("  (resolved from rerere)")
+                        continue
+                    end
+                end
+                println("  CONFLICT")
+                capture(`git -C $wt merge --abort`; nothing_on_error = true)
+                conflict = b.name
+                break
+            end
+            println()
         end
-        if push
-            git(pkg, "push", "--force-with-lease", "origin", "integration")
+        if conflict !== nothing
+            println("  stopped at `$conflict`; worktree left at $wt")
+            push!(failed, "$(pkg.name):$(conflict)")
+            continue
         end
-        println("  ", git(pkg, "rev-parse", "--short", "HEAD"))
+        push && git(pkg, "push", "--force-with-lease", "origin", "integration")
+        println("  integration = ", capture(`git -C $wt rev-parse --short HEAD`))
+    end
+    isempty(failed) || println("\nconflicted: ", join(failed, ", "))
+    return failed
+end
+
+# ---------------------------------------------------------------------------------------------
+# patch
+
+"""
+Regenerate `deps/patches/<package>.patch`: everything the vendored copy has that its
+`integration` branch does not. That is by construction the MRT-only adaptation -- relative
+imports, a hand-wired `ext/`, whatever else an included submodule forces -- plus any real fix
+that still owes itself to a branch, which is precisely the drift that should be visible in one
+reviewable file instead of smeared through `deps/`.
+
+Run it after `rebuild` and before the first `sync`, and again whenever a fix is carried back to
+its branch: what the branch now contains leaves the patch on its own.
+"""
+function makepatch(packages)
+    mkpath(joinpath(ROOT, "deps", "patches"))
+    for pkg in packages
+        wt = worktree(pkg)
+        isdir(wt) || error("no integration worktree for $(pkg.name); run `rebuild` first")
+        scratch = mktempdir()
+        try
+            # Both sides are laid out under the vendored prefix inside a scratch directory, so
+            # that `diff --no-index` prints exactly the `<prefix>/file` paths `git apply` expects
+            # from the repository root. A clean `git archive` export rather than the worktree
+            # itself, because the worktree carries a `.git` file that the vendored copy does not
+            # and that difference is not an adaptation.
+            before = joinpath(scratch, "a", pkg.prefix)
+            after = joinpath(scratch, "b", pkg.prefix)
+            mkpath(before)
+            mkpath(dirname(after))
+            run(pipeline(`git -C $wt archive integration`, `tar -x -C $before`))
+            run(`cp -a $(joinpath(ROOT, pkg.prefix)) $after`)
+            out = joinpath(ROOT, "deps", "patches", "$(pkg.name).patch")
+            # Captured raw, not through `capture`: a patch's trailing bytes are significant.
+            # `diff --no-index` exits non-zero exactly when the trees differ, which is the
+            # expected case here, so the error path is the normal one.
+            buf = IOBuffer()
+            # `--no-renames`: with `--no-prefix` the scratch directory names `a`/`b` end up inside
+            # the `rename from`/`rename to` lines, which `git apply` then cannot follow. A rename
+            # written as a delete plus an add costs a few lines and always applies.
+            cmd = `git -C $scratch diff --no-index --no-prefix --no-renames --binary a/$(pkg.prefix) b/$(pkg.prefix)`
+            try
+                run(pipeline(cmd; stdout = buf))
+            catch
+            end
+            text = String(take!(buf))
+            if isempty(strip(text))
+                isfile(out) && rm(out)
+                println(pkg.name, ": vendored copy matches integration exactly, no patch")
+            else
+                write(out, text)
+                files = count(l -> startswith(l, "diff --git "), split(text, '\n'))
+                println(pkg.name, ": ", files, " file(s) -> ", relpath(out, ROOT))
+            end
+        finally
+            rm(scratch; recursive = true, force = true)
+        end
     end
 end
 
@@ -365,10 +487,11 @@ end
 const USAGE = """
 usage: julia tools/vendor.jl <command> [package...] [options]
 
-  check                 compare the manifest with GitHub and the local checkouts
-  rebuild [--no-push]   rebuild each fork's `integration` branch from the manifest
-  sync                  project `integration` into deps/ via `git subtree pull --squash`
-  status [--json]       the state of the whole stack
+  check                            compare the manifest with GitHub and the local checkouts
+  rebuild [--no-push] [--no-fetch] rebuild each fork's `integration` branch from the manifest
+  patch                            regenerate deps/patches/<package>.patch from that branch
+  sync                             project `integration` into deps/ via `git subtree pull --squash`
+  status [--json]                  the state of the whole stack
 """
 
 function main(args)
@@ -382,7 +505,15 @@ function main(args)
     if command == "check"
         return check(packages) == 0 ? 0 : 1
     elseif command == "rebuild"
-        rebuild(packages; push = !("--no-push" in flags))
+        return isempty(
+            rebuild(
+                packages;
+                push = !("--no-push" in flags),
+                fetch = !("--no-fetch" in flags),
+            ),
+        ) ? 0 : 1
+    elseif command == "patch"
+        makepatch(packages)
     elseif command == "sync"
         sync(packages)
     elseif command == "status"

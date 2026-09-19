@@ -23,6 +23,10 @@ benchmark/hpc/results/*__*.json
 # agent scaffolding and worktrees
 .claude/
 
+# Scratch worktrees in which `tools/vendor.jl rebuild` assembles each fork's `integration`
+# branch; they belong to the dependency checkouts, not to this repository.
+.vendor-work/
+
 # Written by the test environment when MRITestData caches a download; per-machine state.
 # (The tracked docs/notebooks/ and benchmark/comparison/ LocalPreferences.toml are deliberate.)
 /test/LocalPreferences.toml
