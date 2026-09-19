@@ -281,19 +281,11 @@ prune = [
     "AGENTS.md", "CLAUDE.md", "Manifest.toml", "codecov.yml",
 ]
 
+# One branch, not three: `fix/normalop-ls-multivar` and `phase-0-2-consolidation` were merged into
+# the fork's `master` as one linear history (no merge commits), so the whole of MRT's
+# StructuredOptimization work is what upstream PR #44 offers. Both old branches are still on the
+# fork, fully contained in `master`, and `check` reports them as unreferenced until they are deleted.
 [[StructuredOptimization.stack]]
 branch = "master"
 parent = ""
 pr = "JuliaFirstOrder/StructuredOptimization.jl#44"
-
-[[StructuredOptimization.stack]]
-branch = "fix/normalop-ls-multivar"
-parent = "master"
-pr = "hakkelt/StructuredOptimization.jl#1"
-
-# The consolidation work, which reworks most of what `fix/normalop-ls-multivar` touches and
-# merges it, so it is stacked on it. Still without a PR.
-[[StructuredOptimization.stack]]
-branch = "phase-0-2-consolidation"
-parent = "fix/normalop-ls-multivar"
-pr = ""
