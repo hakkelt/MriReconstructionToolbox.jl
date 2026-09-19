@@ -534,14 +534,14 @@ json_data = Dict(
     "bart_startup_time_ms" => bart_startup_time * 1000,
     "benchmarks" => [
         Dict(
-                "category" => r.category,
-                "method" => r.method,
-                "framework" => r.framework,
-                "threads" => r.threads,
-                "time_ms" => r.time_ms,
-                "nrmse_gt" => r.nrmse_gt,
-                "nrmse_mrt" => r.nrmse_mrt
-            ) for r in results
+            "category" => r.category,
+            "method" => r.method,
+            "framework" => r.framework,
+            "threads" => r.threads,
+            "time_ms" => r.time_ms,
+            "nrmse_gt" => r.nrmse_gt,
+            "nrmse_mrt" => r.nrmse_mrt
+        ) for r in results
     ]
 )
 

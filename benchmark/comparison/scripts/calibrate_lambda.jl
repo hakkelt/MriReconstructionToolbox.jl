@@ -36,15 +36,21 @@ err(x) = mag_nrmse(x, img_mc)
 
 # method => (MRT reg builder, MRT alg kind, sigpy sym, mrireco sym, BART cmd builder, λ centre)
 METHODS = Dict(
-    "tv" => (λ -> TotalVariation2D(λ), :admm, :tv, :tv,
-        λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R T:3:0:$λ", 0.01),
-    "wavelet" => (mrt_wavelet, :fista, :wavelet, :wavelet,
-        λ -> "pics -S -w 1 -e -i $IT_CAL -R W:3:0:$λ", 0.005),
+    "tv" => (
+        λ -> TotalVariation2D(λ), :admm, :tv, :tv,
+        λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R T:3:0:$λ", 0.01,
+    ),
+    "wavelet" => (
+        mrt_wavelet, :fista, :wavelet, :wavelet,
+        λ -> "pics -S -w 1 -e -i $IT_CAL -R W:3:0:$λ", 0.005,
+    ),
     # TGV: MRT and BART only (SigPy and MRIReco have no TGV). Without this entry the section ran
     # both at the 0.01 fallback, which happens to be near BART's optimum and 5× past MRT's — MRT
     # measured NRMSE 0.0109 at λ=0.01 against 0.0032 at λ=0.002.
-    "tgv" => (λ -> TotalGeneralizedVariation2D(λ; ratio = 2.0), :admm, nothing, nothing,
-        λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R G:3:0:$λ", 0.003),
+    "tgv" => (
+        λ -> TotalGeneralizedVariation2D(λ; ratio = 2.0), :admm, nothing, nothing,
+        λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R G:3:0:$λ", 0.003,
+    ),
 )
 
 # --- dynamic (2D+t) methods -------------------------------------------------------------------
@@ -82,15 +88,21 @@ err_dyn(x) = mag_nrmse(x, img_dyn)
 # cycle spinning to match MRT's default `shift = :none`.
 # (MRT reg builder, BART cmd builder, MRIReco method or `nothing`, λ centre)
 DYN_METHODS = Dict(
-    "lowrank" => (λ -> LowRank(λ; time_dim = :time),
+    "lowrank" => (
+        λ -> LowRank(λ; time_dim = :time),
         λ -> "pics -S -w 1 -m -F -n -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -b $Nd -R L:3:3:$λ",
-        :lowrank, 0.01),
-    "llr" => (λ -> LocallyLowRank(λ; block_size = (8, 8), time_dim = :time),
+        :lowrank, 0.01,
+    ),
+    "llr" => (
+        λ -> LocallyLowRank(λ; block_size = (8, 8), time_dim = :time),
         λ -> "pics -S -w 1 -m -F -n -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -b 8 -R L:3:3:$λ",
-        :llr, 0.01),
-    "ttv" => (λ -> TemporalTotalVariation(λ; time_dim = :time),
+        :llr, 0.01,
+    ),
+    "ttv" => (
+        λ -> TemporalTotalVariation(λ; time_dim = :time),
         λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R T:32:0:$λ",
-        nothing, 0.01),
+        nothing, 0.01,
+    ),
 )
 
 # Zero-filled `(nx, ny, time, coil)` frame stack for MRIReco.
@@ -187,8 +199,14 @@ end
 
 path = normpath(joinpath(@__DIR__, "..", "results", "lambda_calibration.json"))
 open(path, "w") do io
-    JSON.print(io, Dict("lambda" => out, "sweeps" => sweeps,
-            "meta" => Dict("N" => N, "Nc" => Nc, "iterations" => IT_CAL,
-                "backend" => USE_MKL ? "mkl" : "openblas", "threads" => NUM_THREADS)), 4)
+    JSON.print(
+        io, Dict(
+            "lambda" => out, "sweeps" => sweeps,
+            "meta" => Dict(
+                "N" => N, "Nc" => Nc, "iterations" => IT_CAL,
+                "backend" => USE_MKL ? "mkl" : "openblas", "threads" => NUM_THREADS
+            )
+        ), 4
+    )
 end
 @info "wrote" path

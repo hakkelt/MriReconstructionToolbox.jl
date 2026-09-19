@@ -77,8 +77,10 @@ function race(label, ladder, target, run)
             continue
         end
         err = mag_nrmse(x, img_mc)
-        @info @sprintf("%-22s it=%4d  %9.1f ms  NRMSE=%.5f%s", label, it, t * 1000, err,
-            err <= target ? "  <= target" : "")
+        @info @sprintf(
+            "%-22s it=%4d  %9.1f ms  NRMSE=%.5f%s", label, it, t * 1000, err,
+            err <= target ? "  <= target" : ""
+        )
         err <= target && return (it, t * 1000, err)
     end
     @warn "$label never reached target" target
@@ -107,25 +109,41 @@ for (key, meth, target, mrtreg, mrtkind, spm, mrm, bartcmd, bartladder, λdef) i
     )
     println("--> $meth  (target NRMSE ≤ $target)")
 
-    addrow(meth, target, FW, race("MRT $meth", LADDER, target, it -> begin
-        t, _, x = time_reconstruction(() -> mrt_run(acq_us, mrtreg(load_lambda(key, "MRT", λdef)); maxit = it, kind = mrtkind))
-        (t, x)
-    end))
+    addrow(
+        meth, target, FW, race(
+            "MRT $meth", LADDER, target, it -> begin
+                t, _, x = time_reconstruction(() -> mrt_run(acq_us, mrtreg(load_lambda(key, "MRT", λdef)); maxit = it, kind = mrtkind))
+                (t, x)
+            end
+        )
+    )
 
-    addrow(meth, target, BART_FW, race("BART $meth", bartladder, target, it -> begin
-        t, _, r = time_bart(bartcmd(load_lambda(key, "BART", λdef), it), ComplexF32.(kbart), ComplexF32.(sbart))
-        (t, r[:, :, 1])
-    end))
+    addrow(
+        meth, target, BART_FW, race(
+            "BART $meth", bartladder, target, it -> begin
+                t, _, r = time_bart(bartcmd(load_lambda(key, "BART", λdef), it), ComplexF32.(kbart), ComplexF32.(sbart))
+                (t, r[:, :, 1])
+            end
+        )
+    )
 
-    spm === nothing || addrow(meth, target, "SigPy", race("SigPy $meth", LADDER, target, it -> begin
-        ms, x = sigpy_recon(spm, ksp_z, cmap; λ = load_lambda(key, "SigPy", λdef), iterations = it)
-        (ms / 1000, x)
-    end))
+    spm === nothing || addrow(
+        meth, target, "SigPy", race(
+            "SigPy $meth", LADDER, target, it -> begin
+                ms, x = sigpy_recon(spm, ksp_z, cmap; λ = load_lambda(key, "SigPy", λdef), iterations = it)
+                (ms / 1000, x)
+            end
+        )
+    )
 
-    mrm === nothing || addrow(meth, target, "MRIReco", race("MRIReco $meth", LADDER, target, it -> begin
-        ms, x = mrireco(mrm, ksp_z, cmap, (N, N); λ = load_lambda(key, "MRIReco", λdef), iterations = it)
-        (ms / 1000, x)
-    end))
+    mrm === nothing || addrow(
+        meth, target, "MRIReco", race(
+            "MRIReco $meth", LADDER, target, it -> begin
+                ms, x = mrireco(mrm, ksp_z, cmap, (N, N); λ = load_lambda(key, "MRIReco", λdef), iterations = it)
+                (ms / 1000, x)
+            end
+        )
+    )
 end
 
 # --- dynamic (2D+t): global low-rank / locally low-rank / temporal TV ---------------------------
@@ -161,8 +179,10 @@ function race_dyn(label, ladder, target, run)
             continue
         end
         err = err_dyn(x)
-        @info @sprintf("%-22s it=%4d  %9.1f ms  NRMSE=%.5f%s", label, it, t * 1000, err,
-            err <= target ? "  <= target" : "")
+        @info @sprintf(
+            "%-22s it=%4d  %9.1f ms  NRMSE=%.5f%s", label, it, t * 1000, err,
+            err <= target ? "  <= target" : ""
+        )
         err <= target && return (it, t * 1000, err)
     end
     @warn "$label never reached target" target
@@ -188,20 +208,32 @@ for (key, meth, target, mrtreg, bartcmd, mrm, λdef) in (
     )
     println("--> $meth  (target NRMSE ≤ $target)")
 
-    addrow(meth, target, FW, race_dyn("MRT $meth", LADDER, target, it -> begin
-        t, _, x = time_reconstruction(() -> mrt_run(acq_dyn, mrtreg(load_lambda(key, "MRT", λdef)); maxit = it))
-        (t, x)
-    end))
+    addrow(
+        meth, target, FW, race_dyn(
+            "MRT $meth", LADDER, target, it -> begin
+                t, _, x = time_reconstruction(() -> mrt_run(acq_dyn, mrtreg(load_lambda(key, "MRT", λdef)); maxit = it))
+                (t, x)
+            end
+        )
+    )
 
-    addrow(meth, target, BART_FW, race_dyn("BART $meth", LADDER_BART_ADMM, target, it -> begin
-        t, _, r = time_bart(bartcmd(load_lambda(key, "BART", λdef), it), kbart_dyn, sbart_dyn)
-        (t, dropdims(r, dims = (3, 4, 5)))
-    end))
+    addrow(
+        meth, target, BART_FW, race_dyn(
+            "BART $meth", LADDER_BART_ADMM, target, it -> begin
+                t, _, r = time_bart(bartcmd(load_lambda(key, "BART", λdef), it), kbart_dyn, sbart_dyn)
+                (t, dropdims(r, dims = (3, 4, 5)))
+            end
+        )
+    )
 
-    mrm === nothing || addrow(meth, target, "MRIReco", race_dyn("MRIReco $meth", LADDER, target, it -> begin
-        ms, x = mrireco_dynamic(mrm, ksp_dyn_z, cmap_dyn, (Nd, Nd); λ = load_lambda(key, "MRIReco", λdef), iterations = it)
-        (ms / 1000, x)
-    end))
+    mrm === nothing || addrow(
+        meth, target, "MRIReco", race_dyn(
+            "MRIReco $meth", LADDER, target, it -> begin
+                ms, x = mrireco_dynamic(mrm, ksp_dyn_z, cmap_dyn, (Nd, Nd); λ = load_lambda(key, "MRIReco", λdef), iterations = it)
+                (ms / 1000, x)
+            end
+        )
+    )
 end
 
 write_section("accuracy_race")

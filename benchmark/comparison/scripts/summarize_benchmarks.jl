@@ -1,12 +1,12 @@
 using JSON, Printf
 
-res_dir = "/home/c_mrrht/c_mrrecon/MriReconstructionToolbox/benchmark/comparison/results"
+res_dir = normpath(joinpath(@__DIR__, "..", "results"))
 
 files = [
     ("OpenBLAS 1T", "benchmark_openblas_1threads.json"),
-    ("MKL 1T",      "benchmark_mkl_1threads.json"),
+    ("MKL 1T", "benchmark_mkl_1threads.json"),
     ("OpenBLAS 8T", "benchmark_openblas_8threads.json"),
-    ("MKL 8T",      "benchmark_mkl_8threads.json"),
+    ("MKL 8T", "benchmark_mkl_8threads.json"),
 ]
 
 data = Dict()
@@ -33,19 +33,19 @@ println("=======================================================================
 println("------------------------------------------------------------------------------------------------------------------")
 
 for (cat, m) in [
-    ("Base 1C", "1-Coil Adjoint"),
-    ("Base MC", "Cartesian Adjoint"),
-    ("Non-Cartesian", "DCF Adjoint (Gridding)"),
-    ("Base MC", "CG-SENSE (10 it)"),
-    ("Sparsity", "Total Variation (30 it)"),
-    ("Sparsity", "L1-Wavelet (30 it)"),
-    ("Sparsity", "TGV (30 it)"),
-    ("Dynamic", "Global Low-Rank (20 it)"),
-    ("Dynamic", "Locally Low-Rank (20 it)"),
-    ("Dynamic", "Temporal TV (20 it)"),
-    ("K-Space", "GRAPPA (RSS)"),
-    ("K-Space", "GRAPPA (Sensitivity)")
-]
+        ("Base 1C", "1-Coil Adjoint"),
+        ("Base MC", "Cartesian Adjoint"),
+        ("Non-Cartesian", "DCF Adjoint (Gridding)"),
+        ("Base MC", "CG-SENSE (10 it)"),
+        ("Sparsity", "Total Variation (30 it)"),
+        ("Sparsity", "L1-Wavelet (30 it)"),
+        ("Sparsity", "TGV (30 it)"),
+        ("Dynamic", "Global Low-Rank (20 it)"),
+        ("Dynamic", "Locally Low-Rank (20 it)"),
+        ("Dynamic", "Temporal TV (20 it)"),
+        ("K-Space", "GRAPPA (RSS)"),
+        ("K-Space", "GRAPPA (Sensitivity)"),
+    ]
     # Find all frameworks for this method
     fws = ["MRT", "BART", "SigPy", "MRIReco"]
     for fw in fws

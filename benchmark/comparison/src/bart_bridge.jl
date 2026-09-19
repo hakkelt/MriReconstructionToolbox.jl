@@ -16,7 +16,7 @@ for itself; `run_bart` then flips the variable on for that call and restores it 
 """
 function run_bart(num_outputs::Int, cmd::String, inputs...; wisdom::Bool = false)
     if !haskey(ENV, "TOOLBOX_PATH")
-        ENV["TOOLBOX_PATH"] = "/project/c_mrrecon/bart_mkl"
+        ENV["TOOLBOX_PATH"] = get(ENV, "MRT_BENCH_BART_MKL", "/project/c_mrrecon/bart_mkl")
     end
     if wisdom
         saved = get(ENV, "BART_USE_FFTW_WISDOM", "0")
