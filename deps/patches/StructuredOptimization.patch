@@ -1,28 +1,31 @@
 diff --git a/deps/StructuredOptimization/Project.toml b/deps/StructuredOptimization/Project.toml
-index 32e734c..10eed53 100644
+index fcbc51f..dd89574 100644
 --- a/deps/StructuredOptimization/Project.toml
 +++ b/deps/StructuredOptimization/Project.toml
-@@ -18,13 +18,14 @@ ProximalCore = "dc4f5ac2-75d1-4f31-931e-60435d74994b"
+@@ -2,9 +2,6 @@ name = "StructuredOptimization"
+ uuid = "46cd3e9d-64ff-517d-a929-236bc1a1fc9d"
+ version = "0.5.0"
+ 
+-[workspace]
+-projects = ["test", "docs"]
+-
+ [deps]
+ AbstractOperators = "d9c5613a-d543-52d8-9afd-8f241a8c3f1c"
+ Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
+@@ -18,6 +15,13 @@ ProximalCore = "dc4f5ac2-75d1-4f31-931e-60435d74994b"
  ProximalOperators = "a725b495-10eb-56fe-b38b-717eba820537"
  RecursiveArrayTools = "731186ca-8d62-57ce-b412-fbd966d074cd"
  
-+# Vendored: the sibling copies under MriReconstructionToolbox's `deps/`, not the developer's own
-+# checkouts. This block is MRT-local and is re-applied by `deps/patches/StructuredOptimization.patch`.
- [sources]
--AbstractOperators = {path = "/project/c_mrrecon/AbstractOperators.latest-stable"}
--DSPOperators = {path = "/project/c_mrrecon/AbstractOperators.latest-stable/DSPOperators"}
--FFTWOperators = {path = "/project/c_mrrecon/AbstractOperators.latest-stable/FFTWOperators"}
--ProximalAlgorithms = {path = "../ProximalAlgorithms.jl"}
--ProximalCore = {path = "../ProximalCore.jl"}
--ProximalOperators = {path = "/project/c_mrrecon/ProximalOperators.jl/.claude/worktrees/preallocate"}
++[sources]
 +AbstractOperators = {path = "../AbstractOperators"}
 +DSPOperators = {path = "../AbstractOperators/DSPOperators"}
 +FFTWOperators = {path = "../AbstractOperators/FFTWOperators"}
 +ProximalAlgorithms = {path = "../ProximalAlgorithms"}
 +ProximalOperators = {path = "../ProximalOperators"}
- 
++
  [compat]
  AbstractOperators = "0.4"
+ Combinatorics = "1.0.2"
 diff --git a/deps/StructuredOptimization/src/StructuredOptimization.jl b/deps/StructuredOptimization/src/StructuredOptimization.jl
 index 0ea93a1..10145db 100644
 --- a/deps/StructuredOptimization/src/StructuredOptimization.jl

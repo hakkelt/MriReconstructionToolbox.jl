@@ -1,5 +1,5 @@
 diff --git a/deps/ProximalOperators/Project.toml b/deps/ProximalOperators/Project.toml
-index 88dc263..64c68dd 100644
+index 6be4a3c..bbe5076 100644
 --- a/deps/ProximalOperators/Project.toml
 +++ b/deps/ProximalOperators/Project.toml
 @@ -2,9 +2,6 @@ name = "ProximalOperators"
@@ -12,19 +12,22 @@ index 88dc263..64c68dd 100644
  [deps]
  IterativeSolvers = "42fd0dbc-a981-5370-80f2-aaf504508153"
  LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-@@ -17,11 +14,9 @@ SuiteSparse = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
+@@ -17,14 +14,9 @@ SuiteSparse = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
  TSVD = "9449cd9e-2762-5aa3-a617-5413e99d722e"
  
  [weakdeps]
+-GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
+-KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 -OSQP = "ab2f91bb-94b4-55e3-9ba0-7f65df51de79"
  RecursiveArrayTools = "731186ca-8d62-57ce-b412-fbd966d074cd"
  
  [extensions]
+-GpuExt = ["GPUArrays", "KernelAbstractions"]
 -ProximalOperatorsOSQPExt = "OSQP"
  RecursiveArrayToolsExt = "RecursiveArrayTools"
  
  [compat]
-@@ -29,7 +24,6 @@ IterativeSolvers = "0.8 - 0.9"
+@@ -34,7 +26,6 @@ KernelAbstractions = "0.9"
  LinearAlgebra = "1.4"
  LoopVectorization = "0.12"
  NestedThreading = "0.1"
@@ -33,10 +36,10 @@ index 88dc263..64c68dd 100644
  ProximalCore = "0.2.0"
  RecursiveArrayTools = "2, 3"
 diff --git a/deps/ProximalOperators/src/ProximalOperators.jl b/deps/ProximalOperators/src/ProximalOperators.jl
-index bda1479..ce30b25 100644
+index c49f3b9..5ac9fbc 100644
 --- a/deps/ProximalOperators/src/ProximalOperators.jl
 +++ b/deps/ProximalOperators/src/ProximalOperators.jl
-@@ -70,7 +70,6 @@ include("functions/indNonnegative.jl")
+@@ -74,7 +74,6 @@ include("functions/indNonnegative.jl")
  include("functions/indRealNonnegative.jl")
  include("functions/indNonpositive.jl")
  include("functions/indPoint.jl")
@@ -44,7 +47,7 @@ index bda1479..ce30b25 100644
  include("functions/indPSD.jl")
  include("functions/indSimplex.jl")
  include("functions/indSOC.jl")
-@@ -116,6 +115,11 @@ include("calculus/sum.jl")
+@@ -120,6 +119,11 @@ include("calculus/sum.jl")
  include("calculus/pointwiseMinimum.jl")
  include("calculus/proximalAverage.jl")
  
