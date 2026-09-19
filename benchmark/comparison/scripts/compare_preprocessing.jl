@@ -5,6 +5,7 @@ using Test
 using MriReconstructionToolbox
 using LinearAlgebra
 using Statistics
+using FFTW: fftshift
 
 # Add our comparison harness
 include("../src/ComparisonHarness.jl")
@@ -24,8 +25,18 @@ using .ComparisonHarness
 
         # 1. MriReconstructionToolbox
         # We need a calibration region. ESPIRiT usually extracts the center of k-space internally if we pass the whole k-space.
-        # Let's pass the whole kspace to estimate_sensitivities
-        mrt_sens = MriReconstructionToolbox.estimate_sensitivities(kspace, method = MriReconstructionToolbox.ESPIRiT(calib_size = 24, eigenvalue_threshold = 0.0, subspace_threshold = 0.0))
+        # Let's pass the whole kspace to estimate_sensitivities.
+        #
+        # `subspace_threshold` is the one parameter that must *not* be zeroed along with the
+        # eigenvalue crop: it decides how many right singular vectors of the calibration matrix
+        # count as the signal subspace, and at 0 every one of the 288 of them is kept. The kept set
+        # is then a complete basis, `V V'` is proportional to the identity at every pixel, and the
+        # maps are an arbitrary eigenvector — which is what this comparison measured before
+        # (NRMSE 0.77 against BART, at every layout). 0.001 is BART's own `-t` default; MRIReco
+        # uses 0.02, and MRT matches whichever it is given to 3e-3 or better.
+        mrt_sens = MriReconstructionToolbox.estimate_sensitivities(
+            kspace, method = MriReconstructionToolbox.ESPIRiT(calib_size = 24, eigenvalue_threshold = 0.0, subspace_threshold = 0.001)
+        )
 
         # 2. BART
         # We pass the full k-space. BART ecalib with -r 24 will extract the center 24x24 internally.
@@ -44,10 +55,18 @@ using .ComparisonHarness
         @test size(sp_sens) == (num_coils, N, N) # Assuming sp returns coils first
         @test size(mrt_sens) == (N, N, num_coils)
 
-        # Compare magnitudes (ESPIRiT maps have arbitrary phase)
+        # Compare magnitudes (ESPIRiT maps have arbitrary phase).
+        #
+        # Two layout conventions have to be undone first. SigPy was handed `(coil, y, x)` by
+        # permuting `(3, 2, 1)`, so its output is undone by the same permutation, not by
+        # `(2, 3, 1)` — that one transposes x against y, and made SigPy look like it disagreed
+        # with BART by 0.60 when the two in fact agree to 3e-3. And the raw-array
+        # `estimate_sensitivities` returns maps in MRT's *default* image convention, origin at
+        # index 1, while BART and SigPy return centred ones; `fftshift` is what puts them in the
+        # same frame (see the FFT-shift section of its docstring).
         bart_mag = dropdims(abs.(bart_sens), dims = 3)
-        sp_mag = permutedims(abs.(sp_sens), (2, 3, 1))
-        mrt_mag = abs.(mrt_sens)
+        sp_mag = permutedims(abs.(sp_sens), (3, 2, 1))
+        mrt_mag = fftshift(abs.(mrt_sens), 1:2)
 
         # Mask out background where sensitivities are undefined/arbitrary
         mask = abs.(img) .> 1.0e-4
@@ -57,9 +76,11 @@ using .ComparisonHarness
         err_sp = nrmse(sp_mag[mask_3d], mrt_mag[mask_3d])
         @info "ESPIRiT Masked Magnitude NRMSE: MRT vs BART = $(err_bart), MRT vs SigPy = $(err_sp)"
 
-        # Relax tolerance slightly due to numerical differences in SVD/eig implementations
-        @test err_bart < 0.1
-        @test err_sp < 0.1
+        # Tolerance for numerical differences in the SVD / eigen implementations. Measured on this
+        # phantom: MRT vs BART 0.0043, MRT vs SigPy 0.0027, and each of the three within 0.006 of
+        # the simulated ground-truth maps.
+        @test err_bart < 0.02
+        @test err_sp < 0.02
     end
 
     @testset "Coil Compression" begin
