@@ -18,7 +18,7 @@ end
 
     function functions_of(reg, x)
         term = MriReconstructionToolbox.materialize(reg, Variable(x); threaded = false)
-        return SO.extract_functions(term)
+        return SO.weighted_function(term)
     end
 
     function prox_of(reg, x, γ = 1.0)
@@ -141,8 +141,10 @@ end
         vars = StructuredOptimization.extract_variables(terms)
         @assert length(vars) == 1
         xvar = vars[1]
-        f = StructuredOptimization.extract_functions(terms)
-        op = StructuredOptimization.extract_operators((xvar,), terms)
+        # `weighted_function` is λ·f and nothing else, so the displacement has to come from the
+        # *affine* operator rather than the bare linear one.
+        f = StructuredOptimization.weighted_function(terms)
+        op = StructuredOptimization.extract_affines((xvar,), terms)
         xval = ~xvar
         return f(op * xval)
     end

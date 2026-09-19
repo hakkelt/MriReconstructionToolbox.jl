@@ -160,7 +160,7 @@ end
         reg = LocallyLowRank(λ; block_size = 4, time_dim = 3)
         var = Variable(x)
         term = MriReconstructionToolbox.materialize(reg, var; threaded)
-        f = SO.extract_functions(term)
+        f = SO.weighted_function(term)
         y = similar(x)
         fy = PC.prox!(y, f, x, γ)
 
