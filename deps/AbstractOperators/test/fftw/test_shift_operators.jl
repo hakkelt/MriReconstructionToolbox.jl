@@ -1,0 +1,358 @@
+@testitem "FFTShift/IFFTShift Operators" tags = [:fftw, :FFTShift] setup = [TestUtils] begin
+    using AbstractOperators
+    using LinearAlgebra, Random, FFTWOperators
+    # 1D even length
+    n = 4
+    x = collect(1.0:n)
+    A = FFTShift((n,), (1,))
+    B = IFFTShift((n,), (1,))
+
+    @test A * x == [3.0, 4.0, 1.0, 2.0]
+    @test B * (A * x) == x
+    @test A' * (A * x) == x  # orthogonal permutation
+    @test B' * (B * x) == x
+
+    # 1D odd length
+    n = 5
+    x = collect(1.0:n)
+    A = FFTShift((n,), (1,))
+    B = IFFTShift((n,), (1,))
+
+    @test A * x == [4.0, 5.0, 1.0, 2.0, 3.0]
+    @test B * (A * x) == x
+
+    # 2D, both dims
+    n, m = 2, 3
+    X = collect(reshape(1.0:(n * m), n, m))
+    A = FFTShift((n, m), (1, 2))
+    B = IFFTShift((n, m), (1, 2))
+    Y = A * X
+    @test size(Y) == size(X)
+    @test B * Y == X
+
+    # Properties
+    @test is_orthogonal(A)
+    @test is_invertible(A)
+    @test is_full_row_rank(A)
+    @test is_full_column_rank(A)
+    @test diag_AAc(A) == 1.0
+    @test diag_AcA(A) == 1.0
+end
+
+@testitem "SignAlternation Operator" tags = [:fftw, :SignAlternation] setup = [TestUtils] begin
+    using AbstractOperators
+    using LinearAlgebra, Random, FFTWOperators
+    # 1D
+    n = 6
+    x = ones(n)
+    S = SignAlternation((n,), (1,))
+    y = S * x
+    @test y == [1.0, -1.0, 1.0, -1.0, 1.0, -1.0]
+    @test S' * (S * x) == x
+    @test AbstractOperators.is_symmetric(S)
+    @test is_orthogonal(S)
+
+    # 2D across both dims
+    X = ones(2, 2)
+    S2 = SignAlternation((2, 2), (1, 2))
+    @test S2 * X == [1.0 -1.0; -1.0 1.0]
+
+    # mul! variants
+    y1 = similar(x)
+    mul!(y1, S, x)
+    @test y1 == y
+
+    y2 = similar(X)
+    mul!(y2, S2, X)
+    @test y2 == S2 * X
+end
+
+@testitem "alternate_sign helpers" tags = [:fftw, :SignAlternation] setup = [TestUtils] begin
+    using LinearAlgebra, Random, FFTWOperators
+    # in-place
+    v = collect(1.0:4.0)
+    alternate_sign!(v, 1)
+    @test v == [1.0, -2.0, 3.0, -4.0]
+
+    # out-of-place with dest
+    x = collect(reshape(1.0:4.0, 2, 2))
+    y = similar(x)
+    alternate_sign!(y, x, 1, 2)
+    @test y == [1.0 -3.0; -2.0 4.0]
+
+    # functional copy
+    u = alternate_sign(collect(reshape(1.0:4.0, 2, 2)), 1, 2)
+    @test u == [1.0 -3.0; -2.0 4.0]
+
+    # no dirs → identity
+    z = collect(1.0:3.0)
+    @test_throws ArgumentError alternate_sign!(z)
+
+    y = similar(z)
+    @test_throws ArgumentError alternate_sign!(y, z)
+
+    # too many dirs (N < M)
+    m2d = ones(2, 2)
+    @test_throws ArgumentError alternate_sign!(m2d, (1, 2, 3))
+    y2d = similar(m2d)
+    @test_throws ArgumentError alternate_sign!(y2d, m2d, (1, 2, 3))
+
+    # unsorted dirs
+    @test_throws ArgumentError alternate_sign!(m2d, (2, 1))
+    @test_throws ArgumentError alternate_sign!(y2d, m2d, (2, 1))
+
+    # out-of-range dirs
+    @test_throws ArgumentError alternate_sign!(z, 0)
+    @test_throws ArgumentError alternate_sign!(z, 2)  # 1D array, dir=2 > ndims
+
+    # non-threaded paths (threaded=false)
+    v2 = collect(1.0:4.0)
+    alternate_sign!(v2, 1; threaded = false)
+    @test v2 == [1.0, -2.0, 3.0, -4.0]
+
+    x2 = collect(reshape(1.0:4.0, 2, 2))
+    y2 = similar(x2)
+    alternate_sign!(y2, x2, 1, 2; threaded = false)
+    @test y2 == [1.0 -3.0; -2.0 4.0]
+end
+
+@testitem "alternate_sign!: hoisted kernel matches the naive per-element formula" tags = [:fftw, :SignAlternation] setup = [TestUtils] begin
+    using LinearAlgebra, Random, FFTWOperators
+    Random.seed!(3)
+
+    # Reference: the naive per-element formula the kernel was rewritten from.
+    function _ref_alternate_sign!(x::AbstractArray, dirs::NTuple)
+        for I in CartesianIndices(x)
+            flips = sum(iseven(I[d]) ? 1 : 0 for d in dirs)
+            if isodd(flips)
+                x[I] = -x[I]
+            end
+        end
+        return x
+    end
+
+    # Every non-empty subset of `1:N`, sorted ascending (the shape `alternate_sign!` requires).
+    function _dirs_subsets(N::Int)
+        return [Tuple(d for d in 1:N if (mask >> (d - 1)) & 1 == 1) for mask in 1:(2^N - 1)]
+    end
+
+    # Mixed even/odd extents, including an axis of length exactly 2.
+    sizes = [(4, 3, 2), (2, 5, 4), (6, 2, 3), (8,), (2, 2), (2, 3, 2)]
+    for sz in sizes, threaded in (true, false)
+        x = randn(ComplexF64, sz)
+        N = length(sz)
+        for dirs in _dirs_subsets(N)
+            expected = _ref_alternate_sign!(copy(x), dirs)
+
+            y = copy(x)
+            alternate_sign!(y, dirs...; threaded)
+            @test y ≈ expected
+
+            yo = similar(x)
+            alternate_sign!(yo, x, dirs...; threaded)
+            @test yo ≈ expected
+
+            # Self-inverse.
+            @test alternate_sign!(copy(y), dirs...; threaded) ≈ x
+        end
+    end
+end
+
+@testitem "alternate_sign!: kernel state stays on the stack" tags = [:fftw, :SignAlternation] setup = [TestUtils] begin
+    using Random, FFTWOperators
+    using LinearAlgebra: mul!
+    Random.seed!(5)
+
+    # The per-column sign vector and the trailing-dimension mask used to be heap `Vector`s built
+    # on every call, in a kernel that runs once per FFT-shift per operator application. `N` is a
+    # static type parameter, so neither needs to allocate.
+    #
+    # Measured from inside a function, not at test-item top level: `@allocated` on a call whose
+    # arguments are globals also counts the boxing of those globals, which is not the kernel's
+    # doing (the same call measured at top level reports 128 B for a 3-element `dirs`).
+    alloc_in_place(x, dirs) = @allocated alternate_sign!(x, dirs...; threaded = false)
+    alloc_out_of_place(y, x, dirs) = @allocated alternate_sign!(y, x, dirs...; threaded = false)
+
+    x = randn(ComplexF64, 32, 16, 4)
+    y = similar(x)
+    for dirs in ((1,), (2, 3), (1, 2, 3))
+        alternate_sign!(copy(x), dirs...; threaded = false)      # warm up / compile
+        alternate_sign!(y, x, dirs...; threaded = false)
+        @test alloc_in_place(x, dirs) == 0
+        @test alloc_out_of_place(y, x, dirs) == 0
+    end
+
+    # The same claim where it actually matters: the operator's own `mul!`, which runs once per
+    # FFT-shift per operator application.
+    mul_alloc(y, S, x) = @allocated mul!(y, S, x)
+    S = SignAlternation(ComplexF64, size(x), (1, 2, 3); threaded = false)
+    mul!(y, S, x)
+    @test mul_alloc(y, S, x) == 0
+end
+
+@testitem "alternate_sign!: a single trailing column threads dimension 1" tags = [:fftw, :SignAlternation] setup = [TestUtils] begin
+    using Random, FFTWOperators
+    Random.seed!(5)
+
+    # A single trailing column (a vector, or an `n x 1`) leaves the column loop with one item, so
+    # the threaded path spreads dimension 1 instead. Both paths must agree with the naive formula.
+    for sz in ((64,), (64, 1), (8192,))
+        v = randn(ComplexF64, sz...)
+        expected = [v[I] * (iseven(I[1]) ? -1 : 1) for I in CartesianIndices(v)]
+        @test alternate_sign!(copy(v), 1; threaded = true) ≈ expected
+        @test alternate_sign!(copy(v), 1; threaded = false) ≈ expected
+    end
+end
+
+@testitem "fftshift/ifftshift wrappers" tags = [:fftw, :FFTShift] setup = [TestUtils] begin
+    using FFTW, LinearAlgebra, Random, FFTWOperators, AbstractOperators
+    # Even length
+    n = 4
+    A = DFT(n)
+    x = randn(n)
+
+    # Codomain shift: should equal shifting output of A*x
+    T = fftshift_op(A; codomain_shifts = (1,))
+    y1 = T * x
+    y2 = FFTW.fftshift(A * x, (1,))
+    @test y1 ≈ y2
+
+    # Domain shift: should equal A applied to shifted input
+    T2 = fftshift_op(A; domain_shifts = (1,))
+    y1 = T2 * x
+    y2 = A * FFTW.fftshift(x, (1,))
+    @test y1 ≈ y2
+
+    # ifftshift variants
+    T3 = ifftshift_op(A; codomain_shifts = (1,))
+    y1 = T3 * x
+    y2 = FFTW.ifftshift(A * x, (1,))
+    @test y1 ≈ y2
+
+    T4 = ifftshift_op(A; domain_shifts = (1,))
+    y1 = T4 * x
+    y2 = A * FFTW.ifftshift(x, (1,))
+    @test y1 ≈ y2
+
+    # Odd length
+    n = 5
+    A = DFT(n)
+    x = randn(n)
+
+    T5 = fftshift_op(A; codomain_shifts = (1,))
+    @test (T5 * x) ≈ FFTW.fftshift(A * x, (1,))
+
+    T6 = ifftshift_op(A; domain_shifts = (1,))
+    @test (T6 * x) ≈ (A * FFTW.ifftshift(x, (1,)))
+
+    # Compose operators: DiagOp * DFT (all-diagonal/DFT → _is_dft_op true from all() branch)
+    n = 8
+    Random.seed!(42)
+    dft_c = DFT(ComplexF64, n)
+    d = randn(ComplexF64, n)
+    diag_op = DiagOp(d)
+    composed1 = diag_op * dft_c  # Compose: DFT applied first, then DiagOp
+    xc = randn(ComplexF64, n)
+    T7 = fftshift_op(composed1; domain_shifts = (1,))
+    @test T7 * xc ≈ composed1 * FFTW.fftshift(xc, (1,))
+    T8 = fftshift_op(composed1; codomain_shifts = (1,))
+    @test T8 * xc ≈ FFTW.fftshift(composed1 * xc, (1,))
+
+    # MatrixOp * DFT (else branch: not all-diagonal/DFT, but first subop is DFT)
+    mat_op = MatrixOp(randn(ComplexF64, n, n))
+    composed2 = mat_op * dft_c  # Compose: DFT applied first, then MatrixOp
+    T9 = fftshift_op(composed2; domain_shifts = (1,))
+    @test T9 * xc ≈ composed2 * FFTW.fftshift(xc, (1,))
+    T10 = fftshift_op(composed2; codomain_shifts = (1,))
+    @test T10 * xc ≈ FFTW.fftshift(composed2 * xc, (1,))
+end
+
+@testitem "Combination rules: FFTShift/IFFTShift with DFT/IDFT" tags = [:fftw, :CombinationRules] setup = [TestUtils] begin
+    using AbstractOperators
+    using LinearAlgebra, Random, FFTWOperators
+    using AbstractOperators: can_be_combined, combine
+
+    # Even length → can be combined; replacement with SignAlternation
+    n = 8
+    x = randn(ComplexF64, n)
+    dft = DFT(ComplexF64, n)
+    sh = FFTShift(ComplexF64, (n,), (1,))
+    ish = IFFTShift(ComplexF64, (n,), (1,))
+
+    @test can_be_combined(dft, sh)
+    @test can_be_combined(sh, dft)
+    @test can_be_combined(dft', sh)
+    @test can_be_combined(sh, dft')
+
+    c1 = combine(dft, sh)
+    @test c1 isa AbstractOperator
+    @test (c1 * x) ≈ (SignAlternation(codomain_type(dft), size(dft, 1), (1,)) * (dft * x))
+
+    c2 = combine(sh, dft)
+    @test (c2 * x) ≈ (dft * (SignAlternation(domain_type(dft), size(dft, 2), (1,)) * x))
+
+    # IDFT variants
+    idft = IDFT(ComplexF64, n)
+    @test can_be_combined(idft, sh)
+    @test can_be_combined(sh, idft)
+
+    c3 = combine(idft, sh)
+    @test (c3 * x) ≈ (SignAlternation(codomain_type(idft), size(idft, 1), (1,)) * (idft * x))
+
+    c4 = combine(sh, idft)
+    @test (c4 * x) ≈ (idft * (SignAlternation(domain_type(idft), size(idft, 2), (1,)) * x))
+
+    # Odd length → cannot be combined
+    n = 7
+    dft = DFT(ComplexF64, n)
+    sh = FFTShift(ComplexF64, (n,), (1,))
+    @test !can_be_combined(dft, sh)
+    @test !can_be_combined(sh, dft)
+
+    # Multi-dim dirs
+    n, m = 6, 10
+    dft2 = DFT(ComplexF64, n, m)
+    sh2 = FFTShift(ComplexF64, (n, m), (1, 2))
+    @test can_be_combined(dft2, sh2)  # both even
+
+    c5 = combine(dft2, sh2)
+    X = randn(ComplexF64, n, m)
+    @test (c5 * X) ≈ ((dft2 * sh2) * X)
+end
+
+@testitem "FFTShift/IFFTShift (GPU)" tags = [:gpu, :fftw, :FFTShift] setup = [TestUtils, GpuEnvSetup] begin
+    using FFTWOperators, GPUEnv, LinearAlgebra
+
+    for backend in gpu_backends()
+        n = 4
+        x = to_gpu(backend, collect(1.0:n))
+        A = FFTShift((n,), (1,); array_type = typeof(x))
+        y = A * x
+        @test collect(y) == [3.0, 4.0, 1.0, 2.0]
+        @test collect(A' * y) ≈ collect(x)
+
+        n2, m2 = 2, 4
+        X = gpu_ones(backend, Float64, n2, m2)
+        A2 = FFTShift((n2, m2), (1, 2); array_type = typeof(X))
+        Y = A2 * X
+        @test collect(Y) ≈ ones(n2, m2)
+    end
+end
+
+@testitem "SignAlternation (GPU)" tags = [:gpu, :fftw, :SignAlternation] setup = [TestUtils, GpuEnvSetup] begin
+    using FFTWOperators, GPUEnv, LinearAlgebra
+
+    for backend in gpu_backends()
+        n = 6
+        x = gpu_ones(backend, Float64, n)
+        S = SignAlternation((n,), (1,); array_type = typeof(x))
+        y = S * x
+        @test collect(y) == [1.0, -1.0, 1.0, -1.0, 1.0, -1.0]
+        @test collect(S * y) ≈ collect(x)
+
+        X2 = gpu_ones(backend, Float64, 2, 2)
+        S2 = SignAlternation((2, 2), (1, 2); array_type = typeof(X2))
+        Y2 = S2 * X2
+        @test collect(Y2) == [1.0 -1.0; -1.0 1.0]
+    end
+end
