@@ -24,6 +24,8 @@ is_locally_smooth(f::Type{<:SumPositive}) = true
 
 @threadable SumPositive{Th} Arithmetic
 
+@threadable SumPositive{Th} Arithmetic
+
 function (::SumPositive)(x)
     return sum(xi -> max(xi, eltype(x)(0)), x)
 end
