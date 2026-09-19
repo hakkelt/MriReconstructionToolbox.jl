@@ -7,22 +7,15 @@ function extract_variables(t::Union{Tuple, TermSet})
     return tuple(unique(vars)...)
 end
 
-# extract functions from terms
-function extract_functions(t::Term)
-    disp = displacement(t)
-    f = disp == 0 ? t.f : PrecomposeDiagonal(t.f, one(t.lambda), disp) #for now I keep this
-    f = t.lambda == 1 ? f : Postcompose(f, t.lambda)                                  #for now I keep this
-    #TODO change this
-    return f
-end
-extract_functions(t::TermSet) = SeparableSum(extract_functions.(t)...)
-
-# extract functions from terms without displacement
-function extract_functions_nodisp(t::Term)
-    f = t.lambda == 1 ? t.f : Postcompose(t.f, t.lambda)
-    return f
-end
-extract_functions_nodisp(t::TermSet) = SeparableSum(extract_functions_nodisp.(t)...)
+# The term's function with its weight λ applied, and nothing else.
+#
+# This is the one extraction convention in the package: a term is `λ · f(A·x + d)`, the
+# displacement `d` is carried by the affine operator (`extract_affines`/`affine`), and λ is
+# applied exactly once, here. Anything that folds the operator or the displacement into the
+# function is an *absorption* and belongs in `merge_function_with_operator`, which is the
+# only place that knows what the selected algorithm will ask of the term.
+weighted_function(t::Term) = t.lambda == 1 ? t.f : Postcompose(t.f, t.lambda)
+weighted_function(t::TermSet) = SeparableSum(weighted_function.(t)...)
 
 # Extract the linear operators (`accessor = operator`) or the affine operators
 # keeping displacement (`accessor = affine`) from a term/expression, ordered to match
@@ -64,30 +57,20 @@ extract_operators(xAll, t) = _extract(operator, xAll, t)
 # returns all affines (operators keeping displacement) with an order dictated by xAll
 extract_affines(xAll, t) = _extract(affine, xAll, t)
 
-# expand term domain dimensions
-function expand(xAll::NTuple{N, Variable}, t::Term) where {N}
-    C = codomain_type(operator(t))
-    size_out = size(operator(t), 1)
-    ex = t.A
-
-    for x in xAll
-        if !(x in variables(t))
-            ex += Zeros(eltype(~x), size(x), C, size_out) * x
-        end
-    end
-    # Preserve the term's repr so diagnostics stay readable after expansion.
-    return Term(t.lambda, t.f, ex, t.repr)
-end
-
+# Expand a term/expression to the problem's full domain: every variable of `xAll` the
+# term does not mention gets a `Zeros` block, so all terms share one domain and their
+# operators can be stacked.
+#
+# The padding rule itself lives in `add_missing_vars` (addition_tricky_part.jl), which
+# does the same job at the operator level for `Usum_op`. Going through it keeps a single
+# rule for what a padded block looks like; here it is only wrapped back up as an
+# `Expression` over the widened variable tuple.
 function expand(xAll::NTuple{N, Variable}, ex::AbstractExpression) where {N}
     ex = convert(Expression, ex)
-    C = codomain_type(operator(ex))
-    size_out = size(operator(ex), 1)
-
-    for x in xAll
-        if !(x in variables(ex))
-            ex += Zeros(eltype(~x), size(x), C, size_out) * x
-        end
-    end
-    return ex
+    new_vars, new_op = add_missing_vars(ex.x, ex.L, xAll)
+    return new_vars === ex.x ? ex : Expression(new_vars, new_op)
 end
+
+# Preserve λ, f and the term's repr (so diagnostics stay readable after expansion).
+expand(xAll::NTuple{N, Variable}, t::Term) where {N} =
+    Term(t.lambda, t.f, expand(xAll, t.A), t.repr)

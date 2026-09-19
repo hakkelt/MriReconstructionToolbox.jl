@@ -1,11 +1,11 @@
 # StructuredOptimization.jl
 
-[![Build status](https://github.com/JuliaFirstOrder/StructuredOptimization.jl/workflows/CI/badge.svg)](https://github.com/JuliaFirstOrder/StructuredOptimization.jl/actions?query=workflow%3ACI)
-[![codecov](https://codecov.io/gh/JuliaFirstOrder/StructuredOptimization.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/JuliaFirstOrder/StructuredOptimization.jl)
+[![Build status](https://github.com/hakkelt/StructuredOptimization.jl/workflows/CI/badge.svg)](https://github.com/hakkelt/StructuredOptimization.jl/actions?query=workflow%3ACI)
+[![codecov](https://codecov.io/gh/hakkelt/StructuredOptimization.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/hakkelt/StructuredOptimization.jl)
 [![Aqua QA](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
 
-[![](https://img.shields.io/badge/docs-stable-blue.svg)](https://juliafirstorder.github.io/StructuredOptimization.jl/stable)
-[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://juliafirstorder.github.io/StructuredOptimization.jl/latest)
+[![](https://img.shields.io/badge/docs-stable-blue.svg)](https://hakkelt.github.io/StructuredOptimization.jl/stable)
+[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://hakkelt.github.io/StructuredOptimization.jl/latest)
 
 StructuredOptimization.jl is a high-level modeling language
 that utilizes a syntax that is very close to
@@ -62,4 +62,4 @@ julia> ~x                             # inspect solution
 [...]
 ```
 
-See the [documentation](https://juliafirstorder.github.io/StructuredOptimization.jl/latest) for more details about the type of problems StructuredOptimization.jl can handle and the [demos](https://juliafirstorder.github.io/StructuredOptimization.jl/stable/demos/) to check out some examples.
+See the [documentation](https://hakkelt.github.io/StructuredOptimization.jl/latest) for more details about the type of problems StructuredOptimization.jl can handle and the [demos](https://hakkelt.github.io/StructuredOptimization.jl/stable/demos/) to check out some examples.

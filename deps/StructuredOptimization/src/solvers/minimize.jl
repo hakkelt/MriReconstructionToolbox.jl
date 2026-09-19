@@ -7,15 +7,26 @@ Constructs a problem.
 
 # Example
 
-```julia
-
+```jldoctest
 julia> x = Variable(4)
-Variable(Float64, (4,))
+Variable(Float64, (4,), "x")
 
-julia> A, b = randn(10,4), randn(10);
+julia> A, b = randn(10, 4), randn(10);
 
-julia> p = problem(ls(A*x-b), norm(x) <= 1)
+julia> p = problem(ls(A * x - b), norm(x) <= 1);
 
+julia> length(p)
+2
+```
+
+Arguments are flattened, so a `TermSet` built with `+` and a list of separate terms give the
+same problem:
+
+```jldoctest
+julia> x = Variable(4); A, b = randn(10, 4), randn(10);
+
+julia> length(problem(ls(A * x - b) + 1.0e-2 * norm(x, 1)))
+2
 ```
 
 """
@@ -62,23 +73,28 @@ Minimize a given problem with cost function `cost`, constraints `ctr` and solver
 
 # Example
 
-```julia
-julia> using StructuredOptimization
+```jldoctest
+julia> A, b, x = randn(10, 4), randn(10), Variable(4);
 
-julia> A, b, x = randn(10,4), randn(10), Variable(4);
+julia> @minimize ls(A * x - b) + 0.5 * norm(x);
 
-julia> @minimize ls(A*x-b) + 0.5*norm(x);
+julia> length(~x)  # `~x` is the array holding the solution
+4
 
-julia> ~x  # access array with solution
+julia> @minimize ls(A * x - b) st x >= 0.0;
 
-julia> @minimize ls(A*x-b) st x >= 0.;
+julia> all(~x .>= -1.0e-9)  # the constraint is satisfied at the returned point
+true
 
-julia> ~x  # access array with solution
+julia> _, it = @minimize ls(A * x - b) st norm(x) <= 2.0 with ProximalAlgorithms.PANOCplus();
 
-julia> @minimize ls(A*x-b) st norm(x) == 2.0 with PANOCplus();
-
-julia> ~x  # access array with solution
+julia> norm(~x) <= 2.0 + 1.0e-6
+true
 ```
+
+Note that the variables are *not* reset between these calls: `~x` still holds the previous
+solution when the next `@minimize` starts, which warm-starts it. Write `~x .= 0.0` first to
+opt out.
 
 Returns as output a tuple containing the optimization variables and the number
 of iterations spent by the solver algorithm.

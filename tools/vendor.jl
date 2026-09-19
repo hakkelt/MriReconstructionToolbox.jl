@@ -33,6 +33,7 @@ struct Package
     base::String
     prefix::String
     path::String
+    prune::Vector{String}
     stack::Vector{Branch}
 end
 
@@ -56,6 +57,7 @@ function load_manifest()
                 entry["base"],
                 entry["prefix"],
                 entry["path"],
+                String.(get(entry, "prune", String[])),
                 stack,
             ),
         )
@@ -65,6 +67,20 @@ end
 
 select(packages, names) =
     isempty(names) ? packages : filter(p -> p.name in names, packages)
+
+"""
+Delete everything the package's `prune` globs match inside `dir`. MRT ships only the code it
+loads: a vendored package's own test suite, documentation, benchmarks and CI never run here (they
+run in the fork, against the real package), and an `ext/` directory cannot load at all for a
+package included as a submodule. Pruning them keeps `deps/` to what is actually compiled, and
+keeps the difference out of `deps/patches/`, where it would otherwise be thousands of lines of
+deletions with nothing to say.
+"""
+function prune!(dir::AbstractString, globs::Vector{String})
+    isempty(globs) && return
+    run(`bash -c $("shopt -s nullglob dotglob; cd " * dir * " && rm -rf -- " * join(globs, " "))`)
+    return
+end
 
 """
 Validate that the stack is a forest whose parents are declared before their children, so that
@@ -259,6 +275,9 @@ function rebuild(packages; push::Bool = true, fetch::Bool = true)
             `git -C $(pkg.path) worktree remove --force $wt`;
             nothing_on_error = true,
         )
+        # A worktree directory deleted by hand leaves its registration behind, and that stale
+        # entry still counts as `integration` being checked out somewhere.
+        git(pkg, "worktree", "prune")
         mkpath(dirname(wt))
         git(pkg, "worktree", "add", "--force", "-B", "integration", wt, pkg.base)
         conflict = nothing
@@ -311,10 +330,10 @@ end
 
 """
 Regenerate `deps/patches/<package>.patch`: everything the vendored copy has that its
-`integration` branch does not. That is by construction the MRT-only adaptation -- relative
-imports, a hand-wired `ext/`, whatever else an included submodule forces -- plus any real fix
-that still owes itself to a branch, which is precisely the drift that should be visible in one
-reviewable file instead of smeared through `deps/`.
+`integration` branch does not, once both sides have been pruned to what MRT actually ships. What
+is left is the MRT-only adaptation -- relative imports, an inlined `ext/`, whatever else an
+included submodule forces -- plus any fix that still owes itself to a branch, which is precisely
+the drift that should be visible in one reviewable file instead of smeared through `deps/`.
 
 Run it after `rebuild` and before the first `sync`, and again whenever a fix is carried back to
 its branch: what the branch now contains leaves the patch on its own.
@@ -336,6 +355,7 @@ function makepatch(packages)
             mkpath(before)
             mkpath(dirname(after))
             run(pipeline(`git -C $wt archive integration`, `tar -x -C $before`))
+            prune!(before, pkg.prune)
             run(`cp -a $(joinpath(ROOT, pkg.prefix)) $after`)
             out = joinpath(ROOT, "deps", "patches", "$(pkg.name).patch")
             # Captured raw, not through `capture`: a patch's trailing bytes are significant.
@@ -396,6 +416,13 @@ function sync(packages)
             "-m",
             "chore($(pkg.name)): re-vendor integration",
         )
+        # The subtree pull brings the whole upstream tree; MRT keeps only what it compiles.
+        if !isempty(pkg.prune)
+            prune!(joinpath(ROOT, pkg.prefix), pkg.prune)
+            here("add", "-A", "--", pkg.prefix)
+            isempty(here("diff", "--cached", "--name-only", "--", pkg.prefix)) ||
+                here("commit", "-m", "chore($(pkg.name)): prune what MRT does not ship")
+        end
         patch = joinpath(ROOT, "deps", "patches", "$(pkg.name).patch")
         if isfile(patch)
             println("  apply ", relpath(patch, ROOT))

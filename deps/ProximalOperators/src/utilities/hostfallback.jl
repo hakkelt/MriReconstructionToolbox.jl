@@ -13,8 +13,8 @@
 # at a cost that is visible and documented rather than hidden.
 #
 # What this deliberately does *not* do is convert the operator. Only the input and output
-# are moved. An operator carrying its own data -- `LeastSquares(A, b)`, `IndPolyhedral(...)`,
-# `IndAffine(A, b)` -- is expected to have been built from host arrays, which is the realistic
+# are moved. An operator carrying its own data -- `LeastSquares(A, b)`, `IndAffine(A, b)` --
+# is expected to have been built from host arrays, which is the realistic
 # case for exactly the operators that end up here; its factorization is computed once at
 # construction and would be destroyed by moving it per call.
 

@@ -13,6 +13,10 @@
 #   base      ref the integration branch is rebuilt from, in the local checkout's remote names
 #   prefix    where the package is vendored inside this repository
 #   path      local working checkout, where the integration branch is built
+#   prune     globs deleted from the vendored copy after every sync: everything MRT does not
+#             compile. A vendored package's tests, docs, benchmarks and CI belong to the fork and
+#             run there; `ext/` cannot load at all for a package included as a submodule, so what
+#             an extension provides is inlined into `src/` by the patch instead.
 #
 # Then one `[[<package>.stack]]` entry per branch, in merge order: a branch always appears after
 # the branch it is stacked on. `parent` is the branch this one is based on, empty for a branch
@@ -37,6 +41,11 @@ upstream = "https://github.com/kul-optec/AbstractOperators.jl.git"
 base = "upstream/master"
 prefix = "deps/AbstractOperators"
 path = "/project/c_mrrecon/AbstractOperators"
+prune = [
+    "test", "*/test", "docs", "*/docs", "benchmark", "*/benchmark",
+    "ext", "*/ext", ".github", ".claude", ".temp", "logo",
+    "AGENTS.md", "CLAUDE.md", "Manifest.toml", "*/Manifest.toml",
+]
 
 # The root of the stack: a large change already under review upstream, and the first thing that
 # will land. Every other branch in this repository should be based on it, so that they all rebase
@@ -45,6 +54,11 @@ path = "/project/c_mrrecon/AbstractOperators"
 branch = "unified-threading"
 parent = ""
 pr = "kul-optec/AbstractOperators.jl#44"
+
+[[AbstractOperators.stack]]
+branch = "gpu-safe-operator-metadata"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#24"
 
 [[AbstractOperators.stack]]
 branch = "add-contourlet-operators"
@@ -106,12 +120,9 @@ branch = "fix/spreadingbatchop-normal-op-size"
 parent = "fix/compose-getindex-multivar"
 pr = "hakkelt/AbstractOperators.jl#23"
 
-# The six below are still based on `master` on GitHub although the stack wants them on
-# `unified-threading`. `tools/vendor.jl check` reports each as a mis-based PR until its base is
-# changed; the merge order here is already the intended one.
 [[AbstractOperators.stack]]
 branch = "fix/reshape-diag-aac"
-parent = "unified-threading"
+parent = "fix/compose-getindex-multivar"
 pr = "hakkelt/AbstractOperators.jl#10"
 
 [[AbstractOperators.stack]]
@@ -145,10 +156,15 @@ upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
 base = "upstream/master"
 prefix = "deps/ProximalOperators"
 path = "/project/c_mrrecon/ProximalOperators.jl"
+prune = [
+    "test", "docs", "benchmark", "demos", "ext", ".github", ".claude", "logo",
+    "AGENTS.md", "CLAUDE.md", "Manifest.toml", "codecov.yml",
+]
 
-# Under review upstream. Its own change -- making OSQP a weak dependency -- is deliberately not
-# vendored, because an `ext/` directory never loads for a package included as a submodule; the
-# branch is here because the threading work below is stacked on it.
+# Under review upstream. MRT does not use OSQP, so neither its weak dependency nor the extension
+# that goes with it is vendored -- the patch deletes `ext/ProximalOperatorsOSQPExt.jl` and the
+# `IndPolyhedral` path that needs it. The branch is in the stack because everything below is
+# based on it.
 [[ProximalOperators.stack]]
 branch = "osqp-weakdep"
 parent = ""
@@ -160,38 +176,43 @@ parent = "osqp-weakdep"
 pr = ""
 
 [[ProximalOperators.stack]]
+branch = "threaded-kernels"
+parent = "preallocate"
+pr = "hakkelt/ProximalOperators.jl#16"
+
+[[ProximalOperators.stack]]
 branch = "feat/separable-huber-loss"
-parent = ""
+parent = "threaded-kernels"
 pr = "hakkelt/ProximalOperators.jl#9"
 
 [[ProximalOperators.stack]]
 branch = "fix/indballl0-inplace-prox"
-parent = ""
+parent = "threaded-kernels"
 pr = "hakkelt/ProximalOperators.jl#10"
 
 [[ProximalOperators.stack]]
 branch = "fix/indballl1-tolerance"
-parent = ""
+parent = "threaded-kernels"
 pr = "hakkelt/ProximalOperators.jl#11"
 
 [[ProximalOperators.stack]]
 branch = "feat/proximal-average"
-parent = ""
+parent = "threaded-kernels"
 pr = "hakkelt/ProximalOperators.jl#12"
 
 [[ProximalOperators.stack]]
 branch = "feat/ind-affine-cg"
-parent = ""
+parent = "threaded-kernels"
 pr = "hakkelt/ProximalOperators.jl#13"
 
 [[ProximalOperators.stack]]
 branch = "fix/indballrank-is-proximable"
-parent = ""
+parent = "threaded-kernels"
 pr = "hakkelt/ProximalOperators.jl#14"
 
 [[ProximalOperators.stack]]
 branch = "feat/ind-real-box"
-parent = ""
+parent = "threaded-kernels"
 pr = "hakkelt/ProximalOperators.jl#15"
 
 # `recursive-array-tools-ext` (#164) and `precomposed-sliced-separable-sum` (#157) have merged
@@ -203,6 +224,10 @@ upstream = "https://github.com/JuliaFirstOrder/ProximalAlgorithms.jl.git"
 base = "upstream/master"
 prefix = "deps/ProximalAlgorithms"
 path = "/project/c_mrrecon/ProximalAlgorithms.jl"
+prune = [
+    "test", "docs", "benchmark", "ext", ".github", ".claude",
+    "AGENTS.md", "CLAUDE.md", "Manifest.toml", "CITATION.cff", "justfile",
+]
 
 # The fork's `master` is itself a PR head here, so it is an ordinary stack entry rather than the
 # base: a fix that belongs to the code it introduced is pushed to it, not to a new branch.
@@ -236,10 +261,9 @@ branch = "feat/iteration-hook"
 parent = "master"
 pr = "hakkelt/ProximalAlgorithms.jl#4"
 
-[[ProximalAlgorithms.stack]]
-branch = "pogm-algorithm"
-parent = "master"
-pr = ""
+# `pogm-algorithm` is deliberately absent: it added POGM as a `pogm::Bool` variant of
+# `FastForwardBackward`, and `master` (#100) supersedes it with a `src/algorithms/pogm.jl` of its
+# own. Merging it would only re-add the old path. The branch is still on the fork, unmerged.
 
 [StructuredOptimization]
 fork = "https://github.com/hakkelt/StructuredOptimization.jl.git"
@@ -247,6 +271,10 @@ upstream = "https://github.com/JuliaFirstOrder/StructuredOptimization.jl.git"
 base = "upstream/master"
 prefix = "deps/StructuredOptimization"
 path = "/project/c_mrrecon/StructuredOptimization.jl"
+prune = [
+    "test", "docs", "benchmark", "benchmarks", "demos", "ext", ".github", ".claude",
+    "AGENTS.md", "CLAUDE.md", "Manifest.toml", "codecov.yml",
+]
 
 [[StructuredOptimization.stack]]
 branch = "master"
@@ -258,7 +286,9 @@ branch = "fix/normalop-ls-multivar"
 parent = "master"
 pr = "hakkelt/StructuredOptimization.jl#1"
 
+# The consolidation work, which reworks most of what `fix/normalop-ls-multivar` touches and
+# merges it, so it is stacked on it. Still without a PR.
 [[StructuredOptimization.stack]]
 branch = "phase-0-2-consolidation"
-parent = "master"
+parent = "fix/normalop-ls-multivar"
 pr = ""

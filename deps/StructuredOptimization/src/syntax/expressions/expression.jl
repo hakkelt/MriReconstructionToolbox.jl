@@ -10,8 +10,8 @@ struct Expression{N, A <: AbstractOperator} <: AbstractExpression
         # A codomain stored as one `ArrayPartition` is also safe: it is a single array object --
         # broadcast, `norm`, `dot`, `similar` and `mul!` all treat it as one -- so every Term
         # assumption about a single-block codomain array holds. That is the shape a `VCAT` of
-        # per-block operators produces (an MRI acquisition whose frames select different numbers of
-        # samples, for instance), and rejecting it would leave that model unexpressible.
+        # per-block operators produces (an MRI acquisition whose frames select different numbers
+        # of samples, for instance), and rejecting it would leave that model unexpressible.
         ndoms(L, 1) > 1 && !is_eye(L) && !(codomain_array_type(L) <: ArrayPartition) && throw(
             ArgumentError(
                 "Cannot create expression with LinearOperator with `ndoms(L,1) > 1`"

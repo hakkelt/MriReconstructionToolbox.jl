@@ -167,34 +167,24 @@ end
 """
     fused_normal_op(L::AbstractOperator)
 
-Return `Lᴴ * L` for a *linear* `L` when that product is genuinely cheaper than applying `L`
-and then `Lᴴ`, and `nothing` when it is not.
+Return `Lᴴ * L` for a *linear* `L` when that product *fuses* into a single operator, and
+`nothing` when it stays the two-pass `Compose(Lᴴ, L)`.
 
-This is the applicability test for `SqrNormL2WithNormalOp`. Two things make the product
-cheaper. Either it collapses into a single operator — a `MatrixOp` into its Gram matrix, a
-`DiagOp` into the squared diagonal, an FFT-based convolution into a single multiplication in
-the frequency domain, or whatever specialised product a downstream package defines for its own
-operator type — or `AbstractOperators` says so outright through `has_optimized_normalop`, in
-which case `L' * L` *is* the optimized form it advertises. The second case need not collapse
-to a single operator: `get_normal_op(::Compose)` fuses only the innermost adjoint pair and
-keeps the outer factors, so an MRI encoding operator `S`-then-`F` becomes `Sᴴ·(FᴴF)·S` — one
-transform where the naive form needs two, but still a `Compose`. A `Compose` with no such
-advertisement means no specialised product exists, and the fold would add the value-recovery
+This is the applicability test for `SqrNormL2WithNormalOp`: folding `L` into the function
+only pays off when the normal operator is cheaper than applying `L` and then `Lᴴ`, which is
+exactly when `Lᴴ * L` collapses — a `MatrixOp` into its Gram matrix, a `DiagOp` into the
+squared diagonal, an FFT-based convolution into a single multiplication in the frequency
+domain, or whatever specialised product a downstream package defines for its own operator
+type. A `Compose` means no such product exists, so the fold would add the value-recovery
 bookkeeping without saving a pass.
 
-Collapsing is not on its own enough to make the normal operator the cheaper of the two, so a
-`L` that only collapses must also map into a codomain at least as large as its domain (see
-[`normal_op_worthwhile`](@ref)). That size test is a dense-matrix estimate, and it is *not*
-applied to an operator that advertises an optimized normal operator: there the operator itself
-has answered the question, and the estimate would veto exactly the structured cases it cannot
-model (a subsampled Fourier encoding maps into a smaller codomain than its domain, and its
-normal operator is still the cheaper of the two).
+Fusing is not on its own enough to make the normal operator the cheaper of the two, so `L`
+must also map into a codomain at least as large as its domain (see
+[`normal_op_worthwhile`](@ref)).
 
 `L` must carry no displacement; [`with_normal_op`](@ref) re-attaches it to the result.
 """
 function fused_normal_op(L::AbstractOperator)
-    (is_linear(L) && !is_eye(L)) || return nothing
-    AbstractOperators.has_optimized_normalop(L) && return L' * L
     normal_op_worthwhile(L) || return nothing
     LᴴL = L' * L
     return LᴴL isa AbstractOperators.Compose ? nothing : LᴴL
@@ -212,9 +202,76 @@ prod(size(L, 2))` of applying `L` and then `Lᴴ` — the normal operator only w
 domain is the smaller of the two spaces. Forming it also squares the condition number, and
 on a wide `L` that is paid for nothing. A least-squares term over several variables is the
 usual way to end up wide, since its domain is the sum of the blocks' domains.
+
+# Where the threshold comes from
+
+It was originally set from a single observed regression. `benchmark/benchmarks.jl` now
+measures it. For a dense `MatrixOp` (Julia 1.13, one thread of a shared HPC node, so read
+the ratios rather than the absolute numbers):
+
+| `n × m` | gradient, `LᴴL` | gradient, `Precompose` | building `LᴴL` | break-even |
+|---|---|---|---|---|
+| 200 × 800 (tall) | 7.2 µs | 38.6 µs | 1.38 ms | ~44 iterations |
+| 400 × 400 (square) | 33.0 µs | 66.4 µs | 1.67 ms | ~50 iterations |
+| 400 × 300 (mildly wide) | 34.9 µs | 37.9 µs | 1.19 ms | ~400 iterations |
+| 800 × 200 (wide) | 54.5 µs | 58.1 µs | 3.40 ms | ~950 iterations |
+
+So the per-iteration saving collapses to a few percent — within noise — as soon as `n > m`,
+while the one-off cost of forming the Gram matrix keeps growing, pushing break-even from
+around fifty iterations to several hundred. `n ≤ m` is where the formulation pays for itself
+over a realistic run, and that is before counting the squared condition number, which the
+timings do not capture at all. The measurements confirm the original threshold rather than
+moving it.
 """
 normal_op_worthwhile(L::AbstractOperator) =
     is_linear(L) && !is_eye(L) && _total_length(size(L, 2)) <= _total_length(size(L, 1))
+
+"""
+    normal_op_fuses(L::AbstractOperator)
+
+Whether `Lᴴ * L` fuses into a single operator, decided **from the types alone**.
+
+This is the scoring-time counterpart of [`fused_normal_op`](@ref), which answers the same
+question by building the product — for a `MatrixOp` that means forming the Gram matrix,
+`O(n²m)`, more work than several iterations of the solver the score is meant to select.
+`best_formulation` may only call this one; `fused_normal_op` is reached once, for the
+candidate that wins.
+
+The answer comes from type inference on `adjoint` and `*`, so nothing is constructed. It is
+deliberately conservative: an inference result of `Any` (or `Union{}`) counts as *not*
+fusing, so an operator whose product cannot be predicted is scored as the generic linear
+case. Being conservative here costs at worst a suboptimal-but-correct formulation, never a
+wrong one — and `merge_function_with_operator` falls back to `Precompose` if the optimistic
+direction ever turns out wrong.
+"""
+normal_op_fuses(L::AbstractOperator) = _product_fuses(_adjoint_type(typeof(L)), typeof(L))
+
+# The normal operator of an `HCAT` is the block Gram `[Lᵢᴴ Lⱼ]`; it is only worth assembling
+# when *every* one of the N² block products fuses (see `fused_normal_op(::HCAT)`).
+function normal_op_fuses(L::AbstractOperators.HCAT)
+    types = map(typeof, L.A)
+    return all(_product_fuses(_adjoint_type(Ti), Tj) for Ti in types, Tj in types)
+end
+
+_adjoint_type(::Type{T}) where {T} = Base.promote_op(adjoint, T)
+_product_fuses(::Type{A}, ::Type{B}) where {A, B} = _fuses(Base.promote_op(*, A, B))
+_fuses(::Type{T}) where {T} = !(T === Any || T === Union{} || T <: AbstractOperators.Compose)
+
+"""
+    normal_op_applicable(f, op, disp, λ)
+
+Whether the `SqrNormL2WithNormalOp` formulation is a candidate for `λ · f(op·x + disp)`,
+decided without building anything. It mirrors the guards of [`with_normal_op`](@ref) — a
+squared ``\\ell_2`` norm with scalar weights, a displacement that is either absent or an
+array — plus [`normal_op_worthwhile`](@ref) and the type-level [`normal_op_fuses`](@ref).
+"""
+normal_op_applicable(f, op, disp, λ) = false
+function normal_op_applicable(f::SqrNormL2, op::AbstractOperator, disp, λ)
+    (λ isa Real && f.lambda isa Real) || return false
+    has_disp = !(disp isa Number && iszero(disp))
+    (has_disp && !(disp isa AbstractArray)) && return false
+    return normal_op_worthwhile(op) && normal_op_fuses(op)
+end
 
 # `size(op, i)` is a plain size tuple for a single-block operator and a tuple of such
 # tuples for a block operator (`HCAT`, `VCAT`), so count the elements of either shape.

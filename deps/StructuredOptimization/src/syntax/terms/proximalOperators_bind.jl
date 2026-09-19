@@ -88,6 +88,33 @@ ls(ex::AbstractExpression) = Term(SqrNormL2(), ex)
 
 import Base: ^
 
+"""
+    (t::Term{<:Any,<:NormL2})^2
+
+Square a Euclidean-norm term: `norm(ex, 2)^2` is ``\\|\\mathbf{A}\\mathbf{x}+\\mathbf{d}\\|^2``.
+
+Only the exponent `2` is defined — no other power of a norm is proximable or smooth in a
+form this package can use — and anything else raises an error.
+
+Note the weighting convention. `ls(ex)` is ``\\tfrac{1}{2}\\|\\cdot\\|^2`` while
+`norm(ex, 2)^2` is ``\\|\\cdot\\|^2`` without the half, so `norm(ex, 2)^2 == 2 * ls(ex)`.
+This is the form the CG-family solvers expect for a Tikhonov regularizer, which is why the
+`SquaredL2Term` assumption maps it to `λ = t.lambda * f.lambda` with no factor of one half.
+
+```jldoctest
+julia> x = Variable(4);
+
+julia> t = norm(x, 2)^2;
+
+julia> t.f
+SqrNormL2(2.0)
+
+julia> (2 * ls(x)).f
+SqrNormL2(1)
+```
+
+See also [`ls`](@ref), [`norm`](@ref).
+"""
 function (^)(t::Term{T1, T2, T3}, exp::Integer) where {T1, T2 <: NormL2, T3}
     if exp == 2
         # The coefficient 2.0 is due to the fact that SqrNormL2 divides by 2.0
@@ -313,6 +340,29 @@ export rank
 # Maybe we should have Rank (with no prox! nor gradient!
 # defined), that gives IndBallRank when combined with <=.
 struct Rank end
+
+"""
+    rank(ex::AbstractExpression)
+
+A placeholder term that is only meaningful inside a rank constraint,
+
+    rank(X) <= r
+
+which becomes the indicator of ``\\{\\mathbf{X} : \\mathrm{rank}(\\mathbf{X}) \\leq r\\}``
+(`IndBallRank`). The prox is a truncated SVD, so `X` must be a matrix `Variable`.
+
+`rank(ex)` on its own is not a usable objective term: `Rank` implements neither `prox!` nor
+`gradient!`, so a problem containing one will not parse. This is the extension of
+`LinearAlgebra.rank` to expressions, not a computation of an expression's rank.
+
+```julia
+julia> X = Variable(10, 10);
+
+julia> c = rank(X) <= 3
+```
+
+See also [`norm`](@ref).
+"""
 rank(ex::AbstractExpression) = Term(Rank(), ex)
 
 import Base: <=
@@ -359,20 +409,17 @@ Equalities constraints
     Term(IndBinary(lu...), ex)
 # IndBinary
 
-# IndAffine
-function (==)(ex::AbstractExpression, b::Union{Real, AbstractArray})
-    op = operator(ex)
-    d = displacement(ex)
-    if typeof(op) <: MatrixOp
-        A = op.A
-        bb = b .- d
-        p = IndAffine(A, bb)
-        return Term(p, variables(ex)[1])
-    else
-        # TODO change this
-        error("Currently affine equality supported only with `MatrixOp`")
-    end
-end
+# IndPoint, rewritten to IndAffine at parse time where that is the better formulation.
+#
+# The syntax layer builds `λ · f(A·x + d)` triples and nothing else (PLAN.md 2.6): the
+# equality `ex == b` is the indicator of the singleton `{b}` composed with whatever affine
+# expression `ex` happens to be. Folding `A` into an `IndAffine` here would hide it from
+# every later decision — which is what used to make `DiagOp(a)*x == b` and `fft(x) == b`
+# errors, although the first is a trivial projection and the second is AAᴴ-diagonal, and
+# what used to discard every variable of `ex` after the first.
+# `merge_function_with_operator` now picks the formulation, including today's `IndAffine`
+# for a general `MatrixOp`.
+(==)(ex::AbstractExpression, b::Union{Real, AbstractArray}) = Term(IndPoint(b), ex)
 
 # Transforms
 # Convex conjugate
@@ -386,15 +433,20 @@ Returns the convex conjugate transform of `t`:
 f^*(\\mathbf{x}) = \\sup_{\\mathbf{y}} \\{ \\langle \\mathbf{y}, \\mathbf{x} \\rangle - f(\\mathbf{y}) \\}.
 ```
 
-# Example
-```julia
-julia> x = Variable(4)
-Variable(Float64, (4,))
+Conjugation needs the term's operator to be the identity: `f∘A` has no conjugate this
+package can build from `f`'s alone, so anything else is an error.
 
+# Example
+```jldoctest
 julia> x = Variable(4);
 
-julia> t = conj(norm(x,1))
+julia> t = conj(norm(x, 1));
 
+julia> t.f isa Conjugate
+true
+
+julia> conj(norm(randn(3, 4) * x, 1))
+ERROR: cannot perform convex conjugation
 ```
 
 """
@@ -419,15 +471,20 @@ Smooths the nonsmooth term `t` using Moreau envelope:
 f^{\\gamma}(\\mathbf{x}) = \\min_{\\mathbf{z}} \\left\\{ f(\\mathbf{z}) + \\tfrac{1}{2\\gamma}\\|\\mathbf{z}-\\mathbf{x}\\|^2 \\right\\}.
 ```
 
-# Example
-```julia
-julia> x = Variable(4)
-Variable(Float64, (4,))
+A term that is already smooth is returned unchanged.
 
+# Example
+```jldoctest
 julia> x = Variable(4);
 
-julia> t = smooth(norm(x,1))
+julia> StructuredOptimization.is_smooth(norm(x, 1))
+false
 
+julia> StructuredOptimization.is_smooth(smooth(norm(x, 1)))
+true
+
+julia> smooth(ls(x)) === ls(x) || StructuredOptimization.is_smooth(smooth(ls(x)))
+true
 ```
 
 """
