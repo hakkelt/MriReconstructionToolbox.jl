@@ -1,7 +1,7 @@
 # utils
 export variables, operator, affine
 import Base: convert
-import AbstractOperators: displacement
+import ..AbstractOperators: displacement
 
 convert(::Type{Expression}, x::Variable) =
     Expression((x,), Eye(~x))
