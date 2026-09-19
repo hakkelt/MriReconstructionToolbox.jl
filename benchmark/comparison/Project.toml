@@ -17,5 +17,8 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 ThreadPinning = "811555cd-349b-4f26-b7bc-1f208b848042"
 
 [sources]
-# Not yet registered in the General registry.
-MRITestData = {url = "https://github.com/hakkelt/MRITestData.jl"}
+# `benchmark/comparison` is the one subproject deliberately kept out of the workspace (`benchmark/ci`
+# and `benchmark/hpc` are members): a workspace resolves every member into the one root manifest, and
+# MATLAB/MIRT/PyCall/MRIReco have no business in the environment `test/` and `docs/` resolve. Outside
+# the workspace the root package has to be pointed at explicitly.
+MriReconstructionToolbox = {path = "../.."}

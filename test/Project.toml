@@ -17,10 +17,6 @@ TestItemRunner = "f8b46487-2199-4994-9208-9a1283c18c0a"
 TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
 Wavelets = "29a6e085-ba6d-5f35-a997-948ac2efa89a"
 
-[sources]
-MRITestData = {url = "https://github.com/hakkelt/MRITestData.jl"}
-MriReconstructionToolbox = {path = ".."}
-
 [compat]
 Aqua = "0.8"
 BenchmarkTools = "1"
@@ -28,6 +24,7 @@ Contourlets = "0.1"
 GeometricMedicalPhantoms = "1"
 JET = "0.8, 0.9, 0.10, 0.11"
 MRIBase = "0.4"
+MRITestData = "0.1"
 Random = "1"
 Test = "1"
 Wavelets = "0.10"
