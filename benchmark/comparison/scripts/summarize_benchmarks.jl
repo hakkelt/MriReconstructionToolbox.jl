@@ -1,3 +1,12 @@
+#!/usr/bin/env julia
+# Print the cross-toolbox comparison table from the four merged result files.
+#
+#   julia --project=benchmark/comparison benchmark/comparison/scripts/summarize_benchmarks.jl
+#
+# Rows are taken from the results themselves, in the order the benchmarks ran: a method
+# renamed by its iteration count ("Total Variation (20 it)") must not silently vanish from
+# the table, which is what a hardcoded row list did.
+
 using JSON, Printf
 
 res_dir = normpath(joinpath(@__DIR__, "..", "results"))
@@ -9,60 +18,65 @@ files = [
     ("MKL 8T", "benchmark_mkl_8threads.json"),
 ]
 
-data = Dict()
-methods = String[]
+# "BART (OpenBLAS)" and "BART (MKL)" are the same toolbox measured in two columns.
+strip_backend(fw) = replace(fw, r" \((?:OpenBLAS|MKL)\)" => "")
+
+# In the accuracy race every toolbox runs the iteration count it needs to reach the same NRMSE,
+# so the count belongs to the framework, not to the method: "TV (NRMSE<=0.005, 40 it)" / "BART"
+# becomes one "TV (NRMSE<=0.005)" row with a "BART (40 it)" column entry, next to MRT's.
+function split_iterations(method, fw)
+    m = match(r"^(.*) \(NRMSE(.*), (\d+) it\)$", method)
+    m === nothing && return (method, fw)
+    return ("$(m.captures[1]) (NRMSE$(m.captures[2]))", "$fw ($(m.captures[3]) it)")
+end
+
+# A framework that was only compared for accuracy reports a negative sentinel instead of a time.
+fmt_ms(t) = (t === nothing || isnan(t) || t < 0) ? "-" : @sprintf("%.2f ms", t)
+
+data = Dict{Tuple{String, Tuple{String, String, String}}, NTuple{3, Float64}}()
+rows = Tuple{String, String}[]          # (category, method), in the order first seen
+frameworks = Dict{Tuple{String, String}, Vector{String}}()
+
+num(x) = x === nothing ? NaN : Float64(x)
 
 for (label, fname) in files
     fpath = joinpath(res_dir, fname)
-    if isfile(fpath)
-        j = JSON.parsefile(fpath)
-        for b in j["benchmarks"]
-            key = (b["category"], b["method"], b["framework"])
-            data[(label, key)] = (b["time_ms"], b["nrmse_gt"], b["nrmse_mrt"])
-            if !(b["method"] in methods)
-                push!(methods, b["method"])
-            end
-        end
+    isfile(fpath) || continue
+    j = JSON.parsefile(fpath)
+    for b in j["benchmarks"]
+        cat = b["category"]
+        method, fw = split_iterations(b["method"], strip_backend(b["framework"]))
+        data[(label, (cat, method, fw))] = (num(b["time_ms"]), num(b["nrmse_gt"]), num(b["nrmse_mrt"]))
+        (cat, method) in rows || push!(rows, (cat, method))
+        fws = get!(frameworks, (cat, method), String[])
+        fw in fws || push!(fws, fw)
     end
 end
 
-println("==================================================================================================================")
+isempty(rows) && (@info "no merged result files in $res_dir"; exit(0))
+
+const WIDTH = 128
+println("="^WIDTH)
 println("                             MULTI-THREAD & MULTI-BLAS BENCHMARK SUMMARY (1 vs 8 THREADS)                         ")
-println("==================================================================================================================")
-@printf("%-26s | %-16s | %10s | %10s | %10s | %10s | %10s\n", "Method", "Framework", "1T OpenBLAS", "1T MKL", "8T OpenBLAS", "8T MKL", "NRMSE (GT)")
-println("------------------------------------------------------------------------------------------------------------------")
+println("="^WIDTH)
+@printf("%-32s | %-18s | %11s | %10s | %11s | %10s | %10s\n", "Method", "Framework", "1T OpenBLAS", "1T MKL", "8T OpenBLAS", "8T MKL", "NRMSE (GT)")
+println("-"^WIDTH)
 
-for (cat, m) in [
-        ("Base 1C", "1-Coil Adjoint"),
-        ("Base MC", "Cartesian Adjoint"),
-        ("Non-Cartesian", "DCF Adjoint (Gridding)"),
-        ("Base MC", "CG-SENSE (10 it)"),
-        ("Sparsity", "Total Variation (30 it)"),
-        ("Sparsity", "L1-Wavelet (30 it)"),
-        ("Sparsity", "TGV (30 it)"),
-        ("Dynamic", "Global Low-Rank (20 it)"),
-        ("Dynamic", "Locally Low-Rank (20 it)"),
-        ("Dynamic", "Temporal TV (20 it)"),
-        ("K-Space", "GRAPPA (RSS)"),
-        ("K-Space", "GRAPPA (Sensitivity)"),
-    ]
-    # Find all frameworks for this method
-    fws = ["MRT", "BART", "SigPy", "MRIReco"]
-    for fw in fws
-        # Check if we have data
-        t_1_ob = get(data, ("OpenBLAS 1T", (cat, m, fw == "MRT" ? "MRT (OpenBLAS)" : fw == "BART" ? "BART (OpenBLAS)" : fw)), (NaN, NaN, NaN))
-        t_1_mkl = get(data, ("MKL 1T", (cat, m, fw == "MRT" ? "MRT (MKL)" : fw == "BART" ? "BART (MKL)" : fw)), (NaN, NaN, NaN))
-        t_8_ob = get(data, ("OpenBLAS 8T", (cat, m, fw == "MRT" ? "MRT (OpenBLAS)" : fw == "BART" ? "BART (OpenBLAS)" : fw)), (NaN, NaN, NaN))
-        t_8_mkl = get(data, ("MKL 8T", (cat, m, fw == "MRT" ? "MRT (MKL)" : fw == "BART" ? "BART (MKL)" : fw)), (NaN, NaN, NaN))
-
-        if !isnan(t_1_ob[1]) || !isnan(t_1_mkl[1]) || !isnan(t_8_ob[1]) || !isnan(t_8_mkl[1])
-            s_1_ob = isnan(t_1_ob[1]) ? "-" : @sprintf("%.2f ms", t_1_ob[1])
-            s_1_mkl = isnan(t_1_mkl[1]) ? "-" : @sprintf("%.2f ms", t_1_mkl[1])
-            s_8_ob = isnan(t_8_ob[1]) ? "-" : @sprintf("%.2f ms", t_8_ob[1])
-            s_8_mkl = isnan(t_8_mkl[1]) ? "-" : @sprintf("%.2f ms", t_8_mkl[1])
-            gt_err = !isnan(t_8_mkl[2]) ? t_8_mkl[2] : !isnan(t_8_ob[2]) ? t_8_ob[2] : t_1_mkl[2]
-            @printf("%-26s | %-16s | %11s | %10s | %11s | %10s | %10.2e\n", m, fw, s_1_ob, s_1_mkl, s_8_ob, s_8_mkl, gt_err)
-        end
+current_cat = ""
+for (cat, method) in rows
+    if cat != current_cat
+        @printf("%s\n", uppercase(cat))
+        global current_cat = cat
     end
-    println("------------------------------------------------------------------------------------------------------------------")
+    for fw in frameworks[(cat, method)]
+        cells = [get(data, (label, (cat, method, fw)), (NaN, NaN, NaN)) for (label, _) in files]
+        all(isnan(c[1]) for c in cells) && all(isnan(c[2]) for c in cells) && continue
+        gt = something(findfirst(c -> !isnan(c[2]), cells), 0)
+        gt_err = gt == 0 ? NaN : cells[gt][2]
+        @printf(
+            "%-32s | %-18s | %11s | %10s | %11s | %10s | %10.2e\n",
+            method, fw, fmt_ms(cells[1][1]), fmt_ms(cells[2][1]), fmt_ms(cells[3][1]), fmt_ms(cells[4][1]), gt_err
+        )
+    end
+    println("-"^WIDTH)
 end
