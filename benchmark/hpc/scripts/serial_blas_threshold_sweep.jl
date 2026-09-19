@@ -50,6 +50,7 @@ using LinearAlgebra
 using NamedDims
 using Random: MersenneTwister
 using MriReconstructionToolbox
+using MriReconstructionToolbox: CartesianAcquisitionInfo
 const MRT = MriReconstructionToolbox
 include(joinpath(@__DIR__, "..", "src", "Phantoms.jl"))
 using .Phantoms
