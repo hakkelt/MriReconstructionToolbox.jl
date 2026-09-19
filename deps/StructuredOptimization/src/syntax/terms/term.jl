@@ -185,7 +185,7 @@ is_op_f = [
 
 for f in is_op_f
     @eval begin
-        import ..AbstractOperators: $f
+        import AbstractOperators: $f
         $f(t::Term) = $f(operator(t))
         $f(t::TermSet) = all($f.(t))
     end
