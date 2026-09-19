@@ -29,6 +29,9 @@
 isdefined(Main, :ExampleUtils) || include(joinpath(@__DIR__, "..", "ExampleUtils.jl"))
 using .ExampleUtils
 using MriReconstructionToolbox
+# `CartesianAcquisitionInfo` is `public` but not exported (it is part of the extension surface,
+# see NAMING.md §6.2), so it has to be imported by name to be spelled unqualified below.
+using MriReconstructionToolbox: CartesianAcquisitionInfo
 using MRITestData
 using MRIBase
 
