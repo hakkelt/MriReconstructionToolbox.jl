@@ -1,0 +1,259 @@
+# Manifest of the vendored dependency stack.
+#
+# MRT vendors work-in-progress versions of its dependency stack under `deps/` because a Julia
+# package cannot be registered with unregistered dependencies. Every vendored package is a
+# projection of a stack of branches in a personal fork, each of which is (or will become) a small
+# PR against the real upstream. This file is the single place that records which branches make up
+# that projection and how they are stacked, so that `tools/vendor.jl` can rebuild `deps/`
+# mechanically and can check the stack against what GitHub actually says.
+#
+# Per package:
+#   fork      remote URL of the personal fork; its `integration` branch is what gets vendored
+#   upstream  remote URL of the real upstream
+#   base      ref the integration branch is rebuilt from, in the local checkout's remote names
+#   prefix    where the package is vendored inside this repository
+#   path      local working checkout, where the integration branch is built
+#
+# Then one `[[<package>.stack]]` entry per branch, in merge order: a branch always appears after
+# the branch it is stacked on. `parent` is the branch this one is based on, empty for a branch
+# that sits directly on `base`; it is the PR base that the stack intends, which `tools/vendor.jl
+# check` compares against the base GitHub reports. Branches may be stacked freely -- stacking is
+# how the stack avoids a permanent rebase treadmill, not a defect.
+#
+# Two rules govern edits to this file:
+#
+#  1. A branch is a unit of review, not a unit of work. Do not add a branch for a bugfix; push the
+#     fix to the branch whose PR introduced the code, and it reaches `deps/` on the next sync. A
+#     new entry is for a new idea, or for code that no existing branch owns.
+#  2. `deps/` is generated output. Bugs found while developing MRT are fixed on the owning branch
+#     and re-vendored, never edited in place under `deps/`.
+#
+# When a branch's PR merges upstream, delete its entry, re-fetch `base`, and rebuild: everything
+# stacked above it moves onto the new root in one go.
+
+[AbstractOperators]
+fork = "https://github.com/hakkelt/AbstractOperators.jl.git"
+upstream = "https://github.com/kul-optec/AbstractOperators.jl.git"
+base = "upstream/master"
+prefix = "deps/AbstractOperators"
+path = "/project/c_mrrecon/AbstractOperators"
+
+# The root of the stack: a large change already under review upstream, and the first thing that
+# will land. Every other branch in this repository should be based on it, so that they all rebase
+# onto the new upstream master together when it merges.
+[[AbstractOperators.stack]]
+branch = "unified-threading"
+parent = ""
+pr = "kul-optec/AbstractOperators.jl#44"
+
+[[AbstractOperators.stack]]
+branch = "fix/compose-getindex-multivar"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#6"
+
+[[AbstractOperators.stack]]
+branch = "s1-waveletop-normal-operator"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#12"
+
+[[AbstractOperators.stack]]
+branch = "fix/combine-shape-changing-eye"
+parent = "fix/compose-getindex-multivar"
+pr = "hakkelt/AbstractOperators.jl#9"
+
+[[AbstractOperators.stack]]
+branch = "c5-deterministic-opnorm"
+parent = "fix/combine-shape-changing-eye"
+pr = "hakkelt/AbstractOperators.jl#16"
+
+[[AbstractOperators.stack]]
+branch = "feat/permute-dims-operator"
+parent = "fix/compose-getindex-multivar"
+pr = "hakkelt/AbstractOperators.jl#7"
+
+[[AbstractOperators.stack]]
+branch = "feat/symmetrized-variation"
+parent = "fix/compose-getindex-multivar"
+pr = "hakkelt/AbstractOperators.jl#8"
+
+[[AbstractOperators.stack]]
+branch = "feat/block-hankel-operator"
+parent = "fix/compose-getindex-multivar"
+pr = "hakkelt/AbstractOperators.jl#11"
+
+[[AbstractOperators.stack]]
+branch = "c6-variation-threading-threshold"
+parent = "fix/compose-getindex-multivar"
+pr = "hakkelt/AbstractOperators.jl#18"
+
+[[AbstractOperators.stack]]
+branch = "nfftop-copy-own-plan"
+parent = "fix/compose-getindex-multivar"
+pr = "hakkelt/AbstractOperators.jl#19"
+
+[[AbstractOperators.stack]]
+branch = "perf/vcat-additive-adjoint"
+parent = "fix/compose-getindex-multivar"
+pr = "hakkelt/AbstractOperators.jl#22"
+
+[[AbstractOperators.stack]]
+branch = "fix/spreadingbatchop-normal-op-size"
+parent = "fix/compose-getindex-multivar"
+pr = "hakkelt/AbstractOperators.jl#23"
+
+# The six below are still based on `master` on GitHub although the stack wants them on
+# `unified-threading`. `tools/vendor.jl check` reports each as a mis-based PR until its base is
+# changed; the merge order here is already the intended one.
+[[AbstractOperators.stack]]
+branch = "fix/reshape-diag-aac"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#10"
+
+[[AbstractOperators.stack]]
+branch = "s2-alternate-sign-hoisted-kernel"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#13"
+
+[[AbstractOperators.stack]]
+branch = "s3-variation-adjoint-rewrite"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#14"
+
+[[AbstractOperators.stack]]
+branch = "c2-cancel-sign-alternation-pair"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#15"
+
+[[AbstractOperators.stack]]
+branch = "fix/fftshift-dft-adjoint-dirs-field"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#20"
+
+[[AbstractOperators.stack]]
+branch = "fix/nfftop-dcf-contract"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#21"
+
+[ProximalOperators]
+fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
+upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
+base = "upstream/master"
+prefix = "deps/ProximalOperators"
+path = "/project/c_mrrecon/ProximalOperators.jl"
+
+# Under review upstream. Its own change -- making OSQP a weak dependency -- is deliberately not
+# vendored, because an `ext/` directory never loads for a package included as a submodule; the
+# branch is here because the threading work below is stacked on it.
+[[ProximalOperators.stack]]
+branch = "osqp-weakdep"
+parent = ""
+pr = "JuliaFirstOrder/ProximalOperators.jl#165"
+
+[[ProximalOperators.stack]]
+branch = "preallocate"
+parent = "osqp-weakdep"
+pr = ""
+
+[[ProximalOperators.stack]]
+branch = "feat/separable-huber-loss"
+parent = ""
+pr = "hakkelt/ProximalOperators.jl#9"
+
+[[ProximalOperators.stack]]
+branch = "fix/indballl0-inplace-prox"
+parent = ""
+pr = "hakkelt/ProximalOperators.jl#10"
+
+[[ProximalOperators.stack]]
+branch = "fix/indballl1-tolerance"
+parent = ""
+pr = "hakkelt/ProximalOperators.jl#11"
+
+[[ProximalOperators.stack]]
+branch = "feat/proximal-average"
+parent = ""
+pr = "hakkelt/ProximalOperators.jl#12"
+
+[[ProximalOperators.stack]]
+branch = "feat/ind-affine-cg"
+parent = ""
+pr = "hakkelt/ProximalOperators.jl#13"
+
+[[ProximalOperators.stack]]
+branch = "fix/indballrank-is-proximable"
+parent = ""
+pr = "hakkelt/ProximalOperators.jl#14"
+
+[[ProximalOperators.stack]]
+branch = "feat/ind-real-box"
+parent = ""
+pr = "hakkelt/ProximalOperators.jl#15"
+
+# `recursive-array-tools-ext` (#164) and `precomposed-sliced-separable-sum` (#157) have merged
+# upstream and are intentionally absent: that code now arrives through `base`.
+
+[ProximalAlgorithms]
+fork = "https://github.com/hakkelt/ProximalAlgorithms.jl.git"
+upstream = "https://github.com/JuliaFirstOrder/ProximalAlgorithms.jl.git"
+base = "upstream/master"
+prefix = "deps/ProximalAlgorithms"
+path = "/project/c_mrrecon/ProximalAlgorithms.jl"
+
+# The fork's `master` is itself a PR head here, so it is an ordinary stack entry rather than the
+# base: a fix that belongs to the code it introduced is pushed to it, not to a new branch.
+[[ProximalAlgorithms.stack]]
+branch = "master"
+parent = ""
+pr = "JuliaFirstOrder/ProximalAlgorithms.jl#100"
+
+[[ProximalAlgorithms.stack]]
+branch = "improve-verbose-mode"
+parent = ""
+pr = "JuliaFirstOrder/ProximalAlgorithms.jl#101"
+
+[[ProximalAlgorithms.stack]]
+branch = "c3-admm-reuse-aha"
+parent = "master"
+pr = "hakkelt/ProximalAlgorithms.jl#1"
+
+[[ProximalAlgorithms.stack]]
+branch = "fix/preconditioned-cg-lambda"
+parent = "master"
+pr = "hakkelt/ProximalAlgorithms.jl#2"
+
+[[ProximalAlgorithms.stack]]
+branch = "fix/admm-penalty-rho-bounds"
+parent = "master"
+pr = "hakkelt/ProximalAlgorithms.jl#3"
+
+[[ProximalAlgorithms.stack]]
+branch = "feat/iteration-hook"
+parent = "master"
+pr = "hakkelt/ProximalAlgorithms.jl#4"
+
+[[ProximalAlgorithms.stack]]
+branch = "pogm-algorithm"
+parent = "master"
+pr = ""
+
+[StructuredOptimization]
+fork = "https://github.com/hakkelt/StructuredOptimization.jl.git"
+upstream = "https://github.com/JuliaFirstOrder/StructuredOptimization.jl.git"
+base = "upstream/master"
+prefix = "deps/StructuredOptimization"
+path = "/project/c_mrrecon/StructuredOptimization.jl"
+
+[[StructuredOptimization.stack]]
+branch = "master"
+parent = ""
+pr = "JuliaFirstOrder/StructuredOptimization.jl#44"
+
+[[StructuredOptimization.stack]]
+branch = "fix/normalop-ls-multivar"
+parent = "master"
+pr = "hakkelt/StructuredOptimization.jl#1"
+
+[[StructuredOptimization.stack]]
+branch = "phase-0-2-consolidation"
+parent = "master"
+pr = ""

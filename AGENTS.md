@@ -64,6 +64,24 @@ test suite and runs it in its own environment.
 MRT is **ahead of** its upstreams in places (its own fixes are pushed there as branches), so a sync
 is a merge, not a copy: check whether the vendored side is the newer one before overwriting it.
 
+That merge is the thing `deps/vendor.toml` and `tools/vendor.jl` exist to remove. The manifest
+declares, per package, which fork branches make up the vendored copy and how they are stacked;
+`julia tools/vendor.jl rebuild` merges them into one `integration` branch per fork, and
+`julia tools/vendor.jl sync` projects that branch into `deps/` as a squashed subtree, so the
+vendored copy records where it came from. Two rules follow, and they are what keep the sync
+one-directional:
+
+- **Never fix a bug under `deps/`.** Fix it on the branch whose PR introduced the code, then
+  rebuild and sync. `deps/` is generated output; `sync` refuses to run over uncommitted changes
+  there for exactly this reason.
+- **A bugfix does not get its own branch.** It is another commit on the branch that owns the
+  code. Branch and PR count should track ideas, not mistakes.
+
+`julia tools/vendor.jl check` compares the manifest against GitHub and reports mis-based PRs,
+branches with no PR, and branches whose PR has already merged (whose code should come from
+upstream instead). MRT-only adaptations that no upstream would accept — the relative imports and
+hand-wired `ext/` above — belong in `deps/patches/<package>.patch`, which `sync` re-applies.
+
 ### API gotchas
 
 - `materialize` / `materialize_with_auxiliaries` / `materialize_all` are `public` but not exported —
