@@ -43,5 +43,11 @@ try
 catch e
     @warn "MRIReco CG-SENSE failed" exception = (e, catch_backtrace())
 end
+try
+    ti, xi = mirt_recon(:cgsense, kspace_mc, cmap; iterations = 10)
+    addrow("MIRT", ti, xi, xm)
+catch e
+    @warn "MIRT CG-SENSE failed" exception = (e, catch_backtrace())
+end
 
 write_section("cgsense")

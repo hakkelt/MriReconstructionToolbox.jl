@@ -1,6 +1,9 @@
-# Section: dynamic / low-rank on the synthetic 2D+t brain — MRT vs BART vs MRIReco
+# Section: dynamic / low-rank on the synthetic 2D+t brain — MRT vs BART vs MRIReco vs SigPy vs MIRT
 # (global low-rank ↔ `-R L -b <N>`, locally low-rank ↔ `-R L -b 8`, temporal TV ↔ `-R T:32`).
-# SigPy has no stock low-rank MRI app. MRIReco joins the two low-rank rows via `mrireco_dynamic`
+# SigPy and MIRT have no stock low-rank MRI app, but both take an arbitrary prox, so they join the
+# **global** low-rank row through `sigpy_lowrank` / `mirt_lowrank` — a nuclear norm on the Casorati
+# matrix is all that row is. Neither joins LLR (block extraction and cycle spinning are conventions
+# the harness would be inventing) nor temporal TV. MRIReco joins the two low-rank rows via `mrireco_dynamic`
 # (frames as contrasts, `reco = "multiCoilMultiEcho"`); it cannot express temporal TV, because that
 # path wraps `regTrafo` per contrast and so cannot couple frames — see `mrireco_dynamic`'s
 # docstring for the exact line.
@@ -122,6 +125,23 @@ for (key, meth, mrtreg, bartcmd, mrm, λdef) in specs
             addrow(meth, "MRIReco", tr, xr, xm)
         catch e
             @warn "MRIReco $meth failed" exception = (e, catch_backtrace())
+        end
+    end
+    # SigPy and MIRT ship no low-rank app, but both take an arbitrary prox, so the *global*
+    # low-rank case — a nuclear norm on the whole Casorati matrix — is expressible in each with
+    # its own operator and solver. LLR and temporal TV are not; see `sigpy_lowrank`.
+    if key === :lowrank
+        try
+            ts, xs = sigpy_lowrank(ksp_z, cmap_dyn, (Nd, Nd); λ = load_lambda(key, "SigPy", λdef), iterations = IT)
+            addrow(meth, "SigPy", ts, xs, xm)
+        catch e
+            @warn "SigPy $meth failed" exception = (e, catch_backtrace())
+        end
+        try
+            ti, xi = mirt_lowrank(ksp_z, cmap_dyn; λ = load_lambda(key, "MIRT", λdef), iterations = IT)
+            addrow(meth, "MIRT", ti, xi, xm)
+        catch e
+            @warn "MIRT $meth failed" exception = (e, catch_backtrace())
         end
     end
 end

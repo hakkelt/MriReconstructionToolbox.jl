@@ -57,7 +57,8 @@ METHODS = Dict(
 # Same 64²×4-coil×8-frame phantom and mask as `run_dynamic.jl`, so the λ transfers. MRT and BART
 # cover all three methods; MRIReco covers the two low-rank ones through `mrireco_dynamic` (frames as
 # contrasts, `reco = "multiCoilMultiEcho"`) but cannot express temporal TV — see that function's
-# docstring. SigPy ships no low-rank MRI app at all. The target NRMSE is still MRT's own best, and
+# docstring. SigPy and MIRT ship no low-rank MRI app, but both accept an arbitrary prox, so they are
+# swept for the global low-rank case only. The target NRMSE is still MRT's own best, and
 # every other toolkit's λ is the grid point that matches it.
 Nd, Ncd, Td = 64, 4, 8
 img_dyn, kspace_dyn0, cmap_dyn = generate_dynamic_multicoil_brain(N = Nd, num_coils = Ncd, num_frames = Td)
@@ -117,6 +118,8 @@ function sweep_dyn(method)
     curves = Dict{String, Vector{Tuple{Float64, Float64}}}()
     toolkits = ["MRT", "BART"]
     mrm === nothing || push!(toolkits, "MRIReco")
+    # SigPy and MIRT reach only the global low-rank case, through their own prox interfaces.
+    method == "lowrank" && append!(toolkits, ["SigPy", "MIRT"])
     for tb in toolkits
         pts = Tuple{Float64, Float64}[]
         for λ in grid
@@ -125,6 +128,10 @@ function sweep_dyn(method)
                     err_dyn(mrt_run(acq_dyn, mrtreg(λ); maxit = IT_CAL))
                 elseif tb == "MRIReco"
                     err_dyn(mrireco_dynamic(mrm, ksp_dyn_z, cmap_dyn, (Nd, Nd); λ, iterations = IT_CAL)[2])
+                elseif tb == "SigPy"
+                    err_dyn(sigpy_lowrank(ksp_dyn_z, cmap_dyn, (Nd, Nd); λ, iterations = IT_CAL)[2])
+                elseif tb == "MIRT"
+                    err_dyn(mirt_lowrank(ksp_dyn_z, cmap_dyn; λ, iterations = IT_CAL)[2])
                 else
                     err_dyn(dropdims(run_bart(1, bartcmd(λ), kbart_dyn, sbart_dyn), dims = (3, 4, 5)))
                 end

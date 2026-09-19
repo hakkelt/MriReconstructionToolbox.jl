@@ -25,6 +25,7 @@
 # `NonCartesianAcquisitionInfo` / `get_encoding_operator` (see TODO.md), which is why the matched row
 # builds the operator by hand.
 include(joinpath(@__DIR__, "_setup.jl"))
+include(joinpath(@__DIR__, "_toolkits.jl"))
 using LinearAlgebra: mul!
 
 img_mc, cmap = IMG_MC, CMAP
@@ -91,6 +92,18 @@ try
     push!(results, BenchResult("Non-Cartesian", "DCF Adjoint (Gridding)", "MRIReco", NUM_THREADS, tr * 1000, nrmse(xr, img_mc), nrmse(xm, xr)))
 catch e
     @warn "MRIReco non-Cartesian failed" exception = (e, catch_backtrace())
+end
+
+# MIRT grids with the same Pipe-Menon weights MRT uses, taken off the operator MRT already built,
+# so the two rows differ only in the NUFFT and the coil loop.
+try
+    nfft_inner = E_dcf.L.A[3].operator
+    nfft_op0 = nfft_inner isa Tuple ? first(nfft_inner) : nfft_inner
+    ti, xi_raw = mirt_gridding(parent(kdata_nc), parent(traj_named), nfft_op0.dcf, ComplexF32.(cmap), (N, N))
+    xi = xi_raw .* (norm(abs.(img_mc)) / norm(abs.(xi_raw)))
+    push!(results, BenchResult("Non-Cartesian", "DCF Adjoint (Gridding)", "MIRT", NUM_THREADS, ti, nrmse(xi, img_mc), nrmse(xm, xi)))
+catch e
+    @warn "MIRT non-Cartesian failed" exception = (e, catch_backtrace())
 end
 
 write_section("noncart")

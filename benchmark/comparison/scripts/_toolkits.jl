@@ -336,3 +336,196 @@ function sigpy_recon(method::Symbol, ksp3, smaps3; λ = 0.0, iterations = 10)
     t, _, raw = time_reconstruction(app)
     return t * 1000, Array{ComplexF64}(permutedims(raw, (2, 1)))
 end
+
+# --- MIRT.jl (Julia) --------------------------------------------------------------------------
+# MIRT is Fessler's toolbox and is shaped differently from the other three: it ships system
+# objects (`Asense`, `Anufft`) and generic solvers (`ncg`, `pogm_restart`) rather than
+# reconstruction "apps", so each row is assembled here out of those pieces. That is the intended
+# use, and it is why MIRT appears only in the rows whose functional needs no calibrated λ:
+#
+#   * `Asense` builds the Cartesian SENSE operator from a Boolean sampling mask, with `odim`
+#     `(count(samp), ncoil)` — the samples in linear index order, one column per coil.
+#   * CG-SENSE is `ncg` on `f(v) = ½‖v - y‖²` with `B = [A]`, whose MM line search reduces to
+#     linear CG for this quadratic, so the iteration count means the same thing as everywhere else.
+#   * `Asense` is not unitary by default, which leaves a global factor on the result; every row
+#     here is scored with `mag_nrmse`, which normalises it away.
+#
+# L1-wavelet and TV are deliberately absent: MIRT would need its own entry in
+# `lambda_calibration.json` for the comparison to stay at matched accuracy.
+const MIRT = ComparisonHarness.MIRT
+
+_mirt_samp(ksp3) = dropdims(any(!iszero, ComplexF64.(ksp3); dims = 3); dims = 3)
+_mirt_y(ksp3, samp) = reduce(hcat, [ComplexF32.(ksp3[:, :, c])[samp] for c in axes(ksp3, 3)])
+
+"""
+    mirt_system(ksp3, smaps3) -> (A, y)
+
+`Asense` for the sampling pattern implied by the zero-filled `ksp3` (nx, ny, coil), plus the
+sampled data in the layout that operator produces.
+"""
+function mirt_system(ksp3, smaps3)
+    samp = _mirt_samp(ksp3)
+    A = MIRT.Asense(samp, ComplexF32.(smaps3))
+    return A, _mirt_y(ksp3, samp)
+end
+
+"""
+    mirt_recon(method, ksp3, smaps3; iterations) -> (time_ms, image)
+
+`method ∈ (:adjoint, :cgsense)`; anything else throws so the caller drops the row.
+"""
+function mirt_recon(method::Symbol, ksp3, smaps3; iterations::Int = 10)
+    A, y = mirt_system(ksp3, smaps3)
+    f = if method === :adjoint
+        () -> A' * y
+    elseif method === :cgsense
+        x0 = zeros(ComplexF32, size(smaps3, 1), size(smaps3, 2))
+        () -> first(MIRT.ncg([A], [v -> v - y], [v -> 1.0f0], x0; niter = iterations))
+    else
+        error("MIRT has no $method here")
+    end
+    t, _, img = time_reconstruction(f)
+    return t * 1000, Array{ComplexF64}(img)
+end
+
+"""
+    mirt_gridding(kdata, traj, dcf, smaps3, image_size) -> (time_ms, image)
+
+Density-compensated non-Cartesian adjoint: `Anufft` per coil, weighted by `dcf`, combined with
+the conjugate sensitivities. `traj` is MRT's `(dim, k)` trajectory in cycles/sample, which MIRT
+wants in radians; `n_shift` centres the image the way every other toolkit here does.
+"""
+function mirt_gridding(kdata, traj, dcf, smaps3, image_size)
+    # (M, D), radians. Kept in Float64 and clamped: a radial trajectory reaches ±0.5 exactly, and
+    # `Float32(2π * 0.5)` rounds just above π, which `nufft_init`'s `pi_error` check rejects.
+    ω = clamp.(2π .* permutedims(Float64.(Array(traj)), (2, 1)), -π, π)
+    A = MIRT.Anufft(ω, image_size; n_shift = collect(image_size) ./ 2)
+    w = Float32.(vec(Array(dcf)))
+    kd = ComplexF32.(Array(kdata))
+    smap = ComplexF32.(Array(smaps3))
+    function grid()
+        acc = zeros(ComplexF32, image_size)
+        for c in axes(kd, 2)
+            acc .+= (A' * (w .* @view kd[:, c])) .* conj.(@view smap[:, :, c])
+        end
+        return acc
+    end
+    t, _, img = time_reconstruction(grid)
+    return t * 1000, Array{ComplexF64}(img)
+end
+
+# --- global low-rank in SigPy and MIRT ----------------------------------------------------------
+# Neither toolkit ships a low-rank MRI app, but both accept an arbitrary proximal operator, which is
+# all a nuclear norm on the Casorati matrix needs. That makes the global low-rank row the one
+# low-rank case they can both express faithfully; **locally** low rank is not, since it needs the
+# block extraction and the cycle-spinning convention BART and MRT each have their own of, and
+# comparing those would measure this file rather than the toolkits.
+#
+# Both rows solve exactly MRT's objective, ½‖Ax - y‖² + λ‖X‖_*, with the toolkit's own operator and
+# its own solver: SigPy runs the same fixed-ρ ADMM as the other SigPy rows, MIRT runs POGM (Fessler's
+# accelerated proximal gradient) since it ships no ADMM. The algorithm differs, so the iteration
+# count is not comparable across those two rows the way it is between MRT and BART — that is what
+# the calibrated λ and the accuracy column are for.
+
+const sp = pyimport("sigpy")
+const sp_linop = pyimport("sigpy.mri.linop")
+
+# The prox lives in Python so SigPy's solver calls it without a round trip per iteration.
+py"""
+import numpy as np
+import sigpy as sp
+
+class _MrtSVT(sp.prox.Prox):
+    '''Singular-value soft thresholding of the (frames x voxels) Casorati matrix.'''
+    def __init__(self, shape, lamda):
+        self.lamda = lamda
+        super().__init__(shape)
+
+    def _prox(self, alpha, input):
+        m = input.reshape(input.shape[0], -1)
+        u, s, vh = np.linalg.svd(m, full_matrices=False)
+        s = np.maximum(s - alpha * self.lamda, 0)
+        return (u @ (s[:, None] * vh)).reshape(input.shape)
+"""
+
+"""
+    sigpy_lowrank(ksp4, smaps3, image_size; λ, iterations) -> (time_ms, image)
+
+Global low-rank reconstruction of a zero-filled `(nx, ny, time, coil)` frame stack, through
+`sigpy.app.LinearLeastSquares` on `sigpy.mri.linop.Sense` with the Casorati SVT prox above.
+The solver settings match the other SigPy rows (`ADMM`, `rho = CMP_RHO`, `max_cg_iter =
+CMP_CG_ITERS`). Returns the image as `(nx, ny, time)`.
+"""
+function sigpy_lowrank(ksp4, smaps3, image_size; λ = 0.0, iterations = 10)
+    y = parent(permutedims(ComplexF64.(ksp4), (3, 4, 2, 1)))          # (T, coil, ky, kx)
+    mps = parent(permutedims(ComplexF64.(smaps3), (3, 2, 1)))          # (coil, y, x)
+    weights = Float64.(dropdims(sum(abs, y, dims = (1, 2)), dims = (1, 2)) .> 0)
+    T = size(y, 1)
+    ishape = (T, 1, image_size[2], image_size[1])
+    # Built from primitives rather than through `sigpy.mri.linop.Sense`, which cannot express a
+    # batched SENSE operator: given an explicit `ishape` it sets `img_ndim = len(ishape)` and then
+    # transforms **every** axis, so a `(time, 1, y, x)` image gets Fourier-transformed over time and
+    # coil as well. Same composition as `Sense` otherwise — P F S, with the `sqrt(weights)` that
+    # SigPy's own apps apply to the operator and the data alike.
+    S = sp.linop.Multiply(collect(ishape), mps)
+    F = sp.linop.FFT(S.oshape, axes = (-2, -1))
+    A = sp.linop.Multiply(F.oshape, sqrt.(weights)) * F * S
+    y = y .* sqrt.(reshape(weights, 1, 1, size(weights)...))
+    prox = py"_MrtSVT"(collect(ishape), λ)
+    app = () -> sp.app.LinearLeastSquares(
+        A, y; proxg = prox, solver = "ADMM", rho = CMP_RHO,
+        max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
+    ).run()
+    t, _, raw = time_reconstruction(app)
+    x = dropdims(Array{ComplexF64}(raw), dims = 2)                     # (T, y, x)
+    return t * 1000, permutedims(x, (3, 2, 1))
+end
+
+# Singular-value soft thresholding of the Casorati matrix, the Julia side of the same prox.
+function _svt(x::AbstractArray{<:Complex, 3}, τ::Real)
+    nx, ny, nt = size(x)
+    F = svd(reshape(x, nx * ny, nt))
+    s = max.(F.S .- τ, 0)
+    return reshape(F.U * (s .* F.Vt), nx, ny, nt)
+end
+
+"""
+    mirt_lowrank(ksp4, smaps3; λ, iterations) -> (time_ms, image)
+
+Global low-rank reconstruction with MIRT: one `Asense` for the (frame-independent) sampling
+pattern, POGM with adaptive restart as the solver, and the Casorati SVT as its prox. `f_L` is the
+operator norm of `A'A`, from a short power iteration, as POGM needs a real step size rather than
+the ρ the ADMM rows take.
+"""
+function mirt_lowrank(ksp4, smaps3; λ = 0.0, iterations = 10)
+    nx, ny, nt, nc = size(ksp4)
+    samp = dropdims(any(!iszero, ComplexF64.(ksp4); dims = (3, 4)), dims = (3, 4))
+    A = MIRT.Asense(samp, ComplexF32.(smaps3))
+    y = [reduce(hcat, [ComplexF32.(ksp4[:, :, t, c])[samp] for c in 1:nc]) for t in 1:nt]
+
+    # Power iteration for ‖A'A‖: the same operator acts on every frame. Seeded, because POGM's step
+    # size is 1/L and an L that moves from call to call would make the row's accuracy depend on the
+    # random draw rather than on λ.
+    L = let v = ComplexF32.(randn(Random.MersenneTwister(0), ComplexF64, nx, ny))
+        λmax = 1.0f0
+        for _ in 1:50
+            w = A' * (A * v)
+            λmax = Float32(norm(w))
+            v = w ./ λmax
+        end
+        Float64(λmax)
+    end
+
+    x0 = zeros(ComplexF32, nx, ny, nt)
+    f_grad = function (x)
+        g = similar(x)
+        for t in 1:nt
+            g[:, :, t] = A' * (A * x[:, :, t] - y[t])
+        end
+        return g
+    end
+    g_prox = (z, c) -> ComplexF32.(_svt(ComplexF64.(z), λ * c))
+    run = () -> first(MIRT.pogm_restart(x0, _ -> 0.0, f_grad, L; niter = iterations, g_prox))
+    t, _, img = time_reconstruction(run)
+    return t * 1000, Array{ComplexF64}(img)
+end
