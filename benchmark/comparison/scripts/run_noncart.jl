@@ -39,7 +39,11 @@ acq_sim = NonCartesianAcquisitionInfo(
 )
 kdata_nc = MriReconstructionToolbox.get_encoding_operator(acq_sim) * NamedDimsArray(ComplexF32.(img_mc), (:x, :y))
 
-acq_dcf = NonCartesianAcquisitionInfo(kdata_nc; trajectory = traj_named, image_size = (N, N), sensitivity_maps = smaps_nc, shifted_image_dims = (:x, :y))
+# `NFFTOp` applies no density compensation unless it is given one, so the gridding row has to ask
+# for it: `density_compensation` returns a copy of the acquisition carrying the Pipe-Menon factors.
+acq_dcf = MriReconstructionToolbox.density_compensation(
+    NonCartesianAcquisitionInfo(kdata_nc; trajectory = traj_named, image_size = (N, N), sensitivity_maps = smaps_nc, shifted_image_dims = (:x, :y))
+)
 E_dcf = MriReconstructionToolbox.get_encoding_operator(acq_dcf)
 tm, _, xm_raw = time_reconstruction(() -> E_dcf' * kdata_nc)
 xm = xm_raw .* (norm(abs.(img_mc)) / norm(abs.(xm_raw)))

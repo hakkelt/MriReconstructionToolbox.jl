@@ -259,7 +259,9 @@ acq_nc_sim = NonCartesianAcquisitionInfo(kdata_nc_zeros; trajectory = traj_named
 E_nc_sim = MriReconstructionToolbox.get_encoding_operator(acq_nc_sim)
 kdata_nc_sim = E_nc_sim * NamedDimsArray(ComplexF32.(img_mc), (:x, :y))
 
-acq_nc_dcf = NonCartesianAcquisitionInfo(kdata_nc_sim; trajectory = traj_named, image_size = (N, N), sensitivity_maps = smaps_nc, shifted_image_dims = (:x, :y))
+acq_nc_dcf = MriReconstructionToolbox.density_compensation(
+    NonCartesianAcquisitionInfo(kdata_nc_sim; trajectory = traj_named, image_size = (N, N), sensitivity_maps = smaps_nc, shifted_image_dims = (:x, :y))
+)
 E_nc_dcf = MriReconstructionToolbox.get_encoding_operator(acq_nc_dcf)
 t_min_mrt_dcf, _, mrt_adj_dcf_raw = time_reconstruction(() -> E_nc_dcf' * kdata_nc_sim)
 mrt_adj_dcf = mrt_adj_dcf_raw .* (norm(abs.(img_mc)) / norm(abs.(mrt_adj_dcf_raw)))
