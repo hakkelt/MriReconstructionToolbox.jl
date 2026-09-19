@@ -12,7 +12,6 @@
 #   upstream  remote URL of the real upstream
 #   base      ref the integration branch is rebuilt from, in the local checkout's remote names
 #   prefix    where the package is vendored inside this repository
-#   path      local working checkout, where the integration branch is built
 #   prune     globs deleted from the vendored copy after every sync: everything MRT does not
 #             compile. A vendored package's tests, docs, benchmarks and CI belong to the fork and
 #             run there; `ext/` cannot load at all for a package included as a submodule, so what
@@ -34,13 +33,19 @@
 #
 # When a branch's PR merges upstream, delete its entry, re-fetch `base`, and rebuild: everything
 # stacked above it moves onto the new root in one go.
+#
+# Where a fork is checked out is a property of one machine, not of the stack, so it is deliberately
+# absent here and lives in `deps/vendor.local.toml` instead -- untracked, one
+# `<Package> = "/path/to/checkout"` line per checkout that exists locally. A package with no entry
+# there is simply not checked out on this machine; `check` still reports everything GitHub can
+# answer for it, while `rebuild`, `patch` and `sync` say which entry they need. Nothing tracked in
+# this repository, and nothing pushed to a fork, may name a path of one machine.
 
 [AbstractOperators]
 fork = "https://github.com/hakkelt/AbstractOperators.jl.git"
 upstream = "https://github.com/kul-optec/AbstractOperators.jl.git"
 base = "upstream/master"
 prefix = "deps/AbstractOperators"
-path = "/project/c_mrrecon/AbstractOperators"
 prune = [
     "test", "*/test", "docs", "*/docs", "benchmark", "*/benchmark",
     "ext", "*/ext", ".github", ".claude", ".temp", "logo",
@@ -158,7 +163,6 @@ fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
 base = "upstream/master"
 prefix = "deps/ProximalOperators"
-path = "/project/c_mrrecon/ProximalOperators.jl"
 prune = [
     "test", "docs", "benchmark", "demos", "ext", ".github", ".claude", "logo",
     "AGENTS.md", "CLAUDE.md", "Manifest.toml", "codecov.yml",
@@ -226,7 +230,6 @@ fork = "https://github.com/hakkelt/ProximalAlgorithms.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalAlgorithms.jl.git"
 base = "upstream/master"
 prefix = "deps/ProximalAlgorithms"
-path = "/project/c_mrrecon/ProximalAlgorithms.jl"
 prune = [
     "test", "docs", "benchmark", "ext", ".github", ".claude",
     "AGENTS.md", "CLAUDE.md", "Manifest.toml", "CITATION.cff", "justfile",
@@ -273,7 +276,6 @@ fork = "https://github.com/hakkelt/StructuredOptimization.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/StructuredOptimization.jl.git"
 base = "upstream/master"
 prefix = "deps/StructuredOptimization"
-path = "/project/c_mrrecon/StructuredOptimization.jl"
 prune = [
     "test", "docs", "benchmark", "benchmarks", "demos", "ext", ".github", ".claude",
     "AGENTS.md", "CLAUDE.md", "Manifest.toml", "codecov.yml",
