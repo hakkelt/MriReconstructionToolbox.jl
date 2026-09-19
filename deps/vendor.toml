@@ -60,6 +60,9 @@ branch = "gpu-safe-operator-metadata"
 parent = "unified-threading"
 pr = "hakkelt/AbstractOperators.jl#24"
 
+# Rebased onto `unified-threading`, but its PR is against the real upstream, whose base can only
+# be a branch of that repository -- so `check` reports the base mismatch permanently. The PR is a
+# draft; it lands after #44 either way.
 [[AbstractOperators.stack]]
 branch = "add-contourlet-operators"
 parent = "unified-threading"

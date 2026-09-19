@@ -15,24 +15,33 @@ julia tools/vendor.jl patch      # diff each integration branch against deps/<pa
 `patch` writes the diff of a clean `git archive` of `integration` against the working `deps/`
 tree, so it is always exactly the current delta: nothing about it is hand-maintained.
 
-## What is in them, and what should not stay
+## What belongs in them
 
-Two kinds of change are mixed in here on purpose, and telling them apart is the point of having
-the delta in one file:
+Only what vendoring itself forces. Today that is:
 
-- **Adaptations**, which are permanent. Vendoring a package as an `include`d submodule forces
-  changes no upstream would accept: every cross-package import has to be relative
-  (`using ..AbstractOperators`), an `ext/` directory never loads so its contents have to be moved
-  into `src/` and included by hand (`ProximalOperators`' OSQP and RecursiveArrayTools
-  extensions), and material MRT does not ship -- the packages' own `docs/examples`, CI workflows,
-  GPU test environments -- is pruned.
-- **Drift**, which should not be here at all. A fix made while developing MRT and not yet carried
-  back to the branch that owns the code shows up as a hunk in these patches. Push it to that
-  branch, rebuild, and regenerate: the hunk disappears on its own, and that disappearance is the
-  confirmation that the fix really did land upstream-bound.
+- **Relative imports.** A submodule cannot `using AbstractOperators`; it has to say
+  `using ..AbstractOperators`.
+- **The inlined extension.** An `ext/` directory never loads for a submodule, so
+  `ProximalOperators`' `RecursiveArrayToolsExt` is included from `src/` by hand.
+- **OSQP, removed.** MRT does not use it, so neither the weak dependency nor `IndPolyhedral`,
+  whose only implementation needs it, is vendored.
+- **The vendored `[sources]` paths**, pointing at the sibling copies under `deps/` rather than at
+  a developer's own checkouts.
 
-A patch that stops applying after a rebuild is therefore good news, not a breakage: whatever it
-carried is now in the branch.
+Nothing else. Three destinations exist for a change found while developing MRT, and the patch is
+none of them:
+
+- A fix or feature that would make sense to the upstream package goes on the branch that owns
+  that code -- as another commit on the branch whose PR introduced it, not a new branch -- and
+  reaches `deps/` through `integration` on the next sync.
+- A change with no owning branch gets one new branch for that one idea, added to
+  `deps/vendor.toml`.
+- A change that is really about MRI rather than about the dependency belongs in MRT's own `src/`.
+
+`patch` regenerates these files from the current trees, so a hunk that is none of the above
+appears the moment someone edits `deps/` by hand -- which is what makes the rule enforceable
+rather than merely stated. A patch that stops applying after a rebuild is good news: whatever it
+carried is in the branch now.
 
 ## The integration branches these are relative to
 
