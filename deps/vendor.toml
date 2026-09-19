@@ -283,9 +283,12 @@ prune = [
 
 # One branch, not three: `fix/normalop-ls-multivar` and `phase-0-2-consolidation` were merged into
 # the fork's `master` as one linear history (no merge commits), so the whole of MRT's
-# StructuredOptimization work is what upstream PR #44 offers. Both old branches are still on the
-# fork, fully contained in `master`, and `check` reports them as unreferenced until they are deleted.
+# StructuredOptimization work lives there. Both old branches are still on the fork, fully contained
+# in `master`, and `check` reports them as unreferenced until they are deleted.
+#
+# No PR: JuliaFirstOrder/StructuredOptimization.jl#44 was closed deliberately, so this branch is
+# untracked work upstream until it is re-proposed, which is what `check` says about it.
 [[StructuredOptimization.stack]]
 branch = "master"
 parent = ""
-pr = "JuliaFirstOrder/StructuredOptimization.jl#44"
+pr = ""
