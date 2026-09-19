@@ -129,7 +129,7 @@ using TestItems
         seq, _ = prox_of(StructuredLowRank(λ = 0.1, window = (4, 3)), x, 0.5)
         # `prox_of` builds the term with threaded = false; rebuild it threaded and compare
         term = materialize(StructuredLowRank(λ = 0.1, window = (4, 3)), Variable(x); threaded = true)
-        f = MriReconstructionToolbox.StructuredOptimization.extract_functions(term)
+        f = MriReconstructionToolbox.StructuredOptimization.weighted_function(term)
         par = similar(x)
         MriReconstructionToolbox.ProximalCore.prox!(par, f, x, 0.5)
         @test par ≈ seq
@@ -178,11 +178,11 @@ using TestItems
         )
         @test length(wav) == 5
         # several weights are averaged, a single one is used directly
-        avg = MriReconstructionToolbox.StructuredOptimization.extract_functions(
+        avg = MriReconstructionToolbox.StructuredOptimization.weighted_function(
             materialize(StructuredLowRank(λ = 0.1, window = (4, 3), weights = :tv), Variable(randn(ComplexF64, gx, gy, 2)); threaded = false)
         )
         @test avg isa MriReconstructionToolbox.ProximalAverage
-        one_w = MriReconstructionToolbox.StructuredOptimization.extract_functions(
+        one_w = MriReconstructionToolbox.StructuredOptimization.weighted_function(
             materialize(
                 StructuredLowRank(λ = 0.1, window = (4, 3), weights = ones(ComplexF64, gx, gy)),
                 Variable(randn(ComplexF64, gx, gy, 2)); threaded = false,
@@ -498,7 +498,7 @@ end
         @test seq ≈ ref
 
         term = materialize(reg, Variable(x); threaded = true)
-        f = MriReconstructionToolbox.StructuredOptimization.extract_functions(term)
+        f = MriReconstructionToolbox.StructuredOptimization.weighted_function(term)
         par = similar(x)
         MriReconstructionToolbox.ProximalCore.prox!(par, f, x, 1.0)
         @test par ≈ seq

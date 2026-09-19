@@ -178,13 +178,25 @@ domain, or whatever specialised product a downstream package defines for its own
 type. A `Compose` means no such product exists, so the fold would add the value-recovery
 bookkeeping without saving a pass.
 
-Fusing is not on its own enough to make the normal operator the cheaper of the two, so `L`
-must also map into a codomain at least as large as its domain (see
-[`normal_op_worthwhile`](@ref)).
+There is a second way to be cheaper, which does not require collapsing at all: the operator can
+say so itself, through `AbstractOperators.has_optimized_normalop`. Then `L' * L` *is* the
+optimized form it advertises. `get_normal_op(::Compose)` fuses only the innermost adjoint pair
+and keeps the outer factors, so an MRI encoding operator `S`-then-`F` becomes `Sᴴ·(FᴴF)·S` --
+one transform where the naive form needs two, but still a `Compose`.
+
+Fusing is not on its own enough to make the normal operator the cheaper of the two, so an `L`
+that only fuses must also map into a codomain at least as large as its domain (see
+[`normal_op_worthwhile`](@ref)). That size test is a dense-matrix estimate, and it is *not*
+applied to an operator that advertises an optimized normal operator: there the operator itself
+has answered the question, and the estimate would veto exactly the structured cases it cannot
+model -- a subsampled Fourier encoding maps into a codomain smaller than its domain, and its
+normal operator is still the cheaper of the two.
 
 `L` must carry no displacement; [`with_normal_op`](@ref) re-attaches it to the result.
 """
 function fused_normal_op(L::AbstractOperator)
+    (is_linear(L) && !is_eye(L)) || return nothing
+    AbstractOperators.has_optimized_normalop(L) && return L' * L
     normal_op_worthwhile(L) || return nothing
     LᴴL = L' * L
     return LᴴL isa AbstractOperators.Compose ? nothing : LᴴL

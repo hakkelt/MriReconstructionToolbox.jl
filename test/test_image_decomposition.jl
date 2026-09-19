@@ -161,8 +161,10 @@ end
     @test length(StructuredOptimization.extract_variables(terms)) == 2
     @test terms isa StructuredOptimization.TermSet
 
-    f = StructuredOptimization.extract_functions(terms)
-    op = StructuredOptimization.extract_operators(vars, terms)
+    # `weighted_function` is λ·f and nothing else, so the displacement has to come from the
+    # *affine* operator rather than the bare linear one.
+    f = StructuredOptimization.weighted_function(terms)
+    op = StructuredOptimization.extract_affines(vars, terms)
     combined = StructuredOptimization.ArrayPartition(~vars[1], ~vars[2])
     model_val = f(op * combined)
 
