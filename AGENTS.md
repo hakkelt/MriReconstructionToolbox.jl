@@ -54,12 +54,14 @@ They are inlined as **submodules** of `MriReconstructionToolbox` (see the `inclu
   seen. `FFTWOperators.has_optimized_normalop`, `NFFTOperators.is_symmetric` and
   `ProximalOperators.is_positively_homogeneous` each shadowed this way at some point; if a trait
   looks ignored, compare `Pkg.Mod.trait === Owner.trait` first.
-- Their `ext/` directories are carried along but never loaded: package extensions do not apply to a
-  submodule. Anything a vendored extension provides has to be wired in explicitly, as
-  `ProximalOperators`' `RecursiveArrayToolsExt` is (`deps/ProximalOperators/src/recursive_array_tools.jl`).
+- An `ext/` directory cannot load at all: package extensions do not apply to a submodule. What a
+  vendored extension provides is either inlined into `src/` by hand, as `ProximalOperators`'
+  `RecursiveArrayToolsExt` is (`deps/ProximalOperators/src/recursive_array_tools.jl`), or dropped
+  when MRT does not need it — OSQP, and with it `IndPolyhedral`, is not vendored for that reason.
 
-`deps/` is excluded from MRT's own test run (`JuliaTestItems.toml`); each fork keeps its upstream
-test suite and runs it in its own environment.
+Only what MRT compiles is vendored. Each package's own `test/`, `docs/`, `benchmark/`, CI config
+and `ext/` are pruned on every sync (`prune` in `deps/vendor.toml`); they belong to the fork and
+run there. `deps/` is therefore absent from MRT's own test run as well (`JuliaTestItems.toml`).
 
 MRT is **ahead of** its upstreams in places (its own fixes are pushed there as branches), so a sync
 is a merge, not a copy: check whether the vendored side is the newer one before overwriting it.
@@ -79,8 +81,14 @@ one-directional:
 
 `julia tools/vendor.jl check` compares the manifest against GitHub and reports mis-based PRs,
 branches with no PR, and branches whose PR has already merged (whose code should come from
-upstream instead). MRT-only adaptations that no upstream would accept — the relative imports and
-hand-wired `ext/` above — belong in `deps/patches/<package>.patch`, which `sync` re-applies.
+upstream instead).
+
+`deps/patches/<package>.patch`, which `sync` re-applies, carries **only** what vendoring itself
+forces: the relative imports, the inlined extension, the OSQP removal, the vendored `[sources]`
+paths. Nothing else belongs there. Work that would make sense to the upstream package goes on the
+branch that owns the code; work that is about MRI rather than about the dependency belongs in
+MRT's own `src/`. A hunk that is neither is a sign the fix was made in the wrong place —
+`julia tools/vendor.jl patch` regenerates the file, so such a hunk shows up the moment it appears.
 
 ### API gotchas
 
