@@ -74,7 +74,6 @@ include("functions/indNonnegative.jl")
 include("functions/indRealNonnegative.jl")
 include("functions/indNonpositive.jl")
 include("functions/indPoint.jl")
-include("functions/indPolyhedral.jl")
 include("functions/indPSD.jl")
 include("functions/indSimplex.jl")
 include("functions/indSOC.jl")
@@ -119,6 +118,11 @@ include("calculus/translate.jl")
 include("calculus/sum.jl")
 include("calculus/pointwiseMinimum.jl")
 include("calculus/proximalAverage.jl")
+
+# `RecursiveArrayTools` is always available in `MriReconstructionToolbox` (unlike the standalone
+# ProximalOperators.jl package, where it is only a weakdep behind a package extension), so this
+# support is included unconditionally -- after the calculus rules it adds methods for.
+include("recursive_array_tools.jl")
 
 # Functions obtained from basic (as special cases or using calculus rules)
 
