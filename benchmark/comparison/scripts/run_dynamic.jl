@@ -85,15 +85,21 @@ addrow(meth, fw, t, x, xmrt) = push!(results, BenchResult("Dynamic", meth, fw, N
 
 # λ comes from `calibrate_lambda.jl`'s dynamic sweeps (`lowrank` / `llr` / `ttv`), one per toolkit.
 specs = (
-    (:lowrank, "Global Low-Rank ($IT it)", λ -> LowRank(λ; time_dim = :time),
+    (
+        :lowrank, "Global Low-Rank ($IT it)", λ -> LowRank(λ; time_dim = :time),
         λ -> "pics -S -w 1 -m -F -n -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -b $Nd -R L:3:3:$λ",
-        :lowrank, 0.01),
-    (:llr, "Locally Low-Rank ($IT it)", λ -> LocallyLowRank(λ; block_size = (8, 8), time_dim = :time),
+        :lowrank, 0.01,
+    ),
+    (
+        :llr, "Locally Low-Rank ($IT it)", λ -> LocallyLowRank(λ; block_size = (8, 8), time_dim = :time),
         λ -> "pics -S -w 1 -m -F -n -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -b 8 -R L:3:3:$λ",
-        :llr, 0.01),
-    (:ttv, "Temporal TV ($IT it)", λ -> TemporalTotalVariation(λ; time_dim = :time),
+        :llr, 0.01,
+    ),
+    (
+        :ttv, "Temporal TV ($IT it)", λ -> TemporalTotalVariation(λ; time_dim = :time),
         λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R T:32:0:$λ",
-        nothing, 0.01),
+        nothing, 0.01,
+    ),
 )
 
 for (key, meth, mrtreg, bartcmd, mrm, λdef) in specs
@@ -109,8 +115,10 @@ for (key, meth, mrtreg, bartcmd, mrm, λdef) in specs
     end
     if mrm !== nothing
         try
-            tr, xr = mrireco_dynamic(mrm, ksp_z, cmap_dyn, (Nd, Nd);
-                λ = load_lambda(key, "MRIReco", λdef), iterations = IT)
+            tr, xr = mrireco_dynamic(
+                mrm, ksp_z, cmap_dyn, (Nd, Nd);
+                λ = load_lambda(key, "MRIReco", λdef), iterations = IT
+            )
             addrow(meth, "MRIReco", tr, xr, xm)
         catch e
             @warn "MRIReco $meth failed" exception = (e, catch_backtrace())

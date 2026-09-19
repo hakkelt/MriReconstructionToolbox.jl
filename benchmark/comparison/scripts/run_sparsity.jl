@@ -52,14 +52,20 @@ addrow(cat, meth, fw, t, x, xmrt) =
 
 # (key, label, MRT-reg builder, MRT alg kind, sigpy-method, mrireco-method, BART cmd builder(λ), default λ)
 specs = (
-    (:tv, "Total Variation ($IT it)", λ -> TotalVariation2D(λ), :admm, :tv, :tv,
-        λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R T:3:0:$λ", 0.01),
+    (
+        :tv, "Total Variation ($IT it)", λ -> TotalVariation2D(λ), :admm, :tv, :tv,
+        λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R T:3:0:$λ", 0.01,
+    ),
     # Wavelet runs FISTA in every toolkit, so there is no inner CG and `-i` *is* the iteration
     # count here (`iter_fista_defaults.tol = 0`, never overridden — BART runs all of them).
-    (:wavelet, "L1-Wavelet ($IT it)", mrt_wavelet, :fista, :wavelet, :wavelet,
-        λ -> "pics -S -w 1 -e -i $IT -R W:3:0:$λ", 0.005),
-    (:tgv, "TGV ($IT it)", λ -> TotalGeneralizedVariation2D(λ; ratio = 2.0), :admm, nothing, nothing,
-        λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R G:3:0:$λ", 0.01),
+    (
+        :wavelet, "L1-Wavelet ($IT it)", mrt_wavelet, :fista, :wavelet, :wavelet,
+        λ -> "pics -S -w 1 -e -i $IT -R W:3:0:$λ", 0.005,
+    ),
+    (
+        :tgv, "TGV ($IT it)", λ -> TotalGeneralizedVariation2D(λ; ratio = 2.0), :admm, nothing, nothing,
+        λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R G:3:0:$λ", 0.01,
+    ),
 )
 
 for (key, meth, mrtreg, mrtkind, spm, mrm, bartcmd, λdef) in specs

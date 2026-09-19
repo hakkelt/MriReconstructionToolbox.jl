@@ -16,12 +16,14 @@ let i = findfirst(a -> startswith(a, "--threads="), ARGS)
     global const NUM_THREADS = i === nothing ? Threads.nthreads() : parse(Int, split(ARGS[i], "=")[2])
 end
 
+# Which BART build to time against. Two builds because the comparison is per BLAS backend; the
+# paths are where they live on this cluster, overridable for any other machine.
 if USE_MKL
     @info "Enabling Intel MKL backend via MKL.jl"
     using MKL
-    const BART_BINARY = "/project/c_mrrecon/bart_mkl"
+    const BART_BINARY = get(ENV, "MRT_BENCH_BART_MKL", "/project/c_mrrecon/bart_mkl")
 else
-    const BART_BINARY = "/project/c_mrrecon/bart_openblas"
+    const BART_BINARY = get(ENV, "MRT_BENCH_BART_OPENBLAS", "/project/c_mrrecon/bart_openblas")
 end
 const FW = "MRT ($(USE_MKL ? "MKL" : "OpenBLAS"))"
 const BART_FW = "BART ($(USE_MKL ? "MKL" : "OpenBLAS"))"
@@ -91,7 +93,7 @@ const BART_SPAWN = let times = Float64[]
     for _ in 1:10
         t0 = time_ns()
         read(pipeline(ignorestatus(`$BART_BINARY version`)), String)
-        push!(times, (time_ns() - t0) / 1e9)
+        push!(times, (time_ns() - t0) / 1.0e9)
     end
     minimum(times)
 end
@@ -117,7 +119,7 @@ function bart_overhead(inputs...; reps = 5)
         for _ in 1:reps
             t0 = time_ns()
             run_bart(1, "copy", inp)
-            push!(ts, (time_ns() - t0) / 1e9)
+            push!(ts, (time_ns() - t0) / 1.0e9)
         end
         push!(io, max(0.0, minimum(ts) - BART_SPAWN) / 2)   # one-way transfer for this array
     end
@@ -137,14 +139,14 @@ function time_bart(cmd::AbstractString, inputs...; nout::Int = 1, num_runs::Int 
     ovh = bart_overhead(inputs...)
     t0 = time_ns()
     res = run_bart(nout, cmd, inputs...)
-    warm = (time_ns() - t0) / 1e9 - ovh
+    warm = (time_ns() - t0) / 1.0e9 - ovh
     wis = warm > heavy_threshold
     wis && run_bart(nout, cmd, inputs...; wisdom = true)   # build the measured plan once
     times = Float64[]
     for _ in 1:num_runs
         t0 = time_ns()
         res = run_bart(nout, cmd, inputs...; wisdom = wis)
-        push!(times, (time_ns() - t0) / 1e9)
+        push!(times, (time_ns() - t0) / 1.0e9)
     end
     @info @sprintf("BART '%s': overhead %.1f ms, wisdom %s", first(split(cmd)), ovh * 1000, wis)
     return max(1.0e-5, minimum(times) - ovh), max(1.0e-5, median(times) - ovh), res
@@ -163,7 +165,7 @@ function time_reconstruction(f; num_runs = 3, is_bart = false)
     for _ in 1:num_runs
         t0 = time_ns()
         res = f()
-        push!(times, (time_ns() - t0) / 1e9)
+        push!(times, (time_ns() - t0) / 1.0e9)
     end
     return minimum(times), median(times), res
 end
@@ -171,10 +173,12 @@ end
 # MRT baseline times owned by benchmark/hpc/recon_bench.jl. If the merged JSON is present we take
 # its `time_ms` for the MRT rows instead of re-timing (the recon still runs once for NRMSE).
 const _MRT_BASELINE = let
-    f = normpath(joinpath(
-        @__DIR__, "..", "..", "hpc", "results",
-        "mrt_$(USE_MKL ? "mkl" : "openblas")_$(NUM_THREADS)threads.json",
-    ))
+    f = normpath(
+        joinpath(
+            @__DIR__, "..", "..", "hpc", "results",
+            "mrt_$(USE_MKL ? "mkl" : "openblas")_$(NUM_THREADS)threads.json",
+        )
+    )
     d = Dict{Tuple{String, String}, Float64}()
     if isfile(f)
         for b in JSON.parsefile(f)["benchmarks"]
@@ -237,8 +241,10 @@ function write_section(name::AbstractString)
         )
     end
     for r in results
-        @printf("%-14s | %-26s | %-22s | %7d | %10.2f ms | %10.2e | %10.2e\n",
-            r.category, r.method, r.framework, r.threads, r.time_ms, r.nrmse_gt, r.nrmse_mrt)
+        @printf(
+            "%-14s | %-26s | %-22s | %7d | %10.2f ms | %10.2e | %10.2e\n",
+            r.category, r.method, r.framework, r.threads, r.time_ms, r.nrmse_gt, r.nrmse_mrt
+        )
     end
     @info "wrote section" path n = length(results)
     return path
