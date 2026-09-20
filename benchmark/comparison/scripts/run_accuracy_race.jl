@@ -161,7 +161,7 @@ acq_dyn = CartesianAcquisitionInfo(
     subsampling = (:, mask_pe), shifted_image_dims = (:x, :y),
 )
 kbart_dyn = zeros(ComplexF32, Nd, Nd, 1, Ncd, 1, Td)
-ksp_dyn_z = zeros(ComplexF64, Nd, Nd, Td, Ncd)
+ksp_dyn_z = zeros(CMP_CTYPE, Nd, Nd, Td, Ncd)
 for t in 1:Td
     kbart_dyn[:, mask_pe, 1, :, 1, t] .= ComplexF32.(kspace_dyn[:, mask_pe, t, :])
     ksp_dyn_z[:, mask_pe, t, :] .= kspace_dyn[:, mask_pe, t, :]

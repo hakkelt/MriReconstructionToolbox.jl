@@ -150,7 +150,9 @@ phantom only transfers to real scanner data if both k-spaces are put on the same
 Applied to every dataset before reconstruction; `mag_nrmse` is scale-invariant so references are
 unaffected.
 """
-norm_ksp(k) = k .* (sqrt(length(k)) / LinearAlgebra.norm(k))
+# `eltype(k)` on the scalar, so a `ComplexF32` k-space is not promoted back to `ComplexF64` by a
+# `Float64` factor — the precision under test has to survive the preprocessing.
+norm_ksp(k) = k .* eltype(k)(sqrt(length(k)) / LinearAlgebra.norm(k))
 
 """
     add_noise(k; snr_db = 30, seed = 1) -> k + complex Gaussian noise
@@ -165,7 +167,9 @@ function add_noise(k; snr_db::Real = 30, seed::Integer = 1)
     rng = Random.MersenneTwister(seed)
     rms = LinearAlgebra.norm(k) / sqrt(length(k))
     σ = rms * 10^(-snr_db / 20) / sqrt(2)
-    return k .+ σ .* (randn(rng, ComplexF64, size(k)))
+    # Drawn in `ComplexF64` and converted, not drawn in `eltype(k)`: the realisation must be the
+    # same sequence whichever precision is under test, so the two runs differ only in arithmetic.
+    return k .+ eltype(k).(σ .* randn(rng, ComplexF64, size(k)))
 end
 const CMP_SNR_DB = parse(Float64, get(ENV, "CMP_SNR_DB", "30"))
 
@@ -226,7 +230,7 @@ mrt_run(acq, reg; maxit::Int, kind::Symbol = :admm, rho::Real = CMP_RHO) =
 # --- MRIReco (Julia) ------------------------------------------------------------------------
 # `MRIBase` accepts a 6D `(x, y, z, channel, echo, rep)` k-space array directly (`enc2D` for a
 # 2D encode); unsampled entries must be zero. `ksp3` is the Julia `(nx, ny, coil)` layout.
-_mrireco_acq(ksp3) = AcquisitionData(reshape(ComplexF64.(ksp3), size(ksp3, 1), size(ksp3, 2), 1, size(ksp3, 3), 1, 1); enc2D = true)
+_mrireco_acq(ksp3) = AcquisitionData(reshape(CMP_CTYPE.(ksp3), size(ksp3, 1), size(ksp3, 2), 1, size(ksp3, 3), 1, 1); enc2D = true)
 
 """
     _mrireco_normal_operator(acq, senseMaps, reconSize) -> AHA
@@ -241,7 +245,7 @@ builds its own copy anyway and timing this one would charge MRIReco for the cons
 """
 function _mrireco_normal_operator(acq, senseMaps, reconSize)
     E = MRIReco.encodingOps_parallel(acq, reconSize, senseMaps; slice = 1)
-    W = MRIReco.WeightingOp(ComplexF64; weights = MRIReco.samplingDensity(acq, reconSize)[1], rep = size(senseMaps, ndims(senseMaps)))
+    W = MRIReco.WeightingOp(CMP_CTYPE; weights = MRIReco.samplingDensity(acq, reconSize)[1], rep = size(senseMaps, ndims(senseMaps)))
     return MRIReco.normalOperator(∘(W, E[1]))
 end
 
@@ -278,7 +282,7 @@ function mrireco(
         # what makes the comparison apples-to-apples.
         (
             L1Regularization(λ), MR_ADMM, nothing,
-            RLS.GradientOp(ComplexF64; shape = reconSize, dims = 1:length(reconSize)),
+            RLS.GradientOp(CMP_CTYPE; shape = reconSize, dims = 1:length(reconSize)),
         )
     elseif method === :wavelet
         # `rho` is FISTA's step size here, not a penalty — see `CMP_FISTA_RHO_MRIRECO`.
@@ -290,7 +294,7 @@ function mrireco(
     else
         error("MRIReco has no $method")
     end
-    senseMaps = reshape(ComplexF64.(smaps3), reconSize..., 1, size(smaps3, 3))
+    senseMaps = reshape(CMP_CTYPE.(smaps3), reconSize..., 1, size(smaps3, 3))
     # A separate `AcquisitionData` on purpose: the timed closure builds its own (as every other
     # row does), so this one costs the row nothing.
     AHA = ρ === nothing ? _mrireco_normal_operator(_mrireco_acq(ksp3), senseMaps, reconSize) : nothing
@@ -347,12 +351,12 @@ function mrireco_dynamic(
     else
         error("MRIReco has no dynamic $method here (see the docstring on temporal TV)")
     end
-    ksp6 = zeros(ComplexF64, nx, ny, 1, ncoil, nt, 1)
+    ksp6 = zeros(CMP_CTYPE, nx, ny, 1, ncoil, nt, 1)
     for t in 1:nt
-        ksp6[:, :, 1, :, t, 1] .= ComplexF64.(@view ksp4[:, :, t, :])
+        ksp6[:, :, 1, :, t, 1] .= CMP_CTYPE.(@view ksp4[:, :, t, :])
     end
     acq = AcquisitionData(ksp6; enc2D = true)
-    senseMaps = reshape(ComplexF64.(smaps3), reconSize..., 1, ncoil)
+    senseMaps = reshape(CMP_CTYPE.(smaps3), reconSize..., 1, ncoil)
     t, _, img = time_reconstruction() do
         rp = Dict{Symbol, Any}(
             :reco => "multiCoilMultiEcho", :reconSize => reconSize, :senseMaps => senseMaps,
@@ -367,8 +371,8 @@ end
 
 # --- SigPy (Python) ------------------------------------------------------------------------
 # SigPy wants k-space `(coil, ky, kx)` and maps `(coil, y, x)`, returns `(y, x)`.
-_sp_k(ksp3) = parent(permutedims(ComplexF64.(ksp3), (3, 2, 1)))
-_sp_s(smaps3) = parent(permutedims(ComplexF64.(smaps3), (3, 2, 1)))
+_sp_k(ksp3) = parent(permutedims(CMP_CTYPE.(ksp3), (3, 2, 1)))
+_sp_s(smaps3) = parent(permutedims(CMP_CTYPE.(smaps3), (3, 2, 1)))
 
 """
     sigpy_recon(method, ksp3, smaps3; λ, iterations) -> (time_ms, image)
@@ -414,7 +418,7 @@ end
 # `lambda_calibration.json` for the comparison to stay at matched accuracy.
 const MIRT = ComparisonHarness.MIRT
 
-_mirt_samp(ksp3) = dropdims(any(!iszero, ComplexF64.(ksp3); dims = 3); dims = 3)
+_mirt_samp(ksp3) = dropdims(any(!iszero, ksp3; dims = 3); dims = 3)
 _mirt_y(ksp3, samp) = reduce(hcat, [ComplexF32.(ksp3[:, :, c])[samp] for c in axes(ksp3, 3)])
 
 """
@@ -517,8 +521,8 @@ The solver settings match the other SigPy rows (`ADMM`, `rho = CMP_RHO`, `max_cg
 CMP_CG_ITERS`). Returns the image as `(nx, ny, time)`.
 """
 function sigpy_lowrank(ksp4, smaps3, image_size; λ = 0.0, iterations = 10)
-    y = parent(permutedims(ComplexF64.(ksp4), (3, 4, 2, 1)))          # (T, coil, ky, kx)
-    mps = parent(permutedims(ComplexF64.(smaps3), (3, 2, 1)))          # (coil, y, x)
+    y = parent(permutedims(CMP_CTYPE.(ksp4), (3, 4, 2, 1)))          # (T, coil, ky, kx)
+    mps = parent(permutedims(CMP_CTYPE.(smaps3), (3, 2, 1)))          # (coil, y, x)
     weights = Float64.(dropdims(sum(abs, y, dims = (1, 2)), dims = (1, 2)) .> 0)
     T = size(y, 1)
     ishape = (T, 1, image_size[2], image_size[1])
@@ -603,7 +607,7 @@ count the ADMM rows use, not the outer count itself.
 """
 function mirt_lowrank(ksp4, smaps3; λ = 0.0, iterations = 10)
     nx, ny, nt, nc = size(ksp4)
-    samp = dropdims(any(!iszero, ComplexF64.(ksp4); dims = (3, 4)), dims = (3, 4))
+    samp = dropdims(any(!iszero, ksp4; dims = (3, 4)), dims = (3, 4))
     A = MIRT.Asense(samp, ComplexF32.(smaps3))
     y = [reduce(hcat, [ComplexF32.(ksp4[:, :, t, c])[samp] for c in 1:nc]) for t in 1:nt]
 
@@ -615,7 +619,9 @@ function mirt_lowrank(ksp4, smaps3; λ = 0.0, iterations = 10)
         end
         return g
     end
-    g_prox = (z, c) -> ComplexF32.(_svt(ComplexF64.(z), λ * c))
+    # The SVD runs at the working precision, as SigPy's `_MrtSVT` and MRT's own prox do — promoting
+    # to `ComplexF64` here would give MIRT a more accurate prox than the row it is compared against.
+    g_prox = (z, c) -> _svt(z, λ * c)
     # `_mirt_lipschitz` is inside the timed closure, for the reason given on `CMP_FISTA_RHO_MRIRECO`:
     # the step size is part of what a solve costs, and MRT pays `estimate_opnorm` in its own timing.
     run = () -> first(

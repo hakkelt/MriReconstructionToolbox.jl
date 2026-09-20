@@ -77,7 +77,7 @@ for t in 1:Td
     kbart[:, mask_pe, 1, :, 1, t] .= ComplexF32.(kspace_dyn[:, mask_pe, t, :])
 end
 # Zero-filled `(nx, ny, time, coil)` stack for MRIReco.
-ksp_z = zeros(ComplexF64, Nd, Nd, Td, Ncd)
+ksp_z = zeros(CMP_CTYPE, Nd, Nd, Td, Ncd)
 for t in 1:Td
     ksp_z[:, mask_pe, t, :] .= kspace_dyn[:, mask_pe, t, :]
 end
