@@ -138,7 +138,10 @@ for (key, meth, mrtreg, bartcmd, mrm, λdef) in specs
             @warn "SigPy $meth failed" exception = (e, catch_backtrace())
         end
         try
-            ti, xi = mirt_lowrank(ksp_z, cmap_dyn; λ = load_lambda(key, "MIRT", λdef), iterations = IT)
+            # `proxgrad_budget(IT)`, not `IT`: POGM spends one normal-operator application per
+            # iteration where the ADMM rows spend `CMP_CG_ITERS + 1`. Matched work, not matched
+            # iteration count — the same correction `BART_BUDGET` makes for BART.
+            ti, xi = mirt_lowrank(ksp_z, cmap_dyn; λ = load_lambda(key, "MIRT", λdef), iterations = proxgrad_budget(IT))
             addrow(meth, "MIRT", ti, xi, xm)
         catch e
             @warn "MIRT $meth failed" exception = (e, catch_backtrace())

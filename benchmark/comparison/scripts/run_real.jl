@@ -2,7 +2,8 @@
 #   2D M4RAW multi-coil ("Real Data"), its SENSE-combined single channel ("Real Data 1ch"),
 #   the large multi-slice 3D FSE knee ("Real 3D", one central slice for the cross-toolkit row),
 #   and the OCMR cine ("Real Dynamic", CG-SENSE on one frame).
-# CG-SENSE (10 it) on the full k-space; TV / L1-wavelet on a 2× phase-encode mask.
+# CG-SENSE (10 it), TV and L1-wavelet, all on the same 2× phase-encode mask (see the comment on
+# the mask in `real_case_rows!` for why CG-SENSE cannot use the acquired k-space here).
 #   MRT_BENCH_REAL_DATA is not required here — this section always runs the real-data rows.
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_real.jl --threads=N [--use-mkl]
 #
@@ -33,50 +34,10 @@ function real_case_rows!(category, ksp3_raw, smaps3, ref)
     @info "real case" category size = (nx, ny) coils = nc
     add(meth, fw, t, x, xmrt) = push!(results, BenchResult(category, meth, fw, NUM_THREADS, t, mag_nrmse(x, ref), xmrt === nothing ? 0.0 : mag_nrmse(xmrt, x)))
 
-    # **The real k-space is not fully sampled and MRT has to be told so.** M4RAW here has 61 of 256
-    # phase-encode lines empty (76.2 % sampled), and BART / SigPy / MRIReco all infer the pattern
-    # from the zeros in the data — BART prints `Acc: 1.31`, SigPy's `SenseRecon` derives `weights`
-    # from `abs(y).sum(axis=0) > 0`. Handing MRT the dense array with no `subsampling` made it solve
-    # a *fully sampled* problem instead, and because these sensitivity maps are normalized
-    # (Σ|Sᶜ|² ≡ 1 to machine precision) that problem has 𝒜ᴴ𝒜 = I: the adjoint image is already its
-    # exact solution, so 10 CG iterations moved the iterate by 5e-16 and MRT reported a *different*
-    # NRMSE (0.2635) from everyone else (0.3095) while still paying for the iterations. With the
-    # mask passed, MRT reproduces SigPy's trajectory digit for digit (1 it 0.26352, 5 it 0.27099,
-    # 10 it 0.30948 vs 0.30949, 30 it 0.49097) at 130.6 ms against SigPy's 290.9 ms.
-    #
-    # (The NRMSE *rising* with iterations is CG semi-convergence on noisy real data, not a defect:
-    # the least-squares solution is worse than an early iterate. It is the same for every toolkit.)
+    # What the scanner actually sampled. BART / SigPy / MRIReco infer this from the zeros in the
+    # data — BART prints `Acc: 1.31` on the M4RAW case, SigPy's `SenseRecon` derives `weights` from
+    # `abs(y).sum(axis=0) > 0` — and MRT is told it explicitly through `subsampling`.
     sampled = dropdims(sum(abs, ksp3, dims = 3), dims = 3) .> 0
-    acqf = CartesianAcquisitionInfo(
-        NamedDimsArray(ComplexF64.(ksp3)[sampled, :], (:kxy, :coil)); is3D = false,
-        image_size = (nx, ny), sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(ComplexF64.(smaps3)),
-        shifted_image_dims = (:x, :y), subsampling = sampled
-    )
-    # `reltol = 0.0`, as in `run_cgsense.jl`: the other three toolkits are given `CMP_TOL_INNER = 0` and
-    # run their full 10 iterations, so MRT must not be allowed to exit early here either.
-    mcg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0); maxit = 10, reltol = 0.0)
-    tm, _, xm = time_reconstruction(() -> reconstruct(acqf, mcg; verbosity = Silent()))
-    add("CG-SENSE (10 it)", FW, tm * 1000, xm, nothing)
-    for (fw, f) in (
-            ("SigPy", () -> sigpy_recon(:cgsense, ksp3, smaps3; iterations = 10)),
-            (
-                "BART ($(USE_MKL ? "MKL" : "OpenBLAS"))", () -> begin
-                    tb, _, rb = time_bart(
-                        "pics -S -w 1 -i 10",
-                        reshape(ComplexF32.(ksp3), nx, ny, 1, nc), reshape(ComplexF32.(smaps3), nx, ny, 1, nc)
-                    )
-                    (tb * 1000, rb[:, :, 1])
-                end,
-            ),
-            ("MRIReco", () -> mrireco(:cgsense, ksp3, smaps3, (nx, ny); iterations = 10)),
-        )
-        try
-            t, x = f()
-            add("CG-SENSE (10 it)", fw, t, x, xm)
-        catch e
-            @warn "$fw CG-SENSE ($category) failed" exception = (e, catch_backtrace())
-        end
-    end
 
     kymask = falses(ny)
     kymask[1:2:ny] .= true
@@ -91,6 +52,62 @@ function real_case_rows!(category, ksp3_raw, smaps3, ref)
         is3D = false, image_size = (nx, ny), sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(ComplexF64.(smaps3)),
         shifted_image_dims = (:x, :y), subsampling = mask2
     )
+
+    # **CG-SENSE runs on the same 2× mask as the sparsity rows, not on the acquired k-space**, for
+    # a reason that took an iteration sweep to see: these sensitivity maps are normalized
+    # (Σ|Sᶜ|² ≡ 1 to machine precision), so on a *fully* sampled frame 𝒜ᴴ𝒜 = I and the adjoint
+    # image is already the exact least-squares solution. Three of the four cases here are fully
+    # sampled, and on them the row measured nothing: BART's `pics` hits its own residual tolerance
+    # and stops, while MRT / SigPy / MRIReco are pinned to `CMP_TOL_INNER = 0` and spend all ten.
+    # Measured on the knee slice, BART's raw wall time is flat in the iteration count —
+    # 174.6 ms at 5, 177.4 at 10, 176.0 at 20, 175.6 at 40 — a fitted 0.58 ms per iteration against
+    # MRT's 4.82 ms on the *same* problem, i.e. an apparent 8.4x faster iteration that is an early
+    # exit. On the undersampled M4RAW case, where 𝒜ᴴ𝒜 ≠ I, BART scales linearly and its
+    # per-iteration cost is 4.93 ms against MRT's 4.88 ms — the same work rate, as it should be.
+    # BART's inner-CG tolerance is hardcoded and not CLI-settable, so the only way to hold every
+    # toolkit to the same ten iterations is to give them a problem that needs ten.
+    #
+    # (The NRMSE *rising* with iterations is CG semi-convergence on noisy real data, not a defect:
+    # the least-squares solution is worse than an early iterate. It is the same for every toolkit.)
+    #
+    # One consequence to read correctly: on **"Real Data 1ch"** the `nrmse_mrt` agreement column is
+    # not meaningful. A single coil at 2x has no coil information to unfold the aliasing, so 𝒜ᴴ𝒜 is
+    # singular and the least-squares solution is a whole affine set. Which member a solver lands on
+    # is decided by its warm start — MRT starts from the scaled 𝒜ᴴy, BART / SigPy / MRIReco from
+    # zero (they agree with each other to 1e-3 and differ from MRT by ~0.69). Every one of them is
+    # a correct minimizer; the row measures wall time at matched effort, nothing about accuracy.
+    #
+    # MRT must be told the pattern either way. Handed the dense array with no `subsampling` it
+    # solved the fully-sampled problem instead, moved the iterate by 5e-16 in ten iterations, and
+    # reported a *different* NRMSE (0.2635) from everyone else (0.3095) while still paying for
+    # them. With the mask passed it reproduces SigPy's trajectory digit for digit.
+    #
+    # `reltol = 0.0`, as in `run_cgsense.jl`: the other three toolkits are given `CMP_TOL_INNER = 0`
+    # and run their full 10 iterations, so MRT must not be allowed to exit early here either.
+    mcg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0); maxit = 10, reltol = 0.0)
+    tm, _, xm = time_reconstruction(() -> reconstruct(acqu, mcg; verbosity = Silent()))
+    add("CG-SENSE (10 it)", FW, tm * 1000, xm, nothing)
+    for (fw, f) in (
+            ("SigPy", () -> sigpy_recon(:cgsense, ksp_z, smaps3; iterations = 10)),
+            (
+                "BART ($(USE_MKL ? "MKL" : "OpenBLAS"))", () -> begin
+                    tb, _, rb = time_bart(
+                        "pics -S -w 1 -i 10",
+                        reshape(ComplexF32.(ksp_z), nx, ny, 1, nc), reshape(ComplexF32.(smaps3), nx, ny, 1, nc)
+                    )
+                    (tb * 1000, rb[:, :, 1])
+                end,
+            ),
+            ("MRIReco", () -> mrireco(:cgsense, ksp_z, smaps3, (nx, ny); iterations = 10)),
+        )
+        try
+            t, x = f()
+            add("CG-SENSE (10 it)", fw, t, x, xm)
+        catch e
+            @warn "$fw CG-SENSE ($category) failed" exception = (e, catch_backtrace())
+        end
+    end
+
     # Real data has no ground truth, so λ is taken from the synthetic calibration — valid because
     # both k-spaces are unit-RMS normalised (see `norm_ksp`). Each toolkit uses its own λ.
     IT = CMP_OUTER
