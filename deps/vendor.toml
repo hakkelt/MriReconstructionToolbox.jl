@@ -166,6 +166,15 @@ branch = "fix/fftw-thread-gate-planner-flags"
 parent = "unified-threading"
 pr = "hakkelt/AbstractOperators.jl#25"
 
+# MIN_BATCH_WORK_FOR_PARALLEL was never measured (its own docstring called it "provisional");
+# swept and raised to its real crossover. unified-threading owns threading_policy.jl and is
+# frozen (open against the real upstream), so this is a branch of its own stacked on it, same
+# reasoning as the FFTW gate fix above.
+[[AbstractOperators.stack]]
+branch = "fix/batch-op-threading-threshold"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#26"
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
