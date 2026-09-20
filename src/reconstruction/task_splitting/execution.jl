@@ -321,21 +321,25 @@ against a 16 MiB threshold). Two conditions, therefore:
     outer parallelism beats full inner parallelism, so the tie goes to the executor that keeps
     every thread busy.
 
-Measured on the 3-D FSE knee (320×320 per slice, `ComplexF32`, 8 threads, exclusive node), 1
-thread → 8 threads:
+Measured on the 3-D FSE knee (320×320 per slice, `ComplexF32`, 8 threads, exclusive test node),
+1 thread → 8 threads, with the condition below (`after`) and with the `length(plan) > nthreads()`
+it replaced (`before`):
 
-| slices | CG-SENSE (10 it)   | TV (20 it)           |
-|--------|--------------------|----------------------|
-|  1     | 77.9 → 75.2 ms     |   584 → 590 ms       |
-|  4     | 304 → 328 ms       |  2535 → 2481 ms      |
-|  8     | 770 → 727 ms       |  4926 → 4955 ms      |
-| 16     | 1564 → 682 ms      | 10128 → 4880 ms      |
-| 24     | 2164 → 917 ms      | 14392 → 7149 ms      |
+| slices | CG-SENSE before | CG-SENSE after   | TV (20 it) before | TV (20 it) after   |
+|--------|-----------------|------------------|-------------------|--------------------|
+|  1     | 77.9 → 75.2 ms  | 83.1 → 78.7 ms   |   584 →  590 ms   |   650 →  585 ms    |
+|  4     | 304 → 328 ms    | 331 → 231 ms     |  2535 → 2481 ms   |  2583 → 1627 ms    |
+|  8     | 770 → 727 ms    | 832 → 404 ms     |  4926 → 4955 ms   |  5074 → 3073 ms    |
+| 16     | 1564 → 682 ms   | 1338 → 752 ms    | 10128 → 4880 ms   |  9722 → 5666 ms    |
+| 24     | 2164 → 917 ms   | 2147 → 1089 ms   | 14392 → 7149 ms   | 14406 → 8287 ms    |
 
-The rows up to 8 are the ones this function used to get wrong: the condition was
-`length(plan) > nthreads()`, so 8 slices on 8 threads — a perfect one-slice-per-thread split —
-fell through to the sequential executor and scaled 1.06x. Everything at or below the thread count
-did. With the condition below, those rows thread too; 16 and 24 already did and are unchanged.
+The rows at 4 and 8 are the ones the old condition got wrong: 8 slices on 8 threads — a perfect
+one-slice-per-thread split — fell through to the sequential executor and scaled 1.06x, and
+everything at or below the thread count did the same. They now scale 2.06x and 1.65x. Rows 16 and
+24 already took the threaded path and are unchanged within run-to-run noise.
+
+The ceiling is ~2x rather than ~8x because a slice's solve is memory-bandwidth bound (the FFT and
+the `SignAlternation` passes around it), so eight cores do not buy eight times the throughput.
 """
 function suggest_executor(plan, acq_data, config)
     isnothing(config.task_executor) || return config.task_executor
