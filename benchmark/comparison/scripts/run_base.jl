@@ -29,7 +29,7 @@ mrt_1c = mrt_raw .* (norm(abs.(img_mc)) / norm(abs.(mrt_raw)))
 push!(results, BenchResult("Base 1C", "1-Coil Adjoint", FW, NUM_THREADS, t_mrt * 1000, nrmse(mrt_1c, img_mc), 0.0))
 
 kdata_sp_1c = parent(permutedims(kspace_1c, (2, 1)))
-F_sp_1c = sp_mri.linop.Sense(ones(ComplexF64, 1, N, N), ishape = (N, N))
+F_sp_1c = sp_mri.linop.Sense(ones(CMP_CTYPE, 1, N, N), ishape = (N, N))
 t_sp, _, sp_raw = time_reconstruction(() -> F_sp_1c.H(reshape(kdata_sp_1c, 1, N, N)))
 sp_1c = permutedims(sp_raw, (2, 1)); sp_1c = sp_1c .* (norm(abs.(img_mc)) / norm(abs.(sp_1c)))
 push!(results, BenchResult("Base 1C", "1-Coil Adjoint", "SigPy", NUM_THREADS, t_sp * 1000, nrmse(sp_1c, img_mc), nrmse(mrt_1c, sp_1c)))
@@ -62,10 +62,10 @@ push!(results, BenchResult("Base MC", "Cartesian Adjoint", BART_FW, NUM_THREADS,
 # MRIReco multi-coil adjoint (Cartesian direct): AcquisitionData accepts a dense
 # (x, y, z, channel, echo, rep) k-space array directly (`enc2D` for a 2D encode).
 try
-    acq_mr = AcquisitionData(reshape(ComplexF64.(kspace_mc), N, N, 1, Nc, 1, 1); enc2D = true)
-    rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => (N, N), :senseMaps => reshape(ComplexF64.(cmap), N, N, 1, Nc))
+    acq_mr = AcquisitionData(reshape(CMP_CTYPE.(kspace_mc), N, N, 1, Nc, 1, 1); enc2D = true)
+    rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => (N, N), :senseMaps => reshape(CMP_CTYPE.(cmap), N, N, 1, Nc))
     t_mr, _, mr_img = time_reconstruction(() -> MRIReco.reconstruction(acq_mr, rp)[:, :, 1, 1, :])
-    mr = sum(mr_img .* conj.(reshape(ComplexF64.(cmap), N, N, Nc)), dims = 3)[:, :, 1] ./ sum(abs2.(cmap), dims = 3)[:, :, 1]
+    mr = sum(mr_img .* conj.(reshape(CMP_CTYPE.(cmap), N, N, Nc)), dims = 3)[:, :, 1] ./ sum(abs2.(cmap), dims = 3)[:, :, 1]
     push!(results, BenchResult("Base MC", "Cartesian Adjoint", "MRIReco", NUM_THREADS, t_mr * 1000, mag_nrmse(mr, img_mc), mag_nrmse(recon, mr)))
 catch e
     @warn "MRIReco Cartesian adjoint failed" exception = (e, catch_backtrace())

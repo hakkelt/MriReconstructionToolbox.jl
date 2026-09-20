@@ -250,7 +250,27 @@ function write_section(name::AbstractString)
     return path
 end
 
+"""
+    CMP_CTYPE / CMP_RTYPE
+
+The complex (and matching real) element type every toolkit reconstructs in. **`ComplexF32`**, which
+is what BART is: its `complex float` is a pair of `float32`, with no double-precision build option,
+so a double-precision run of the other four compares a toolkit doing twice the memory traffic
+against one that is not. Single precision is also what MRI reconstruction is done in — k-space off
+the scanner is 16-bit integer or 32-bit float.
+
+Set `CMP_PRECISION=double` to go back to `ComplexF64` for everything except BART, which cannot.
+
+Only the *solve* runs in this type. Each bridge promotes its result to `ComplexF64` on the way out,
+outside the timed region, so the NRMSE column is not itself computed at the precision under test.
+"""
+const CMP_CTYPE = get(ENV, "CMP_PRECISION", "single") == "double" ? ComplexF64 : ComplexF32
+const CMP_RTYPE = real(CMP_CTYPE)
+@info "comparison precision" ctype = CMP_CTYPE
+
 # Shared 2D multi-coil brain phantom (most sections).
 const N = 128
 const Nc = 8
-const IMG_MC, KSPACE_MC, CMAP = generate_multicoil_brain(N = N, num_coils = Nc)
+const IMG_MC, KSPACE_MC, CMAP = let (i, k, c) = generate_multicoil_brain(N = N, num_coils = Nc)
+    (i, CMP_CTYPE.(k), CMP_CTYPE.(c))
+end

@@ -107,7 +107,7 @@ DYN_METHODS = Dict(
 )
 
 # Zero-filled `(nx, ny, time, coil)` frame stack for MRIReco.
-ksp_dyn_z = zeros(ComplexF64, Nd, Nd, Td, Ncd)
+ksp_dyn_z = zeros(CMP_CTYPE, Nd, Nd, Td, Ncd)
 for t in 1:Td
     ksp_dyn_z[:, mask_pe, t, :] .= kspace_dyn[:, mask_pe, t, :]
 end

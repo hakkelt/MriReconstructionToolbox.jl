@@ -3,7 +3,8 @@
 #   the large multi-slice 3D FSE knee ("Real 3D", one central slice for the cross-toolkit row),
 #   and the OCMR cine ("Real Dynamic", CG-SENSE on one frame).
 # CG-SENSE (10 it), TV and L1-wavelet, all on the same 2× phase-encode mask (see the comment on
-# the mask in `real_case_rows!` for why CG-SENSE cannot use the acquired k-space here).
+# the mask in `real_case_rows!` for why CG-SENSE cannot use the acquired k-space here). The
+# single-channel case has no CG-SENSE row — see where it is built.
 #   MRT_BENCH_REAL_DATA is not required here — this section always runs the real-data rows.
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_real.jl --threads=N [--use-mkl]
 #
@@ -28,8 +29,8 @@ using NamedDims: unname
 
 # One 2D case = (ksp3 (nx,ny,coil), smaps3, ref (nx,ny)); build the CG-SENSE + undersampled
 # TV / wavelet rows for MRT / SigPy / BART / MRIReco.
-function real_case_rows!(category, ksp3_raw, smaps3, ref)
-    ksp3 = norm_ksp(ComplexF64.(ksp3_raw))              # unit-RMS so calibrated λ transfers here
+function real_case_rows!(category, ksp3_raw, smaps3, ref; cgsense = true)
+    ksp3 = norm_ksp(CMP_CTYPE.(ksp3_raw))               # unit-RMS so calibrated λ transfers here
     nx, ny, nc = size(ksp3)
     @info "real case" category size = (nx, ny) coils = nc
     add(meth, fw, t, x, xmrt) = push!(results, BenchResult(category, meth, fw, NUM_THREADS, t, mag_nrmse(x, ref), xmrt === nothing ? 0.0 : mag_nrmse(xmrt, x)))
@@ -48,8 +49,8 @@ function real_case_rows!(category, ksp3_raw, smaps3, ref)
     mask2 = falses(nx, ny); mask2[:, kymask] .= true; mask2 .&= sampled
     ksp_z = copy(ksp3); ksp_z[.!mask2, :] .= 0
     acqu = CartesianAcquisitionInfo(
-        NamedDimsArray(ComplexF64.(ksp3)[mask2, :], (:kxy, :coil));
-        is3D = false, image_size = (nx, ny), sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(ComplexF64.(smaps3)),
+        NamedDimsArray(ksp3[mask2, :], (:kxy, :coil));
+        is3D = false, image_size = (nx, ny), sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(CMP_CTYPE.(smaps3)),
         shifted_image_dims = (:x, :y), subsampling = mask2
     )
 
@@ -70,13 +71,6 @@ function real_case_rows!(category, ksp3_raw, smaps3, ref)
     # (The NRMSE *rising* with iterations is CG semi-convergence on noisy real data, not a defect:
     # the least-squares solution is worse than an early iterate. It is the same for every toolkit.)
     #
-    # One consequence to read correctly: on **"Real Data 1ch"** the `nrmse_mrt` agreement column is
-    # not meaningful. A single coil at 2x has no coil information to unfold the aliasing, so 𝒜ᴴ𝒜 is
-    # singular and the least-squares solution is a whole affine set. Which member a solver lands on
-    # is decided by its warm start — MRT starts from the scaled 𝒜ᴴy, BART / SigPy / MRIReco from
-    # zero (they agree with each other to 1e-3 and differ from MRT by ~0.69). Every one of them is
-    # a correct minimizer; the row measures wall time at matched effort, nothing about accuracy.
-    #
     # MRT must be told the pattern either way. Handed the dense array with no `subsampling` it
     # solved the fully-sampled problem instead, moved the iterate by 5e-16 in ten iterations, and
     # reported a *different* NRMSE (0.2635) from everyone else (0.3095) while still paying for
@@ -84,27 +78,29 @@ function real_case_rows!(category, ksp3_raw, smaps3, ref)
     #
     # `reltol = 0.0`, as in `run_cgsense.jl`: the other three toolkits are given `CMP_TOL_INNER = 0`
     # and run their full 10 iterations, so MRT must not be allowed to exit early here either.
-    mcg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0); maxit = 10, reltol = 0.0)
-    tm, _, xm = time_reconstruction(() -> reconstruct(acqu, mcg; verbosity = Silent()))
-    add("CG-SENSE (10 it)", FW, tm * 1000, xm, nothing)
-    for (fw, f) in (
-            ("SigPy", () -> sigpy_recon(:cgsense, ksp_z, smaps3; iterations = 10)),
-            (
-                "BART ($(USE_MKL ? "MKL" : "OpenBLAS"))", () -> begin
-                    tb, _, rb = time_bart(
-                        "pics -S -w 1 -i 10",
-                        reshape(ComplexF32.(ksp_z), nx, ny, 1, nc), reshape(ComplexF32.(smaps3), nx, ny, 1, nc)
-                    )
-                    (tb * 1000, rb[:, :, 1])
-                end,
-            ),
-            ("MRIReco", () -> mrireco(:cgsense, ksp_z, smaps3, (nx, ny); iterations = 10)),
-        )
-        try
-            t, x = f()
-            add("CG-SENSE (10 it)", fw, t, x, xm)
-        catch e
-            @warn "$fw CG-SENSE ($category) failed" exception = (e, catch_backtrace())
+    if cgsense
+        mcg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0); maxit = 10, reltol = 0.0)
+        tm, _, xm = time_reconstruction(() -> reconstruct(acqu, mcg; verbosity = Silent()))
+        add("CG-SENSE (10 it)", FW, tm * 1000, xm, nothing)
+        for (fw, f) in (
+                ("SigPy", () -> sigpy_recon(:cgsense, ksp_z, smaps3; iterations = 10)),
+                (
+                    "BART ($(USE_MKL ? "MKL" : "OpenBLAS"))", () -> begin
+                        tb, _, rb = time_bart(
+                            "pics -S -w 1 -i 10",
+                            reshape(ComplexF32.(ksp_z), nx, ny, 1, nc), reshape(ComplexF32.(smaps3), nx, ny, 1, nc)
+                        )
+                        (tb * 1000, rb[:, :, 1])
+                    end,
+                ),
+                ("MRIReco", () -> mrireco(:cgsense, ksp_z, smaps3, (nx, ny); iterations = 10)),
+            )
+            try
+                t, x = f()
+                add("CG-SENSE (10 it)", fw, t, x, xm)
+            catch e
+                @warn "$fw CG-SENSE ($category) failed" exception = (e, catch_backtrace())
+            end
         end
     end
 
@@ -148,11 +144,14 @@ function real_case_rows!(category, ksp3_raw, smaps3, ref)
     return
 end
 
-# 2D M4RAW, full + single-channel
-for (category, combine) in (("Real Data", false), ("Real Data 1ch", true))
+# 2D M4RAW, full + single-channel. The single-channel case carries the TV / wavelet rows only: at
+# 2x a lone coil has no information to unfold the aliasing with, so 𝒜ᴴ𝒜 is singular and CG-SENSE's
+# least-squares solution is an affine set rather than a point — each toolkit lands on a different
+# member of it depending on its warm start, and comparing them measures the warm starts.
+for (category, combine, cg) in (("Real Data", false, true), ("Real Data 1ch", true, false))
     try
         rc = load_real_case(; combine_coils = combine)
-        real_case_rows!(category, unname(rc.kspace), unname(rc.smaps), rc.reference)
+        real_case_rows!(category, unname(rc.kspace), unname(rc.smaps), rc.reference; cgsense = cg)
     catch e
         @warn "$category section failed" exception = (e, catch_backtrace())
     end
@@ -174,7 +173,7 @@ try
     ks = unname(rc.kspace)[:, :, :, 1]                        # already 2×-undersampled (compacted)
     # rebuild a dense frame for the toolkit rows
     ny_full = size(rc.reference, 2)
-    ks_full = zeros(ComplexF64, size(ks, 1), ny_full, size(ks, 3))
+    ks_full = zeros(CMP_CTYPE, size(ks, 1), ny_full, size(ks, 3))
     ks_full[:, rc.subsampling[2], :] .= ks
     real_case_rows!("Real Dynamic (1 frame)", ks_full, unname(rc.smaps), rc.reference[:, :, 1])
 catch e
