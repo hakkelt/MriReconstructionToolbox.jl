@@ -112,9 +112,26 @@ for t in 1:Td
     ksp_dyn_z[:, mask_pe, t, :] .= kspace_dyn[:, mask_pe, t, :]
 end
 
+"""
+    grid_centre(method, toolbox, λc) -> Float64
+
+The centre of a toolbox's λ grid. Every toolbox shares `λc` except where its *operating point*
+differs enough that the shared decade is the wrong one — and one does.
+
+MIRT's global low-rank row runs POGM at `proxgrad_budget(IT_CAL)` iterations (see that function),
+where the other toolkits run ADMM. Early stopping is itself a regularizer, so a solver that runs
+to convergence wants a larger λ than one stopped at 20 iterations: measured on this phantom at the
+matched budget with a valid step size, the optimum is at λ ≈ 3–10 (NRMSE 0.0789), while the shared
+grid stops at 0.316. Its calibrated λ used to come back pinned to that ceiling with a flat curve —
+the sweep could not see the optimum. This shifts MIRT's grid up to cover it.
+"""
+function grid_centre(method, toolbox, λc)
+    (method == "lowrank" && toolbox == "MIRT") && return 3.0
+    return λc
+end
+
 function sweep_dyn(method)
     mrtreg, bartcmd, mrm, λc = DYN_METHODS[method]
-    grid = 10 .^ range(log10(λc) - 2, log10(λc) + 1.5, length = NGRID)
     curves = Dict{String, Vector{Tuple{Float64, Float64}}}()
     toolkits = ["MRT", "BART"]
     mrm === nothing || push!(toolkits, "MRIReco")
@@ -122,6 +139,8 @@ function sweep_dyn(method)
     method == "lowrank" && append!(toolkits, ["SigPy", "MIRT"])
     for tb in toolkits
         pts = Tuple{Float64, Float64}[]
+        c = grid_centre(method, tb, λc)
+        grid = 10 .^ range(log10(c) - 2, log10(c) + 1.5, length = NGRID)
         for λ in grid
             e = try
                 if tb == "MRT"
@@ -131,7 +150,7 @@ function sweep_dyn(method)
                 elseif tb == "SigPy"
                     err_dyn(sigpy_lowrank(ksp_dyn_z, cmap_dyn, (Nd, Nd); λ, iterations = IT_CAL)[2])
                 elseif tb == "MIRT"
-                    err_dyn(mirt_lowrank(ksp_dyn_z, cmap_dyn; λ, iterations = IT_CAL)[2])
+                    err_dyn(mirt_lowrank(ksp_dyn_z, cmap_dyn; λ, iterations = proxgrad_budget(IT_CAL))[2])
                 else
                     err_dyn(dropdims(run_bart(1, bartcmd(λ), kbart_dyn, sbart_dyn), dims = (3, 4, 5)))
                 end

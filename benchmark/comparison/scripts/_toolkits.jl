@@ -83,6 +83,15 @@ returns 2.320 against a converged 2.356 (1.5% low), and even `rtol = 0.1` return
 
 MRT needs no equivalent knob: it normalizes the encoding operator to unit spectral norm and takes
 `γ = 1/Lf` exactly.
+
+**Which is why this is not what `mrireco` passes.** A hand-supplied `rho` is a free step size: it
+takes the result of a power iteration without paying for one, while MRT's timing includes
+`estimate_opnorm` on every regularized solve (`solve_core.jl:347`) — on the 128²×8 phantom that is
+153 ms against a 300 ms wavelet solve, i.e. half the row. Measured on the same operator,
+`power_iterations(AHA)` costs MRIReco **221 ms**. Passing 0.4 therefore hid, and credited to
+MRIReco, more time than its entire reported wavelet row. `mrireco` now estimates the step itself,
+inside the timed region (`ρ = nothing`); this constant remains only as an `ENV` escape hatch for
+pinning the step by hand, and is no longer the default for any row.
 """
 const CMP_FISTA_RHO_MRIRECO = parse(Float64, get(ENV, "CMP_FISTA_RHO_MRIRECO", "0.4"))
 
@@ -108,6 +117,30 @@ FISTA (`-R W`) is different — no inner CG, and `iter_fista_defaults.tol = 0` i
 so there `-i` *is* the iteration count and `CMP_OUTER` is passed directly.
 """
 const BART_BUDGET = parse(Int, get(ENV, "BART_BUDGET", string(CMP_OUTER * CMP_CG_ITERS)))
+
+"""
+    proxgrad_budget(outer) -> Int
+
+How many **proximal-gradient** iterations equal `outer` ADMM iterations, in applications of the
+normal operator: each ADMM iteration costs `CMP_CG_ITERS` inner CG applications plus the gradient,
+so `outer * (CMP_CG_ITERS + 1)`.
+
+MIRT ships no ADMM, so `mirt_lowrank` runs POGM — one normal-operator application per iteration.
+Passing it `CMP_OUTER` therefore gave it **a tenth of the work** every other low-rank row spends,
+and the row that came back was not a converged solve but an early-stopped one: measured on the
+dynamic phantom at 20 iterations it sits at NRMSE 0.109 for every λ from 0.01 to 100, four orders
+of magnitude over which nothing moves — the signature of an iterate that has barely left `x0`,
+not of an optimum. The same solve at 60 iterations reaches 0.0800, below MRT's 0.0845.
+
+This is the same correction `BART_BUDGET` makes for BART's `-i`, in the same unit. It changes what
+λ means for the row, which is why MIRT's grid in `calibrate_lambda.jl` is swept at this budget too
+and centred separately (`grid_centre`): early stopping is itself a regularizer, so a solver run to
+convergence wants a larger λ than one stopped at 20 iterations.
+
+Raising the budget is also what exposed [`_mirt_lipschitz`](@ref)'s job — a step size 1.24 % too
+large survives 20 iterations and diverges over 220 — so the two fixes only make sense together.
+"""
+proxgrad_budget(outer::Int) = outer * (CMP_CG_ITERS + 1)
 
 """
     norm_ksp(k) -> k scaled to unit RMS (‖k‖ = √length)
@@ -196,16 +229,39 @@ mrt_run(acq, reg; maxit::Int, kind::Symbol = :admm, rho::Real = CMP_RHO) =
 _mrireco_acq(ksp3) = AcquisitionData(reshape(ComplexF64.(ksp3), size(ksp3, 1), size(ksp3, 2), 1, size(ksp3, 3), 1, 1); enc2D = true)
 
 """
+    _mrireco_normal_operator(acq, senseMaps, reconSize) -> AHA
+
+The normal operator `(W∘E)ᴴ(W∘E)` that `reconstruction_multiCoil` builds internally
+(`IterativeReconstruction.jl:238-240`) and hands to `createLinearSolver` as `AHA`.
+
+Rebuilt here for one purpose: so a FISTA row can run the same `power_iterations(AHA)` step-size
+estimate `FISTA`'s constructor would run by itself, and be timed for it. Only the power iteration
+goes inside the timed region — the operator is built here, outside it, because `reconstruction`
+builds its own copy anyway and timing this one would charge MRIReco for the construction twice.
+"""
+function _mrireco_normal_operator(acq, senseMaps, reconSize)
+    E = MRIReco.encodingOps_parallel(acq, reconSize, senseMaps; slice = 1)
+    W = MRIReco.WeightingOp(ComplexF64; weights = MRIReco.samplingDensity(acq, reconSize)[1], rep = size(senseMaps, ndims(senseMaps)))
+    return MRIReco.normalOperator(∘(W, E[1]))
+end
+
+"""
     mrireco(method, ksp3, smaps3, reconSize; λ, iterations, ρ) -> (time_ms, image)
 
 `method ∈ (:cgsense, :tv, :wavelet, :nuclear, :llr)`. TGV / temporal-TV are unsupported (throw).
 Runs with `vary_rho = :none`, `iterationsCG = CMP_CG_ITERS` and zero tolerances so the full
 iteration budget is spent (`RegularizedLeastSquares.filterKwargs` drops the keys a given solver
 does not accept, so the same kwargs are safe for CGNR / ADMM / FISTA).
+
+`ρ = nothing` — the default for `:wavelet`, the one FISTA path — means *estimate the step size*:
+`0.95 / power_iterations(AHA)`, FISTA's own constructor default, computed inside the timed region
+because that is where MRT's equivalent `estimate_opnorm` is charged. See `CMP_FISTA_RHO_MRIRECO`
+for why it is not passed as a constant. For the ADMM rows `ρ` is a penalty, not a step size,
+and every toolkit is held to the same fixed `CMP_RHO`, so nothing is estimated there.
 """
 function mrireco(
         method::Symbol, ksp3, smaps3, reconSize; λ = 0.0, iterations = 10,
-        ρ = method === :wavelet ? CMP_FISTA_RHO_MRIRECO : CMP_RHO
+        ρ::Union{Real, Nothing} = method === :wavelet ? nothing : CMP_RHO
     )
     # `regTrafo` stays `opEye` for everything except TV — see the TV branch.
     reg, solver, sparse, regTrafo = if method === :cgsense
@@ -235,10 +291,14 @@ function mrireco(
         error("MRIReco has no $method")
     end
     senseMaps = reshape(ComplexF64.(smaps3), reconSize..., 1, size(smaps3, 3))
+    # A separate `AcquisitionData` on purpose: the timed closure builds its own (as every other
+    # row does), so this one costs the row nothing.
+    AHA = ρ === nothing ? _mrireco_normal_operator(_mrireco_acq(ksp3), senseMaps, reconSize) : nothing
     t, _, img = time_reconstruction() do
         rp = Dict{Symbol, Any}(
             :reco => "multiCoil", :reconSize => reconSize, :senseMaps => senseMaps,
-            :solver => solver, :reg => reg, :iterations => iterations, :rho => ρ,
+            :solver => solver, :reg => reg, :iterations => iterations,
+            :rho => AHA === nothing ? ρ : 0.95 / RLS.power_iterations(AHA),
             :vary_rho => :none, :iterationsCG => CMP_CG_ITERS,
             :absTol => 0.0, :relTol => 0.0, :tolInner => CMP_TOL_INNER,
         )
@@ -481,6 +541,47 @@ function sigpy_lowrank(ksp4, smaps3, image_size; λ = 0.0, iterations = 10)
     return t * 1000, permutedims(x, (3, 2, 1))
 end
 
+"""
+    _mirt_lipschitz(A, nx, ny; rtol, maxiter, safety) -> L
+
+`ρ(A'A)` for POGM's step size `1/L`, as an **upper** bound.
+
+POGM's worst-case rate is tight, so unlike FISTA it genuinely diverges when the step exceeds
+`1/L` — and a power iteration converges *from below*. This operator makes the trap easy to fall
+into: `A'A`'s leading eigenvalues are clustered, so convergence is slow. Traced on the dynamic
+phantom (64², 4 coils), `ρ = 4926.95`:
+
+| step | 10 | 30 | **50** | 100 | 150 | 200 |
+|---|---|---|---|---|---|---|
+| λmax | 4703.6 | 4820.5 | **4865.7** | 4910.5 | 4922.8 | 4926.9 |
+
+A fixed 50 steps — what this function replaced — returns 4865.7, **1.24 % low**, and that was
+enough to make the row diverge: at λ=10 it measured NRMSE 0.0789 at the true `ρ` but 0.5505 with
+the 50-step estimate, and at 330 iterations the estimate produced 1.106. The failure is invisible
+at the 20 iterations the row used to run, which is why it read as "MIRT converges to a worse
+answer" rather than as an unstable step size.
+
+So: iterate to a relative tolerance instead of a fixed count, and multiply by `safety` to land
+above the limit rather than below it. The margin costs nothing measurable — at the matched budget
+NRMSE is 0.0789 with `safety = 1.0` and 0.0789 with `safety = 1.2`, i.e. flat to four digits —
+because POGM's step only has to be *valid*, not sharp. Seeded, so the row's accuracy does not
+depend on the random draw.
+"""
+function _mirt_lipschitz(A, nx, ny; rtol = 1.0e-4, maxiter = 200, safety = 1.05)
+    v = ComplexF32.(randn(Random.MersenneTwister(0), ComplexF64, nx, ny))
+    v ./= Float32(norm(v))
+    λ = 0.0
+    for _ in 1:maxiter
+        w = A' * (A * v)
+        λnew = Float64(norm(w))
+        v = w ./ Float32(λnew)
+        converged = abs(λnew - λ) <= rtol * λnew
+        λ = λnew
+        converged && break
+    end
+    return safety * λ
+end
+
 # Singular-value soft thresholding of the Casorati matrix, the Julia side of the same prox.
 function _svt(x::AbstractArray{<:Complex, 3}, τ::Real)
     nx, ny, nt = size(x)
@@ -493,28 +594,18 @@ end
     mirt_lowrank(ksp4, smaps3; λ, iterations) -> (time_ms, image)
 
 Global low-rank reconstruction with MIRT: one `Asense` for the (frame-independent) sampling
-pattern, POGM with adaptive restart as the solver, and the Casorati SVT as its prox. `f_L` is the
-operator norm of `A'A`, from a short power iteration, as POGM needs a real step size rather than
-the ρ the ADMM rows take.
+pattern, POGM with adaptive restart as the solver, and the Casorati SVT as its prox. POGM needs a
+step size rather than the ρ the ADMM rows take; `f_L` comes from [`_mirt_lipschitz`](@ref), which
+is an *upper* bound on `ρ(A'A)` and has to be — see its docstring.
+
+`iterations` is a proximal-gradient count, so callers pass [`proxgrad_budget`](@ref) of the outer
+count the ADMM rows use, not the outer count itself.
 """
 function mirt_lowrank(ksp4, smaps3; λ = 0.0, iterations = 10)
     nx, ny, nt, nc = size(ksp4)
     samp = dropdims(any(!iszero, ComplexF64.(ksp4); dims = (3, 4)), dims = (3, 4))
     A = MIRT.Asense(samp, ComplexF32.(smaps3))
     y = [reduce(hcat, [ComplexF32.(ksp4[:, :, t, c])[samp] for c in 1:nc]) for t in 1:nt]
-
-    # Power iteration for ‖A'A‖: the same operator acts on every frame. Seeded, because POGM's step
-    # size is 1/L and an L that moves from call to call would make the row's accuracy depend on the
-    # random draw rather than on λ.
-    L = let v = ComplexF32.(randn(Random.MersenneTwister(0), ComplexF64, nx, ny))
-        λmax = 1.0f0
-        for _ in 1:50
-            w = A' * (A * v)
-            λmax = Float32(norm(w))
-            v = w ./ λmax
-        end
-        Float64(λmax)
-    end
 
     x0 = zeros(ComplexF32, nx, ny, nt)
     f_grad = function (x)
@@ -525,7 +616,13 @@ function mirt_lowrank(ksp4, smaps3; λ = 0.0, iterations = 10)
         return g
     end
     g_prox = (z, c) -> ComplexF32.(_svt(ComplexF64.(z), λ * c))
-    run = () -> first(MIRT.pogm_restart(x0, _ -> 0.0, f_grad, L; niter = iterations, g_prox))
+    # `_mirt_lipschitz` is inside the timed closure, for the reason given on `CMP_FISTA_RHO_MRIRECO`:
+    # the step size is part of what a solve costs, and MRT pays `estimate_opnorm` in its own timing.
+    run = () -> first(
+        MIRT.pogm_restart(
+            x0, _ -> 0.0, f_grad, _mirt_lipschitz(A, nx, ny); niter = iterations, g_prox
+        )
+    )
     t, _, img = time_reconstruction(run)
     return t * 1000, Array{ComplexF64}(img)
 end
