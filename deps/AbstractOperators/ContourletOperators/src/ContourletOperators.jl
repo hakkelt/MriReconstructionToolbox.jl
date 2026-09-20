@@ -2,12 +2,12 @@ module ContourletOperators
 
 export ContourletOp, NSCTOp, ContourletParams, parabolic_levels
 
-using AbstractOperators
+using ..AbstractOperators
 using Contourlets
 using RecursiveArrayTools: ArrayPartition
 import LinearAlgebra: mul!
 import Base: size
-import AbstractOperators:
+import ..AbstractOperators:
     domain_type, codomain_type, domain_array_type, codomain_array_type,
     fun_name, is_thread_safe, _normalize_array_type
 import OperatorCore: is_invertible
