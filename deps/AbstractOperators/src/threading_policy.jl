@@ -101,13 +101,27 @@ Batch operators differ from the block-parallel calculus operators in that the nu
 items is typically large and known only at call time, so the gate is on the work of a single
 wrapped `mul!`.
 
-PROVENANCE: provisional. Set deliberately low relative to the block thresholds because a
-batch loop usually has far more items than a DCAT has blocks, so the per-item overhead is
-amortised much better -- but this specific value has not been swept. Its purpose is to
-guarantee a size component exists at all, so that batches of four-element operators are not
-threaded.
+PROVENANCE: measured, `benchmark/batch_op_threshold.jl`, AMD EPYC 7352, 8 Julia threads,
+OPENBLAS_NUM_THREADS=1, batch = 8 (matches a `SimpleBatchOp` over coils or time frames), one
+forward+adjoint `mul!` pair per sample against a 2D `DFT` per item -- the dominant cost in
+the `GetIndex . DFT . DiagOp` per-frame/per-coil operator this constant actually gates.
+Losing at 2^10 (1024 elements/item, 0.56x) and 2^11 (implied by the N=32 -> N=64 jump), first
+winning and staying ahead from 2^12 (4096, N=64x64, 2.07x) through the largest swept size
+(2^16, 1.65x). The previous value (2^10) was never measured; it was a guess this sweep
+disproves -- a batch of 1024-element items was *slower* threaded, not merely under-amortised.
+
+This constant is necessary but not sufficient: it is blind to how many times the batch
+`mul!` will be called. Called once, threading a 4096-element-per-item batch is a clear win;
+called hundreds of times from inside a solver's inner loop (CG inside ADMM inside an outer
+loop), the fixed per-call cost this proxy kernel pays once -- `Task` allocation, the
+`with_thread_budget` scope guard, the join -- accumulates, and the isolated crossover
+measured here does not by itself prove the threaded path wins in that setting. See
+`_fftw_num_threads`'s "What n cannot express" for the same caller-side gap in the FFTW gate;
+it applies here for the same reason and is left to the same remedy, `threaded = false` at
+the call site, since the crossover is a property of the caller's call frequency, not of the
+per-item size this constant can see.
 """
-const MIN_BATCH_WORK_FOR_PARALLEL = 2^10
+const MIN_BATCH_WORK_FOR_PARALLEL = 2^12
 
 # ─── Storage classification ───────────────────────────────────────────────────
 
