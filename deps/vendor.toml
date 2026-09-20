@@ -158,6 +158,14 @@ branch = "fix/nfftop-dcf-contract"
 parent = "unified-threading"
 pr = "hakkelt/AbstractOperators.jl#21"
 
+# `unified-threading` owns the FFTW size policy, and its PR is open against the real upstream, so
+# the policy's own bugfix cannot be another commit there -- hence a branch of its own, stacked on
+# it, which is what rule 1 above means by "code that no existing branch owns" in practice.
+[[AbstractOperators.stack]]
+branch = "fix/fftw-thread-gate-planner-flags"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#25"
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
