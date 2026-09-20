@@ -90,3 +90,13 @@ function add_mul!(y::AbstractArray, L::AdjointOperator, b, buf::AbstractArray)
     y .+= buf
     return y
 end
+
+# `H.A[i]'` is not always an `AdjointOperator`: a self-adjoint operator short-circuits its own
+# `AdjointOperator` constructor back to itself (`Eye`, `NormalGetIndex`) or unwraps a double
+# adjoint, so `VCAT`'s adjoint loop can hand `add_mul!` a bare operator of any type. This is the
+# same buffer-and-add body as the `AdjointOperator` method above, as a fallback for that case.
+function add_mul!(y::AbstractArray, L::AbstractOperator, b, buf::AbstractArray)
+    mul!(buf, L, b)
+    y .+= buf
+    return y
+end
