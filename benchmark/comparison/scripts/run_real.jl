@@ -167,6 +167,173 @@ catch e
     @warn "Real 3D section failed" exception = (e, catch_backtrace())
 end
 
+# The same knee as a **volume**, which is the only row here that asks a toolkit to use more than
+# one core on more than one thing at a time.
+#
+# Every other cross-toolkit row in this suite is a single 2-D problem, and on a single 2-D problem
+# of this size there is very little for threads to do: MRT's own policy says so (a 320² `ComplexF32`
+# slice is 800 KiB against `serial_blas_threshold_bytes`' 16 MiB) and the measured 1→8 thread
+# numbers agree — TV on one slice is 584 ms at 1 thread and 590 ms at 8. So the whole comparison
+# was, accidentally, a single-core comparison, and MRT's headline parallelism — independent slices
+# solved concurrently, `reconstruct` splitting the task over `:z` — never appeared in it at all.
+#
+# Here each toolkit is given the same volume and left to use it however it likes: MRT in one
+# `reconstruct` call over the `(:kx, :ky, :coil, :z)` acquisition, BART in one `pics` call over
+# `(x, y, z, coil)` (it loops `z` itself), and MRIReco / SigPy over the per-slice loop their APIs
+# ask for. That is what a user of each would write, so the row measures the toolkits rather than
+# our skill at driving them.
+#
+# `REAL3D_NSLICES = 8` is deliberate: it is the thread count these runs use, i.e. exactly one slice
+# per thread. That case used to fall through `suggest_executor`'s
+# `length(plan) > nthreads()` to the sequential executor and scale 1.06x; see the table in that
+# function's docstring.
+const REAL3D_NSLICES = parse(Int, get(ENV, "CMP_REAL3D_NSLICES", "8"))
+try
+    rc = load_real_case_3d(; nslices = REAL3D_NSLICES)
+    ksv = CMP_CTYPE.(unname(rc.kspace))                       # (kx, ky, coil, z)
+    ssv = CMP_CTYPE.(unname(rc.smaps))                        # (x, y, coil, z)
+    nx, ny, nc, nz = size(ksv)
+    category = "Real 3D ($nz slices)"
+    @info "real volume case" category size = (nx, ny) coils = nc slices = nz
+
+    # One unit-RMS normalisation for the whole volume (not per slice), so a slice's λ is the same
+    # one the 2-D rows calibrated, and the slices stay on a common intensity scale.
+    ksv = norm_ksp(ksv)
+    ref3 = rc.reference
+
+    # The same 2x phase-encode mask as the 2-D rows, for the same reason (see `real_case_rows!`):
+    # intersected with what the scanner actually sampled, so every toolkit sees one pattern.
+    sampled = dropdims(sum(abs, ksv, dims = (3, 4)), dims = (3, 4)) .> 0
+    kymask = falses(ny)
+    kymask[1:2:ny] .= true
+    kymask[max(1, ny ÷ 2 - 8):min(ny, ny ÷ 2 + 8)] .= true
+    mask2 = falses(nx, ny); mask2[:, kymask] .= true; mask2 .&= sampled
+    ksz = copy(ksv); ksz[.!mask2, :, :] .= 0
+
+    acqv = CartesianAcquisitionInfo(
+        NamedDimsArray(ksv[mask2, :, :], (:kxy, :coil, :z));
+        is3D = false, image_size = (nx, ny), sensitivity_maps = NamedDimsArray(ssv, (:x, :y, :coil, :z)),
+        shifted_image_dims = (:x, :y), subsampling = mask2
+    )
+
+    # **BART loops over slices too, rather than taking the volume in one `pics` call.** Handed a
+    # 4-D `(x, y, z, coil)` array, `pics` transforms all three spatial dimensions — but `z` here is
+    # already an image axis (`load_real_case_3d` IFFTs along the kz partition axis before slicing),
+    # so the extra transform makes BART solve a different, slice-coupled problem. Measured: its
+    # result disagreed with every other toolkit by 6.2e-01 where SigPy and MRIReco agree with MRT
+    # to 3.4e-04 and 2.3e-03. The per-slice loop is the correct way to give BART *this* problem,
+    # and it is what the comparison is asking every toolkit for — eight independent 2-D solves.
+    # `bart_overhead` already discounts the process spawns, so the eight of them are not charged.
+    function bart_volume(cmd)
+        out = Array{ComplexF64}(undef, nx, ny, nz)
+        t = 0.0
+        for k in 1:nz
+            tb, _, rb = time_bart(
+                cmd,
+                reshape(ComplexF32.(ksz[:, :, :, k]), nx, ny, 1, nc),
+                reshape(ComplexF32.(ssv[:, :, :, k]), nx, ny, 1, nc),
+            )
+            t += tb * 1000; out[:, :, k] = rb[:, :, 1]
+        end
+        return (t, out)
+    end
+
+    # Both columns are averaged over slices, so the volume rows stay on the same scale as the
+    # single-slice rows above and can be read next to them.
+    volnrmse(x) = mean(mag_nrmse(unname(x)[:, :, k], ref3[:, :, k]) for k in 1:nz)
+    volagree(a, b) = mean(mag_nrmse(unname(a)[:, :, k], unname(b)[:, :, k]) for k in 1:nz)
+    addv(meth, fw, t, x, xmrt) = push!(
+        results, BenchResult(
+            category, meth, fw, NUM_THREADS, t, volnrmse(x),
+            xmrt === nothing ? 0.0 : volagree(xmrt, x)
+        )
+    )
+
+    # --- CG-SENSE over the volume ---
+    mcgv = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0); maxit = 10, reltol = 0.0)
+    tmv, _, xmv = time_reconstruction(() -> reconstruct(acqv, mcgv; verbosity = Silent()))
+    addv("CG-SENSE (10 it)", FW, tmv * 1000, xmv, nothing)
+
+    for (fw, f) in (
+            (
+                "SigPy", () -> begin
+                    out = Array{ComplexF64}(undef, nx, ny, nz)
+                    t = 0.0
+                    for k in 1:nz
+                        tk, xk = sigpy_recon(:cgsense, ksz[:, :, :, k], ssv[:, :, :, k]; iterations = 10)
+                        t += tk; out[:, :, k] = xk
+                    end
+                    (t, out)
+                end,
+            ),
+            (
+                "BART ($(USE_MKL ? "MKL" : "OpenBLAS"))", () -> bart_volume("pics -S -w 1 -i 10"),
+            ),
+            (
+                "MRIReco", () -> begin
+                    out = Array{ComplexF64}(undef, nx, ny, nz)
+                    t = 0.0
+                    for k in 1:nz
+                        tk, xk = mrireco(:cgsense, ksz[:, :, :, k], ssv[:, :, :, k], (nx, ny); iterations = 10)
+                        t += tk; out[:, :, k] = xk
+                    end
+                    (t, out)
+                end,
+            ),
+        )
+        try
+            t, x = f()
+            addv("CG-SENSE (10 it)", fw, t, x, xmv)
+        catch e
+            @warn "$fw volume CG-SENSE failed" exception = (e, catch_backtrace())
+        end
+    end
+
+    # --- Total Variation over the volume ---
+    λtv = load_lambda(:tv, "MRT", 0.01)
+    tmv, _, xmv = time_reconstruction(() -> mrt_run(acqv, TotalVariation2D(λtv); maxit = CMP_OUTER, kind = :admm))
+    addv("Total Variation ($CMP_OUTER it)", FW, tmv * 1000, xmv, nothing)
+
+    for (fw, f) in (
+            (
+                "SigPy", () -> begin
+                    out = Array{ComplexF64}(undef, nx, ny, nz); t = 0.0
+                    λ = load_lambda(:tv, "SigPy", 0.01)
+                    for k in 1:nz
+                        tk, xk = sigpy_recon(:tv, ksz[:, :, :, k], ssv[:, :, :, k]; λ, iterations = CMP_OUTER)
+                        t += tk; out[:, :, k] = xk
+                    end
+                    (t, out)
+                end,
+            ),
+            (
+                "BART ($(USE_MKL ? "MKL" : "OpenBLAS"))", () -> bart_volume(
+                    "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R T:3:0:$(load_lambda(:tv, "BART", 0.01))"
+                ),
+            ),
+            (
+                "MRIReco", () -> begin
+                    out = Array{ComplexF64}(undef, nx, ny, nz); t = 0.0
+                    λ = load_lambda(:tv, "MRIReco", 0.01)
+                    for k in 1:nz
+                        tk, xk = mrireco(:tv, ksz[:, :, :, k], ssv[:, :, :, k], (nx, ny); λ, iterations = CMP_OUTER)
+                        t += tk; out[:, :, k] = xk
+                    end
+                    (t, out)
+                end,
+            ),
+        )
+        try
+            t, x = f()
+            addv("Total Variation ($CMP_OUTER it)", fw, t, x, xmv)
+        catch e
+            @warn "$fw volume TV failed" exception = (e, catch_backtrace())
+        end
+    end
+catch e
+    @warn "Real 3D volume section failed" exception = (e, catch_backtrace())
+end
+
 # OCMR cine — one frame, CG-SENSE / sparsity.
 try
     rc = load_real_dynamic()
