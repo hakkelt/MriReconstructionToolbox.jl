@@ -575,16 +575,17 @@ end
     plan = MRT.get_task_splitting_plan(acq, method, config)
     @test plan !== nothing
 
-    # Two slices on an 8-thread process take the sequential executor, and one 128² slice is far
-    # below `serial_blas_threshold_bytes()`, so the work inside a slice must stay serial even
-    # though `config.threaded` is on.
+    # Slice size decides which executor is picked, not whether the inside of a slice threads.
     @test MRT.slice_bytes(plan, acq) == nx * ny * sizeof(ComplexF32)
     @test MRT.slice_bytes(plan, acq) < MRT.serial_blas_threshold_bytes()
-    @test MRT.slice_threading(plan, acq, config, MRT.SequentialExecutor()) == false
+
+    # A multi-threading executor already has every thread busy with whole slices, so the work
+    # inside one must stay serial. A sequential executor leaves the threads free and passes
+    # `config.threaded` through: how small is too small to thread is the operator's call, made
+    # per kernel and per input, not a blanket rule applied here.
+    @test MRT.slice_threading(plan, acq, config, MRT.SequentialExecutor()) == true
     @test MRT.slice_threading(plan, acq, config, MRT.MultiThreadingExecutor()) == false
 
-    # A slice large enough to pay for threading keeps it -- but only under the sequential
-    # executor, and only when `config.threaded` is on.
     big_size = (2048, 2048, nslices)
     big = MRT.TaskSplittingPlan(
         big_size, (3,), (2048, 2048, nc, nslices), (4,), false, big_size

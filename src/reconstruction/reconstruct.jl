@@ -66,9 +66,10 @@ function _reconstruct_dispatch_plain(acq_data, method::ReconstructionMethod, x�
         # `progress_total` decides whether it is a determinate bar over the method's own loop or
         # the indeterminate stage indicator driven by the `@step` brackets.
         with_progress(config.verbosity, progress_total(method, acq_data)) do verbosity
-            conf = maybe_disable_unsplit_threading(
-                ReconstructionConfig(config; verbosity), method, acq_data
-            )
+            # An unsplit problem has no slices to spread, so `config.threaded` is passed through
+            # as the caller set it and every operator decides for itself whether its own kernel
+            # is worth threading at the size it is handed.
+            conf = ReconstructionConfig(config; verbosity)
             reconstruction_result = nothing
             @conditionally_enable_threading conf.threaded begin
                 reconstruction_result = _reconstruct(acq_data, method, x₀, conf)
@@ -171,9 +172,8 @@ function _reconstruct_dispatch_components(acq_data, method::IterativeReconstruct
             check_x₀_components_size(x₀, components, get_image_size(acq_data))
         end
         with_progress(config.verbosity, progress_total(method, acq_data)) do verbosity
-            conf = maybe_disable_unsplit_threading(
-                ReconstructionConfig(config; verbosity), method, acq_data
-            )
+            # As in `_reconstruct_dispatch_plain`: nothing to spread, so the operators decide.
+            conf = ReconstructionConfig(config; verbosity)
             result = nothing
             @conditionally_enable_threading conf.threaded begin
                 result = _reconstruct_components(acq_data, method, x₀, conf)

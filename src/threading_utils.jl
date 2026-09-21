@@ -40,9 +40,14 @@ const _SERIAL_BLAS_THRESHOLD_BYTES = Ref(DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES)
 """
     serial_blas_threshold_bytes() -> Int
 
-Per-work-item size below which a threaded BLAS — and, with it, threading the solve at all —
-costs more than it returns. Consulted by [`with_serial_blas`](@ref),
-`maybe_disable_unsplit_threading` and `slice_threading`.
+Per-work-item size below which a threaded BLAS costs more than it returns, and below which one
+work item cannot keep the machine busy on its own. Consulted by [`with_serial_blas`](@ref) and,
+through `_should_thread_work_item`, by `suggest_executor` when it chooses between spreading
+slices over threads and running them one at a time.
+
+It is no longer consulted to decide whether an *operator* may thread: that is the operator's own
+call, made per input by `AbstractOperators.threading_threshold` and
+`ProximalOperators.should_thread`.
 
 Defaults to [`DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES`](@ref), overridable per process with
 [`set_serial_blas_threshold_bytes!`](@ref) or the `MRT_SERIAL_BLAS_THRESHOLD_BYTES`
@@ -208,34 +213,20 @@ end
 """
     _should_thread_work_item(config, bytes) -> Bool
 
-Whether a work item of `bytes` bytes is worth threading, given `config`. The single predicate
-behind both [`maybe_disable_unsplit_threading`](@ref) (an unsplit whole-problem
-variable) and `task_splitting/execution.jl`'s per-slice `slice_threading` (one slice of a
-task-split problem): `config.threaded` must be on *and* the item must be at least
-[`serial_blas_threshold_bytes`](@ref). See `with_serial_blas`'s docstring for the measurements
-the threshold comes from.
+Whether a work item of `bytes` bytes is large enough to occupy the machine by itself:
+`config.threaded` must be on *and* the item must be at least
+[`serial_blas_threshold_bytes`](@ref).
+
+This is a question about **how to spread slices**, not about whether an individual operator
+should thread. `suggest_executor` asks it to choose between spreading slices over threads and
+running them one at a time, and `slice_threading` asks it to keep the inside of a slice serial
+while a [`MultiThreadingExecutor`](@ref) already has every thread busy with whole slices.
+Whether a given kernel is worth threading at a given size is not decided here at all: it belongs
+to the operator, and `AbstractOperators.threading_threshold` / `ProximalOperators.should_thread`
+decide it per operator, per input.
 """
 _should_thread_work_item(config, bytes) =
     config.threaded && bytes >= serial_blas_threshold_bytes()
-
-"""
-    maybe_disable_unsplit_threading(config, method, acq_data) -> ReconstructionConfig
-
-When a reconstruction has no batch dimensions to split over, `config.threaded` would
-otherwise open every thread pool (BLAS, FFTW, NFFT, Polyester) to full capacity for a single
-problem. Below [`serial_blas_threshold_bytes`](@ref) per variable that is a net loss: no single
-layer dominates (an FFT plan threads a transform too small to benefit, the CG inner loop is
-BLAS-1, Polyester on the gradient stencils actually helps a little), but the accumulated
-fork/join and budget enter/exit overhead of a few hundred small threaded ops per solve adds up
-(measured: 128²×8 TV solve, 3.2 s threaded vs 1.2 s serial). Return a `config` with `threaded`
-forced off in that case, leaving larger single-volume problems (where a threaded 3-D FFT
-genuinely pays) untouched.
-"""
-function maybe_disable_unsplit_threading(config, method, acq_data)
-    config.threaded || return config
-    bytes = prod(variable_size(method, acq_data)) * sizeof(eltype(acq_data.kspace_data))
-    return _should_thread_work_item(config, bytes) ? config : ReconstructionConfig(config; threaded = false)
-end
 
 _work_item_bytes(x::AbstractArray) = length(x) * sizeof(eltype(x))
 _work_item_bytes(xs::Tuple) = isempty(xs) ? 0 : maximum(_work_item_bytes, xs)

@@ -268,24 +268,21 @@ end
 
 Whether the work *inside* one slice of a task-split reconstruction may thread.
 
-Two independent reasons to say no:
+There is one reason to say no, and it is about the threads, not about the size: a
+[`MultiThreadingExecutor`](@ref) already occupies every thread with whole slices, so the work
+inside a slice would be competing with its own siblings and must run sequentially.
 
-  - A [`MultiThreadingExecutor`](@ref) already occupies every thread with whole slices, so the
-    work inside a slice must run sequentially.
-  - A [`SequentialExecutor`](@ref) runs slices one at a time, but a slice is by construction
-    smaller than the whole problem, and below [`serial_blas_threshold_bytes`](@ref) threading a
-    work item that small is a net loss — the same predicate
-    `maybe_disable_unsplit_threading` applies to an unsplit problem, here applied per
-    slice. Without this the outer scope is serial only around the *solve*
-    (`with_restricted_threads` in `solve_core.jl`), leaving the per-slice operator build, the
-    adjoint and the operator-norm estimate threaded over a work item too small to pay for it.
-
-The per-slice byte count comes from `plan` (batch dimensions collapsed to one) and the k-space
-element type, both known before any slice runs; nothing is measured at run time.
+A [`SequentialExecutor`](@ref) runs slices one at a time, leaving the threads free, so it passes
+`config.threaded` through unchanged. It deliberately does **not** also apply a size gate: how
+small is too small to thread is a per-kernel question that the operator answers with its own
+input, through `AbstractOperators.threading_threshold` and `ProximalOperators.should_thread`. A
+blanket gate here would override all of them at once, which is what it used to do — and what
+kept the coil-fused encoding operator from ever being built on a 2-D slice. See `solve_core.jl`
+for the measurements.
 """
 function slice_threading(plan, acq_data, config, executor::ReconstructionExecutor)
     executor isa MultiThreadingExecutor && return false
-    return _should_thread_work_item(config, slice_bytes(plan, acq_data))
+    return config.threaded
 end
 
 """
