@@ -85,7 +85,7 @@ try
     # The coil combination is inside the timed closure: MRT's row includes the sensitivity adjoint,
     # and MRIReco's `direct` reco returns per-coil images, so combining outside would undercount it.
     tr, _, xr_raw = time_reconstruction() do
-        imr = MRIReco.reconstruction(acq_mr, rp)[:, :, 1, 1, :]
+        imr = with_mrireco_blas(() -> MRIReco.reconstruction(acq_mr, rp)[:, :, 1, 1, :])
         return sum(imr .* conj.(reshape(ComplexF32.(cmap), N, N, Nc)), dims = 3)[:, :, 1]
     end
     xr = xr_raw .* (norm(abs.(img_mc)) / norm(abs.(xr_raw)))

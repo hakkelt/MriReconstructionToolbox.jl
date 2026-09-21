@@ -308,7 +308,9 @@ function mrireco(
         )
         sparse !== nothing && (rp[:sparseTrafo] = sparse)
         regTrafo !== nothing && (rp[:regTrafo] = regTrafo)
-        MRIReco.reconstruction(_mrireco_acq(ksp3), rp)[:, :, 1, 1, 1]
+        with_mrireco_blas() do
+            MRIReco.reconstruction(_mrireco_acq(ksp3), rp)[:, :, 1, 1, 1]
+        end
     end
     return t * 1000, Array{ComplexF64}(img)
 end
@@ -364,7 +366,9 @@ function mrireco_dynamic(
             :vary_rho => :none, :iterationsCG => CMP_CG_ITERS,
             :absTol => 0.0, :relTol => 0.0, :tolInner => CMP_TOL_INNER,
         )
-        MRIReco.reconstruction(acq, rp)
+        with_mrireco_blas() do
+            MRIReco.reconstruction(acq, rp)
+        end
     end
     return t * 1000, reshape(Array{ComplexF64}(img), reconSize..., nt)
 end
