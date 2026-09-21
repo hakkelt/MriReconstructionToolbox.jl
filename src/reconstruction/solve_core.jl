@@ -80,28 +80,27 @@ function _iterative_reconstruct_core(
             solver_kwargs = (; solver_kwargs..., hook)
         end
         try
-            # For a small single-slab solve, threading every operator is a ~1.4x net loss: no one
-            # layer dominates (FFT-plan threading is ≈neutral at 128², a threaded BLAS-1 CG loop
-            # is ≈noise, Polyester on the gradient stencils actually helps a little) — it is the
-            # accumulated fork/join + budget-enter/exit + `@spawn` overhead of a few hundred small
-            # threaded ops per solve that adds up. So narrow *every* pool for the duration. A
-            # low-rank prox is the exception: its level-3 SVDs thread 3.2x-3.9x, so those solves
-            # keep the threaded budget. See `uses_blas3` / `with_serial_blas`.
-            if uses_blas3(method.regularization)
-                solve(model, algorithm; solver_kwargs...)
-            elseif _work_item_bytes(_first_x0(x₀_or_x₀s)) < serial_blas_threshold_bytes()
-                # No early-out on `BLAS.get_num_threads() == 1` here: this scope narrows every
-                # counted pool *and* switches off the Polyester guard, so a serial BLAS says
-                # nothing about FFTW, NFFT or Polyester. (`with_serial_blas` may keep that
-                # early-out — it restricts `only = (:blas, :mkl)` and nothing else.)
-                with_restricted_threads() do
-                    solve(model, algorithm; solver_kwargs...)
-                end
-            else
-                with_serial_blas(_first_x0(x₀_or_x₀s)) do
-                    solve(model, algorithm; solver_kwargs...)
-                end
-            end
+            # No pool is narrowed here. A solve used to run every sub-16-MiB problem with all of
+            # them pinned to one thread, on the measurement that threading every operator was a
+            # ~1.4x net loss (128²×8 TV solve, 3.2 s threaded against 1.2 s serial). That was
+            # measured while a `Threads.@threads` region opened right after a `Polyester.@batch`
+            # cost 220 µs instead of 6, which `NestedThreading.quiesce_foreign_pools` has since
+            # removed; and the restriction silently serialised every `@batch` kernel as well as
+            # stopping `_coil_fused_encoding_operator` from being built at all.
+            #
+            # Re-measured on the same 128²×8 phantom, 8 threads, min of 15 (run-to-run spread is
+            # 1.4x-2.5x here, so a small-sample median is not enough to read this): L1-Wavelet
+            # FISTA 92.0 ms restricted against 63.3 ms open, TV-ADMM 238.7 against 254.7. Opening
+            # up wins 1.45x on one and loses 1.07x on the other, so a single unrestricted path is
+            # better than either an algorithm-keyed rule or the old blanket narrowing. Narrowing
+            # BLAS and FFTW alone is not a middle ground: pinned to one thread both cases are
+            # worse still (TV 337.9, wavelet 75.6).
+            #
+            # What decides whether a kernel threads is now the operator itself —
+            # `AbstractOperators.threading_threshold` and `ProximalOperators.should_thread`, both
+            # keyed on the actual input size. Spreading *slices* over threads remains MRT's call
+            # and still consults `serial_blas_threshold_bytes` (`suggest_executor`).
+            solve(model, algorithm; solver_kwargs...)
         catch e
             if e isa ErrorException && occursin("cannot parse this problem for solver", e.msg)
                 reg_types = map(typeof, ensure_tuple(method.regularization))

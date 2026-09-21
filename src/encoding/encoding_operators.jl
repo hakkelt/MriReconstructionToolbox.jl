@@ -79,19 +79,26 @@ opens one region for the whole chain and keeps each coil's 128×128 working set 
 cache from the multiply to the sampling.
 
 Measured on the comparison benchmark's 2×-undersampled phantom (128×128, 8 coils, `ComplexF32`),
-AMD EPYC 7352, 8 Julia threads, inside the `with_restricted_threads` scope a solve runs in (see
-`solve_core.jl`). The normal operator is the row that matters: `SqrNormL2 ∘ 𝒜` takes
-StructuredOptimization's `:normal_op` route, so a CG iteration applies one fused `𝒜ᴴ𝒜` pass on
-the image domain rather than a forward and an adjoint.
+AMD EPYC 7352, 8 Julia threads, minimum of 100 applies. The normal operator is the row that
+matters: `SqrNormL2 ∘ 𝒜` takes StructuredOptimization's `:normal_op` route, so a CG iteration
+applies one `𝒜ᴴ𝒜` pass on the image domain rather than a forward and an adjoint. Both forms
+answer `has_optimized_normalop` with `true`, so both get the fused pass and the row below is a
+like-for-like comparison.
 
 | apply           |  chain   | coil-fused |
 |-----------------|----------|------------|
-| forward         |  525.8 µs |  362.4 µs |
-| adjoint         |  700.2 µs |  396.2 µs |
-| `𝒜ᴴ𝒜` (per CG)  | 1058.6 µs |  520.3 µs |
+| forward         |  420.9 µs |  107.6 µs |
+| adjoint         |  407.2 µs |  148.3 µs |
+| `𝒜ᴴ𝒜` (per CG)  |  873.4 µs |  213.2 µs |
 
-All three are bit-identical to the chain's output. At one thread the operator is not built this
-way at all, and the numbers there are the chain's.
+All three are bit-identical to the chain's output.
+
+At one thread the fused form is a wash and is not built — 465.1 µs against 452.6 forward,
+710.2 against 688.1 adjoint, 1168.7 against 1141.6 for `𝒜ᴴ𝒜`, i.e. 2-3 % in its favour against
+`ncoils` FFT plans instead of one at build time (1.05 ms against 0.21 ms for this shape). The
+`Threads.nthreads() > 1` condition below is that measurement, not an assumption: with 8 threads
+available but `threaded = false` the fused form is actually the slower of the two (506.2 µs
+forward against the chain's 460.1).
 
 `FIXED_OPERATOR` rather than the default `AUTO`: every per-coil operator here is freshly built
 and therefore used by exactly one batch item, which is the condition that strategy checks for
