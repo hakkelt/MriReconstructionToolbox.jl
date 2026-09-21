@@ -2,7 +2,7 @@ export BroadCast
 
 abstract type AbstractBroadCast{T, N, M, Threaded} <: AbstractOperator end
 
-struct NoOperatorBroadCast{T, N, M, Threaded, S} <: AbstractBroadCast{T, N, M, Threaded}
+struct NoOperatorBroadCast{T, N, M, Threaded, S, Flat} <: AbstractBroadCast{T, N, M, Threaded}
     dim_in::NTuple{N, Int}
     reshaped_dim_in::NTuple{M, Int}
     dim_out::NTuple{M, Int}
@@ -12,11 +12,16 @@ struct NoOperatorBroadCast{T, N, M, Threaded, S} <: AbstractBroadCast{T, N, M, T
         ) where {N, M}
         Base.Broadcast.check_broadcast_shape(dim_out, reshaped_dim_in)
         compact = all(reshaped_dim_in[d] == dim_out[d] for d in 1:N)
-        # `compact` is a hard prerequisite, not a size heuristic: the threaded kernel
-        # (`tbroadcast!`) is only correct when the broadcast dimensions are trailing. The
-        # size question then goes through the shared policy, which is expressed in elements.
-        th = compact && _elementwise_threaded(NoOperatorBroadCast, threaded, T, dim_out, S)
-        return new{T, N, M, th, S}(dim_in, reshaped_dim_in, dim_out)
+        # Two hard prerequisites for the flat kernels below, neither of them a size heuristic.
+        # `compact`: they are only correct when the broadcast dimensions are trailing, which
+        # is also what lets them be `memcpy`s rather than a Cartesian broadcast. CPU storage:
+        # they index elements, and a device array must keep the `.=`/`sum!` forms that run as
+        # kernels there. It is a type parameter because the serial path dispatches on it too,
+        # not only the threaded one. The size question then goes through the shared policy,
+        # which is expressed in elements.
+        flat = compact && _is_cpu_storage(S)
+        th = flat && _elementwise_threaded(NoOperatorBroadCast, threaded, T, dim_out, S)
+        return new{T, N, M, th, S, flat}(dim_in, reshaped_dim_in, dim_out)
     end
 end
 
@@ -99,32 +104,151 @@ end
 
 # Mappings
 
-# Simple threaded broadcast (all broadcasting dimensions at the end)
-function tbroadcast!(y, x)
-    _x = vec(x)
-    _y = reshape(y, length(x), :)
-    @batch for k in axes(_y, 2)
-        _y[:, k] .= _x
+# A compact broadcast -- every broadcast axis trailing -- makes the codomain `ncopies` contiguous
+# copies of the domain laid out one after the other, so both directions reduce to linear work on
+# a `(length(domain), ncopies)` reshape. Going through that reshape matters on its own, before
+# any threading: `y .= reshape(b, reshaped_dim_in)` broadcasts against a shape with singleton
+# axes, which is the generic Cartesian path, while the copies below are `memcpy`s. Measured on a
+# 128x128 image broadcast over 8 coils (2^17 ComplexF32), AMD EPYC 7352, 2026-09-21:
+# 151 us for the `.=` form against 24 us here, and 183 us for `sum!` on the 3-D shape against
+# 70 us for the flattened reduction.
+#
+# `Threads.@threads`, not the `Polyester.@batch` this kernel used before, and each threaded
+# kernel calls `quiesce_foreign_pools()` first. Two reasons, in that order:
+#
+#   * A caller that has narrowed the thread budget switches Polyester off for the duration
+#     (that is what a `GuardedPool` does), and a `@batch` kernel then runs *serially* without
+#     saying so. MRT's solver does exactly this around a whole solve, which is how the 2^18
+#     threshold below came to be measured on a path that never ran. `Threads.@threads` is not
+#     guarded, so what the policy says about this operator is what happens.
+#   * Polyester's workers keep spinning on Julia's threads for a while after a `@batch` region
+#     ends, so a `Threads.@threads` region opened next waits for them rather than running on
+#     them -- 5.7 us against 219.9 us for an empty loop on 8 threads, AMD EPYC 7352,
+#     Julia 1.13.0, 2026-09-21. `quiesce_foreign_pools` parks them for about 0.1 us and the
+#     penalty is gone; the batch and block loops get the same treatment from
+#     `@budgeted_threads`, which calls it for them.
+#
+# The `@batch` form is still marginally the faster of the two in a process where nothing parks
+# it (13.9 us against 18.9 us at 2^17), which is the price paid here for a kernel that behaves
+# the same in both settings. See `threading_policy.jl` for the policy note.
+function _copy_flat!(_y, _x)
+    @inbounds for k in axes(_y, 2)
+        copyto!(view(_y, :, k), _x)
     end
     return _y
 end
 
+function _copy_flat_threaded!(_y, _x)
+    ncopies = size(_y, 2)
+    nchunks, per_copy = _broadcast_chunking(length(_x), ncopies)
+    quiesce_foreign_pools()
+    Threads.@threads for t in 1:nchunks
+        k, j = fldmod1(t, per_copy)
+        lo, hi = _chunk_range(length(_x), per_copy, j)
+        lo > hi && continue
+        @inbounds copyto!(view(_y, lo:hi, k), view(_x, lo:hi))
+    end
+    return _y
+end
+
+function _sum_flat!(_y, _b)
+    @inbounds for i in eachindex(_y)
+        acc = zero(eltype(_y))
+        for k in axes(_b, 2)
+            acc += _b[i, k]
+        end
+        _y[i] = acc
+    end
+    return _y
+end
+
+function _sum_flat_threaded!(_y, _b)
+    nchunks = min(Threads.nthreads(), length(_y))
+    quiesce_foreign_pools()
+    Threads.@threads for t in 1:nchunks
+        lo, hi = _chunk_range(length(_y), nchunks, t)
+        @inbounds for i in lo:hi
+            acc = zero(eltype(_y))
+            for k in axes(_b, 2)
+                acc += _b[i, k]
+            end
+            _y[i] = acc
+        end
+    end
+    return _y
+end
+
+# One copy per worker when there are at least as many copies as threads; otherwise split each
+# copy further, so that broadcasting one large image over two coils still occupies the machine.
+function _broadcast_chunking(len::Int, ncopies::Int)
+    nt = Threads.nthreads()
+    per_copy = ncopies >= nt ? 1 : min(cld(nt, ncopies), len)
+    return ncopies * per_copy, per_copy
+end
+
+function _chunk_range(len::Int, nchunks::Int, i::Int)
+    size = cld(len, nchunks)
+    return (i - 1) * size + 1, min(len, i * size)
+end
+
+_flat_pair(y, x) = (reshape(y, length(x), :), vec(x))
+
+# Kept for callers outside this file (`OperatorBroadCast`), and as the single place the compact
+# layout assumption is written down.
+function tbroadcast!(y, x)
+    _y, _x = _flat_pair(y, x)
+    return _copy_flat_threaded!(_y, _x)
+end
+
 # NoOperatorBroadCast
-function mul!(y, A::NoOperatorBroadCast{T, N, M, false}, b) where {T, N, M}
+function mul!(y, A::NoOperatorBroadCast{T, N, M, false, S, false}, b) where {T, N, M, S}
     check(y, A, b)
     b = reshape(b, A.reshaped_dim_in)
-    return y .= b # non-threaded broadcasting
+    return y .= b # not compact: the broadcast axes are interleaved, so only `.=` is correct
+end
+
+function mul!(y, A::NoOperatorBroadCast{T, N, M, false, S, true}, b) where {T, N, M, S}
+    check(y, A, b)
+    _y, _x = _flat_pair(y, b)
+    _copy_flat!(_y, _x)
+    return y
 end
 
 function mul!(y, A::NoOperatorBroadCast{T, N, M, true}, b) where {T, N, M}
     check(y, A, b)
-    return tbroadcast!(y, b) # threaded broadcasting, handles reshaping (threading is only enabled when compact)
+    _y, _x = _flat_pair(y, b)
+    _copy_flat_threaded!(_y, _x)
+    return y
 end
 
-function mul!(y, A::AdjointOperator{<:NoOperatorBroadCast}, b) # there is no threaded option here
+function mul!(
+        y, A::AdjointOperator{<:NoOperatorBroadCast{T, N, M, Th, S, false}}, b
+    ) where {T, N, M, Th, S}
     check(y, A, b)
     y = reshape(y, A.A.reshaped_dim_in)
     return sum!(y, b)
+end
+
+function mul!(
+        y, A::AdjointOperator{<:NoOperatorBroadCast{T, N, M, false, S, true}}, b
+    ) where {T, N, M, S}
+    check(y, A, b)
+    _b, _y = _flat_pair(b, y)
+    _sum_flat!(_y, _b)
+    return y
+end
+
+# The adjoint reduction crosses over earlier than the forward copy -- 2^14 against 2^16 on the
+# sweep in `threading_threshold(::Type{<:AbstractBroadCast})` -- but both directions share the
+# operator's single `Threaded` flag, which the forward one sets. Between 2^14 and 2^16 the
+# adjoint therefore runs serial although threading it would pay 1.4x-2.1x.
+function mul!(
+        y, A::AdjointOperator{<:NoOperatorBroadCast{T, N, M, true, S, true}}, b
+    ) where {T, N, M, S}
+    check(y, A, b)
+    _b, _y = _flat_pair(b, y)
+    _sum_flat_threaded!(_y, _b)
+    return y
 end
 
 # OperatorBroadCast
@@ -280,8 +404,31 @@ end
     end
 end
 
-# Broadcasting is pure data movement, so both flavours sit at the memory-bound threshold.
-threading_threshold(::Type{<:AbstractBroadCast}) = THRESHOLD_MEMORY_BOUND
+"""
+Broadcasting is pure data movement, so it used to inherit `THRESHOLD_MEMORY_BOUND` (2^18). That
+constant was swept for `Polyester.@batch` against FastBroadcast; the kernels here now use
+`Threads.@threads` (see the note above `_copy_flat!`), whose crossover is two powers of two
+earlier, and the serial side got faster at the same time, so the sweep was re-run for the pair
+that actually ships.
+
+PROVENANCE: measured. AMD EPYC 7352 24-Core, 8 Julia threads, OPENBLAS_NUM_THREADS=1,
+Julia 1.13.0, 2026-09-21, in a process that never runs a `Polyester.@batch` -- an image
+broadcast over 8 copies, serial/threaded ratio (>1 means threading pays):
+
+| elements | forward ComplexF32 | forward ComplexF64 | adjoint ComplexF32 | adjoint ComplexF64 |
+|   2^13   |       0.18x        |       0.47x        |       0.79x        |       0.90x        |
+|   2^14   |       0.36x        |       0.78x        |       1.42x        |       1.61x        |
+|   2^15   |       0.81x        |       1.14x        |       2.12x        |       2.30x        |
+|   2^16   |       1.19x        |       1.50x        |       2.95x        |       3.05x        |
+|   2^17   |       1.48x        |       1.88x        |       3.31x        |       2.79x        |
+|   2^18   |       2.19x        |       2.53x        |       2.98x        |       3.88x        |
+|   2^19   |       3.27x        |       2.76x        |       4.12x        |       4.15x        |
+
+2^16 is the first size at which the forward copy pays for both element types, and the forward
+is what sets the flag; the adjoint's own crossover at 2^14 is recorded above `mul!` for the
+adjoint, which cannot act on it separately.
+"""
+threading_threshold(::Type{<:AbstractBroadCast}) = 2^16
 supports_threading(::AbstractBroadCast) = true
 
 # The `Threaded` type parameter was already there; without these methods the trait fell

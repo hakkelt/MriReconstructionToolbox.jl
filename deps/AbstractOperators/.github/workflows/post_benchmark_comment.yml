@@ -1,0 +1,66 @@
+name: Post Benchmark Comment
+# Stage 2 (privileged): triggered when the unprivileged benchmark.yml
+# workflow completes.  Downloads the benchmark artifact produced by that run
+# and creates or updates a PR comment.
+#
+# IMPORTANT: this file must exist on the default branch (master) before
+# workflow_run can trigger it.  Merge this file to master before opening
+# the first PR that should receive a benchmark comment.
+on:
+  workflow_run:
+    workflows: ["Benchmark this PR"]
+    types: [completed]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  comment:
+    # Only run when the benchmark workflow itself succeeded.
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download benchmark artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: benchmark-comment-*
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: artifacts
+
+      - name: Post or update PR comment
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+
+          for dir in artifacts/*/; do
+            [[ -f "$dir/pr_number.txt"    ]] || continue
+            [[ -f "$dir/julia_version.txt" ]] || continue
+            [[ -f "$dir/body.md"           ]] || continue
+
+            pr=$(cat "$dir/pr_number.txt")
+            jv=$(cat "$dir/julia_version.txt")
+
+            # Look for an existing comment from this bot that contains the
+            # Julia-version marker so we can update it instead of duplicating.
+            comment_id=$(gh api \
+              "repos/${{ github.repository }}/issues/${pr}/comments" \
+              --paginate \
+              --jq ".[] | select(
+                .user.login == \"github-actions[bot]\" and
+                (.body | contains(\"Benchmark Results (Julia v${jv})\"))
+              ) | .id" \
+              | head -1)
+
+            if [[ -n "$comment_id" ]]; then
+              gh api --method PATCH \
+                "repos/${{ github.repository }}/issues/comments/${comment_id}" \
+                -F body=@"$dir/body.md"
+            else
+              gh api --method POST \
+                "repos/${{ github.repository }}/issues/${pr}/comments" \
+                -F body=@"$dir/body.md"
+            fi
+          done

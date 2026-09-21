@@ -35,6 +35,45 @@ export is_threaded, adapt_operator, supports_threading
 #
 # The sweep also settled the kernel choice per class, and it did not match the starting
 # hypothesis everywhere -- see `THRESHOLD_MEMORY_BOUND`.
+#
+# ─── What a size threshold cannot see ────────────────────────────────────────
+#
+# Every threshold here answers "is this loop big enough to thread?". Two things it cannot
+# answer have each cost more than the thresholds themselves are worth.
+#
+# 1. IS ANOTHER LIBRARY STILL HOLDING THE THREADS?
+#
+# This package runs two schedulers. Element kernels reach `Polyester.@batch`, directly or
+# through FastBroadcast's `thread = true`; block and batch loops cannot, because their body is
+# a call out to a child `mul!` and Polyester does not resolve such a body statically inside a
+# precompiled package (see `FFTWOperators`' `SignAlternation`), so they use `Threads.@threads`
+# via `@budgeted_threads`. A composed operator therefore alternates between them -- and
+# Polyester's workers are Julia tasks that keep spinning for about 2^20 `pause()` iterations
+# after a `@batch` region ends, so a `Threads.@threads` region opened in that window waits for
+# those threads rather than running on them.
+#
+# Measured on an AMD EPYC 7352, 8 Julia threads, Julia 1.13.0, 2026-09-21, empty loop bodies:
+#
+#   Threads.@threads, in a process that has never run a `@batch`      5.7 us
+#   Threads.@threads, after one `@batch` has run                    219.9 us
+#   Threads.@threads, after `@batch` + `quiesce_foreign_pools()`     18.6 us
+#   the quiesce call itself                                           0.1 us
+#   Polyester.@batch, either way                                      0.5 us
+#
+# A 38x penalty on every block and batch loop in a mixed chain, removed for a tenth of a
+# microsecond. `NestedThreading.quiesce_foreign_pools` parks Polyester's workers, and
+# `@budgeted_threads` calls it before opening its region, so every loop in this package that
+# goes through that macro is covered; a hand-written `Threads.@threads` (the `BroadCast`
+# kernels) calls it itself. See <https://github.com/JuliaSIMD/Polyester.jl/issues/82>.
+#
+# 2. IS THE LIBRARY EVEN ENABLED AT THE CALL SITE?
+#
+# A `@batch` kernel is silently serial inside any scope that has narrowed the thread budget,
+# because switching Polyester off is how a `GuardedPool` implements a restriction. A caller
+# that wraps a whole solve in one -- MRT does -- therefore never runs the threaded path these
+# thresholds were swept for, whatever they say. That is how `BroadCast`'s threshold came to be
+# 2^18 for a kernel that never ran; it is now `Threads.@threads`, and its sweep was re-run.
+# The same question is open for every other `@batch`/`@..` kernel here.
 
 """
 Transcendental elementwise kernels (`Sin`, `Cos`, `Exp`, `Atan`, `Tanh`, `Sech`, `Sigmoid`,
