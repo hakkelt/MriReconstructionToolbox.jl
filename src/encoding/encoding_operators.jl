@@ -51,10 +51,132 @@ If no sensitivity maps are provided, only the Fourier/subsampled Fourier operato
 """
 function get_encoding_operator(info::CartesianAcquisitionInfo; threaded::Bool = true, fast_planning::Bool = false)
     @argcheck !isnothing(info.kspace_data) "The provided CartesianAcquisitionInfo does not contain k-space data, which is required to build the encoding operator."
+    fused = _coil_fused_encoding_operator(info; threaded, fast_planning)
+    isnothing(fused) || return fused
     has_subs = !isnothing(info.subsampling)
     ℱ = has_subs ? get_subsampled_fourier_operator(info; threaded, fast_planning) : get_fourier_operator(info; threaded, fast_planning)
     return _compose_with_sensitivity(ℱ, info; threaded)
 end
+
+"""
+	_coil_fused_encoding_operator(info::CartesianAcquisitionInfo; threaded, fast_planning)
+
+The Cartesian multicoil encoding operator written as one batch over coils, or `nothing` when
+the acquisition is not of the shape this form covers (in which case the caller builds the
+generic chain).
+
+`𝒫 ℱ 𝒮 ℬ` — broadcast the image over the coil axis, multiply by the maps, transform, sample —
+has a coil axis running through every stage after the broadcast, and no stage mixes coils. The
+same operator can therefore be written the other way round: one per-coil operator
+`𝒫 ℱ diag(smaps[…, c])`, applied to all coils in a single batch loop. The two forms compute the
+same thing to the last bit; what differs is how many parallel regions an apply opens, and how
+much memory traffic it does.
+
+The chain form opens one per stage: with a 128×128 image and 8 coils, a forward apply is a
+broadcast, a `DiagOp`, a 3-D `DFT`, a `SignAlternation` and a batched `GetIndex`, each threading
+(or not) on its own, each reading and writing a full 128×128×8 intermediate. The batch form
+opens one region for the whole chain and keeps each coil's 128×128 working set in one worker's
+cache from the multiply to the sampling.
+
+Measured on the comparison benchmark's 2×-undersampled phantom (128×128, 8 coils, `ComplexF32`),
+AMD EPYC 7352, 8 Julia threads, inside the `with_restricted_threads` scope a solve runs in (see
+`solve_core.jl`). The normal operator is the row that matters: `SqrNormL2 ∘ 𝒜` takes
+StructuredOptimization's `:normal_op` route, so a CG iteration applies one fused `𝒜ᴴ𝒜` pass on
+the image domain rather than a forward and an adjoint.
+
+| apply           |  chain   | coil-fused |
+|-----------------|----------|------------|
+| forward         |  525.8 µs |  362.4 µs |
+| adjoint         |  700.2 µs |  396.2 µs |
+| `𝒜ᴴ𝒜` (per CG)  | 1058.6 µs |  520.3 µs |
+
+All three are bit-identical to the chain's output. At one thread the operator is not built this
+way at all, and the numbers there are the chain's.
+
+`FIXED_OPERATOR` rather than the default `AUTO`: every per-coil operator here is freshly built
+and therefore used by exactly one batch item, which is the condition that strategy checks for
+and the reason it needs neither the per-item lock nor the per-thread copies the other two
+strategies pay for. `AUTO` picks `LOCKING` for this shape (the copies would exceed its 10 MB
+budget), which measured 243 µs against 187 µs for this one.
+
+The batch loop itself has no headroom left to find: driving the same per-coil operators from a
+bare `Threads.@threads` loop measured 269.9 µs against the batch operator's 287.5 µs, where one
+coil alone is 70.7 µs and all eight serially are 542.5 µs. What caps it at ~2x on 8 threads is
+the per-coil work, not the loop around it.
+
+The cost is one FFT plan per coil instead of one batched plan, paid once when the operator is
+built. `fast_planning` is forwarded unchanged, so a caller that cares keeps its existing control.
+
+Returns `nothing` unless the acquisition is Cartesian with sensitivity maps whose last axis is
+`:coil`, nothing after the coil axis in k-space, more than one coil, and threading actually
+available: the fused form is not faster serially, and the generic chain stays the only path a
+single-threaded run takes.
+"""
+function _coil_fused_encoding_operator(
+        info::CartesianAcquisitionInfo; threaded::Bool, fast_planning::Bool
+    )
+    smaps = info.sensitivity_maps
+    (threaded && !isnothing(smaps) && Threads.nthreads() > 1) || return nothing
+    ksp = info.kspace_data
+    image_size = info.image_size
+    nd = length(image_size)
+    ndims(smaps) == nd + 1 || return nothing
+    _has_dimnames(smaps) && dimnames(smaps)[end] !== :coil && return nothing
+    _has_dimnames(ksp) && dimnames(ksp)[end] !== :coil && return nothing
+    # Anything after the coil axis (a time or slab axis) means a per-coil operator is not the
+    # whole story: the generic chain, which wraps the result in its own `BatchOp`, stays in
+    # charge rather than growing a second batching layer here.
+    ndims(ksp) == _get_sample_dims_count(info) + 1 || return nothing
+    ncoils = size(smaps, nd + 1)
+    ncoils > 1 || return nothing
+    _is_cartesian_storage(ksp) || return nothing
+
+    plain_smaps = smaps isa NamedDimsArray ? unname(smaps) : smaps
+    ksp_one_coil = ksp[ntuple(_ -> Colon(), ndims(ksp) - 1)..., 1]
+    shift_kwargs = (
+        shifted_kspace_dims = info.shifted_kspace_dims,
+        shifted_image_dims = info.shifted_image_dims,
+    )
+    # A fresh Fourier operator per coil, never one shared object: each carries its own FFT plan
+    # and scratch buffers, which is what makes the batch loop race-free without locking.
+    single_coil_fourier() = _unwrap_named(
+        if isnothing(info.subsampling)
+            ksp_one_coil isa NamedDimsArray ?
+                get_fourier_operator(ksp_one_coil; shift_kwargs..., threaded = false, fast_planning) :
+                get_fourier_operator(ksp_one_coil, info.is3D; shift_kwargs..., threaded = false, fast_planning)
+        else
+            get_subsampled_fourier_operator(
+                ksp_one_coil, image_size, info.subsampling;
+                shift_kwargs..., threaded = false, fast_planning,
+            )
+        end
+    )
+    per_coil = [
+        single_coil_fourier() * DiagOp(copy(selectdim(plain_smaps, nd + 1, c)); threaded = false)
+            for c in 1:ncoils
+    ]
+    codomain_rank = length(size(first(per_coil), 1))
+    mask = (ntuple(_ -> :_, nd)..., :s) => (ntuple(_ -> :_, codomain_rank)..., :s)
+    𝒞 = BatchOp(
+        per_coil, mask;
+        threaded, threading_strategy = ThreadingStrategy.FIXED_OPERATOR,
+    )
+    ℬ = BroadCast(
+        Eye(zeros(domain_type(first(per_coil)), image_size...)),
+        (image_size..., ncoils); threaded,
+    )
+    op = 𝒞 * ℬ
+    _has_dimnames(ksp) || return op
+    return NamedDimsOp{get_image_dims(info), dimnames(ksp)}(op)
+end
+
+_unwrap_named(op::NamedDimsOp) = op.L
+_unwrap_named(op::AbstractOperators.AbstractOperator) = op
+
+# `PartitionedKSpace` and friends do not have one array behind them, so `ksp[…, 1]` is not a
+# single-coil k-space of the same kind and the fused form does not apply.
+_is_cartesian_storage(::AbstractArray) = true
+_is_cartesian_storage(::Any) = false
 
 function get_encoding_operator(
         info::NonCartesianAcquisitionInfo;
