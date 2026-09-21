@@ -66,17 +66,51 @@ using BartIO
 using PyCall
 using MRIReco
 
-# MRIReco's own `__init__` pins BLAS only when `Threads.nthreads() > 1`
-# (MRIReco.jl:20-26 — the other branch is Windows-only), so a `-t 1` run on Linux leaves OpenBLAS
-# at its `jl_effective_threads`-derived default, i.e. most of the node. RegularizedLeastSquares
-# then makes ~30 BLAS-1 calls per ADMM outer iteration (`norm`/`dot`/`rmul!` in `cg.jl` and the
-# residual block), each spawning and joining a full thread team over a ~9k-element vector. That
-# alone measured 346 s for a 20-iteration TV solve that takes 1.08 s with BLAS pinned — a 320x
-# artifact that has nothing to do with MRIReco's reconstruction math. Pin it explicitly, for every
-# toolkit, so the thread count under test is the one we asked for.
+"""
+    MRIRECO_BLAS_THREADS
+
+The BLAS thread count MRIReco chose for itself, captured before this file overrides it.
+
+`MRIReco.__init__` sets `BLAS.set_num_threads(1)` when `Threads.nthreads() > 1`
+(MRIReco.jl:20-26 — the other branch is Windows-only). That is a deliberate choice by the
+package under test, and the harness must not silently undo it: setting the count here, *after*
+`using MRIReco`, left every timed MRIReco row at `NUM_THREADS` while MRT pinned BLAS inside its
+own solve, so the two toolkits were compared under different BLAS policies for no reason other
+than the order of two lines in this file.
+
+At `-t 1` on Linux MRIReco makes no choice at all, and OpenBLAS stays at its
+`jl_effective_threads`-derived default — most of the node. That is not a policy to respect but a
+known artifact: RegularizedLeastSquares makes ~30 BLAS-1 calls per ADMM outer iteration
+(`norm`/`dot`/`rmul!` in `cg.jl` and the residual block), each spawning a full thread team over a
+~9k-element vector, measured at 346 s for a TV solve that takes 1.08 s with BLAS pinned. So the
+single-threaded case still gets `NUM_THREADS` (which is 1 there anyway).
+"""
+const MRIRECO_BLAS_THREADS = Threads.nthreads() > 1 ? BLAS.get_num_threads() : NUM_THREADS
+
+# Everything else runs at the thread count under test. `with_mrireco_blas` puts MRIReco's own
+# choice back for the duration of an MRIReco call, and restores this afterwards.
 BLAS.set_num_threads(NUM_THREADS)
 FFTW.set_num_threads(NUM_THREADS)
-@info "BLAS/FFTW pinned" blas_threads = BLAS.get_num_threads() fftw_threads = FFTW.get_num_threads()
+@info "BLAS/FFTW pinned" blas_threads = BLAS.get_num_threads() fftw_threads = FFTW.get_num_threads() mrireco_blas_threads = MRIRECO_BLAS_THREADS
+
+"""
+    with_mrireco_blas(f)
+
+Run `f()` with BLAS at [`MRIRECO_BLAS_THREADS`](@ref) — what MRIReco set for itself — and restore
+`NUM_THREADS` afterwards, including on exception.
+
+Every timed MRIReco call goes through this, so MRIReco is measured under its own threading policy
+and MRT under its own, rather than both under whichever one happened to be set last.
+"""
+function with_mrireco_blas(f)
+    MRIRECO_BLAS_THREADS == NUM_THREADS && return f()
+    BLAS.set_num_threads(MRIRECO_BLAS_THREADS)
+    try
+        return f()
+    finally
+        BLAS.set_num_threads(NUM_THREADS)
+    end
+end
 
 include(joinpath(@__DIR__, "..", "src", "ComparisonHarness.jl"))
 using .ComparisonHarness: check_nrmse, nrmse, run_bart, generate_multicoil_brain,

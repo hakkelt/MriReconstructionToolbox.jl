@@ -64,7 +64,7 @@ push!(results, BenchResult("Base MC", "Cartesian Adjoint", BART_FW, NUM_THREADS,
 try
     acq_mr = AcquisitionData(reshape(CMP_CTYPE.(kspace_mc), N, N, 1, Nc, 1, 1); enc2D = true)
     rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => (N, N), :senseMaps => reshape(CMP_CTYPE.(cmap), N, N, 1, Nc))
-    t_mr, _, mr_img = time_reconstruction(() -> MRIReco.reconstruction(acq_mr, rp)[:, :, 1, 1, :])
+    t_mr, _, mr_img = time_reconstruction(() -> with_mrireco_blas(() -> MRIReco.reconstruction(acq_mr, rp)[:, :, 1, 1, :]))
     mr = sum(mr_img .* conj.(reshape(CMP_CTYPE.(cmap), N, N, Nc)), dims = 3)[:, :, 1] ./ sum(abs2.(cmap), dims = 3)[:, :, 1]
     push!(results, BenchResult("Base MC", "Cartesian Adjoint", "MRIReco", NUM_THREADS, t_mr * 1000, mag_nrmse(mr, img_mc), mag_nrmse(recon, mr)))
 catch e
