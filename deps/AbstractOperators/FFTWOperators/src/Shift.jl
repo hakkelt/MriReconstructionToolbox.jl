@@ -325,7 +325,15 @@ function _alternate_sign_columns!(
     n = size(x, 1)
     ncol = length(rest_range)
     if use_threads && ncol > 1
-        @inbounds @batch for c in 1:ncol
+        # `Threads.@threads`, not `@batch`, and only here: this loop's body is a call out to
+        # `_alternate_sign_column!` rather than straight-line element work, and `Polyester.@batch`
+        # does not resolve such a body statically inside a precompiled package — every call takes
+        # a dynamic path instead. Measured on a 128x128x8 `ComplexF32` out-of-place pass, AMD
+        # EPYC 7352, 8 Julia threads, 2026-09-21: 583.0 us with `@batch` against 56.4 us for the
+        # serial loop it was supposed to beat, and 21.0 us here. The single-column `@batch`
+        # kernels below are straight-line and keep it; measured on a 2^20 vector they are 4.8x
+        # (out of place) and 10.6x (in place) up on serial.
+        @inbounds Threads.@threads for c in 1:ncol
             _alternate_sign_column!(x, Val(IN1), rest_mask, rest_range[c], c, n, Val(false))
         end
     elseif use_threads && n > 1
@@ -513,7 +521,9 @@ function _alternate_sign_columns!(
     n = size(x, 1)
     ncol = length(rest_range)
     if use_threads && ncol > 1
-        @inbounds @batch for c in 1:ncol
+        # See the in-place variant: `@batch` mis-compiles this call-out body in a precompiled
+        # package and loses to the serial loop by an order of magnitude.
+        @inbounds Threads.@threads for c in 1:ncol
             _alternate_sign_column!(y, x, Val(IN1), rest_mask, rest_range[c], c, n, Val(false))
         end
     elseif use_threads && n > 1
@@ -782,23 +792,35 @@ end
 """
 	threading_threshold(::Type{<:SignAlternation})
 
-PROVENANCE: measured (AMD EPYC 7352, 8 threads, exclusive node, OPENBLAS_NUM_THREADS=1,
-ComplexF32, min of 30 reps, 2026-09-20), sweeping the kernel serial against threaded over
-powers of two, for each shape of `dirs`:
+PROVENANCE: measured (AMD EPYC 7352, 8 Julia threads, OPENBLAS_NUM_THREADS=1, ComplexF32,
+`@belapsed` minimum, 2026-09-21), sweeping serial against threaded over powers of two. Ratios
+are serial/threaded, so above 1 threading pays:
 
-| elements | `dirs = (1, 2)` | `dirs = (1,)` | `dirs = (2,)` |
-|---|---|---|---|
-| 2^12 | 1.11x | 1.21x | 0.88x |
-| 2^13 | 2.75x | 1.85x | 1.62x |
-| 2^14 | 4.15x | 4.29x | 2.98x |
+| elements | vector, `dirs = (1,)` | `N x N x 8`, `dirs = (1, 2)` | `dirs = (1,)` | `dirs = (2,)` |
+|---|---|---|---|---|
+| 2^12 | 1.06x | 0.18x | 0.20x | 0.09x |
+| 2^13 | 0.72x | 0.25x | 0.28x | 0.12x |
+| 2^14 | 1.29x | 0.72x | 0.65x | 0.30x |
+| 2^15 | 2.68x | 1.12x | 1.06x | 0.49x |
+| 2^16 | 3.50x | 1.84x | 1.86x | 1.03x |
+| 2^17 | 3.72x | 2.81x | 2.78x | 1.75x |
+| 2^18 | 3.90x | 3.49x | 3.40x | 2.48x |
 
-2^14 is the first size that pays across *every* `dirs`, so it is the one the policy uses.
+2^16 is the first size that pays across *every* shape and `dirs`, so it is the one the policy
+uses. `dirs = (2,)` sets it: alternating a dimension other than the first makes whole columns
+uniform, so the kernel's per-column work is a plain scale and there is less of it to spread.
 
-The shared `THRESHOLD_MEMORY_BOUND` this used to return is 2^18 -- sixteen times too high --
-which switched threading off for whole classes of real problem: MRT's dynamic encoding
-operator is 2^17 elements and was running the alternation on one thread.
+The earlier revision of this table was measured on one-dimensional inputs only, and put the
+threshold at 2^14 on 4.15x at that size. A vector is the one shape that never enters the
+multi-column loop -- it takes the single-column `@batch` kernels instead -- so the sweep never
+exercised the path that carries every real array, and did not see that that path was slower
+threaded than serial at *any* size. The columns above marked `N x N x 8` are that path.
+
+The shared `THRESHOLD_MEMORY_BOUND` this used to return is 2^18 -- four times too high -- which
+switched threading off for whole classes of real problem: MRT's dynamic encoding operator is
+2^17 elements and was running the alternation on one thread.
 """
-threading_threshold(::Type{<:SignAlternation}) = 2^14
+threading_threshold(::Type{<:SignAlternation}) = 2^16
 is_threaded(::SignAlternation{T, N, M, Th}) where {T, N, M, Th} = Th
 supports_threading(::SignAlternation) = true
 
