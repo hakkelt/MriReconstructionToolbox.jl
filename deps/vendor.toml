@@ -175,6 +175,15 @@ branch = "fix/batch-op-threading-threshold"
 parent = "unified-threading"
 pr = "hakkelt/AbstractOperators.jl#26"
 
+# `BroadCast`'s kernels and its threading threshold, both owned by `unified-threading`, which is
+# frozen; a branch of its own stacked on it, same reasoning as the two above. Needs the
+# `quiesce_foreign_pools` entry point that NestedThreading's `perf/quiesce-foreign-pools` adds,
+# so the vendored copy only loads against a NestedThreading checkout that carries it.
+[[AbstractOperators.stack]]
+branch = "perf/threads-native-kernels"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#27"
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
