@@ -57,7 +57,7 @@ using Random: MersenneTwister
 
 const IT = CMP_OUTER
 Nd, Ncd, Td = 64, 4, 8
-img_dyn, kspace_dyn0, cmap_dyn = generate_dynamic_multicoil_brain(N = Nd, num_coils = Ncd, num_frames = Td)
+img_dyn, kspace_dyn0, cmap_dyn = generate_dynamic_brain(N = Nd, num_coils = Ncd, num_frames = Td)
 # Unit-RMS **and noisy**, consistent with the other sections. Without noise no regularizer helps at
 # all on this phantom: NRMSE falls monotonically as λ → 0 and plain CG-SENSE (0.0757) beats every
 # regularized run, so the accuracy column carries no information. At CMP_SNR_DB the optimum is

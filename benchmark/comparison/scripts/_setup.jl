@@ -274,3 +274,22 @@ const Nc = 8
 const IMG_MC, KSPACE_MC, CMAP = let (i, k, c) = generate_multicoil_brain(N = N, num_coils = Nc)
     (i, CMP_CTYPE.(k), CMP_CTYPE.(c))
 end
+
+"""
+	generate_dynamic_brain(; N, num_coils, num_frames) -> (img, kspace, cmap)
+
+`generate_dynamic_multicoil_brain` with its k-space and sensitivity maps put in `CMP_CTYPE`, the
+way the shared 2D phantom above already is.
+
+The conversion is the point of the wrapper. The generator returns `ComplexF64`, and the three
+scripts that used it directly handed that straight to MRT while building every competitor's input
+as `CMP_CTYPE` (`kbart = zeros(ComplexF32, …)`, `ksp_z = zeros(CMP_CTYPE, …)`), so the dynamic
+section was timing MRT in double precision against everyone else in single. Measured on the
+64²×4-coil×8-frame case, 1 thread, 2026-09-21: global low-rank 642.3 ms at `ComplexF64` against
+444.1 ms at `ComplexF32`, locally low-rank 692.9 against 481.0 — about 1.45x, which was most of
+that section's reported gap.
+"""
+function generate_dynamic_brain(; N::Int, num_coils::Int, num_frames::Int)
+    img, ksp, cmap = generate_dynamic_multicoil_brain(; N, num_coils, num_frames)
+    return img, CMP_CTYPE.(ksp), CMP_CTYPE.(cmap)
+end
