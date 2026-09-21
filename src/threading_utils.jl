@@ -106,20 +106,26 @@ end
 
 """
     with_serial_blas(f)
-    with_serial_blas(f, x)
 
 Run `f()` with BLAS pinned to a single thread, restoring the previous budget afterwards (also
 on exception). Returns `f()`'s value, and skips the save/restore when BLAS is already serial.
 
-The two-argument form applies that only when `x` — the work item the call is about, e.g. the
-solver's image variable — is smaller than [`serial_blas_threshold_bytes`](@ref), and otherwise
-runs `f()` untouched. **Prefer it.** The size gate is not a refinement; it is the difference
-between a 20x win and a 3.9x loss.
+Only `:blas` and `:mkl` are narrowed. FFTW, NFFT and Polyester are left alone deliberately: each
+kernel that uses them decides for itself whether its own input is big enough to thread
+(`AbstractOperators.threading_threshold`, `ProximalOperators.should_thread`), and BLAS is the one
+pool with no equivalent per-call policy.
 
-The size gate is necessary but not sufficient: it cannot see BLAS *level*, and level 3 responds
-to threading in the opposite direction and by a larger margin. Callers must also skip this scope
-entirely for work that is level-3-dominated — see [`uses_blas3`](@ref), which
-`_iterative_reconstruct_core` consults before reaching here.
+`_iterative_reconstruct_core` wraps every solve in this, with no size gate. A gated version used
+to exist, applying it only below [`serial_blas_threshold_bytes`](@ref); the tables below are what
+that gate was fitted to, and they are all *wide-batch* or whole-solve measurements. What they miss
+is that the reconstruction path narrows BLAS for a single work item at a time, where a threaded
+BLAS loses at every size measured. Real data, 256x256 single-coil, TV-ADMM 20 iterations, 8
+threads: 584.0 ms with BLAS open against 233.3 ms pinned.
+
+What the gate cannot see at all is BLAS *level*, and level 3 responds to threading in the opposite
+direction and by a larger margin. Callers must therefore still skip this scope entirely for
+level-3-dominated work — see [`uses_blas3`](@ref), which `_iterative_reconstruct_core` consults
+before reaching here.
 
 # Why
 
@@ -206,10 +212,6 @@ function with_serial_blas(f::F) where {F}
     return with_thread_budget(f, 1; only = (:blas, :mkl))
 end
 
-function with_serial_blas(f::F, x) where {F}
-    return _work_item_bytes(x) < serial_blas_threshold_bytes() ? with_serial_blas(f) : f()
-end
-
 """
     _should_thread_work_item(config, bytes) -> Bool
 
@@ -228,6 +230,3 @@ decide it per operator, per input.
 _should_thread_work_item(config, bytes) =
     config.threaded && bytes >= serial_blas_threshold_bytes()
 
-_work_item_bytes(x::AbstractArray) = length(x) * sizeof(eltype(x))
-_work_item_bytes(xs::Tuple) = isempty(xs) ? 0 : maximum(_work_item_bytes, xs)
-_work_item_bytes(::Any) = 0   # unknown shape: fall back to the serial branch

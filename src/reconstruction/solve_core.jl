@@ -80,27 +80,42 @@ function _iterative_reconstruct_core(
             solver_kwargs = (; solver_kwargs..., hook)
         end
         try
-            # No pool is narrowed here. A solve used to run every sub-16-MiB problem with all of
-            # them pinned to one thread, on the measurement that threading every operator was a
-            # ~1.4x net loss (128²×8 TV solve, 3.2 s threaded against 1.2 s serial). That was
-            # measured while a `Threads.@threads` region opened right after a `Polyester.@batch`
-            # cost 220 µs instead of 6, which `NestedThreading.quiesce_foreign_pools` has since
-            # removed; and the restriction silently serialised every `@batch` kernel as well as
-            # stopping `_coil_fused_encoding_operator` from being built at all.
+            # BLAS is narrowed for the duration; nothing else is.
             #
-            # Re-measured on the same 128²×8 phantom, 8 threads, min of 15 (run-to-run spread is
-            # 1.4x-2.5x here, so a small-sample median is not enough to read this): L1-Wavelet
-            # FISTA 92.0 ms restricted against 63.3 ms open, TV-ADMM 238.7 against 254.7. Opening
-            # up wins 1.45x on one and loses 1.07x on the other, so a single unrestricted path is
-            # better than either an algorithm-keyed rule or the old blanket narrowing. Narrowing
-            # BLAS and FFTW alone is not a middle ground: pinned to one thread both cases are
-            # worse still (TV 337.9, wavelet 75.6).
+            # Whether a *kernel* should thread is the operator's own call, made per input by
+            # `AbstractOperators.threading_threshold` and `ProximalOperators.should_thread`, so
+            # this scope leaves FFTW, NFFT and Polyester alone and lets them decide. BLAS is the
+            # one pool with no such policy: an iterative solve drives it almost entirely through
+            # level-1 calls on one work item, which are memory-bandwidth-bound and gain nothing
+            # from a thread team, while each call still pays to start one.
             #
-            # What decides whether a kernel threads is now the operator itself —
-            # `AbstractOperators.threading_threshold` and `ProximalOperators.should_thread`, both
-            # keyed on the actual input size. Spreading *slices* over threads remains MRT's call
-            # and still consults `serial_blas_threshold_bytes` (`suggest_executor`).
-            solve(model, algorithm; solver_kwargs...)
+            # A solve used to run every sub-16-MiB problem with *every* pool pinned instead, which
+            # silently serialised each `@batch` kernel and stopped
+            # `_coil_fused_encoding_operator` from being built at all (it gates on `threaded`).
+            # Dropping the size gate but keeping BLAS narrow is what the measurements support.
+            # Real data, 256x256 single-coil, TV-ADMM 20 it, 8 threads, min of 3:
+            #
+            # | scope around the solve        |   ms |
+            # |-------------------------------|------|
+            # | nothing narrowed              | 584.0 |
+            # | every pool pinned             | 247.4 |
+            # | counted pools pinned          | 243.1 |
+            # | BLAS/MKL pinned (this)        | 233.3 |
+            # | everything but Polyester      | 231.4 |
+            #
+            # i.e. BLAS alone accounts for the whole 2.5x, and narrowing anything further buys
+            # nothing. `threaded = false` for the same case is 285.8 ms, so building the operators
+            # threaded and pinning BLAS beats turning threading off wholesale.
+            #
+            # A low-rank prox is the exception and keeps the threaded budget: its level-3 SVDs
+            # measure 3.2x-3.9x threaded, where level 1 gains at most 10%. See `uses_blas3`.
+            if uses_blas3(method.regularization)
+                solve(model, algorithm; solver_kwargs...)
+            else
+                with_serial_blas() do
+                    solve(model, algorithm; solver_kwargs...)
+                end
+            end
         catch e
             if e isa ErrorException && occursin("cannot parse this problem for solver", e.msg)
                 reg_types = map(typeof, ensure_tuple(method.regularization))
