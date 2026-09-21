@@ -61,7 +61,7 @@ METHODS = Dict(
 # swept for the global low-rank case only. The target NRMSE is still MRT's own best, and
 # every other toolkit's λ is the grid point that matches it.
 Nd, Ncd, Td = 64, 4, 8
-img_dyn, kspace_dyn0, cmap_dyn = generate_dynamic_multicoil_brain(N = Nd, num_coils = Ncd, num_frames = Td)
+img_dyn, kspace_dyn0, cmap_dyn = generate_dynamic_brain(N = Nd, num_coils = Ncd, num_frames = Td)
 # Noise is what makes λ > 0 optimal at all. On the noiseless dynamic phantom every regularizer is
 # pure bias: measured NRMSE decreases monotonically as λ → 0 (LowRank 0.0810 at λ=1e-4 vs 0.0876 at
 # λ=0.2, 20 ADMM iterations) and plain CG-SENSE beats all of them, so there is no operating point to

@@ -151,7 +151,7 @@ end
 # required); MRIReco reaches the two low-rank rows through `mrireco_dynamic` and cannot express
 # temporal TV.
 Nd, Ncd, Td = 64, 4, 8
-img_dyn, kspace_dyn0, cmap_dyn = generate_dynamic_multicoil_brain(N = Nd, num_coils = Ncd, num_frames = Td)
+img_dyn, kspace_dyn0, cmap_dyn = generate_dynamic_brain(N = Nd, num_coils = Ncd, num_frames = Td)
 kspace_dyn = add_noise(norm_ksp(kspace_dyn0); snr_db = CMP_SNR_DB)
 mask_pe = rand(MersenneTwister(42), Bool, Nd)
 mask_pe[(Nd ÷ 2 - 4):(Nd ÷ 2 + 4)] .= true
