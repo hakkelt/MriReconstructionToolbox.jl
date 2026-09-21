@@ -252,6 +252,12 @@ Whether `‖𝒜‖` is worth computing for this method, i.e. whether the algori
 step-size hint at all. A pure unregularized CG/CGNR solve does not: Krylov subspaces are scale
 invariant, so it derives everything it needs itself.
 
+Neither does ADMM, and that is [`consumes_lf`](@ref)'s job to say. This used to ask only whether
+the solve was a *pure* Krylov one, so every regularized solve paid `estimate_opnorm` — including
+every ADMM solve, whose `patch_algorithm_with_default_values` method has always thrown the `Lf` it
+was handed away. The estimate's only remaining consumer there was the warm-start scale, which
+[`_warm_start_scale_proxy`](@ref) supplies for one operator application instead of twenty.
+
 Reads `method.disable_operator_normalization`, whose name predates the change that stopped this
 rescaling the operator — it now suppresses the `Lf` estimate and nothing else.
 """
@@ -260,7 +266,7 @@ function _should_estimate_operator_norm(method::IterativeReconstruction)
         return !method.disable_operator_normalization
     end
     is_pure_cg = isempty(method.regularization) && _is_krylov_solver(method.algorithm)
-    return !is_pure_cg
+    return !is_pure_cg && consumes_lf(method.algorithm)
 end
 
 """
