@@ -12,6 +12,7 @@ Conjugate
 
 ```@docs
 PointwiseMinimum
+ProximalAverage
 SeparableSum
 SlicedSeparableSum
 Sum
@@ -30,6 +31,8 @@ Regularize
 Postcompose
 Precompose
 PrecomposeDiagonal
+PrecomposedSlicedSeparableSum
 Tilt
 Translate
+ReshapeInput
 ```

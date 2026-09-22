@@ -17,9 +17,9 @@ g = Precompose(f, Q, 1.0)
 
 predicates_test(g)
 
-@test ProximalCore.is_smooth(g) == false
-@test ProximalCore.is_quadratic(g) == false
-@test ProximalCore.is_set_indicator(g) == true
+@test is_smooth(g) == false
+@test is_quadratic(g) == false
+@test is_set_indicator(g) == true
 
 x = randn(10)
 

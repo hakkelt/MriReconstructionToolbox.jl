@@ -27,3 +27,6 @@ function prox_naive(g::EpicomposeGramDiagonal, x, gamma)
     y = g.L*p
     return y, v
 end
+
+# see `device_tier` in src/utilities/hostfallback.jl
+device_tier(::Type{<:EpicomposeGramDiagonal{<:Any, P}}) where P = device_tier(P)

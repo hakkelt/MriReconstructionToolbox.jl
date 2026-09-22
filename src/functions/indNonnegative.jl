@@ -3,38 +3,34 @@
 export IndNonnegative
 
 """
-    IndNonnegative()
+    IndNonnegative(; threaded=true)
 
 Return the indicator of the nonnegative orthant
 ```math
 C = \\{ x : x \\geq 0 \\}.
 ```
+
+`threaded = false` forbids this operator from using more than one thread; see
+[`is_threaded`](@ref).
 """
-struct IndNonnegative end
+struct IndNonnegative{Th} end
+
+IndNonnegative(; threaded::Bool=true) = IndNonnegative{threaded}()
 
 is_separable(f::Type{<:IndNonnegative}) = true
 is_convex(f::Type{<:IndNonnegative}) = true
 is_cone_indicator(f::Type{<:IndNonnegative}) = true
 
-function (::IndNonnegative)(x)
+@threadable IndNonnegative{Th} Arithmetic
+
+function (f::IndNonnegative)(x)
     R = eltype(x)
-    for k in eachindex(x)
-        if x[k] < 0
-            return R(Inf)
-        end
-    end
-    return R(0)
+    return all_satisfy(f, xk -> xk >= 0, x) ? R(0) : R(Inf)
 end
 
-function prox!(y, ::IndNonnegative, x, gamma)
+function prox!(y, f::IndNonnegative, x, gamma)
     R = eltype(x)
-    for k in eachindex(x)
-        if x[k] < 0
-            y[k] = R(0)
-        else
-            y[k] = x[k]
-        end
-    end
+    map_prox!(f, y, xk -> max(xk, R(0)), x)
     return R(0)
 end
 

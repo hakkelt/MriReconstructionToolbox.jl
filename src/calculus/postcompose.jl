@@ -39,6 +39,9 @@ Postcompose(f::T, a::R=1, b::S=0) where {T, R <: Real, S <: Real} = Postcompose{
 
 Postcompose(f::Postcompose{T, R, S}, a::R=1, b::S=0) where {T, R <: Real, S <: Real} = Postcompose{T, R, S}(f.f, a * f.a, b + a * f.b)
 
+# no scratch space of its own: only the inner function needs preallocating
+preallocate(g::Postcompose, x) = Postcompose(preallocate(g.f, x), g.a, g.b)
+
 function (g::Postcompose)(x)
     return g.a * g.f(x) + g.b
 end
@@ -58,3 +61,6 @@ function prox_naive(g::Postcompose, x, gamma)
     y, v = prox_naive(g.f, x, g.a * gamma)
     return y, g.a * v + g.b
 end
+
+# see `device_tier` in src/utilities/hostfallback.jl
+device_tier(::Type{<:Postcompose{T}}) where T = device_tier(T)

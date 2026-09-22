@@ -19,6 +19,7 @@ Therefore ProximalOperators includes in particular projections onto commonly use
 
 ```@docs
 IndAffine
+IndAffineCG
 IndBallLinf   
 IndBallL0     
 IndBallL1     
@@ -26,6 +27,7 @@ IndBallL2
 IndBallRank   
 IndBinary
 IndBox  
+IndRealBox  
 IndGraph     
 IndHalfspace  
 IndHyperslab
@@ -46,6 +48,7 @@ IndExpPrimal
 IndExpDual
 IndFree
 IndNonnegative
+IndRealNonnegative
 IndNonpositive
 IndPSD
 IndSOC
@@ -81,6 +84,7 @@ LogBarrier
 LogisticLoss
 Maximum
 Quadratic
+SeparableHuberLoss
 SqrHingeLoss
 SumPositive
 ```

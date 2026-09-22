@@ -3,6 +3,9 @@
 module ProximalOperators
 
 using LinearAlgebra
+using LoopVectorization: LoopVectorization
+using NestedThreading: NestedThreading
+using Polyester: Polyester
 import ProximalCore: prox, prox!, gradient, gradient!
 import ProximalCore:
 	is_convex,
@@ -16,6 +19,11 @@ import ProximalCore:
 	is_set_indicator,
 	is_smooth,
 	is_locally_smooth,
+	# Without this one, every `is_positively_homogeneous` method below would land on a
+	# ProximalOperators-local function of the same name instead of on ProximalCore's, and
+	# `ProximalCore.is_support` -- which is defined in terms of it -- would report `false`
+	# for every norm in this package.
+	is_positively_homogeneous,
 	is_support
 
 const RealOrComplex{R<:Real} = Union{R,Complex{R}}
@@ -30,11 +38,16 @@ export prox, prox!, gradient, gradient!
 
 # Utilities
 
+include("utilities/preallocation.jl")
 include("utilities/approx_inequality.jl")
 include("utilities/linops.jl")
 include("utilities/symmetricpacked.jl")
 include("utilities/uniformarrays.jl")
 include("utilities/normdiff.jl")
+include("utilities/execution.jl")
+include("utilities/kernels.jl")
+include("utilities/bisection.jl")
+include("utilities/hostfallback.jl")
 
 # Basic functions
 
@@ -48,11 +61,13 @@ include("functions/indBallL2.jl")
 include("functions/indBallRank.jl")
 include("functions/indBinary.jl")
 include("functions/indBox.jl")
+include("functions/indRealBox.jl")
 include("functions/indFree.jl")
 include("functions/indGraph.jl")
 include("functions/indHalfspace.jl")
 include("functions/indHyperslab.jl")
 include("functions/indNonnegative.jl")
+include("functions/indRealNonnegative.jl")
 include("functions/indNonpositive.jl")
 include("functions/indPoint.jl")
 include("functions/indPolyhedral.jl")
@@ -73,6 +88,7 @@ include("functions/normL21.jl")
 include("functions/normL1plusL2.jl")
 include("functions/nuclearNorm.jl")
 include("functions/quadratic.jl")
+include("functions/separableHuberLoss.jl")
 include("functions/sqrNormL2.jl")
 include("functions/sumPositive.jl")
 include("functions/sqrHingeLoss.jl")
@@ -91,13 +107,14 @@ include("calculus/precomposeDiagonal.jl")
 include("calculus/regularize.jl")
 include("calculus/separableSum.jl")
 include("calculus/slicedSeparableSum.jl")
-include("calculus/precomposedSlicedSeparableSum.jl")
 include("calculus/reshapeInput.jl")
+include("calculus/precomposedSlicedSeparableSum.jl")
 include("calculus/sqrDistL2.jl")
 include("calculus/tilt.jl")
 include("calculus/translate.jl")
 include("calculus/sum.jl")
 include("calculus/pointwiseMinimum.jl")
+include("calculus/proximalAverage.jl")
 
 # Functions obtained from basic (as special cases or using calculus rules)
 

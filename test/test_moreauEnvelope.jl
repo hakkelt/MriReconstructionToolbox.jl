@@ -14,9 +14,9 @@ using LinearAlgebra
 
         predicates_test(g)
 
-        @test ProximalCore.is_smooth(g) == true
-        @test ProximalCore.is_quadratic(g) == false
-        @test ProximalCore.is_set_indicator(g) == false
+        @test is_smooth(g) == true
+        @test is_quadratic(g) == false
+        @test is_set_indicator(g) == false
 
         x = R[1.0, 2.0, 3.0, 4.0, 5.0]
 
@@ -40,9 +40,9 @@ end
 
         predicates_test(g)
 
-        @test ProximalCore.is_smooth(g) == true
-        @test ProximalCore.is_quadratic(g) == false
-        @test ProximalCore.is_set_indicator(g) == false
+        @test is_smooth(g) == true
+        @test is_quadratic(g) == false
+        @test is_set_indicator(g) == false
 
         x = R[1.0, 2.0, 3.0, 4.0, 5.0]
 

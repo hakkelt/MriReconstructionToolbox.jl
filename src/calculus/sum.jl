@@ -9,13 +9,24 @@ Given functions `f_1` to `f_k`, return their sum
 g(x) = \\sum_{i=1}^k f_i(x).
 ```
 """
-struct Sum{T}
+struct Sum{T, B}
     fs::T
+    buf::B
+    # explicit inner constructor: it suppresses the default two-argument outer
+    # one, which would otherwise capture `Sum(f1, f2)` with `f2` as the buffer
+    Sum{T, B}(fs::T, buf::B) where {T, B} = new(fs, buf)
 end
+
+Sum(fs::T; buf=nothing) where T <: Tuple = Sum{T, typeof(buf)}(fs, buf)
 
 Sum(fs::Vararg) = Sum((fs...,))
 
-component_types(::Type{Sum{T}}) where T = fieldtypes(T)
+component_types(::Type{<:Sum{T}}) where T = fieldtypes(T)
+
+preallocate(g::Sum, x) = Sum(
+    map(f -> preallocate(f, x), g.fs);
+    buf = (sig = input_signature(x), temp = similar(x)),
+)
 
 # note: is_proximable false because prox in general doesn't exist?
 is_proximable(::Type{<:Sum}) = false
@@ -43,10 +54,13 @@ function gradient!(grad, sumobj::Sum, x)
     # to keep track of this sum, i may not be able to
     # avoid allocating an array
     grad .= eltype(x)(0)
-    temp = similar(grad)
+    temp = get_buffers(sumobj, x).temp
     for f in sumobj.fs
         val += gradient!(temp, f, x)
         grad .+= temp
     end
     return val
 end
+
+# see `device_tier` in src/utilities/hostfallback.jl
+device_tier(::Type{T}) where T <: Sum = _combine_tiers(map(device_tier, component_types(T))...)

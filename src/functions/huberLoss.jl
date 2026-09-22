@@ -5,7 +5,7 @@ using LinearAlgebra
 export HuberLoss
 
 """
-    HuberLoss(ρ=1, μ=1)
+    HuberLoss(ρ=1, μ=1; threaded=true)
 
 Return the function
 ```math
@@ -15,11 +15,14 @@ f(x) = \\begin{cases}
 \\end{cases}
 ```
 where `ρ` and `μ` are positive parameters.
+
+`threaded = false` forbids this operator from using more than one thread; see
+[`is_threaded`](@ref).
 """
-struct HuberLoss{R, S}
+struct HuberLoss{R, S, Th}
     rho::R
     mu::S
-    function HuberLoss{R, S}(rho::R, mu::S) where {R, S}
+    function HuberLoss{R, S, Th}(rho::R, mu::S) where {R, S, Th}
         if rho <= 0 || mu <= 0
             error("parameters rho and mu must be positive")
         else
@@ -31,7 +34,10 @@ end
 is_convex(f::Type{<:HuberLoss}) = true
 is_smooth(f::Type{<:HuberLoss}) = true
 
-HuberLoss(rho::R=1, mu::S=1) where {R, S} = HuberLoss{R, S}(rho, mu)
+@threadable HuberLoss{<:Any, <:Any, Th} MemoryBound
+
+HuberLoss(rho::R=1, mu::S=1; threaded::Bool=true) where {R, S} =
+    HuberLoss{R, S, threaded}(rho, mu)
 
 function (f::HuberLoss)(x)
     R = real(eltype(x))
@@ -61,9 +67,7 @@ function prox!(y, f::HuberLoss, x, gamma)
     normx = norm(x)
     mugam = f.mu * gamma
     scal = (R(1) - min(mugam / (R(1) + mugam), mugam * f.rho / normx))
-    for k in eachindex(y)
-        y[k] = scal*x[k]
-    end
+    map_prox!(f, y, xk -> scal * xk, x)
     normy = scal*normx
     if normy <= f.rho
         return f.mu / R(2) * normy^2

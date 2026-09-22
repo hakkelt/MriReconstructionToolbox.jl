@@ -3,7 +3,7 @@
 export SqrNormL2
 
 """
-    SqrNormL2(λ=1)
+    SqrNormL2(λ=1; threaded=true)
 
 With a nonnegative scalar `λ`, return the squared Euclidean norm
 ```math
@@ -13,10 +13,13 @@ With a nonnegative array `λ`, return the weighted squared Euclidean norm
 ```math
 f(x) = \\tfrac{1}{2}∑_i λ_i x_i^2.
 ```
+
+`threaded = false` forbids this operator from using more than one thread; see
+[`is_threaded`](@ref).
 """
-struct SqrNormL2{T,SC}
+struct SqrNormL2{T,SC,Th}
     lambda::T
-    function SqrNormL2{T,SC}(lambda::T) where {T,SC}
+    function SqrNormL2{T,SC,Th}(lambda::T) where {T,SC,Th}
         if any(lambda .< 0)
             error("coefficients in λ must be nonnegative")
         else
@@ -30,9 +33,12 @@ is_convex(::Type{<:SqrNormL2}) = true
 is_smooth(::Type{<:SqrNormL2}) = true
 is_separable(::Type{<:SqrNormL2}) = true
 is_generalized_quadratic(::Type{<:SqrNormL2}) = true
-is_strongly_convex(::Type{SqrNormL2{T,SC}}) where {T,SC} = SC
+is_strongly_convex(::Type{<:SqrNormL2{T,SC}}) where {T,SC} = SC
 
-SqrNormL2(lambda::T=1) where T = SqrNormL2{T,all(lambda .> 0)}(lambda)
+@threadable SqrNormL2{<:Any,<:Any,Th} MemoryBound
+
+SqrNormL2(lambda::T=1; threaded::Bool=true) where T =
+    SqrNormL2{T,all(lambda .> 0),threaded}(lambda)
 
 function (f::SqrNormL2{<:Real})(x)
     return f.lambda / real(eltype(x))(2) * norm(x)^2
@@ -40,71 +46,77 @@ end
 
 function (f::SqrNormL2{<:AbstractArray})(x)
     R = real(eltype(x))
-    sqnorm = R(0)
-    for k in eachindex(x)
-        sqnorm += f.lambda[k] * abs2(x[k])
-    end
+    lambda = f.lambda
+    sqnorm = reduce_call_idx(f, (k, xk) -> lambda[k] * abs2(xk), x)
     return sqnorm / R(2)
 end
 
 function gradient!(y, f::SqrNormL2{<:Real}, x)
     R = real(eltype(x))
-    sqnx = R(0)
-    for k in eachindex(x)
-        y[k] = f.lambda * x[k]
-        sqnx += abs2(x[k])
+    lambda = f.lambda
+    # The reduction is over `x`, not over the written `y`, so no `map_reduce_prox!` seam
+    # fits and the loop is spelled out. It is therefore guarded by `is_cpu_storage`, like
+    # the inlined loops in `sqrHingeLoss.jl`: on device storage it would scalar-index.
+    if is_cpu_storage(x)
+        sqnx = R(0)
+        strategy = execution_strategy(f, x)
+        @elementwise_loop strategy reduction = ((+, sqnx),) for k in eachindex(x, y)
+            y[k] = lambda * x[k]
+            sqnx += abs2(x[k])
+        end
+        return f.lambda / R(2) * sqnx
     end
-    return f.lambda / R(2) * sqnx
+    y .= lambda .* x
+    return f.lambda / R(2) * sum(abs2, x)
 end
 
 function gradient!(y, f::SqrNormL2{<:AbstractArray}, x)
     R = real(eltype(x))
-    sqnx = R(0)
-    for k in eachindex(x)
-        y[k] = f.lambda[k] * x[k]
-        sqnx += f.lambda[k] * abs2(x[k])
+    lambda = f.lambda
+    if is_cpu_storage(x)
+        sqnx = R(0)
+        strategy = execution_strategy(f, x)
+        @elementwise_loop strategy reduction = ((+, sqnx),) for k in eachindex(x, y)
+            y[k] = lambda[k] * x[k]
+            sqnx += lambda[k] * abs2(x[k])
+        end
+        return sqnx / R(2)
     end
-    return sqnx / R(2)
+    y .= lambda .* x
+    return sum(lambda .* abs2.(x)) / R(2)
 end
 
 function prox!(y, f::SqrNormL2{<:Real}, x, gamma::Number)
     R = real(eltype(x))
     gl = gamma * f.lambda
-    sqny = R(0)
-    for k in eachindex(x)
-        y[k] = x[k] / (1 + gl)
-        sqny += abs2(y[k])
-    end
+    sqny = map_reduce_prox!(f, y, xk -> xk / (1 + gl), abs2, x)
     return f.lambda / R(2) * sqny
 end
 
 function prox!(y, f::SqrNormL2{<:AbstractArray}, x, gamma::Number)
     R = real(eltype(x))
-    wsqny = R(0)
-    for k in eachindex(x)
-        y[k] = x[k] / (1 + gamma * f.lambda[k])
-        wsqny += f.lambda[k] * abs2(y[k])
-    end
+    lambda = f.lambda
+    wsqny = map_reduce_prox_idx!(
+        f, y, (k, xk) -> xk / (1 + gamma * lambda[k]), (k, yk) -> lambda[k] * abs2(yk), x
+    )
     return wsqny / R(2)
 end
 
 function prox!(y, f::SqrNormL2{<:Real}, x, gamma::AbstractArray)
     R = real(eltype(x))
-    sqny = R(0)
-    for k in eachindex(x)
-        y[k] = x[k] / (1 + gamma[k] * f.lambda)
-        sqny += abs2(y[k])
-    end
+    lambda = f.lambda
+    sqny = map_reduce_prox_idx!(
+        f, y, (k, xk) -> xk / (1 + gamma[k] * lambda), (k, yk) -> abs2(yk), x
+    )
     return f.lambda / R(2) * sqny
 end
 
 function prox!(y, f::SqrNormL2{<:AbstractArray}, x, gamma::AbstractArray)
     R = real(eltype(x))
-    wsqny = R(0)
-    for k in eachindex(x)
-        y[k] = x[k] / (1 + gamma[k] * f.lambda[k])
-        wsqny += f.lambda[k] * abs2(y[k])
-    end
+    lambda = f.lambda
+    wsqny = map_reduce_prox_idx!(
+        f, y, (k, xk) -> xk / (1 + gamma[k] * lambda[k]), (k, yk) -> lambda[k] * abs2(yk), x
+    )
     return wsqny / R(2)
 end
 

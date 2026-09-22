@@ -1,48 +1,43 @@
-# IndPolyhedral: OSQP implementation
+module ProximalOperatorsOSQPExt
 
-struct IndPolyhedralOSQP{R,M} <: IndPolyhedral
-    l::AbstractVector{R}
-    A::AbstractMatrix{R}
-    u::AbstractVector{R}
-    mod::M
-    function IndPolyhedralOSQP(
-        l::AbstractVector{R}, A::AbstractMatrix{R}, u::AbstractVector{R}
-    ) where R
-        m, n = size(A)
-        mod = Base.invokelatest(Base.require(@__MODULE__, :OSQP)) do OSQP
-            mod = OSQP.Model()
-            if !all(l .<= u)
-                error("function is improper (are some bounds inverted?)")
-            end
-            OSQP.setup!(mod; P=SparseMatrixCSC{R}(I, n, n), l=l, A=sparse(A), u=u, verbose=false,
-                eps_abs=eps(R), eps_rel=eps(R),
-                eps_prim_inf=eps(R), eps_dual_inf=eps(R))
-            mod
-        end
-        new{R,typeof(mod)}(l, A, u, mod)
-    end
-end
+using LinearAlgebra
+using SparseArrays
+using OSQP
 
-# properties
-
-is_proximable(::Type{<:IndPolyhedralOSQP}) = false
+using ProximalOperators
+using ProximalOperators: IndPolyhedralOSQP
+import ProximalCore: prox, prox!
 
 # constructors
 
-IndPolyhedralOSQP(
+function ProximalOperators.IndPolyhedralOSQP(
+    l::AbstractVector{R}, A::AbstractMatrix{R}, u::AbstractVector{R}
+) where R
+    m, n = size(A)
+    if !all(l .<= u)
+        error("function is improper (are some bounds inverted?)")
+    end
+    mod = OSQP.Model()
+    OSQP.setup!(mod; P=SparseMatrixCSC{R}(I, n, n), l=l, A=sparse(A), u=u, verbose=false,
+        eps_abs=eps(R), eps_rel=eps(R),
+        eps_prim_inf=eps(R), eps_dual_inf=eps(R))
+    return IndPolyhedralOSQP{R, typeof(mod)}(l, A, u, mod)
+end
+
+ProximalOperators.IndPolyhedralOSQP(
     l::AbstractVector{R}, A::AbstractMatrix{R}, u::AbstractVector{R},
     xmin::AbstractVector{R}, xmax::AbstractVector{R}
 ) where R =
     IndPolyhedralOSQP([l; xmin], [A; I], [u; xmax])
 
-IndPolyhedralOSQP(
+ProximalOperators.IndPolyhedralOSQP(
     l::AbstractVector{R}, A::AbstractMatrix{R}, args...
 ) where R =
     IndPolyhedralOSQP(
         l, SparseMatrixCSC(A), R(Inf).*ones(R, size(A, 1)), args...
     )
 
-IndPolyhedralOSQP(
+ProximalOperators.IndPolyhedralOSQP(
     A::AbstractMatrix{R}, u::AbstractVector{R}, args...
 ) where R =
     IndPolyhedralOSQP(
@@ -61,10 +56,8 @@ end
 
 function prox!(y, f::IndPolyhedralOSQP, x, gamma)
     R = eltype(x)
-    results = Base.invokelatest(Base.require(@__MODULE__, :OSQP)) do OSQP
-        OSQP.update!(f.mod; q=-x)
-        OSQP.solve!(f.mod)
-    end
+    OSQP.update!(f.mod; q=-x)
+    results = OSQP.solve!(f.mod)
     y .= results.x
     return R(0)
 end
@@ -79,7 +72,7 @@ end
 # dual problem is: minimize_y (1/2)||-A'y||^2 - x'A'y + g*(y)
 # can solve with (fast) dual proximal gradient method
 
-function prox_naive(f::IndPolyhedralOSQP, x, gamma)
+function ProximalOperators.prox_naive(f::IndPolyhedralOSQP, x, gamma)
     R = eltype(x)
     y = zeros(R, size(f.A, 1)) # dual vector
     y1 = y
@@ -97,3 +90,5 @@ function prox_naive(f::IndPolyhedralOSQP, x, gamma)
     p = -f.A'*y + x
     return p, R(0)
 end
+
+end # module ProximalOperatorsOSQPExt

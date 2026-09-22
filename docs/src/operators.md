@@ -10,6 +10,52 @@ ProximalCore.gradient
 ProximalCore.gradient!
 ```
 
+## Preallocating scratch space
+
+Some proximal mappings need scratch arrays to be computed, which [`prox!`](@ref)
+and [`gradient!`](@ref) allocate on every call. Inside an iterative solver, where
+the same function is evaluated over and over at inputs of the same size, this is
+pure overhead. [`preallocate`](@ref) returns a copy of the function carrying
+those buffers, so that repeated calls allocate nothing:
+
+```example prealloc
+using ProximalOperators
+
+f = NuclearNorm(1e-3)
+x = randn(128, 64)
+y = similar(x)
+
+fp = preallocate(f, x)   # sized for inputs like x
+prox!(y, fp, x, 0.5)     # no scratch allocation
+```
+
+`x` is only used as a prototype: its size, element type and array type are read,
+its contents are ignored. Functions that need no scratch space are returned
+unchanged, and calculus rules pass the request on to the functions they wrap, so
+`preallocate` can be applied to any function of the library.
+
+A preallocated function only accepts the inputs it was sized for; anything else
+throws a `DimensionMismatch`:
+
+```julia
+julia> prox!(similar(x), fp, randn(64, 128), 0.5)
+ERROR: DimensionMismatch: NuclearNorm was preallocated for a (128, 64) Array{Float64} input, got 64×128 Matrix{Float64}
+```
+
+!!! warning
+    The buffers are shared by every call, so a preallocated function is **not**
+    thread-safe. Use one copy per task.
+
+For functions based on a matrix factorization (`NuclearNorm`, `IndPSD`,
+`IndStiefel`, `IndBallRank`) preallocation removes the temporaries around the
+factorization, but LAPACK and TSVD still allocate the factors themselves on
+every call, so those remain.
+
+```@docs
+preallocate
+ProximalOperators.is_preallocated
+```
+
 ## Complex and matrix variables
 
 The proximal mapping is usually discussed in the case of functions over ``\mathbb{R}^n``. However, by adapting the inner product ``\langle\cdot,\cdot\rangle`` and associated norm ``\|\cdot\|`` adopted in its definition, one can extend the concept to functions over more general spaces.

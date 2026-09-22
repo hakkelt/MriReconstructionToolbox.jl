@@ -17,9 +17,9 @@ f = Quadratic(Q, q)
 
 predicates_test(f)
 
-@test ProximalCore.is_smooth(f) == true
-@test ProximalCore.is_quadratic(f) == true
-@test ProximalCore.is_set_indicator(f) == false
+@test is_smooth(f) == true
+@test is_quadratic(f) == true
+@test is_set_indicator(f) == false
 
 x = randn(n)
 

@@ -2,7 +2,7 @@ using Test
 
 using ProximalOperators
 using ProximalOperators: ArrayOrTuple
-using ProximalCore: ProximalCore,
+using ProximalCore:
     is_proximable,
     is_separable,
     is_convex,
@@ -18,6 +18,7 @@ using ProximalCore: ProximalCore,
     is_support
 
 using Aqua
+using Documenter
 
 function call_test(f, x::ArrayOrTuple{R}) where R <: Real
     try
@@ -60,7 +61,7 @@ function prox_test(f, x::ArrayOrTuple{R}, gamma=1) where R <: Real
         @test isapprox(fy_naive, fy, rtol=rtol, atol=100*eps(R))
     end
 
-    if !is_set_indicator(f) || ProximalCore.is_proximable(f)
+    if !is_set_indicator(f) || is_proximable(f)
         f_at_y = call_test(f, y)
         if f_at_y !== nothing
             @test isapprox(f_at_y, fy, rtol=rtol, atol=100*eps(R))
@@ -113,8 +114,11 @@ function predicates_test(f)
 end
 
 @testset "Aqua" begin
-    Aqua.test_all(ProximalOperators; ambiguities=false, stale_deps=false, persistent_tasks=false)
-    Aqua.test_stale_deps(ProximalOperators, ignore=[:OSQP])
+    Aqua.test_all(ProximalOperators; ambiguities=false)
+end
+
+@testset "Documentation" begin
+    doctest(ProximalOperators)
 end
 
 @testset "Utilities" begin
@@ -124,14 +128,22 @@ end
 @testset "Functions" begin
     include("test_cubeNormL2.jl")
     include("test_huberLoss.jl")
+    include("test_separableHuberLoss.jl")
+    include("test_indBallL0.jl")
+    include("test_indBallL1.jl")
     include("test_indAffine.jl")
     include("test_leastSquares.jl")
     include("test_logisticLoss.jl")
     include("test_quadratic.jl")
     include("test_linear.jl")
     include("test_indHyperslab.jl")
+    include("test_indRealBox.jl")
     include("test_graph.jl")
     include("test_normL1plusL2.jl")
+    # Appended last within this group: several later test files draw from the task-local RNG that
+    # `@testset` reseeds per set, and `test_precomposedSlicedSeparableSum.jl` is numerically fragile
+    # for some draws, so inserting a testset ahead of them changes what they get.
+    include("test_indAffineCG.jl")
 end
 
 include("test_calls.jl")
@@ -147,16 +159,23 @@ end
     include("test_moreauEnvelope.jl")
     include("test_precompose.jl")
     include("test_pointwiseMinimum.jl")
+    include("test_proximalAverage.jl")
     include("test_postcompose.jl")
     include("test_regularize.jl")
     include("test_separableSum.jl")
     include("test_slicedSeparableSum.jl")
     include("test_precomposedSlicedSeparableSum.jl")
+    include("test_recursivearraytools.jl")
     include("test_sum.jl")
+    include("test_reshapeInput.jl")
 end
 
 @testset "Equivalences" begin
     include("test_equivalences.jl")
+end
+
+@testset "Preallocation" begin
+    include("test_preallocate.jl")
 end
 
 include("test_optimality_conditions.jl")

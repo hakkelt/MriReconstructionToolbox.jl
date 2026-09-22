@@ -1,4 +1,5 @@
 using ProximalOperators
+using OSQP  # loads ProximalOperatorsOSQPExt, enabling IndPolyhedral(...; solver=:osqp)
 using Test
 
 @testset "IndPolyhedral" begin
@@ -30,8 +31,8 @@ p = similar(x)
     () -> IndPolyhedral(l, A, u, xmin, xmax),
 ]
     f = constr()
-    @test ProximalCore.is_convex(f) == true
-    @test ProximalCore.is_set_indicator(f) == true
+    @test is_convex(f) == true
+    @test is_set_indicator(f) == true
     fx = call_test(f, x)
     p, fp = prox_test(f, x)
 end

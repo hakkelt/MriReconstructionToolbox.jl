@@ -38,7 +38,7 @@ For example, one can create the L1-norm as follows.
 julia> using ProximalOperators
 
 julia> f = NormL1(3.5)
-NormL1{Float64}(3.5)
+NormL1{Float64, Nothing}(3.5, nothing)
 ```
 
 Functions created this way are, of course, callable.

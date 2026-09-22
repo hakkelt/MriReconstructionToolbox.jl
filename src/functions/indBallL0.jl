@@ -28,7 +28,8 @@ IndBallL0(r::I) where {I} = IndBallL0{I}(r)
 
 function (f::IndBallL0)(x)
     R = real(eltype(x))
-    if count(!isequal(0), x) > f.r
+    # a `sum` over a 0/1 map rather than `count`, which is not available on every backend
+    if sum(xi -> iszero(xi) ? 0 : 1, x) > f.r
         return R(Inf)
     end
     return R(0)
@@ -41,12 +42,27 @@ end
 
 _get_top_k_abs_indices(x, k) = _get_top_k_abs_indices(x[:], k)
 
+# `partialsortperm` needs a sortable, scalar-indexable array. On storage that is neither --
+# a device array, or any array type the package does not recognise -- the same selection is
+# made by bisecting the threshold that leaves `r` entries above it, which is built from
+# reductions and a single broadcast. Where the r-th and (r+1)-th magnitudes are equal the
+# two paths may keep a different subset, just as `partialsortperm` itself is unspecified on
+# ties; both results satisfy `nnz ≤ r`.
 function prox!(y, f::IndBallL0, x, gamma)
     T = eltype(x)
-    p = _get_top_k_abs_indices(x, f.r)
-    y .= T(0)
-    for i in eachindex(p)
-        y[p[i]] = x[p[i]]
+    if is_cpu_storage(typeof(x))
+        p = _get_top_k_abs_indices(x, f.r)
+        # The surviving entries are read out before `y` is cleared, so that `prox!(x, f, x, gamma)` (an in-place
+        # step, which callers are allowed to take) does not zero them out before they are copied.
+        kept = [x[i] for i in p]
+        y .= T(0)
+        for i in eachindex(p)
+            y[p[i]] = kept[i]
+        end
+    else
+        # The broadcast reads `x` and writes `y` elementwise, so it is in-place safe as it stands.
+        tau = kth_largest_abs(x, f.r, real(T))
+        y .= ifelse.(abs.(x) .> tau, x, zero(T))
     end
     return real(T)(0)
 end
