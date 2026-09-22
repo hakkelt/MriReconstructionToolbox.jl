@@ -98,28 +98,34 @@ function Base.iterate(iter::LiLinIteration{R}, state::LiLinState{R,Tx}) where {R
 
     theta1 = (R(1) + sqrt(R(1) + 4 * state.theta^2)) / R(2)
 
-    if Fz <= state.F_average - iter.delta * norm(state.res)^2
-        case = 1
+    # The candidate `v` exists only in the branch that computes it, so each case writes its own
+    # update instead of a flag that is decided first and acted on afterwards.
+    function take_z_step!()
+        state.y .= state.z .+ ((state.theta - R(1)) / theta1) .* (state.z .- state.x)
+        state.x, state.z = state.z, state.x
+        return Fz
+    end
+
+    Fx = if Fz <= state.F_average - iter.delta * norm(state.res)^2
+        take_z_step!()
     else
         # TODO: re-use available space in state?
         # TODO: backtrack gamma at x
-        f_x, grad_f_x = value_and_gradient(iter.f, x)
+        _, grad_f_x = value_and_gradient(iter.f, state.x)
         x_forward = state.x - state.gamma .* grad_f_x
         v, g_v = prox(iter.g, x_forward, state.gamma)
         Fv = iter.f(v) + g_v
-        case = Fz <= Fv ? 1 : 2
-    end
-
-    if case == 1
-        state.y .= state.z .+ ((state.theta - R(1)) / theta1) .* (state.z .- state.x)
-        state.x, state.z = state.z, state.x
-        Fx = Fz
-    elseif case == 2
-        state.y .=
-            state.z .+ (state.theta / theta1) .* (state.z .- v) .+
-            ((state.theta - R(1)) / theta1) .* (v .- state.x)
-        state.x = v
-        Fx = Fv
+        if Fz <= Fv
+            take_z_step!()
+        else
+            # Monotone APG extrapolates from the new iterate, which in this case is `v`, not `z`
+            # (Li & Lin 2015, Algorithm 2): y = x⁺ + (θ/θ⁺)(z - x⁺) + ((θ-1)/θ⁺)(x⁺ - x).
+            state.y .=
+                v .+ (state.theta / theta1) .* (state.z .- v) .+
+                ((state.theta - R(1)) / theta1) .* (v .- state.x)
+            state.x = v
+            Fv
+        end
     end
 
     state.f_y, grad_f_y = value_and_gradient(iter.f, state.y)

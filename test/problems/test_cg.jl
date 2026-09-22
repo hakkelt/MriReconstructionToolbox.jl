@@ -84,4 +84,39 @@ using Random
         x, it = cg()
         @test norm(A * x - b)^2 + λ * norm(x)^2 < norm(A * x0 - b)^2 + λ * norm(x0)^2
     end
+
+    @testset "Preconditioned ridge regression" begin
+        # The preconditioned iteration used to drop the λ term from both the residual and the
+        # matrix-vector product, so `CG(; P, λ)` silently solved the *unregularized* problem --
+        # a wrong answer rather than an error. Both must land on the same solution, `(A + λI) \ b`.
+        n = 60
+        A = rand(n, n)
+        A = A'A + I
+        b = rand(n)
+        x0 = zeros(n)
+        λ = 0.7
+        expected = (A + λ * I) \ b
+
+        x_plain, _ = ProximalAlgorithms.CG(x0 = x0, A = A, b = b, λ = λ, maxit = 500)()
+        @test norm(x_plain - expected) / norm(expected) < 1.0e-6
+
+        P = Diagonal(diag(A) .+ λ)
+        x_pre, _ = ProximalAlgorithms.CG(x0 = x0, A = A, b = b, P = P, λ = λ, maxit = 500)()
+        @test norm(x_pre - expected) / norm(expected) < 1.0e-6
+    end
+
+    @testset "PCGNR with a normal operator of a different type" begin
+        # `PCGNRIteration` stores `A'A` and `A'b`, so its type parameters must name those, not
+        # the un-composed `A` and the measurement `b`. Naming them after the arguments made
+        # every operator whose normal form has a different type fail to `convert`; an
+        # `UpperTriangular` is the smallest example (`A'A` is a dense `Matrix`).
+        n = 40
+        A = UpperTriangular(rand(n, n) + n * I)
+        b = rand(n)
+        x0 = zeros(n)
+        expected = (A'A) \ (A'b)
+
+        x, _ = ProximalAlgorithms.CGNR(x0 = x0, A = A, b = b, P = Diagonal(ones(n)), maxit = 500)()
+        @test norm(x - expected) / norm(expected) < 1.0e-6
+    end
 end

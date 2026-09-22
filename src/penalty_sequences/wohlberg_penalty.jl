@@ -79,7 +79,7 @@ function reinstantiate_penalty_sequence(seq::WohlbergPenalty, ::Type{R}, rho) wh
 	final_rho = ensure_correct_value(seq.rho, R, rho)
 	n_blocks = length(final_rho)
 	default_tau = fill(R(2.0), n_blocks)
-	tau_vec = ensure_correct_value(seq.tau, R, default_tau)
+	tau_vec = ensure_correct_value(default_tau, R, seq.tau)
 	WohlbergPenalty{typeof(final_rho),typeof(tau_vec),R}(;
 		rho=final_rho,
 		mu=R(seq.mu),
@@ -109,8 +109,9 @@ function get_next_rho!(seq::WohlbergPenalty, ::ADMMIteration, state::ADMMState)
 				seq.tau[i] = sqrt(rᵏ_norm / sᵏ_norm)
 			elseif 1/seq.tau_max ≤ sqrt(rᵏ_norm / sᵏ_norm) < 1
 				seq.tau[i] = sqrt(sᵏ_norm / rᵏ_norm)
+			else
+				seq.tau[i] = seq.tau_max
 			end
-			# Otherwise, tau[i] remains unchanged (residuals are reasonably balanced)
 
             if seq.normalized
                 rᵏ_norm /= state.ϵᵖʳⁱ[i]

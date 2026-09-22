@@ -3,11 +3,15 @@
 # Inverse Problems," in IEEE Transactions on Image Processing, vol. 20, no. 3,
 # pp. 681-695, March 2011, doi: 10.1109/TIP.2010.2076294.
 
-struct ADMMIteration{R,Tx,TA,Tb,TAHb,Tg,TB,TP,Tyz,Tps}
+struct ADMMIteration{R,Tx,TA,Tb,TAHb,TAHA,Tg,TB,TP,Tyz,Tps}
 	x0::Tx
 	A::TA
 	b::Tb
 	AHb::TAHb
+	# An already-built `AᴴA`, or `nothing` to build it here. `StructuredOptimization`'s
+	# `SqrNormL2WithNormalOp` constructs one eagerly; without this field ADMM would build a
+	# second, independent `Compose` chain with its own operator-sized buffers.
+	AHA::TAHA
 	g::Tg
 	B::TB
 	P::TP
@@ -17,6 +21,7 @@ struct ADMMIteration{R,Tx,TA,Tb,TAHb,Tg,TB,TP,Tyz,Tps}
 	y0::Tyz
 	z0::Tyz
 	penalty_sequence::Tps
+	threaded::Bool
 end
 
 """
@@ -39,6 +44,8 @@ See also: [`ADMM`](@ref).
 - `x0`: initial point
 - `A=nothing`: forward operator. If `A` is not provided, ½‖Ax - b‖²₂ is not computed, and the algorithm will only minimize the regularization terms.
 - `b=nothing`: measurement vector. If `A` is provided, `b` must also be provided.
+- `AHA=nothing`: the normal operator `AᴴA`, if the caller already holds one. Left `nothing`,
+  it is built from `A`; passing one that is not `A' * A` solves a different problem.
 - `g=()`: tuple of proximable regularization functions
 - `B=()`: tuple of regularization operators
 - `P=nothing`: preconditioner for CG (optional)
@@ -55,6 +62,11 @@ See also: [`ADMM`](@ref).
   - `SpectralRadiusBoundPenalty(rho; tau=10.0, eta=100.0)`: adaptive penalty sequence based on spectral radius bounds [3]
   - `SpectralRadiusApproximationPenalty(rho; tau=10.0)`: adaptive penalty sequence based on spectral radius approximation [4]
   Note: rho can be specified either as the `rho` parameter or within the penalty sequence constructor, but not both.
+- `threaded=true`: run the per-regularizer loops (the adjoint accumulation of the x-update and
+  the whole z/y-update) over `Threads.@threads`. Set it to `false` from a caller that is
+  already threading at a coarser level — nested threading regions oversubscribe rather than
+  speed anything up. With a single regularizer block there is nothing to spread and the loops
+  stay serial either way.
 
 The adaptive penalty parameter schemes are implemented through the penalty sequence types, 
 following various strategies from the literature. See the individual penalty sequence types 
@@ -70,6 +82,7 @@ function ADMMIteration(;
 	x0,
 	A=nothing,
 	b=nothing,
+	AHA=nothing,
 	g=(),
 	B=nothing,
 	rho=nothing,
@@ -80,6 +93,7 @@ function ADMMIteration(;
 	y0=nothing,
 	z0=nothing,
 	penalty_sequence=nothing,
+	threaded=true,
 )
 	if isnothing(A) && !isnothing(b)
 		throw(ArgumentError("A must be provided if b is given"))
@@ -141,8 +155,12 @@ function ADMMIteration(;
 		reinstantiate_penalty_sequence(penalty_sequence, R, final_rho)
 	end
 
+	if !isnothing(AHA) && isnothing(A)
+		throw(ArgumentError("AHA was given without A"))
+	end
+
 	return ADMMIteration(
-		x0, A, b, AHb, g, B, P, P_is_inverse, R(cg_tol), cg_maxit, y0, z0, ps
+		x0, A, b, AHb, AHA, g, B, P, P_is_inverse, R(cg_tol), cg_maxit, y0, z0, ps, threaded
 	)
 end
 
@@ -221,21 +239,58 @@ function get_cg_state(iter)
 	end
 end
 
-function get_cg_operator(iter)
-	# Build the CG operator for the x update
-	# If A is not provided, we assume a simple identity operator
-	# cg_operator = A'*A + sum(rho[i] * (B[i]' * B[i]) for i in eachindex(g))
-	rho = iter.penalty_sequence.rho
-	cg_operator = isnothing(iter.A) ? nothing : iter.A' * iter.A
-	for i in eachindex(iter.g)
-		new_op = rho[i] * (iter.B[i]' * iter.B[i])
-		if isnothing(cg_operator)
-			cg_operator = new_op
-		else
-			cg_operator += new_op
-		end
+"""
+	ADMMNormalOp(AᴴA, BᴴB, rho, tmp, sz)
+
+The x-update system operator `AᴴA + ∑ᵢ ρᵢ BᵢᴴBᵢ`, built once and reused for the whole solve.
+
+`AᴴA` (`nothing` when `A` is not given) and each `BᴴB[i] = Bᵢ'Bᵢ` are fixed operators; the
+penalty weights `ρᵢ` are read *live* from `rho`, which aliases `iter.penalty_sequence.rho`
+(every `PenaltySequence` mutates that vector in place, never reassigns it). So an adaptive
+penalty sequence changes `ρ` with no operator rebuild and nothing to write back — which is what
+the previous `if rho_changed … rebuild …` branch got wrong (it never stored the rebuilt
+operator, so once `ρ` stabilised CG silently reverted to the initial `ρ`).
+
+`tmp` is one x-shaped scratch buffer for accumulating the `BᵢᴴBᵢ` contributions.
+"""
+struct ADMMNormalOp{TAHA, TBHB <: Tuple, TR, TT}
+	AᴴA::TAHA
+	BᴴB::TBHB
+	rho::TR
+	tmp::TT
+	sz::Tuple{Int, Int}
+end
+
+function LinearAlgebra.mul!(y, op::ADMMNormalOp, x)
+	if isnothing(op.AᴴA)
+		fill!(y, zero(eltype(y)))
+	else
+		mul!(y, op.AᴴA, x)
 	end
-	return cg_operator
+	for i in eachindex(op.BᴴB)
+		mul!(op.tmp, op.BᴴB[i], x)
+		@. y += op.rho[i] * op.tmp
+	end
+	return y
+end
+
+Base.size(op::ADMMNormalOp) = op.sz
+Base.size(op::ADMMNormalOp, i::Integer) = op.sz[i]
+Base.eltype(op::ADMMNormalOp) = eltype(op.tmp)
+Base.:*(op::ADMMNormalOp, x) = mul!(similar(op.tmp), op, x)
+
+function get_cg_operator(iter)
+	# x-update system: AᴴA + ∑ᵢ ρᵢ BᵢᴴBᵢ. Built once; ρ is followed live. See `ADMMNormalOp`.
+	AᴴA = if isnothing(iter.A)
+		nothing
+	elseif isnothing(iter.AHA)
+		iter.A' * iter.A
+	else
+		iter.AHA
+	end
+	BᴴB = ntuple(i -> iter.B[i]' * iter.B[i], length(iter.g))
+	n = length(iter.x0)
+	return ADMMNormalOp(AᴴA, BᴴB, iter.penalty_sequence.rho, similar(iter.x0), (n, n))
 end
 
 function ADMMState(iter::ADMMIteration{R,Tx}) where {R,Tx}
@@ -325,9 +380,29 @@ formulas.
 
 The function returns the updated state, allowing the ADMM algorithm to proceed iteratively until convergence.
 """
+# Run `body(i)` for every regularizer block, threaded or not as `iter.threaded` says. Both
+# per-block loops of one ADMM iteration are independent across blocks, so either is safe to
+# thread; a caller that is already threading at a coarser level passes `threaded = false`,
+# since nested threading regions oversubscribe rather than speed anything up. A single block
+# never gets a threading scope, because there is nothing to spread.
+function foreach_block(body, iter)
+	if length(iter.g) > 1 && iter.threaded
+		Threads.@threads for i in eachindex(iter.g)
+			body(i)
+		end
+	else
+		for i in eachindex(iter.g)
+			body(i)
+		end
+	end
+	return nothing
+end
+
 function Base.iterate(iter::ADMMIteration, state=ADMMState(iter))
-	# Get current rho values
-	rho, rho_changed = get_next_rho!(iter.penalty_sequence, iter, state)
+	# Get current rho values. `rho` aliases `iter.penalty_sequence.rho` and is mutated in place,
+	# so `state.cg_operator` (an `ADMMNormalOp` holding that same vector) always sees the current
+	# weights — nothing to rebuild.
+	rho, _ = get_next_rho!(iter.penalty_sequence, iter, state)
 
 	# Swap z and z_old at start of iteration
 	state.z, state.z_old = state.z_old, state.z
@@ -340,7 +415,7 @@ function Base.iterate(iter::ADMMIteration, state=ADMMState(iter))
 	else
 		fill!(rhs, 0)
 	end
-	Threads.@threads for i in eachindex(iter.g)
+	foreach_block(iter) do i
 		temp = state.rᵏ[i] # reusing array of previous iteration's rᵏ as a temporary variable
 		temp .= state.z_old[i] .- state.u[i]
 		mul!(state.tempˣ[i], adjoint(iter.B[i]), temp)
@@ -349,18 +424,11 @@ function Base.iterate(iter::ADMMIteration, state=ADMMState(iter))
 		rhs .+= rho[i] .* state.tempˣ[i]
 	end
 
-	# The CG operator is defined as:
-	# AᴴA + ∑ᵢ ρᵢ BᵢᴴBᵢ
-	# For adaptive penalty sequences, we need to reconstruct the operator with new rho values
-	if rho_changed
-		new_terms = sum(rho[i] * (iter.B[i]' * iter.B[i]) for i in eachindex(iter.g))
-		cg_operator = isnothing(iter.A) ? new_terms : (iter.A' * iter.A) + new_terms
-	else
-		cg_operator = state.cg_operator
-	end
+	# The CG operator AᴴA + ∑ᵢ ρᵢ BᵢᴴBᵢ follows ρ live (see `ADMMNormalOp`), so it is built once
+	# in `ADMMState` and never rebuilt here, even under an adaptive penalty sequence.
 	cg_solver = CG(;
 		x0=state.x,
-		A=cg_operator,
+		A=state.cg_operator,
 		b=rhs,
 		P=iter.P,
 		P_is_inverse=iter.P_is_inverse,
@@ -374,7 +442,7 @@ function Base.iterate(iter::ADMMIteration, state=ADMMState(iter))
 	state.tempˣ[1] .= state.x .- x_old # Compute the change in x
 	state.Δx_norm = norm(state.tempˣ[1]) # Store the norm of the change in x
 
-	Threads.@threads for i in eachindex(iter.g)
+	foreach_block(iter) do i
 		# 2. Prox-step (z-update): zᵢ ← prox_{gᵢ, 1/ρᵢ}(Bᵢ⋅x + 1/ρᵢ⋅yᵢ)
 		mul!(state.Bx[i], iter.B[i], state.x)
 		temp = state.rᵏ[i] # reusing array of previous iteration's rᵏ as a temporary variable
@@ -495,7 +563,7 @@ end
 
 function get_assumptions(::Type{<:ADMMIteration})
 	AssumptionGroup(
-		LeastSquaresTerm(:A => (is_linear,), :b),
+		LeastSquaresTerm(:A => (is_linear,), :b, :AHA),
 		RepeatedOperatorTerm(:g => (is_proximable,), :B => (is_linear,)),
 	)
 end

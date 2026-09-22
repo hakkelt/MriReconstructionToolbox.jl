@@ -84,6 +84,7 @@ import ProximalAlgorithms:
             nothing,     # A  
             nothing,     # b
             nothing,     # AHb
+            nothing,     # AHA
             g,          # g
             B,          # B
             nothing,     # P
@@ -384,6 +385,32 @@ import ProximalAlgorithms:
         rho_new3, changed3 = get_next_rho!(seq, iter, state3)
         @test changed3
         @test all(rho_new3 .!= rho_init)
+    end
+
+    @testset "SpectralRadiusApproximationPenalty stays inside its bounds" begin
+        # A block whose z has reached a fixed point -- a satisfied indicator term is the common
+        # case, its prox being idempotent once feasible -- gives Δz_norm ≈ 0 on every adaptation,
+        # so the τ-multiply branch fires every time and ρ grew geometrically without bound until
+        # it overflowed. Feed exactly that: z never changes, y does.
+        rho_init = [1.0]
+        seq = SpectralRadiusApproximationPenalty(rho = rho_init, rho_max = [1.0e3])
+        seq = reinstantiate_penalty_sequence(seq, Float64, rho_init)
+        iter = create_mock_admm_iteration(1)
+
+        z_fixed = [randn(10)]
+        for k in 1:60
+            state = create_mock_admm_state([1.0], [0.5]; z = z_fixed, z_old = copy.(z_fixed))
+            get_next_rho!(seq, iter, state)
+            @test all(isfinite, seq.rho)
+            @test seq.rho[1] <= 1.0e3
+        end
+        @test seq.rho[1] == 1.0e3
+
+        # the defaults are in place when the bounds are not given
+        seq_lo = SpectralRadiusApproximationPenalty(rho = [1.0], rho_min = [1.0e-2])
+        seq_lo = reinstantiate_penalty_sequence(seq_lo, Float64, [1.0])
+        @test seq_lo.rho_min == [1.0e-2]
+        @test seq_lo.rho_max == [1.0e6]
     end
 
     @testset "SpectralRadiusApproximationPenalty" begin

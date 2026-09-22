@@ -16,7 +16,7 @@ This iterator solves convex optimization problems of the form
 
 where `f` is smooth.
 
-See also: [`FastForwardBackward`](@ref).
+See also: [`FastForwardBackward`](@ref), [`POGM`](@ref).
 
 # Arguments
 - `x0`: initial point.

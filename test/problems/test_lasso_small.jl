@@ -117,6 +117,17 @@ using ProximalAlgorithms:
         @test x0 == x0_backup
     end
 
+    @testset "POGM (fixed step)" begin
+        x0 = zeros(T, n)
+        x0_backup = copy(x0)
+        solver = ProximalAlgorithms.POGM(tol = TOL)
+        x, it = @inferred solver(x0 = x0, f = fA_autodiff, g = g, Lf = Lf)
+        @test eltype(x) == T
+        @test norm(x - x_star, Inf) <= TOL
+        @test it < 400
+        @test x0 == x0_backup
+    end
+
     @testset "FastForwardBackward (custom extrapolation)" begin
         x0 = zeros(T, n)
         x0_backup = copy(x0)
@@ -299,6 +310,13 @@ using ProximalAlgorithms:
             @test norm(x_admm - x_star, Inf) <= 1e-3
             @test it_admm ≤ 500
             @test x0 == x0_backup
+
+            # A caller that already holds `AᴴA` may hand it over instead of having ADMM
+            # build a second one; the iterates must be identical.
+            solver_aha = ProximalAlgorithms.ADMM(tol = 1e-5, maxit=500, penalty_sequence = ps)
+            x_aha, it_aha = solver_aha(; x0, A, b, g, AHA = A' * A)
+            @test x_aha ≈ x_admm
+            @test it_aha == it_admm
         end
     end
 

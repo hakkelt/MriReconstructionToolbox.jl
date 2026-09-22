@@ -26,10 +26,24 @@ struct AssumptionGroup{T}
     end
 end
 
+"""
+    LeastSquaresTerm(operator, b, [AHA])
+
+A term assumed to be of the form `½‖A x - b‖²`.
+
+`AHA` is optional and names the keyword under which the caller may hand the algorithm an
+already-built normal operator `AᴴA`. Algorithms that form `A' * A` themselves (ADMM's
+x-update system) declare it so that a parser holding one — `StructuredOptimization`'s
+`SqrNormL2WithNormalOp` builds it eagerly — can pass it through instead of having it built a
+second time. Leave it `nothing` in an algorithm that never forms the normal operator.
+"""
 struct LeastSquaresTerm{T} <: AssumptionTerm
     operator::AssumptionItem{T}
     b::Symbol
+    AHA::Union{Symbol,Nothing}
 end
+
+LeastSquaresTerm(operator::AssumptionItem, b::Symbol) = LeastSquaresTerm(operator, b, nothing)
 
 struct SquaredL2Term <: AssumptionTerm
     λ::Symbol
