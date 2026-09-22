@@ -2,11 +2,11 @@ module WaveletOperators
 
 export WaveletOp, wavelet, WT
 
-using AbstractOperators
+using ..AbstractOperators
 using Wavelets
 import LinearAlgebra: mul!, opnorm
 import Base: size
-import AbstractOperators:
+import ..AbstractOperators:
     domain_type,
     codomain_type,
     domain_array_type,
