@@ -94,6 +94,23 @@ parent = "fix/combine-shape-changing-eye"
 pr = "hakkelt/AbstractOperators.jl#16"
 
 [[AbstractOperators.stack]]
+branch = "fix/matrixop-diagop-matrix-diagonal"
+parent = "c5-deterministic-opnorm"
+pr = "hakkelt/AbstractOperators.jl#28"
+
+# The closed-form operator-norm bound, and the batch transparency that keeps a composition short
+# enough for it to be tight. Both sit above the combination-rule fixes they build on.
+[[AbstractOperators.stack]]
+branch = "feat/opnorm-bound"
+parent = "fix/matrixop-diagop-matrix-diagonal"
+pr = "hakkelt/AbstractOperators.jl#29"
+
+[[AbstractOperators.stack]]
+branch = "feat/batch-op-combination-rules"
+parent = "feat/opnorm-bound"
+pr = "hakkelt/AbstractOperators.jl#30"
+
+[[AbstractOperators.stack]]
 branch = "feat/permute-dims-operator"
 parent = "fix/compose-getindex-multivar"
 pr = "hakkelt/AbstractOperators.jl#7"
