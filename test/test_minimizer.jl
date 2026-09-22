@@ -435,3 +435,33 @@ end
         @test !MriReconstructionToolbox._is_krylov_solver(FISTA())
     end
 end
+
+@testitem "The operator-norm margin is chosen per algorithm" tags = [:minimizer, :reconstruction] begin
+    using LinearAlgebra, Random
+    using MriReconstructionToolbox: opnorm_rel_margin, get_encoding_operator
+    import MriReconstructionToolbox.AbstractOperators as AbstractOperators
+
+    # POGM is the algorithm that diverges on an under-estimated `Lf`, so it asks for the tightest
+    # margin; everything else takes the conservative default.
+    @test opnorm_rel_margin(POGM()) == 1.0e-3
+    @test opnorm_rel_margin(FISTA()) == 0.01
+    @test opnorm_rel_margin(ISTA()) == 0.01
+    @test opnorm_rel_margin(CGNR()) == 0.01
+    # A tuple of algorithms takes the tightest of them: the number is handed to all of them.
+    @test opnorm_rel_margin((FISTA(), POGM())) == 1.0e-3
+
+    # Whatever the margin, the value is at or above `‖𝒜‖` — that is what a fixed step `1/Lf` needs.
+    Random.seed!(19)
+    nx, ny, nc = 32, 32, 4
+    maps = NamedDimsArray{(:x, :y, :coil)}(randn(ComplexF32, nx, ny, nc))
+    ksp = NamedDimsArray{(:kx, :ky, :coil)}(randn(ComplexF32, nx, ny, nc))
+    E = get_encoding_operator(
+        AcquisitionInfo(ksp; sensitivity_maps = maps, image_size = (nx, ny)); threaded = false
+    )
+    truth = AbstractOperators.powerit(E; maxit = 500, rel_margin = 1.0e-12)
+    for margin in (1.0e-3, 0.01, 0.05)
+        @test AbstractOperators.estimate_opnorm(E; rel_margin = margin) >= truth
+    end
+    # A name for the axes is an isometry, so the bound sees through it rather than giving up.
+    @test isfinite(AbstractOperators.opnorm_bound(E))
+end

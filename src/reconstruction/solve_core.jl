@@ -355,16 +355,23 @@ function _warm_start_scale_proxy(𝒜, x̂::AbstractArray, config)
     return ρ
 end
 
-# `‖𝒜‖`, for use as `Lf = n‖𝒜‖²` and/or to scale-correct the default warm start. `estimate_opnorm`'s
-# power iteration converges from below, so this is a slight under-estimate of the true norm;
-# `AbstractOperators.powerit`'s docstring records that, and `exact_opnorm = true` swaps in the
-# converged `opnorm` for callers who mind.
+# `‖𝒜‖`, for use as `Lf = n‖𝒜‖²` and/or to scale-correct the default warm start.
+#
+# `estimate_opnorm` returns a value at or above `‖𝒜‖`: it pairs the power iteration, which
+# converges from below, with the closed-form `opnorm_bound`, which is above, and returns the bound
+# whenever it is finite. That is the direction a step size needs, since `gamma = 1/Lf` is fixed and
+# no backtracking runs to catch a value that came out too low. How much overshoot to accept comes
+# from the algorithm, via `opnorm_rel_margin`. `exact_opnorm = true` still swaps in the converged
+# `opnorm` for callers who want the number itself.
 function _operator_norm_for_stepsize(𝒜, method::IterativeReconstruction, config)
     local L
     # `@printing_step`, not `@step`: the latter runs its body in a `@spawn`, so `L` would be
     # bound only inside that task's closure.
     @printing_step "Estimating the operator norm" config begin
-        L = method.exact_opnorm ? LinearAlgebra.opnorm(𝒜) : AbstractOperators.estimate_opnorm(𝒜)
+        L = method.exact_opnorm ? LinearAlgebra.opnorm(𝒜) :
+            AbstractOperators.estimate_opnorm(
+                𝒜; rel_margin = opnorm_rel_margin(method.algorithm)
+            )
     end
     @argcheck L != 0 "Cannot reconstruct with an encoding operator of zero norm"
     return L

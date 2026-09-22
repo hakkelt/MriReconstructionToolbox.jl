@@ -135,6 +135,30 @@ consumes_lf(
 consumes_lf(algorithms::Tuple) = any(consumes_lf, algorithms)
 consumes_lf(::Any) = false
 
+"""
+	opnorm_rel_margin(algorithm) -> Real
+
+How far above `‖𝒜‖` the estimate handed to this algorithm as `Lf` may sit, as a relative margin
+for `AbstractOperators.estimate_opnorm`.
+
+Every algorithm that reads `Lf` here takes the step size to be exactly `1 / Lf`
+(`forward_backward.jl:37`, `fast_forward_backward.jl:44`, `pogm.jl:50`) and none of them
+backtracks while `Lf` is supplied, so nothing corrects a value that came out too low. The estimate
+is therefore always asked for from above — that is `estimate_opnorm`'s `side = :upper` default —
+and this margin only says how much overshoot to accept before spending more iterations closing the
+gap. Overshoot costs convergence rate; a value below `‖𝒜‖` costs convergence itself.
+
+POGM gets the tightest margin because it is the least forgiving: an estimate 1.2% low has been
+observed to diverge it, where the forward-backward family only slows down. Where the closed-form
+[`AbstractOperators.opnorm_bound`](@ref) is finite and tight — every Cartesian SENSE operator —
+the margin is met on iteration zero and costs nothing either way.
+"""
+opnorm_rel_margin(
+    ::ProximalAlgorithms.IterativeAlgorithm{<:ProximalAlgorithms.POGMIteration}
+) = 1.0e-3
+opnorm_rel_margin(algorithms::Tuple) = minimum(opnorm_rel_margin, algorithms)
+opnorm_rel_margin(::Any) = 0.01
+
 function build_model(
         𝒜::AbstractOperator, y::AbstractArray, regs::Tuple;
         threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing,

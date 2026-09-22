@@ -30,7 +30,9 @@ import .AbstractOperators:
     diag_AAc,
     displacement,
     is_thread_safe,
-    has_optimized_normalop
+    has_optimized_normalop,
+    has_fast_opnorm,
+    opnorm_bound
 
 import NamedDims: dimnames, parent, unname
 
@@ -125,6 +127,10 @@ diag_AAc(L::NamedDimsOp) = diag_AAc(L.L)
 displacement(L::NamedDimsOp) = displacement(L.L)
 is_thread_safe(L::NamedDimsOp) = is_thread_safe(L.L)
 has_optimized_normalop(L::NamedDimsOp) = has_optimized_normalop(L.L)
+# Naming the axes is an isometry: it relabels the domain and codomain and changes no norm.
+has_fast_opnorm(L::NamedDimsOp) = has_fast_opnorm(L.L)
+opnorm_bound(L::NamedDimsOp) = opnorm_bound(L.L)
+LinearAlgebra.opnorm(L::NamedDimsOp) = LinearAlgebra.opnorm(L.L)
 
 dimnames(::NamedDimsOp{D, C}) where {D, C} = (C, D)
 dimnames(::NamedDimsOp{D, C}, i::Int) where {D, C} = i == 1 ? C : D
