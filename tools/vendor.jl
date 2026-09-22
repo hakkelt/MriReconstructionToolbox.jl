@@ -582,26 +582,24 @@ function sync(packages)
             "uncommitted changes under $(pkg.prefix); commit or discard them -- `deps/` is " *
             "generated, fix bugs on the owning branch instead",
         )
-        # Projected with plain git rather than `git subtree`: subtree is a contrib script that
-        # distributions routinely leave out (`git: 'subtree' is not a git command` here), and
-        # nothing downstream needs its incremental bookkeeping -- the vendored tree is replaced
-        # wholesale on every sync anyway. The two trailers `git subtree --squash` writes are
-        # reproduced verbatim, so the commit still records exactly which revision it came from
-        # and a machine that does have subtree can still read it.
-        here("fetch", "--quiet", pkg.fork, "integration")
-        split = here("rev-parse", "FETCH_HEAD")
-        # Clear the old copy first: `read-tree --prefix` only adds, so a file deleted on the
-        # branch would otherwise survive in `deps/` forever.
-        here("rm", "-r", "--quiet", "--ignore-unmatch", "--cached", "--", pkg.prefix)
-        rm(joinpath(ROOT, pkg.prefix); recursive = true, force = true)
-        here("read-tree", "--prefix=$(pkg.prefix)", "-u", split)
+        # `git subtree` is a contrib script some distributions leave out
+        # (`git: 'subtree' is not a git command`); it must be on PATH for this to run --
+        # install it from https://github.com/git/git/blob/<matching-tag>/contrib/subtree/git-subtree.sh
+        # if it is missing. Using the real command, not a hand-rolled `read-tree --prefix`
+        # projection, keeps the split-commit bookkeeping (`git subtree log`, `git subtree split`)
+        # usable on this copy, not just the two trailers replayed from it.
         here(
-            "commit",
+            "subtree",
+            "pull",
+            "--prefix",
+            pkg.prefix,
+            pkg.fork,
+            "integration",
+            "--squash",
             "-m",
-            "chore($(pkg.name)): re-vendor integration\n\n" *
-                "git-subtree-dir: $(pkg.prefix)\ngit-subtree-split: $(split)",
+            "chore($(pkg.name)): re-vendor integration",
         )
-        # The projection brings the whole upstream tree; MRT keeps only what it compiles.
+        # The subtree pull brings the whole upstream tree; MRT keeps only what it compiles.
         if !isempty(pkg.prune)
             prune!(joinpath(ROOT, pkg.prefix), pkg.prune)
             here("add", "-A", "--", pkg.prefix)
