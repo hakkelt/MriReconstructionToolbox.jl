@@ -10,8 +10,12 @@ data fidelity, and signal modeling options.
 - `fidelity::F`: Data fidelity term (default `L2Loss()`).
 - `signal_model::M`: Signal model mapping the optimization variable to the image (default `nothing`);
   e.g. `TemporalBasis` for subspace reconstruction or `KSpaceToImage` for a k-space-domain solve.
-- `exact_opnorm::Bool`: Compute `‖𝒜‖` with a fully converged power iteration rather than the
-  20-iteration estimate, which converges from below and so under-estimates slightly (default `false`).
+- `exact_opnorm::Bool`: Compute `‖𝒜‖` with a fully converged power iteration rather than with
+  `AbstractOperators.estimate_opnorm` (default `false`). The power iteration converges from below
+  and stops short, so the result is a slight *under*-estimate and `Lf` comes out slightly too
+  small — the unsafe direction, since no backtracking runs to correct it. The default estimate
+  errs upwards instead. Use this when the number itself is wanted, not to make a step size safer,
+  and in particular not with POGM, which has been observed to diverge on a 1.2% low `Lf`.
 - `disable_operator_normalization::Union{Nothing, Bool}`: Skip the `‖𝒜‖` estimate and let the
   algorithm derive its own step size (default `nothing` for auto-detection: skipped for pure
   unregularized CG/CGNR, which is scale invariant, run for proximal algorithms). The name predates
