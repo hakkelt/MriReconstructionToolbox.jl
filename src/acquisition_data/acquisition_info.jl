@@ -27,7 +27,8 @@ Smart constructor that dispatches to either `CartesianAcquisitionInfo` or
 - If `trajectory` is provided, constructs `NonCartesianAcquisitionInfo`
 
 For non-Cartesian acquisitions, `dcf` may be provided as an optional density
-compensation array and `subsampling` is not allowed.
+compensation array and `subsampling` is not allowed. Leaving `dcf` at `nothing` keeps
+the encoding operator's adjoint the true adjoint; see [`NonCartesianAcquisitionInfo`](@ref).
 
 `kspace_data` is normally an `AbstractArray` (plain or `NamedDimsArray`). For a Cartesian
 acquisition whose frames select *different numbers of samples* it is a [`PartitionedKSpace`](@ref)

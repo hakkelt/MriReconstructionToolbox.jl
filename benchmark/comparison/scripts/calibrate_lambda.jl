@@ -36,25 +36,32 @@ err(x) = mag_nrmse(x, img_mc)
 
 # method => (MRT reg builder, MRT alg kind, sigpy sym, mrireco sym, BART cmd builder, λ centre)
 METHODS = Dict(
-    "tv" => (λ -> TotalVariation2D(λ), :admm, :tv, :tv,
-        λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R T:3:0:$λ", 0.01),
-    "wavelet" => (mrt_wavelet, :fista, :wavelet, :wavelet,
-        λ -> "pics -S -w 1 -e -i $IT_CAL -R W:3:0:$λ", 0.005),
+    "tv" => (
+        λ -> TotalVariation2D(λ), :admm, :tv, :tv,
+        λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R T:3:0:$λ", 0.01,
+    ),
+    "wavelet" => (
+        mrt_wavelet, :fista, :wavelet, :wavelet,
+        λ -> "pics -S -w 1 -e -i $IT_CAL -R W:3:0:$λ", 0.005,
+    ),
     # TGV: MRT and BART only (SigPy and MRIReco have no TGV). Without this entry the section ran
     # both at the 0.01 fallback, which happens to be near BART's optimum and 5× past MRT's — MRT
     # measured NRMSE 0.0109 at λ=0.01 against 0.0032 at λ=0.002.
-    "tgv" => (λ -> TotalGeneralizedVariation2D(λ; ratio = 2.0), :admm, nothing, nothing,
-        λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R G:3:0:$λ", 0.003),
+    "tgv" => (
+        λ -> TotalGeneralizedVariation2D(λ; ratio = 2.0), :admm, nothing, nothing,
+        λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R G:3:0:$λ", 0.003,
+    ),
 )
 
 # --- dynamic (2D+t) methods -------------------------------------------------------------------
 # Same 64²×4-coil×8-frame phantom and mask as `run_dynamic.jl`, so the λ transfers. MRT and BART
 # cover all three methods; MRIReco covers the two low-rank ones through `mrireco_dynamic` (frames as
 # contrasts, `reco = "multiCoilMultiEcho"`) but cannot express temporal TV — see that function's
-# docstring. SigPy ships no low-rank MRI app at all. The target NRMSE is still MRT's own best, and
+# docstring. SigPy and MIRT ship no low-rank MRI app, but both accept an arbitrary prox, so they are
+# swept for the global low-rank case only. The target NRMSE is still MRT's own best, and
 # every other toolkit's λ is the grid point that matches it.
 Nd, Ncd, Td = 64, 4, 8
-img_dyn, kspace_dyn0, cmap_dyn = generate_dynamic_multicoil_brain(N = Nd, num_coils = Ncd, num_frames = Td)
+img_dyn, kspace_dyn0, cmap_dyn = generate_dynamic_brain(N = Nd, num_coils = Ncd, num_frames = Td)
 # Noise is what makes λ > 0 optimal at all. On the noiseless dynamic phantom every regularizer is
 # pure bias: measured NRMSE decreases monotonically as λ → 0 (LowRank 0.0810 at λ=1e-4 vs 0.0876 at
 # λ=0.2, 20 ADMM iterations) and plain CG-SENSE beats all of them, so there is no operating point to
@@ -82,37 +89,68 @@ err_dyn(x) = mag_nrmse(x, img_dyn)
 # cycle spinning to match MRT's default `shift = :none`.
 # (MRT reg builder, BART cmd builder, MRIReco method or `nothing`, λ centre)
 DYN_METHODS = Dict(
-    "lowrank" => (λ -> LowRank(λ; time_dim = :time),
+    "lowrank" => (
+        λ -> LowRank(λ; time_dim = :time),
         λ -> "pics -S -w 1 -m -F -n -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -b $Nd -R L:3:3:$λ",
-        :lowrank, 0.01),
-    "llr" => (λ -> LocallyLowRank(λ; block_size = (8, 8), time_dim = :time),
+        :lowrank, 0.01,
+    ),
+    "llr" => (
+        λ -> LocallyLowRank(λ; block_size = (8, 8), time_dim = :time),
         λ -> "pics -S -w 1 -m -F -n -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -b 8 -R L:3:3:$λ",
-        :llr, 0.01),
-    "ttv" => (λ -> TemporalTotalVariation(λ; time_dim = :time),
+        :llr, 0.01,
+    ),
+    "ttv" => (
+        λ -> TemporalTotalVariation(λ; time_dim = :time),
         λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R T:32:0:$λ",
-        nothing, 0.01),
+        nothing, 0.01,
+    ),
 )
 
 # Zero-filled `(nx, ny, time, coil)` frame stack for MRIReco.
-ksp_dyn_z = zeros(ComplexF64, Nd, Nd, Td, Ncd)
+ksp_dyn_z = zeros(CMP_CTYPE, Nd, Nd, Td, Ncd)
 for t in 1:Td
     ksp_dyn_z[:, mask_pe, t, :] .= kspace_dyn[:, mask_pe, t, :]
 end
 
+"""
+    grid_centre(method, toolbox, λc) -> Float64
+
+The centre of a toolbox's λ grid. Every toolbox shares `λc` except where its *operating point*
+differs enough that the shared decade is the wrong one — and one does.
+
+MIRT's global low-rank row runs POGM at `proxgrad_budget(IT_CAL)` iterations (see that function),
+where the other toolkits run ADMM. Early stopping is itself a regularizer, so a solver that runs
+to convergence wants a larger λ than one stopped at 20 iterations: measured on this phantom at the
+matched budget with a valid step size, the optimum is at λ ≈ 3–10 (NRMSE 0.0789), while the shared
+grid stops at 0.316. Its calibrated λ used to come back pinned to that ceiling with a flat curve —
+the sweep could not see the optimum. This shifts MIRT's grid up to cover it.
+"""
+function grid_centre(method, toolbox, λc)
+    (method == "lowrank" && toolbox == "MIRT") && return 3.0
+    return λc
+end
+
 function sweep_dyn(method)
     mrtreg, bartcmd, mrm, λc = DYN_METHODS[method]
-    grid = 10 .^ range(log10(λc) - 2, log10(λc) + 1.5, length = NGRID)
     curves = Dict{String, Vector{Tuple{Float64, Float64}}}()
     toolkits = ["MRT", "BART"]
     mrm === nothing || push!(toolkits, "MRIReco")
+    # SigPy and MIRT reach only the global low-rank case, through their own prox interfaces.
+    method == "lowrank" && append!(toolkits, ["SigPy", "MIRT"])
     for tb in toolkits
         pts = Tuple{Float64, Float64}[]
+        c = grid_centre(method, tb, λc)
+        grid = 10 .^ range(log10(c) - 2, log10(c) + 1.5, length = NGRID)
         for λ in grid
             e = try
                 if tb == "MRT"
                     err_dyn(mrt_run(acq_dyn, mrtreg(λ); maxit = IT_CAL))
                 elseif tb == "MRIReco"
                     err_dyn(mrireco_dynamic(mrm, ksp_dyn_z, cmap_dyn, (Nd, Nd); λ, iterations = IT_CAL)[2])
+                elseif tb == "SigPy"
+                    err_dyn(sigpy_lowrank(ksp_dyn_z, cmap_dyn, (Nd, Nd); λ, iterations = IT_CAL)[2])
+                elseif tb == "MIRT"
+                    err_dyn(mirt_lowrank(ksp_dyn_z, cmap_dyn; λ, iterations = proxgrad_budget(IT_CAL))[2])
                 else
                     err_dyn(dropdims(run_bart(1, bartcmd(λ), kbart_dyn, sbart_dyn), dims = (3, 4, 5)))
                 end
@@ -187,8 +225,14 @@ end
 
 path = normpath(joinpath(@__DIR__, "..", "results", "lambda_calibration.json"))
 open(path, "w") do io
-    JSON.print(io, Dict("lambda" => out, "sweeps" => sweeps,
-            "meta" => Dict("N" => N, "Nc" => Nc, "iterations" => IT_CAL,
-                "backend" => USE_MKL ? "mkl" : "openblas", "threads" => NUM_THREADS)), 4)
+    JSON.print(
+        io, Dict(
+            "lambda" => out, "sweeps" => sweeps,
+            "meta" => Dict(
+                "N" => N, "Nc" => Nc, "iterations" => IT_CAL,
+                "backend" => USE_MKL ? "mkl" : "openblas", "threads" => NUM_THREADS
+            )
+        ), 4
+    )
 end
 @info "wrote" path

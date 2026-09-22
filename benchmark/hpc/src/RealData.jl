@@ -44,6 +44,22 @@ using FFTW: fft, ifft, fftshift, ifftshift
 using MRITestData: MRITestData, list_datasets, dataset, load_raw
 using MriReconstructionToolbox: estimate_sensitivities, ESPIRiT
 
+"""
+    _ensure_download_path()
+
+Point `MRITestData` at its own Scratch cache when nothing has chosen a location yet.
+
+The package refuses to touch the disk until one is configured, which made the "Real 3D" group
+die with `No download path is configured` in any environment without a `LocalPreferences.toml`
+of its own -- `benchmark/hpc/` has none, only `benchmark/comparison/` does. The cache is shared
+by every project on the machine, so this costs nothing where the data is already there and it
+keeps the benchmark independent of whoever last set the preference by hand.
+"""
+function _ensure_download_path()
+    MRITestData.get_download_path() === nothing && MRITestData.set_download_path!(:cache)
+    return nothing
+end
+
 # The dataset `load_real_case` uses by default: `(source_name, id)`. Real scanner k-space,
 # hard-wired for a reproducible benchmark rather than "whatever is smallest". Override at
 # runtime with `MRT_BENCH_REAL_SOURCE` + `MRT_BENCH_REAL_ID`, or fall back to the
@@ -198,6 +214,7 @@ function load_real_case_3d(;
         calib_size = 24,
         kernel_size = 6,
     )
+    _ensure_download_path()
     raw = load_raw(dataset(source, id; offline = true))
     ksp = _assemble_cartesian_3d(raw)                     # (nkx, nky, nkz, ncoil)
     nkx, nky, nkz, ncoil = size(ksp)
@@ -243,6 +260,7 @@ function load_real_dynamic(;
         id = get(ENV, "MRT_BENCH_REALDYN_ID", PINNED_DYNAMIC[2]),
         R = 2, acs = 12, readout = 144, calib_size = 24, kernel_size = 6,
     )
+    _ensure_download_path()
     raw = load_raw(dataset(source, id; offline = true))
     ksp = _assemble_cartesian_dynamic(raw)               # (nkx, nky, ncoil, nframes)
     # Crop the (often 2× oversampled / asymmetric-echo) readout to `readout` samples about the
@@ -306,6 +324,7 @@ function real_data_available(; source = real_data_source())
 end
 
 function _candidates(source)
+    _ensure_download_path()
     entries = list_datasets(source; offline = true, fully_sampled = true)
     return [e for e in entries if e.trajectory === :cartesian || e.trajectory === nothing]
 end
@@ -340,6 +359,7 @@ function load_real_case(;
         calib_size = 24,
         kernel_size = 6,
     )
+    _ensure_download_path()
     entry = if id == "auto"
         entries = _candidates(source)
         isempty(entries) && error(

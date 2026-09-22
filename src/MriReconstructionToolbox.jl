@@ -90,6 +90,7 @@ export density_compensation, PipeMenonDCF, VoronoiDCF, correct_dcf_edges
 export prewhiten, estimate_noise_covariance
 export compress_coils, SVDCompression, GeometricCompression
 export estimate_sensitivities, SelfCalibrating, AdaptiveCombine, ESPIRiT
+export normalize_sensitivity_maps
 export correct_gradient_delays, estimate_gradient_delays, OpposingSpokes, RING
 
 # Analysis and simulation
@@ -132,6 +133,7 @@ include("preprocessing/density_compensation.jl")
 include("preprocessing/prewhitening.jl")
 include("preprocessing/coil_compression.jl")
 include("preprocessing/sensitivity_estimation.jl")
+include("preprocessing/sensitivity_normalization.jl")
 include("preprocessing/gradient_delays.jl")
 
 include("scaling.jl")

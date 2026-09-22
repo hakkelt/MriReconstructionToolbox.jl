@@ -228,9 +228,10 @@ compute-bound: threading it is worth 3.2x–3.9x, and the margin *grows* with th
 tell the two apart — an SVD block is built by stacking patches, so a modest image can still produce a large and
 very much threading-worthy matrix.
 
-`_iterative_reconstruct_core` therefore skips [`with_serial_blas`](@ref)'s size gate entirely when any active
-regularizer answers `true` here: giving up 10% on level 1 to keep 3.9x on level 3 is the right trade in every
-configuration measured.
+`_iterative_reconstruct_core` used to consult this to decide whether to narrow BLAS around a solve. It no longer
+narrows anything (see the comment there), so the trait is now documentation of a regularizer's cost shape rather
+than a switch: the table above is what a caller needs in order to reason about a low-rank prox, and
+[`with_serial_blas`](@ref) remains available for a caller that wants to apply it by hand.
 """
 uses_blas3(::Regularization) = false
 uses_blas3(regs::Tuple) = any(uses_blas3, regs)

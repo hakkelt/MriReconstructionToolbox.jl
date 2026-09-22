@@ -1,5 +1,5 @@
 using MriReconstructionToolbox
-using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+using MriReconstructionToolbox: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
 using GeometricMedicalPhantoms
 using Statistics
 using FFTW
@@ -124,7 +124,9 @@ sp_mri = pyimport("sigpy.mri")
             kdata_nc_sim = E_nc_sim * NamedDimsArray(ComplexF32.(img_mc), (:x, :y))
 
             # 1) Density-compensated Adjoint (Gridding / Direct Reconstruction)
-            acq_nc_dcf = NonCartesianAcquisitionInfo(kdata_nc_sim; trajectory = traj_named, image_size = (N, N), sensitivity_maps = smaps_nc, shifted_image_dims = (:x, :y))
+            acq_nc_dcf = MriReconstructionToolbox.density_compensation(
+                NonCartesianAcquisitionInfo(kdata_nc_sim; trajectory = traj_named, image_size = (N, N), sensitivity_maps = smaps_nc, shifted_image_dims = (:x, :y))
+            )
             E_nc_dcf = MriReconstructionToolbox.get_encoding_operator(acq_nc_dcf)
             mrt_adj_dcf = E_nc_dcf' * kdata_nc_sim
 

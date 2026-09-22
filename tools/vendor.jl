@@ -11,6 +11,12 @@
 # used, so the script runs with a bare `julia` and no project environment. `check` and `status`
 # read GitHub through the `gh` CLI; if `gh` is missing or unauthenticated, they degrade to what
 # git alone can tell and say so.
+#
+# Where each fork is checked out is machine state, not a property of the stack, so it lives in
+# `deps/vendor.local.toml` -- untracked, one `<Package> = "<path>"` line per checkout that exists
+# on this machine. A package with no entry there is simply not checked out here: `check` still
+# reports everything GitHub can answer for it, and `rebuild`/`patch`/`sync`, which need a working
+# tree, say which entry is missing instead of failing on an empty path.
 
 module VendorTool
 
@@ -19,6 +25,7 @@ using TOML
 
 const ROOT = normpath(joinpath(@__DIR__, ".."))
 const MANIFEST = joinpath(ROOT, "deps", "vendor.toml")
+const LOCAL_MANIFEST = joinpath(ROOT, "deps", "vendor.local.toml")
 
 struct Branch
     name::String
@@ -40,8 +47,41 @@ end
 # ---------------------------------------------------------------------------------------------
 # manifest
 
+"""
+Paths of the local checkouts, read from the untracked `deps/vendor.local.toml`. Missing file, or
+a package with no entry in it, simply means "not checked out on this machine"; the empty path is
+what `has_checkout` tests.
+"""
+function load_local_paths()
+    isfile(LOCAL_MANIFEST) || return Dict{String, String}()
+    raw = TOML.parsefile(LOCAL_MANIFEST)
+    paths = Dict{String, String}()
+    for (name, value) in raw
+        value isa AbstractString || continue
+        paths[name] = expanduser(value)
+    end
+    return paths
+end
+
+has_checkout(pkg::Package) = !isempty(pkg.path) && isdir(joinpath(pkg.path, ".git"))
+
+"""
+Path of `pkg`'s working checkout, or an error naming what to add to `deps/vendor.local.toml`.
+Every command that needs a working tree goes through this.
+"""
+function require_checkout(pkg::Package)
+    has_checkout(pkg) && return pkg.path
+    error(
+        isempty(pkg.path) ?
+            "$(pkg.name) is not checked out on this machine: add `$(pkg.name) = \"/path/to/checkout\"` " *
+            "to $(relpath(LOCAL_MANIFEST, ROOT)) (untracked) and clone $(pkg.fork) there." :
+            "$(pkg.name): `$(pkg.path)` (from $(relpath(LOCAL_MANIFEST, ROOT))) is not a git checkout",
+    )
+end
+
 function load_manifest()
     raw = TOML.parsefile(MANIFEST)
+    local_paths = load_local_paths()
     packages = Package[]
     for (name, entry) in sort(collect(raw); by = first)
         stack = [
@@ -56,7 +96,7 @@ function load_manifest()
                 entry["upstream"],
                 entry["base"],
                 entry["prefix"],
-                entry["path"],
+                get(local_paths, name, ""),
                 String.(get(entry, "prune", String[])),
                 stack,
             ),
@@ -175,23 +215,145 @@ end
 # check
 
 """
+`owner/repo` of a fork or upstream URL, as `gh` wants it.
+"""
+function repo_slug(url::AbstractString)
+    m = match(r"github\.com[:/]+([^/]+)/([^/]+?)(?:\.git)?/?$", url)
+    return m === nothing ? "" : "$(m.captures[1])/$(m.captures[2])"
+end
+
+"""
+Names of the branches the fork actually has on GitHub, or `nothing` when `gh` cannot say.
+Queried from GitHub rather than from remote-tracking refs, so the answer does not depend on when
+the local checkout last fetched -- or on there being a local checkout at all.
+"""
+function fork_branches(pkg::Package)
+    gh_available() || return nothing
+    slug = repo_slug(pkg.fork)
+    isempty(slug) && return nothing
+    out = capture(
+        `gh api --paginate -q ".[].name" repos/$slug/branches`;
+        nothing_on_error = true,
+    )
+    return out === nothing ? nothing : filter(!isempty, split(out, '\n'))
+end
+
+# Absolute paths of one machine, and the scratch worktrees an agent leaves behind. A fork branch
+# is public code: it may name a sibling checkout the way upstream does, but never a path that
+# exists only here. MRT's own `[sources]` rewriting belongs in `deps/patches/<package>.patch`.
+const LOCAL_PATH_PATTERN = raw"(/project/|/home/|/scratch/|\.claude/worktrees/)"
+
+"""
+Lines of `origin/<branch>` that hardcode a path of this machine, as `file:line:text`, or
+`nothing` when the search could not run. Needs a checkout; without one the scan is skipped and
+`check` says so.
+
+Lines the upstream base already has are not reported: `benchmarks/` in more than one of these
+packages carries an absolute path of whoever wrote it years ago, which is upstream's business and
+not something a fork branch introduced.
+"""
+function local_path_hits(pkg::Package, branch::AbstractString)
+    mine = _path_grep(pkg, "origin/$branch")
+    mine === nothing && return nothing
+    theirs = _path_grep(pkg, pkg.base)
+    theirs === nothing && return mine
+    inherited = Set(_hit_text.(theirs))
+    return filter(h -> !(_hit_text(h) in inherited), mine)
+end
+
+# `file:line:text` -> `text`, so a line can be recognised across revisions that moved it.
+_hit_text(hit::AbstractString) = let parts = split(hit, ':'; limit = 3)
+    length(parts) == 3 ? strip(parts[3]) : strip(hit)
+end
+
+function _path_grep(pkg::Package, rev::AbstractString)
+    # `-c grep.threads=1`: on a busy login node `git grep`'s worker threads hit the per-user
+    # process limit and it dies with `failed to create thread: Resource temporarily unavailable`
+    # -- which exits non-zero and would otherwise be indistinguishable from "nothing matched",
+    # i.e. would report a contaminated branch as clean.
+    cmd = `git -C $(pkg.path) -c grep.threads=1 grep -n -E $LOCAL_PATH_PATTERN $rev
+        -- "*.toml" "*.jl" "*.yml" "*.yaml"`
+    # `git grep` exits non-zero both when nothing matched (the clean case, no output) and when it
+    # could not search at all, so the output has to be read either way: a `fatal:` that reported
+    # itself as "no hits" would be a false all-clear.
+    out = try
+        capture(cmd)
+    catch e
+        e isa CommandFailure || rethrow()
+        strip(e.output)
+    end
+    occursin("fatal:", out) && return nothing
+    return [replace(l, "$rev:" => "") for l in split(out, '\n') if !isempty(l)]
+end
+
+"""
 Report every way the stack disagrees with itself: a branch whose PR is based on something other
 than its manifest parent, a branch with no PR at all, a branch whose PR has already merged (its
-code should come from `base` instead), and a branch that does not exist locally.
+code should come from `base` instead), a branch the fork does not have, a branch whose local tip
+is ahead of the fork's, a branch that hardcodes a path of this machine, and a branch on the fork
+that no manifest entry refers to.
+
+Branch existence comes from GitHub (`gh`), not from remote-tracking refs, so a stale local fetch
+cannot make an unpushed branch look pushed. Everything that needs file content or local commits
+additionally needs a checkout listed in `deps/vendor.local.toml`; `origin` and `upstream` are
+fetched first for those, unless `fetch` is false.
 """
-function check(packages)
+function check(packages; fetch::Bool = true)
     findings = 0
     for pkg in packages
         println("== ", pkg.name)
+        checkout = has_checkout(pkg)
+        if !checkout
+            println(
+                "  note: not checked out here (no entry in $(relpath(LOCAL_MANIFEST, ROOT))); " *
+                "only what GitHub can answer is checked",
+            )
+        elseif fetch
+            for remote in ("origin", "upstream")
+                git_or_nothing(pkg, "fetch", "--prune", remote) === nothing &&
+                    println("  note: `git fetch $remote` failed in $(pkg.path)")
+            end
+        end
         for problem in validate(pkg)
             println("  manifest: ", problem)
             findings += 1
         end
+        remote_branches = fork_branches(pkg)
         for b in pkg.stack
-            if git_or_nothing(pkg, "rev-parse", "--verify", "--quiet", "origin/$(b.name)") ===
-               nothing
-                println("  $(b.name): no `origin/$(b.name)` in $(pkg.path)")
+            pushed = remote_branches === nothing ?
+                (checkout && git_or_nothing(pkg, "rev-parse", "--verify", "--quiet", "origin/$(b.name)") !== nothing) :
+                (b.name in remote_branches)
+            if !pushed
+                println("  $(b.name): not pushed -- the fork has no such branch")
                 findings += 1
+            elseif checkout
+                local_tip = git_or_nothing(pkg, "rev-parse", "--verify", "--quiet", b.name)
+                remote_tip = git_or_nothing(pkg, "rev-parse", "--verify", "--quiet", "origin/$(b.name)")
+                if local_tip !== nothing && remote_tip !== nothing && local_tip != remote_tip
+                    counts = git(pkg, "rev-list", "--left-right", "--count", "origin/$(b.name)...$(b.name)")
+                    behind, ahead = split(counts)
+                    if ahead != "0"
+                        println(
+                            "  $(b.name): $(ahead) local commit(s) not pushed to the fork" *
+                            (behind == "0" ? "" : " (and $(behind) on the fork not merged locally)"),
+                        )
+                        findings += 1
+                    end
+                end
+            end
+            if pushed && checkout
+                hits = local_path_hits(pkg, b.name)
+                if hits === nothing
+                    println("  $(b.name): could not scan for local paths (`git grep` failed)")
+                    findings += 1
+                elseif !isempty(hits)
+                    println("  $(b.name): $(length(hits)) pushed line(s) hardcode a local path:")
+                    for h in first(hits, 5)
+                        println("      ", h)
+                    end
+                    length(hits) > 5 && println("      ... and $(length(hits) - 5) more")
+                    findings += 1
+                end
             end
             if isempty(b.pr)
                 println("  $(b.name): vendored but no PR anywhere -- untracked work")
@@ -222,9 +384,22 @@ function check(packages)
                 findings += 1
             end
         end
+        # A branch on the fork that no entry names is work that will never reach `deps/`: either
+        # it is finished and belongs in the manifest, or it is dead and belongs deleted. The
+        # fork's own copy of the upstream default branch and the generated `integration` branch
+        # are not stack entries and are expected to be there.
+        if remote_branches !== nothing
+            declared = Set(b.name for b in pkg.stack)
+            expected = Set(["integration", "master", "main", last(split(pkg.base, '/'))])
+            extra = sort([b for b in remote_branches if !(b in declared) && !(b in expected)])
+            if !isempty(extra)
+                println("  fork branches no manifest entry refers to: ", join(extra, ", "))
+                findings += 1
+            end
+        end
     end
     gh_available() ||
-        println("\nnote: `gh` unavailable, so PR state and base were not checked")
+        println("\nnote: `gh` unavailable, so PR state, base and the fork's branch list were not checked")
     println("\n", findings == 0 ? "stack is consistent" : "$findings finding(s)")
     return findings
 end
@@ -265,6 +440,7 @@ function rebuild(packages; push::Bool = true, fetch::Bool = true)
     for pkg in packages
         problems = validate(pkg)
         isempty(problems) || error(join(problems, "\n"))
+        require_checkout(pkg)
         println("== ", pkg.name, " (", pkg.path, ")")
         if fetch
             git(pkg, "fetch", "--prune", "origin")
@@ -341,6 +517,7 @@ its branch: what the branch now contains leaves the patch on its own.
 function makepatch(packages)
     mkpath(joinpath(ROOT, "deps", "patches"))
     for pkg in packages
+        require_checkout(pkg)
         wt = worktree(pkg)
         isdir(wt) || error("no integration worktree for $(pkg.name); run `rebuild` first")
         scratch = mktempdir()
@@ -405,18 +582,26 @@ function sync(packages)
             "uncommitted changes under $(pkg.prefix); commit or discard them -- `deps/` is " *
             "generated, fix bugs on the owning branch instead",
         )
+        # Projected with plain git rather than `git subtree`: subtree is a contrib script that
+        # distributions routinely leave out (`git: 'subtree' is not a git command` here), and
+        # nothing downstream needs its incremental bookkeeping -- the vendored tree is replaced
+        # wholesale on every sync anyway. The two trailers `git subtree --squash` writes are
+        # reproduced verbatim, so the commit still records exactly which revision it came from
+        # and a machine that does have subtree can still read it.
+        here("fetch", "--quiet", pkg.fork, "integration")
+        split = here("rev-parse", "FETCH_HEAD")
+        # Clear the old copy first: `read-tree --prefix` only adds, so a file deleted on the
+        # branch would otherwise survive in `deps/` forever.
+        here("rm", "-r", "--quiet", "--ignore-unmatch", "--cached", "--", pkg.prefix)
+        rm(joinpath(ROOT, pkg.prefix); recursive = true, force = true)
+        here("read-tree", "--prefix=$(pkg.prefix)", "-u", split)
         here(
-            "subtree",
-            "pull",
-            "--prefix",
-            pkg.prefix,
-            pkg.fork,
-            "integration",
-            "--squash",
+            "commit",
             "-m",
-            "chore($(pkg.name)): re-vendor integration",
+            "chore($(pkg.name)): re-vendor integration\n\n" *
+                "git-subtree-dir: $(pkg.prefix)\ngit-subtree-split: $(split)",
         )
-        # The subtree pull brings the whole upstream tree; MRT keeps only what it compiles.
+        # The projection brings the whole upstream tree; MRT keeps only what it compiles.
         if !isempty(pkg.prune)
             prune!(joinpath(ROOT, pkg.prefix), pkg.prune)
             here("add", "-A", "--", pkg.prefix)
@@ -514,7 +699,7 @@ end
 const USAGE = """
 usage: julia tools/vendor.jl <command> [package...] [options]
 
-  check                            compare the manifest with GitHub and the local checkouts
+  check [--no-fetch]               compare the manifest with GitHub and the local checkouts
   rebuild [--no-push] [--no-fetch] rebuild each fork's `integration` branch from the manifest
   patch                            regenerate deps/patches/<package>.patch from that branch
   sync                             project `integration` into deps/ via `git subtree pull --squash`
@@ -530,7 +715,7 @@ function main(args)
     packages = select(load_manifest(), names)
     isempty(packages) && error("no package in $MANIFEST matches $(join(names, ", "))")
     if command == "check"
-        return check(packages) == 0 ? 0 : 1
+        return check(packages; fetch = !("--no-fetch" in flags)) == 0 ? 0 : 1
     elseif command == "rebuild"
         return isempty(
             rebuild(

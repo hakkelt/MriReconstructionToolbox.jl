@@ -43,20 +43,19 @@ the same way here; this is not a bug in either.
 
 - **Splits work across slices** and tells the libraries underneath to stay single-threaded.
 - **Skips threading for small FFTs**, where it would cost more than it saves.
-- **Pins BLAS to one thread during the iterative solve** — except for large problems, and except
-  for low-rank regularizers (`LowRank`, `LocallyLowRank`, `MultiScaleLowRank`,
-  `StructuredLowRank`), whose SVDs
-  genuinely do benefit from threading. See [`with_serial_blas`](@ref).
-- **Applies the same size rule to one slice of a task-split problem.** When there are few enough
-  slices that they are reconstructed one at a time, the work *inside* a slice threads only if
-  that slice is itself large enough to pay for it — a 2-slice 128² problem runs serially inside
-  even at `threaded = true`, which is ~10% faster end to end. With many slices the slice loop
-  itself is the parallelism and the inside is serial regardless.
-- **Runs the whole reconstruction serially when there is nothing to parallelise over.** If the
-  problem has no batch dimension (a single 2-D slice, no coil/time/slice loop) and the image is
-  small, `threaded = true` is ignored — threading a lone 128²-ish problem is a 2–3x loss, not a
-  gain. Large single volumes (roughly 16 MiB per image and up) still thread. See
-  [`maybe_disable_unsplit_threading`](@ref).
+- **Leaves the per-kernel threading decision to the operator.** Whether a given kernel is worth
+  threading depends on that kernel and the size it is actually handed, so it is decided by
+  `AbstractOperators.threading_threshold` and `ProximalOperators.should_thread`, per operator,
+  per input — not by one rule applied to a whole solve.
+- **Spreads slices of a task-split problem over threads when there are enough of them**, and then
+  runs the work *inside* a slice sequentially, because the slice loop is already using every
+  thread. With a `SequentialExecutor` the threads are free and the inside threads as usual.
+
+Earlier versions narrowed every pool for the duration of any sub-16-MiB solve. That is gone: it
+was measured against a `Polyester`/`Threads.@threads` interference cost that `NestedThreading`
+has since removed, and it silently serialised every `Polyester.@batch` kernel as a side effect.
+Re-measured on a 128²×8-coil phantom at 8 threads (min of 15), opening up is worth 1.45x on an
+L1-Wavelet FISTA solve and costs 1.07x on a TV-ADMM one.
 
 ## What you have to set yourself
 
@@ -232,5 +231,4 @@ MriReconstructionToolbox.serial_blas_threshold_bytes
 MriReconstructionToolbox.set_serial_blas_threshold_bytes!
 MriReconstructionToolbox.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
 MriReconstructionToolbox.uses_blas3
-MriReconstructionToolbox.maybe_disable_unsplit_threading
 ```

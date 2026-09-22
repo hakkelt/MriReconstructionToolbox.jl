@@ -2,9 +2,6 @@ name = "StructuredOptimization"
 uuid = "46cd3e9d-64ff-517d-a929-236bc1a1fc9d"
 version = "0.5.0"
 
-[workspace]
-projects = ["test", "docs"]
-
 [deps]
 AbstractOperators = "d9c5613a-d543-52d8-9afd-8f241a8c3f1c"
 Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
@@ -18,8 +15,6 @@ ProximalCore = "dc4f5ac2-75d1-4f31-931e-60435d74994b"
 ProximalOperators = "a725b495-10eb-56fe-b38b-717eba820537"
 RecursiveArrayTools = "731186ca-8d62-57ce-b412-fbd966d074cd"
 
-# Vendored: the sibling copies under MriReconstructionToolbox's `deps/`, not the developer's own
-# checkouts. This block is MRT-local and is re-applied by `deps/patches/StructuredOptimization.patch`.
 [sources]
 AbstractOperators = {path = "../AbstractOperators"}
 DSPOperators = {path = "../AbstractOperators/DSPOperators"}

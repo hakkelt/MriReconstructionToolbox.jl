@@ -3,7 +3,7 @@ struct SequentialExecutor <: ReconstructionExecutor end
 struct MultiThreadingExecutor <: ReconstructionExecutor end
 
 function execute(f::Function, plan, acq_data, config)
-    executor = suggest_executor(plan, config)
+    executor = suggest_executor(plan, acq_data, config)
     return execute(f, plan, acq_data, config, executor)
 end
 
@@ -120,7 +120,7 @@ end
 # repeat it. `solve(local_acq, warm_start, ratio, global_scale, local_conf, 𝒜, L)` solves that
 # slice under the shared scale, with its regularization compensated by `ratio`, reusing both.
 function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Function)
-    executor = suggest_executor(plan, config)
+    executor = suggest_executor(plan, acq_data, config)
     maybe_print_task_splitting_info(plan, config)
     batch_sizes = plan.variable_size[collect(plan.variable_batch_dims)]
     slices = collect(get_slices(plan, acq_data))
@@ -268,24 +268,21 @@ end
 
 Whether the work *inside* one slice of a task-split reconstruction may thread.
 
-Two independent reasons to say no:
+There is one reason to say no, and it is about the threads, not about the size: a
+[`MultiThreadingExecutor`](@ref) already occupies every thread with whole slices, so the work
+inside a slice would be competing with its own siblings and must run sequentially.
 
-  - A [`MultiThreadingExecutor`](@ref) already occupies every thread with whole slices, so the
-    work inside a slice must run sequentially.
-  - A [`SequentialExecutor`](@ref) runs slices one at a time, but a slice is by construction
-    smaller than the whole problem, and below [`serial_blas_threshold_bytes`](@ref) threading a
-    work item that small is a net loss — the same predicate
-    `maybe_disable_unsplit_threading` applies to an unsplit problem, here applied per
-    slice. Without this the outer scope is serial only around the *solve*
-    (`with_restricted_threads` in `solve_core.jl`), leaving the per-slice operator build, the
-    adjoint and the operator-norm estimate threaded over a work item too small to pay for it.
-
-The per-slice byte count comes from `plan` (batch dimensions collapsed to one) and the k-space
-element type, both known before any slice runs; nothing is measured at run time.
+A [`SequentialExecutor`](@ref) runs slices one at a time, leaving the threads free, so it passes
+`config.threaded` through unchanged. It deliberately does **not** also apply a size gate: how
+small is too small to thread is a per-kernel question that the operator answers with its own
+input, through `AbstractOperators.threading_threshold` and `ProximalOperators.should_thread`. A
+blanket gate here would override all of them at once, which is what it used to do — and what
+kept the coil-fused encoding operator from ever being built on a 2-D slice. See `solve_core.jl`
+for the measurements.
 """
 function slice_threading(plan, acq_data, config, executor::ReconstructionExecutor)
     executor isa MultiThreadingExecutor && return false
-    return _should_thread_work_item(config, slice_bytes(plan, acq_data))
+    return config.threaded
 end
 
 """
@@ -304,12 +301,47 @@ function slice_bytes(plan, acq_data)
     return per_slice * sizeof(eltype(acq_data.kspace_data))
 end
 
-function suggest_executor(plan, config)
-    if !isnothing(config.task_executor)
-        return config.task_executor
-    elseif config.threaded && length(plan) > nthreads()
-        return MultiThreadingExecutor()
-    else
-        return SequentialExecutor()
-    end
+"""
+    suggest_executor(plan, acq_data, config) -> ReconstructionExecutor
+
+Pick the executor for a task-split reconstruction, unless `config.task_executor` names one.
+
+Slices are independent solves, so spreading them over threads is MRT's primary parallelism and
+the only one that pays on the problem sizes this package sees: a slice has to reach
+[`serial_blas_threshold_bytes`](@ref) before threading *inside* it returns anything, and a 2-D
+slice of a clinical volume is two orders of magnitude below that (320² `ComplexF32` = 800 KiB
+against a 16 MiB threshold). Two conditions, therefore:
+
+  - **more than one slice**, since a single slice has nothing to spread; and
+  - **slices too small to thread internally**, or at least as many slices as threads. Only a
+    large slice can use the threads by itself, and then it is not obvious that `length(plan)`-way
+    outer parallelism beats full inner parallelism, so the tie goes to the executor that keeps
+    every thread busy.
+
+Measured on the 3-D FSE knee (320×320 per slice, `ComplexF32`, 8 threads, exclusive test node),
+1 thread → 8 threads, with the condition below (`after`) and with the `length(plan) > nthreads()`
+it replaced (`before`):
+
+| slices | CG-SENSE before | CG-SENSE after   | TV (20 it) before | TV (20 it) after   |
+|--------|-----------------|------------------|-------------------|--------------------|
+|  1     | 77.9 → 75.2 ms  | 83.1 → 78.7 ms   |   584 →  590 ms   |   650 →  585 ms    |
+|  4     | 304 → 328 ms    | 331 → 231 ms     |  2535 → 2481 ms   |  2583 → 1627 ms    |
+|  8     | 770 → 727 ms    | 832 → 404 ms     |  4926 → 4955 ms   |  5074 → 3073 ms    |
+| 16     | 1564 → 682 ms   | 1338 → 752 ms    | 10128 → 4880 ms   |  9722 → 5666 ms    |
+| 24     | 2164 → 917 ms   | 2147 → 1089 ms   | 14392 → 7149 ms   | 14406 → 8287 ms    |
+
+The rows at 4 and 8 are the ones the old condition got wrong: 8 slices on 8 threads — a perfect
+one-slice-per-thread split — fell through to the sequential executor and scaled 1.06x, and
+everything at or below the thread count did the same. They now scale 2.06x and 1.65x. Rows 16 and
+24 already took the threaded path and are unchanged within run-to-run noise.
+
+The ceiling is ~2x rather than ~8x because a slice's solve is memory-bandwidth bound (the FFT and
+the `SignAlternation` passes around it), so eight cores do not buy eight times the throughput.
+"""
+function suggest_executor(plan, acq_data, config)
+    isnothing(config.task_executor) || return config.task_executor
+    config.threaded && length(plan) > 1 || return SequentialExecutor()
+    fits_in_one_thread = !_should_thread_work_item(config, slice_bytes(plan, acq_data))
+    return (fits_in_one_thread || length(plan) >= nthreads()) ?
+        MultiThreadingExecutor() : SequentialExecutor()
 end

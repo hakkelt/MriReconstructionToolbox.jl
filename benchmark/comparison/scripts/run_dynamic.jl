@@ -1,6 +1,9 @@
-# Section: dynamic / low-rank on the synthetic 2D+t brain — MRT vs BART vs MRIReco
+# Section: dynamic / low-rank on the synthetic 2D+t brain — MRT vs BART vs MRIReco vs SigPy vs MIRT
 # (global low-rank ↔ `-R L -b <N>`, locally low-rank ↔ `-R L -b 8`, temporal TV ↔ `-R T:32`).
-# SigPy has no stock low-rank MRI app. MRIReco joins the two low-rank rows via `mrireco_dynamic`
+# SigPy and MIRT have no stock low-rank MRI app, but both take an arbitrary prox, so they join the
+# **global** low-rank row through `sigpy_lowrank` / `mirt_lowrank` — a nuclear norm on the Casorati
+# matrix is all that row is. Neither joins LLR (block extraction and cycle spinning are conventions
+# the harness would be inventing) nor temporal TV. MRIReco joins the two low-rank rows via `mrireco_dynamic`
 # (frames as contrasts, `reco = "multiCoilMultiEcho"`); it cannot express temporal TV, because that
 # path wraps `regTrafo` per contrast and so cannot couple frames — see `mrireco_dynamic`'s
 # docstring for the exact line.
@@ -54,7 +57,7 @@ using Random: MersenneTwister
 
 const IT = CMP_OUTER
 Nd, Ncd, Td = 64, 4, 8
-img_dyn, kspace_dyn0, cmap_dyn = generate_dynamic_multicoil_brain(N = Nd, num_coils = Ncd, num_frames = Td)
+img_dyn, kspace_dyn0, cmap_dyn = generate_dynamic_brain(N = Nd, num_coils = Ncd, num_frames = Td)
 # Unit-RMS **and noisy**, consistent with the other sections. Without noise no regularizer helps at
 # all on this phantom: NRMSE falls monotonically as λ → 0 and plain CG-SENSE (0.0757) beats every
 # regularized run, so the accuracy column carries no information. At CMP_SNR_DB the optimum is
@@ -74,7 +77,7 @@ for t in 1:Td
     kbart[:, mask_pe, 1, :, 1, t] .= ComplexF32.(kspace_dyn[:, mask_pe, t, :])
 end
 # Zero-filled `(nx, ny, time, coil)` stack for MRIReco.
-ksp_z = zeros(ComplexF64, Nd, Nd, Td, Ncd)
+ksp_z = zeros(CMP_CTYPE, Nd, Nd, Td, Ncd)
 for t in 1:Td
     ksp_z[:, mask_pe, t, :] .= kspace_dyn[:, mask_pe, t, :]
 end
@@ -85,15 +88,21 @@ addrow(meth, fw, t, x, xmrt) = push!(results, BenchResult("Dynamic", meth, fw, N
 
 # λ comes from `calibrate_lambda.jl`'s dynamic sweeps (`lowrank` / `llr` / `ttv`), one per toolkit.
 specs = (
-    (:lowrank, "Global Low-Rank ($IT it)", λ -> LowRank(λ; time_dim = :time),
+    (
+        :lowrank, "Global Low-Rank ($IT it)", λ -> LowRank(λ; time_dim = :time),
         λ -> "pics -S -w 1 -m -F -n -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -b $Nd -R L:3:3:$λ",
-        :lowrank, 0.01),
-    (:llr, "Locally Low-Rank ($IT it)", λ -> LocallyLowRank(λ; block_size = (8, 8), time_dim = :time),
+        :lowrank, 0.01,
+    ),
+    (
+        :llr, "Locally Low-Rank ($IT it)", λ -> LocallyLowRank(λ; block_size = (8, 8), time_dim = :time),
         λ -> "pics -S -w 1 -m -F -n -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -b 8 -R L:3:3:$λ",
-        :llr, 0.01),
-    (:ttv, "Temporal TV ($IT it)", λ -> TemporalTotalVariation(λ; time_dim = :time),
+        :llr, 0.01,
+    ),
+    (
+        :ttv, "Temporal TV ($IT it)", λ -> TemporalTotalVariation(λ; time_dim = :time),
         λ -> "pics -S -w 1 -F -i $BART_BUDGET -u $CMP_RHO -C $CMP_CG_ITERS -R T:32:0:$λ",
-        nothing, 0.01),
+        nothing, 0.01,
+    ),
 )
 
 for (key, meth, mrtreg, bartcmd, mrm, λdef) in specs
@@ -109,11 +118,33 @@ for (key, meth, mrtreg, bartcmd, mrm, λdef) in specs
     end
     if mrm !== nothing
         try
-            tr, xr = mrireco_dynamic(mrm, ksp_z, cmap_dyn, (Nd, Nd);
-                λ = load_lambda(key, "MRIReco", λdef), iterations = IT)
+            tr, xr = mrireco_dynamic(
+                mrm, ksp_z, cmap_dyn, (Nd, Nd);
+                λ = load_lambda(key, "MRIReco", λdef), iterations = IT
+            )
             addrow(meth, "MRIReco", tr, xr, xm)
         catch e
             @warn "MRIReco $meth failed" exception = (e, catch_backtrace())
+        end
+    end
+    # SigPy and MIRT ship no low-rank app, but both take an arbitrary prox, so the *global*
+    # low-rank case — a nuclear norm on the whole Casorati matrix — is expressible in each with
+    # its own operator and solver. LLR and temporal TV are not; see `sigpy_lowrank`.
+    if key === :lowrank
+        try
+            ts, xs = sigpy_lowrank(ksp_z, cmap_dyn, (Nd, Nd); λ = load_lambda(key, "SigPy", λdef), iterations = IT)
+            addrow(meth, "SigPy", ts, xs, xm)
+        catch e
+            @warn "SigPy $meth failed" exception = (e, catch_backtrace())
+        end
+        try
+            # `proxgrad_budget(IT)`, not `IT`: POGM spends one normal-operator application per
+            # iteration where the ADMM rows spend `CMP_CG_ITERS + 1`. Matched work, not matched
+            # iteration count — the same correction `BART_BUDGET` makes for BART.
+            ti, xi = mirt_lowrank(ksp_z, cmap_dyn; λ = load_lambda(key, "MIRT", λdef), iterations = proxgrad_budget(IT))
+            addrow(meth, "MIRT", ti, xi, xm)
+        catch e
+            @warn "MIRT $meth failed" exception = (e, catch_backtrace())
         end
     end
 end

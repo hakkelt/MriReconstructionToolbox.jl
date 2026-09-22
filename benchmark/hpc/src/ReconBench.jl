@@ -14,6 +14,7 @@ using Random: MersenneTwister
 using NamedDims
 using NamedDims: unname, dimnames
 using MriReconstructionToolbox
+using MriReconstructionToolbox: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
 
 include(joinpath(@__DIR__, "Phantoms.jl"))
 using .Phantoms

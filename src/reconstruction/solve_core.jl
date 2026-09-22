@@ -80,25 +80,39 @@ function _iterative_reconstruct_core(
             solver_kwargs = (; solver_kwargs..., hook)
         end
         try
-            # For a small single-slab solve, threading every operator is a ~1.4x net loss: no one
-            # layer dominates (FFT-plan threading is ≈neutral at 128², a threaded BLAS-1 CG loop
-            # is ≈noise, Polyester on the gradient stencils actually helps a little) — it is the
-            # accumulated fork/join + budget-enter/exit + `@spawn` overhead of a few hundred small
-            # threaded ops per solve that adds up. So narrow *every* pool for the duration. A
-            # low-rank prox is the exception: its level-3 SVDs thread 3.2x-3.9x, so those solves
-            # keep the threaded budget. See `uses_blas3` / `with_serial_blas`.
+            # BLAS is narrowed for the duration; nothing else is.
+            #
+            # Whether a *kernel* should thread is the operator's own call, made per input by
+            # `AbstractOperators.threading_threshold` and `ProximalOperators.should_thread`, so
+            # this scope leaves FFTW, NFFT and Polyester alone and lets them decide. BLAS is the
+            # one pool with no such policy: an iterative solve drives it almost entirely through
+            # level-1 calls on one work item, which are memory-bandwidth-bound and gain nothing
+            # from a thread team, while each call still pays to start one.
+            #
+            # A solve used to run every sub-16-MiB problem with *every* pool pinned instead, which
+            # silently serialised each `@batch` kernel and stopped
+            # `_coil_fused_encoding_operator` from being built at all (it gates on `threaded`).
+            # Dropping the size gate but keeping BLAS narrow is what the measurements support.
+            # Real data, 256x256 single-coil, TV-ADMM 20 it, 8 threads, min of 3:
+            #
+            # | scope around the solve        |   ms |
+            # |-------------------------------|------|
+            # | nothing narrowed              | 584.0 |
+            # | every pool pinned             | 247.4 |
+            # | counted pools pinned          | 243.1 |
+            # | BLAS/MKL pinned (this)        | 233.3 |
+            # | everything but Polyester      | 231.4 |
+            #
+            # i.e. BLAS alone accounts for the whole 2.5x, and narrowing anything further buys
+            # nothing. `threaded = false` for the same case is 285.8 ms, so building the operators
+            # threaded and pinning BLAS beats turning threading off wholesale.
+            #
+            # A low-rank prox is the exception and keeps the threaded budget: its level-3 SVDs
+            # measure 3.2x-3.9x threaded, where level 1 gains at most 10%. See `uses_blas3`.
             if uses_blas3(method.regularization)
                 solve(model, algorithm; solver_kwargs...)
-            elseif _work_item_bytes(_first_x0(x₀_or_x₀s)) < serial_blas_threshold_bytes()
-                # No early-out on `BLAS.get_num_threads() == 1` here: this scope narrows every
-                # counted pool *and* switches off the Polyester guard, so a serial BLAS says
-                # nothing about FFTW, NFFT or Polyester. (`with_serial_blas` may keep that
-                # early-out — it restricts `only = (:blas, :mkl)` and nothing else.)
-                with_restricted_threads() do
-                    solve(model, algorithm; solver_kwargs...)
-                end
             else
-                with_serial_blas(_first_x0(x₀_or_x₀s)) do
+                with_serial_blas() do
                     solve(model, algorithm; solver_kwargs...)
                 end
             end
@@ -252,6 +266,12 @@ Whether `‖𝒜‖` is worth computing for this method, i.e. whether the algori
 step-size hint at all. A pure unregularized CG/CGNR solve does not: Krylov subspaces are scale
 invariant, so it derives everything it needs itself.
 
+Neither does ADMM, and that is [`consumes_lf`](@ref)'s job to say. This used to ask only whether
+the solve was a *pure* Krylov one, so every regularized solve paid `estimate_opnorm` — including
+every ADMM solve, whose `patch_algorithm_with_default_values` method has always thrown the `Lf` it
+was handed away. The estimate's only remaining consumer there was the warm-start scale, which
+[`_warm_start_scale_proxy`](@ref) supplies for one operator application instead of twenty.
+
 Reads `method.disable_operator_normalization`, whose name predates the change that stopped this
 rescaling the operator — it now suppresses the `Lf` estimate and nothing else.
 """
@@ -260,7 +280,7 @@ function _should_estimate_operator_norm(method::IterativeReconstruction)
         return !method.disable_operator_normalization
     end
     is_pure_cg = isempty(method.regularization) && _is_krylov_solver(method.algorithm)
-    return !is_pure_cg
+    return !is_pure_cg && consumes_lf(method.algorithm)
 end
 
 """
@@ -335,16 +355,23 @@ function _warm_start_scale_proxy(𝒜, x̂::AbstractArray, config)
     return ρ
 end
 
-# `‖𝒜‖`, for use as `Lf = n‖𝒜‖²` and/or to scale-correct the default warm start. `estimate_opnorm`'s
-# power iteration converges from below, so this is a slight under-estimate of the true norm;
-# `AbstractOperators.powerit`'s docstring records that, and `exact_opnorm = true` swaps in the
-# converged `opnorm` for callers who mind.
+# `‖𝒜‖`, for use as `Lf = n‖𝒜‖²` and/or to scale-correct the default warm start.
+#
+# `estimate_opnorm` returns a value at or above `‖𝒜‖`: it pairs the power iteration, which
+# converges from below, with the closed-form `opnorm_bound`, which is above, and returns the bound
+# whenever it is finite. That is the direction a step size needs, since `gamma = 1/Lf` is fixed and
+# no backtracking runs to catch a value that came out too low. How much overshoot to accept comes
+# from the algorithm, via `opnorm_rel_margin`. `exact_opnorm = true` still swaps in the converged
+# `opnorm` for callers who want the number itself.
 function _operator_norm_for_stepsize(𝒜, method::IterativeReconstruction, config)
     local L
     # `@printing_step`, not `@step`: the latter runs its body in a `@spawn`, so `L` would be
     # bound only inside that task's closure.
     @printing_step "Estimating the operator norm" config begin
-        L = method.exact_opnorm ? LinearAlgebra.opnorm(𝒜) : AbstractOperators.estimate_opnorm(𝒜)
+        L = method.exact_opnorm ? LinearAlgebra.opnorm(𝒜) :
+            AbstractOperators.estimate_opnorm(
+                𝒜; rel_margin = opnorm_rel_margin(method.algorithm)
+            )
     end
     @argcheck L != 0 "Cannot reconstruct with an encoding operator of zero norm"
     return L

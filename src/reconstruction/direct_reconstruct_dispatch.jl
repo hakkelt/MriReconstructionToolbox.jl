@@ -71,22 +71,73 @@ function lower(method::DirectReconstruction{Nothing}, acq::AcquisitionInfo)
 end
 
 """
+    _direct_combines_coils(method::DirectReconstruction, acq::AcquisitionInfo)
+
+Whether this (already lowered) `DirectReconstruction` reduces a coil axis that the acquisition
+still carries in its *image* dimensions -- that is, a maps-less acquisition combined by
+`RootSumSquares`. With sensitivity maps the coil axis is consumed by the encoding operator and is
+not an image dimension to begin with, and `NoCoilCombination` reduces nothing.
+
+It is the one case where the reconstructed image has fewer dimensions than `get_image_dims(acq)`
+says, which is why `variable_size`, `output_dims` and task splitting all have to ask.
+"""
+function _direct_combines_coils(method::DirectReconstruction, acq::AcquisitionInfo)
+    return isnothing(acq.sensitivity_maps) && _direct_coil_dim(acq) != 0 &&
+        !(method.coil_combination isa Union{Nothing, NoCoilCombination})
+end
+_direct_combines_coils(::ReconstructionMethod, ::AcquisitionInfo) = false
+
+"""
+    _direct_image_coil_dim(acq::AcquisitionInfo)
+
+Position of the coil axis among the *image* dimensions of a maps-less acquisition. It differs from
+`_direct_coil_dim`, which is a k-space position, by the same offset task splitting uses to map
+image dimensions onto k-space dimensions: a subsampled or partitioned k-space has fewer Fourier
+dimensions than the image it encodes.
+"""
+function _direct_image_coil_dim(acq::AcquisitionInfo)
+    c_dim = _direct_coil_dim(acq)
+    c_dim == 0 && return 0
+    return c_dim + length(get_fourier_image_dims(acq)) - length(get_fourier_kspace_dims(acq))
+end
+
+function variable_size(method::DirectReconstruction, acq::AcquisitionInfo)
+    sz = get_image_size(acq)
+    _direct_combines_coils(method, acq) || return sz
+    c = _direct_image_coil_dim(acq)
+    return tuple(sz[1:(c - 1)]..., sz[(c + 1):end]...)
+end
+
+function output_dims(method::DirectReconstruction, acq::AcquisitionInfo)
+    dims = get_image_dims(acq)
+    _direct_combines_coils(method, acq) || return dims
+    c = _direct_image_coil_dim(acq)
+    return tuple(dims[1:(c - 1)]..., dims[(c + 1):end]...)
+end
+
+variable_dims(method::DirectReconstruction, acq::AcquisitionInfo) = output_dims(method, acq)
+
+"""
     check_applicable(method::DirectReconstruction, acq::AcquisitionInfo)
 
-An *explicit* `AdjointSensitivity` or `RootSumSquares` on an acquisition without sensitivity maps
-is an error: the coil axis is a batch dimension there (see [`lower`](@ref)), so neither combination
-ever sees the channels together, and returning the uncombined per-coil images instead would be a
-differently shaped result than the same call on the same data *with* maps.
+An *explicit* `AdjointSensitivity` on an acquisition without sensitivity maps is an error: that
+combination is defined by the maps, and without them the coil axis is a batch dimension (see
+[`lower`](@ref)), so the channels are never seen together.
+
+`RootSumSquares` is not affected. It is defined without maps -- it is the maps-free reference
+every sensitivity-based reconstruction is compared against -- and `_direct_reconstruct_coil_combined`
+builds the per-coil images from a sensitivity-free encoding operator anyway, so naming it on a
+maps-less acquisition is a request the method can honour exactly.
 """
 function check_applicable(method::DirectReconstruction, acq::AcquisitionInfo)
     if isnothing(acq.sensitivity_maps) && _direct_coil_dim(acq) != 0 &&
-            !(method.coil_combination isa Union{Nothing, NoCoilCombination})
+            method.coil_combination isa AdjointSensitivity
         throw(
             ArgumentError(
-                "$(nameof(typeof(method.coil_combination))) coil combination needs sensitivity maps, and this " *
-                    "acquisition carries none -- its coil axis is a batch dimension, reconstructed one channel at a " *
-                    "time. Drop the argument (or pass NoCoilCombination()) to get the per-channel images, or attach " *
-                    "sensitivity maps (see estimate_sensitivities) to combine them."
+                "AdjointSensitivity coil combination needs sensitivity maps, and this acquisition carries none -- " *
+                    "its coil axis is a batch dimension, reconstructed one channel at a time. Drop the argument (or " *
+                    "pass NoCoilCombination()) to get the per-channel images, pass RootSumSquares() for the maps-free " *
+                    "combination, or attach sensitivity maps (see estimate_sensitivities)."
             )
         )
     end

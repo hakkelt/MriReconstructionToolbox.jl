@@ -155,16 +155,19 @@ end
 # rescaled.
 
 # %% [markdown]
-# Third, the operator norm: it sets the step size of every proximal algorithm, and MRT estimates
-# it with 20 power iterations before each solve.
+# Third, the operator norm: it sets the step size of every proximal algorithm, so MRT asks for a
+# value that is guaranteed not to fall below `‖𝒜‖` before each solve. `estimate_opnorm` pairs a
+# power iteration, which converges to the norm from below, with `opnorm_bound`, a closed-form
+# upper bound, and returns the upper end of that interval once it is within `rel_margin`.
 
 # %%
 L_est = AbstractOperators.estimate_opnorm(𝒜)
-println("‖𝒜‖ (20 power iterations): ", round(L_est, digits = 5))
+println("‖𝒜‖ (certified upper bound): ", round(L_est, digits = 5))
 
-# The power iteration converges from below, so more iterations only increase the estimate.
-L_exact = AbstractOperators.estimate_opnorm(𝒜; maxit = 1000, tol = 1.0e-10)
-println("‖𝒜‖ (converged):           ", round(L_exact, digits = 5))
+# `powerit` alone gives the lower end of the same interval: the accurate value, but never safe as
+# a Lipschitz constant, because a truncated run always stops short of the norm.
+L_lower = AbstractOperators.powerit(𝒜; maxit = 1000, rel_margin = 1.0e-10)
+println("‖𝒜‖ (converged from below):  ", round(L_lower, digits = 5))
 
 # %% [markdown]
 # ## 3. `build_model` — what `reconstruct` builds

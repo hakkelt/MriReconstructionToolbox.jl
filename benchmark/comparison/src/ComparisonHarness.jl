@@ -5,8 +5,27 @@ using Test: @test
 
 include("bart_bridge.jl")
 include("sigpy_bridge.jl")
-include("matlab_bridge.jl")
 include("mirt_bridge.jl")
+
+"""
+Whether `MATLAB.jl` could be loaded, which it can only be where a MATLAB installation is visible.
+
+Nothing measured here comes from MATLAB: the bridge exists for the optional cross-checks against
+the authors' reference implementations (LORAKS 2.0, ESPIRiT, the primal-dual toolbox), and every
+call site of `setup_matlab_paths` is currently commented out. `MATLAB.jl` cannot even be
+precompiled where no MATLAB installation is visible, which took `Pkg.instantiate` and with it the
+whole comparison suite down on a machine that has only BART, SigPy and MRIReco -- so it is not a
+declared dependency of `benchmark/comparison` any more. Add it back
+(`Pkg.add("MATLAB"); Pkg.build("MATLAB")` with a MATLAB module loaded) to enable the bridge; this
+include then finds it and `MATLAB_AVAILABLE` becomes true.
+"""
+const MATLAB_AVAILABLE = try
+    include("matlab_bridge.jl")
+    true
+catch err
+    @warn "MATLAB is unavailable; the optional MATLAB reference cross-checks are disabled" err
+    false
+end
 # Phantom generators live in benchmark/hpc/ (single source of truth: the MRT baseline the
 # comparison suite diffs against is measured there on exactly these phantoms).
 include(joinpath(@__DIR__, "..", "..", "hpc", "src", "Phantoms.jl"))
@@ -15,8 +34,16 @@ include(joinpath(@__DIR__, "..", "..", "hpc", "src", "RealData.jl"))
 
 using .BARTBridge
 using .SigPyBridge
-using .MATLABBridge
 using .MIRTBridge
+if MATLAB_AVAILABLE
+    @eval using .MATLABBridge
+else
+    setup_matlab_paths(; require = ()) = error(
+        "MATLAB is not available in this environment, so the reference implementations under " *
+            "benchmark/comparison/original_implementations cannot be called. Load a MATLAB module " *
+            "(`module load matlab/...`) and rerun `Pkg.build(\"MATLAB\")` if they are needed."
+    )
+end
 using .Phantoms
 using .RealData
 

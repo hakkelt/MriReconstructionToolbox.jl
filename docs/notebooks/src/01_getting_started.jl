@@ -68,6 +68,17 @@ jim(x_true; title = "Shepp–Logan phantom (ground truth)", size = (400, 350))
 smaps = coil_sensitivities(nx, ny, nc)
 jim(smaps; title = "Coil sensitivity maps", nrow = 2, size = (800, 400))
 
+# %% [markdown]
+# Simulated maps already satisfy $\sum_c |S_c(r)|^2 = 1$. Measured ones do not — their scale
+# depends on how they were estimated — and `normalize_sensitivity_maps(acq)` returns a copy that
+# does. It is worth doing on real data: it puts the image on the conventional intensity scale, makes
+# a regularization strength carry from one dataset to the next, and makes the encoding operator a
+# contraction so the solver's step size follows from a closed-form bound instead of a power
+# iteration. See [`09_real_data_cartesian` §3](09_real_data_cartesian.ipynb).
+
+# %%
+println("sum_c |S_c|^2 range: ", round.(extrema(sum(abs2, smaps; dims = 3)), sigdigits = 6))
+
 # %%
 # Variable-density random sampling: 4× acceleration, fully sampled 15% centre.
 pdf = VariableDensitySampling(PolynomialDistribution(3), 4.0, 0.15)
