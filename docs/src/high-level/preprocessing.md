@@ -8,7 +8,8 @@ graph LR
     Raw[Raw AcquisitionInfo] --> Prewhiten[prewhiten]
     Prewhiten --> Compress[compress_coils]
     Compress --> Sens[estimate_sensitivities]
-    Sens --> Recon[reconstruct]
+    Sens --> Norm[normalize_sensitivity_maps]
+    Norm --> Recon[reconstruct]
 ```
 
 ## Noise Prewhitening
@@ -102,6 +103,41 @@ acquisition declares in `shifted_image_dims` — which raw scanner data always d
 bare k-space array and attached to a shifted acquisition are rolled by half the FOV relative to
 every image they multiply, which does not merely displace the reconstruction — it makes it wrong
 everywhere.
+
+## Sensitivity Map Normalization
+
+The overall scale of a sensitivity map set is arbitrary: it depends on how the maps were estimated,
+not on the anatomy. `normalize_sensitivity_maps` divides them by $\sqrt{\sum_c |S_c(r)|^2}$ so the
+coil sum of squares is one wherever there is signal, which is the conventional SENSE scaling
+(Pruessmann et al. 1999, Roemer et al. 1990).
+
+```@docs
+normalize_sensitivity_maps
+```
+
+```julia
+acq = estimate_sensitivities(acq; method = ESPIRiT())
+acq = normalize_sensitivity_maps(acq)
+```
+
+### What it buys
+
+- The encoding operator becomes a contraction, $\|\mathcal{A}\| \le 1$, with equality for fully
+  sampled Cartesian SENSE. The operator norm behind the step size is then known rather than
+  estimated, which removes a power iteration from every `reconstruct` call.
+- The reconstructed image carries the conventional intensity scale instead of one inherited from
+  the map estimator.
+- Regularization strengths become comparable across datasets, because $\lambda$ no longer competes
+  with an arbitrary map scale.
+
+### When not to use it
+
+It is not applied automatically, and should not be, when the map scale is meaningful to you: it
+changes the units of the image you get back. Nor does it help where the encoding chain is not a
+plain projection-times-unitary — with an NUFFT, density compensation or coil compression in the
+chain, $\|\mathcal{A}\| \le 1$ no longer follows from the maps alone. The divisor is also noise
+outside the object, which is why voxels below `threshold` times the peak sum of squares are set to
+zero rather than divided.
 
 ## Non-Cartesian Gradient Delay Correction
 

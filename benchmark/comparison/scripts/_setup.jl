@@ -303,6 +303,12 @@ const CMP_RTYPE = real(CMP_CTYPE)
 @info "comparison precision" ctype = CMP_CTYPE
 
 # Shared 2D multi-coil brain phantom (most sections).
+#
+# The sensitivity maps are handed to every toolkit exactly as the generator produces them.
+# `normalize_sensitivity_maps` is deliberately not called: it would give MRT a known operator norm
+# and so a free step size, while MRIReco's `SensitivityOp` and BART's `pics` normalize nothing, and
+# the comparison is supposed to measure the solvers rather than one side's preprocessing. Leave the
+# omission in place.
 const N = 128
 const Nc = 8
 const IMG_MC, KSPACE_MC, CMAP = let (i, k, c) = generate_multicoil_brain(N = N, num_coils = Nc)
