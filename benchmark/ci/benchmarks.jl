@@ -101,7 +101,7 @@ SUITE["prox"]["TemporalFourier_op"] = @benchmarkable MriReconstructionToolbox.ge
 # Real Cartesian k-space via MRITestData.jl (RealData.jl is shared with benchmark/hpc/). The
 # dataset is downloaded and cached on first use; a failure is logged and the group skipped.
 if get(ENV, "MRT_BENCH_REAL_DATA", "0") == "1"
-    include(joinpath(@__DIR__, "..", "benchmarking", "src", "RealData.jl"))
+    include(joinpath(@__DIR__, "..", "hpc", "src", "RealData.jl"))
     using .RealData: load_real_case
     try
         real_case = load_real_case()
