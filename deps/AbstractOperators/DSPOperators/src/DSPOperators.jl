@@ -1,11 +1,12 @@
 module DSPOperators
 
-using AbstractOperators, FFTW
+using ..AbstractOperators
+using FFTW
 using AbstractFFTs: AbstractFFTs
 import LinearAlgebra: mul!
 import Base: size, ndims
 
-import AbstractOperators:
+import ..AbstractOperators:
     domain_type,
     codomain_type,
     check,
