@@ -116,6 +116,132 @@ end
     @test y2 == [1.0 -3.0; -2.0 4.0]
 end
 
+@testitem "alternate_sign!: hoisted kernel matches the naive per-element formula" tags = [:fftw, :SignAlternation] setup = [TestUtils] begin
+    using LinearAlgebra, Random, FFTWOperators
+    Random.seed!(3)
+
+    # Reference: the naive per-element formula the kernel was rewritten from.
+    function _ref_alternate_sign!(x::AbstractArray, dirs::NTuple)
+        for I in CartesianIndices(x)
+            flips = sum(iseven(I[d]) ? 1 : 0 for d in dirs)
+            if isodd(flips)
+                x[I] = -x[I]
+            end
+        end
+        return x
+    end
+
+    # Every non-empty subset of `1:N`, sorted ascending (the shape `alternate_sign!` requires).
+    function _dirs_subsets(N::Int)
+        return [Tuple(d for d in 1:N if (mask >> (d - 1)) & 1 == 1) for mask in 1:(2^N - 1)]
+    end
+
+    # Mixed even/odd extents, including an axis of length exactly 2.
+    sizes = [(4, 3, 2), (2, 5, 4), (6, 2, 3), (8,), (2, 2), (2, 3, 2)]
+    for sz in sizes, threaded in (true, false)
+        x = randn(ComplexF64, sz)
+        N = length(sz)
+        for dirs in _dirs_subsets(N)
+            expected = _ref_alternate_sign!(copy(x), dirs)
+
+            y = copy(x)
+            alternate_sign!(y, dirs...; threaded)
+            @test y ≈ expected
+
+            yo = similar(x)
+            alternate_sign!(yo, x, dirs...; threaded)
+            @test yo ≈ expected
+
+            # Self-inverse.
+            @test alternate_sign!(copy(y), dirs...; threaded) ≈ x
+        end
+    end
+end
+
+@testitem "alternate_sign!: kernel state stays on the stack" tags = [:fftw, :SignAlternation] setup = [TestUtils] begin
+    using Random, FFTWOperators
+    using LinearAlgebra: mul!
+    Random.seed!(5)
+
+    # The per-column sign vector and the trailing-dimension mask used to be heap `Vector`s built
+    # on every call, in a kernel that runs once per FFT-shift per operator application. `N` is a
+    # static type parameter, so neither needs to allocate.
+    #
+    # Measured from inside a function, not at test-item top level: `@allocated` on a call whose
+    # arguments are globals also counts the boxing of those globals, which is not the kernel's
+    # doing (the same call measured at top level reports 128 B for a 3-element `dirs`).
+    alloc_in_place(x, dirs) = @allocated alternate_sign!(x, dirs...; threaded = false)
+    alloc_out_of_place(y, x, dirs) = @allocated alternate_sign!(y, x, dirs...; threaded = false)
+
+    x = randn(ComplexF64, 32, 16, 4)
+    y = similar(x)
+    for dirs in ((1,), (2, 3), (1, 2, 3))
+        alternate_sign!(copy(x), dirs...; threaded = false)      # warm up / compile
+        alternate_sign!(y, x, dirs...; threaded = false)
+        @test alloc_in_place(x, dirs) == 0
+        @test alloc_out_of_place(y, x, dirs) == 0
+    end
+
+    # The same claim where it actually matters: the operator's own `mul!`, which runs once per
+    # FFT-shift per operator application.
+    mul_alloc(y, S, x) = @allocated mul!(y, S, x)
+    S = SignAlternation(ComplexF64, size(x), (1, 2, 3); threaded = false)
+    mul!(y, S, x)
+    @test mul_alloc(y, S, x) == 0
+end
+
+@testitem "alternate_sign!: a single trailing column threads dimension 1" tags = [:fftw, :SignAlternation] setup = [TestUtils] begin
+    using Random, FFTWOperators
+    Random.seed!(5)
+
+    # A single trailing column (a vector, or an `n x 1`) leaves the column loop with one item, so
+    # the threaded path spreads dimension 1 instead. Both paths must agree with the naive formula.
+    for sz in ((64,), (64, 1), (8192,))
+        v = randn(ComplexF64, sz...)
+        expected = [v[I] * (iseven(I[1]) ? -1 : 1) for I in CartesianIndices(v)]
+        @test alternate_sign!(copy(v), 1; threaded = true) ≈ expected
+        @test alternate_sign!(copy(v), 1; threaded = false) ≈ expected
+    end
+end
+
+@testitem "alternate_sign!: the Cartesian fallback matches the linear kernel" tags = [:fftw, :SignAlternation] setup = [TestUtils] begin
+    using Random, FFTWOperators
+    using LinearAlgebra: mul!
+    Random.seed!(7)
+
+    # The kernel addresses a column by its linear index range, which only holds for an array
+    # that indexes linearly and starts at 1. A strided view does neither, and takes the
+    # Cartesian fallback instead; both must produce the same thing.
+    for sz in ((8, 6), (8, 6, 3), (7, 4))
+        N = length(sz)
+        parent = randn(ComplexF64, (2 .* sz)...)
+        idx = ntuple(k -> 1:2:(2 * sz[k]), N)
+        dense = Array(@view parent[idx...])
+        for dirs in ((1,), (2,), (1, 2)), threaded in (false, true)
+            maximum(dirs) <= N || continue
+            expected = alternate_sign!(copy(dense), dirs...; threaded = false)
+
+            v = @view parent[idx...]
+            v .= dense
+            alternate_sign!(v, dirs...; threaded)
+            @test Array(v) == expected
+
+            out = @view parent[idx...]
+            alternate_sign!(out, dense, dirs...; threaded)
+            @test Array(out) == expected
+        end
+    end
+
+    # An aliased `mul!` is routed to the in-place kernel, which only touches the elements that
+    # flip; it must still be the same operator.
+    x = randn(ComplexF64, 16, 8)
+    S = SignAlternation(ComplexF64, size(x), (1, 2); threaded = false)
+    expected = S * x
+    y = copy(x)
+    mul!(y, S, y)
+    @test y == expected
+end
+
 @testitem "fftshift/ifftshift wrappers" tags = [:fftw, :FFTShift] setup = [TestUtils] begin
     using FFTW, LinearAlgebra, Random, FFTWOperators, AbstractOperators
     # Even length

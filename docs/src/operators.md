@@ -14,6 +14,12 @@ LMatrixOp
 MyLinOp
 ```
 
+## Structured Matrix Embeddings
+
+```@docs
+Hankel
+```
+
 ## Finite Differences
 
 ```@docs
@@ -105,4 +111,14 @@ NFFTOp
 
 ```@docs
 WaveletOp
+```
+
+## Contourlet
+
+!!! note
+    Add package `ContourletOperators` to access the following operators.
+
+```@docs
+ContourletOp
+NSCTOp
 ```

@@ -139,11 +139,9 @@ function DFT(
     ) where {N, D <: Real}
     x = similar(x, Complex{D})
     num_threads = _fftw_num_threads(:c2c, num_threads, threaded, length(x))
-    prev_fftw_threads = FFTW.get_num_threads()
-    FFTW.set_num_threads(num_threads)
-    A = plan_fft(x, dims; flags, timelimit)
-    At = plan_bfft(x, dims; flags, timelimit)
-    FFTW.set_num_threads(prev_fftw_threads)
+    A, At = _with_fftw_threads(num_threads) do
+        plan_fft(x, dims; flags, timelimit), plan_bfft(x, dims; flags, timelimit)
+    end
     S = typeof(x isa SubArray ? parent(x) : x).name.wrapper
     dims = tuple(dims...)
     scaling = _dft_scaling(size(x), dims, normalization)
@@ -165,11 +163,9 @@ function DFT(
         x = similar(x) # FFTW.MEASURE and FFTW.PATIENT may cause the input array to be modified
     end
     num_threads = _fftw_num_threads(:c2c, num_threads, threaded, length(x))
-    prev_fftw_threads = FFTW.get_num_threads()
-    FFTW.set_num_threads(num_threads)
-    A = plan_fft(x, dims; flags, timelimit)
-    At = plan_bfft(x, dims; flags, timelimit)
-    FFTW.set_num_threads(prev_fftw_threads)
+    A, At = _with_fftw_threads(num_threads) do
+        plan_fft(x, dims; flags, timelimit), plan_bfft(x, dims; flags, timelimit)
+    end
     S = typeof(x isa SubArray ? parent(x) : x).name.wrapper
     dims = tuple(dims...)
     scaling = _dft_scaling(size(x), dims, normalization)
@@ -337,18 +333,24 @@ is_invertible(L::DFT) = true
 is_full_row_rank(L::DFT) = true
 is_full_column_rank(L::DFT) = true
 
+# In the operator's own real element type: `_dft_scaling` is a `Float64` (it types the
+# stored `scale` field), but these two are consumed as scalings of the *data* -- as
+# `ProximalOperators.Precompose`'s `mu`, for one -- where a `Float64` handed to a `Float32`
+# problem widens everything downstream of it.
 function diag_AcA(L::DFT{N, C, D, Dir, S}) where {N, C, D, Dir, S}
+    R = real(C)
     return if L.normalization == UNNORMALIZED
-        _dft_scaling(size(L, 1), Dir, FORWARD)
+        R(_dft_scaling(size(L, 1), Dir, FORWARD))
     else
-        one(real(C))
+        one(R)
     end
 end
 function diag_AAc(L::DFT{N, C, D, Dir, S}) where {N, C, D, Dir, S}
+    R = real(C)
     return if L.normalization == UNNORMALIZED
-        _dft_scaling(size(L, 2), Dir, FORWARD)
+        R(_dft_scaling(size(L, 2), Dir, FORWARD))
     else
-        one(real(C))
+        one(R)
     end
 end
 

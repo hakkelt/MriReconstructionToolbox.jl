@@ -168,6 +168,9 @@ julia> size(FiniteDiff((10,20), 1),2)
 """
 size(L::AbstractOperator, i::Int) = size(L)[i]
 
+# `map` over the size tuple rather than `count_dims(size(L, i))`: for operators with
+# heterogeneous codomain/domain shapes the two entries have different types, so a
+# non-literal index widens the result to a `Union` and makes `count_dims` a runtime dispatch.
 """
 	ndims(A::AbstractOperator, [dom,])
 
@@ -187,12 +190,12 @@ julia> ndims(V,2)
 3
 ```
 """
-ndims(L::AbstractOperator) = count_dims(size(L, 1)), count_dims(size(L, 2))
+ndims(L::AbstractOperator) = map(count_dims, size(L))
 ndims(L::AbstractOperator, i::Int) = ndims(L)[i]
 
 count_dims(::Tuple{}) = 0
 count_dims(::NTuple{N, <:Integer}) where {N} = N
-count_dims(dims::Tuple) = count_dims.(dims)
+count_dims(dims::Tuple) = map(count_dims, dims)
 
 """
 	ndoms(L::AbstractOperator, [dom::Int]) -> (number of codomains, number of domains)
@@ -213,7 +216,14 @@ julia> ndoms(DCAT(Eye(10,10),Eye(10,10)))
 (2, 2)
 ```
 """
-ndoms(L::AbstractOperator) = length.(ndims(L))
+function ndoms(L::AbstractOperator)
+    # Recompute from `size(L)` instead of `length.(ndims(L))`: for operators whose codomain
+    # and domain shapes have different types, JET widens `ndims(L)`'s tuple across the call
+    # boundary into `Tuple{Union{...}, Union{...}}` and reports the elementwise `length` as
+    # runtime dispatch. Indexing the size tuple here keeps both entries concrete.
+    sz = size(L)
+    return length(count_dims(sz[1])), length(count_dims(sz[2]))
+end
 ndoms(L::AbstractOperator, i::Int) = ndoms(L)[i]
 
 is_linear(L::LinearOperator) = true
@@ -283,12 +293,20 @@ function displacement(S::AbstractOperator)
     x = allocate_in_domain(S)
     fill!(x, 0)
     d = S * x
-    if all(y -> y == d[1], d)
-        return d[1]
-    else
-        return d
-    end
+    # `d[1]`/iterating `d` directly would be scalar indexing on a GPU array, so the first
+    # element comes back through a one-element host copy and the comparison is a reduction.
+    # `d` itself (returned below) keeps its original storage type.
+    v = _first_element(d)
+    return _all_equal_to(d, v) ? v : d
 end
+
+_first_element(d::AbstractArray) = only(Array(@view vec(d)[1:1]))
+# An `ArrayPartition` cannot be flattened when its blocks have incompatible shapes -- which is
+# exactly what a per-frame operator with unequal sample counts produces -- so recurse instead.
+_first_element(d::ArrayPartition) = _first_element(first(d.x))
+
+_all_equal_to(d::AbstractArray, v) = all(==(v), d)
+_all_equal_to(d::ArrayPartition, v) = all(b -> _all_equal_to(b, v), d.x)
 
 """
 	remove_displacement(A::AbstractOperator)
@@ -320,14 +338,28 @@ false
 
 julia> AbstractOperators.can_be_combined(Eye(10), FiniteDiff((11,)))
 true
+
+julia> AbstractOperators.can_be_combined(FiniteDiff((10,)), Reshape(Eye(10), 2, 5))
+false
 ```
 """
 function can_be_combined(L, R)
-    return is_eye(L) ||
-        is_eye(R) ||
+    return _is_removable_eye(L) ||
+        _is_removable_eye(R) ||
         is_null(L) ||
         (is_null(R) && is_linear(L) && all(displacement(L) .== 0))
 end
+
+"""
+	_is_removable_eye(L)
+
+Whether `L` is an identity that can simply be dropped from a composition.
+
+`is_eye` alone is not enough: `Reshape(Eye(...), dims...)` is an identity on the *values* but not on the
+*shape*, so removing it would leave the neighbouring operator with an input of the wrong number of
+dimensions. Only a shape-preserving identity may be dropped.
+"""
+_is_removable_eye(L) = is_eye(L) && size(L, 1) == size(L, 2)
 can_be_combined(L, M, R) = false
 
 """
@@ -341,8 +373,10 @@ julia> AbstractOperators.combine(Eye(10), DiagOp(rand(10)))
 ```
 """
 function combine(L, R)
-    if is_eye(L)
+    if _is_removable_eye(L)
         return R
+    elseif _is_removable_eye(R)
+        return L
     elseif is_null(L)
         if size(R, 1) == size(R, 2) && domain_type(R) == codomain_type(R)
             return L
@@ -402,6 +436,9 @@ Parameters of power iteration:
 - Maximum number of iterations: 100
 - Tolerance for convergence: 1e-6
 These parameters can be adjusted in the [estimate_opnorm](@ref) function.
+
+The power iteration starts from a fixed pseudo-random vector, so this is a deterministic
+function of `A` (see [`powerit`](@ref)).
 """
 function LinearAlgebra.opnorm(A::AbstractOperator)
     return powerit(A)
@@ -424,21 +461,46 @@ These parameters can be adjusted by passing `maxit` and `tol` keyword arguments.
 ```julia
 julia> estimate_opnorm(A; maxit=50, tol=1e-6)
 ```
+
+The power iteration starts from a **fixed** pseudo-random vector (see [`powerit`](@ref)), so
+repeated calls on the same operator return the same number.
 """
-function estimate_opnorm(A::AbstractOperator; maxit = 20, tol = 1.0e-3)
+function estimate_opnorm(A::AbstractOperator; maxit = 20, tol = 1.0e-3, rng = _powerit_rng())
     if has_fast_opnorm(A)
         return opnorm(A)
     else
-        return powerit(A; maxit, tol)
+        return powerit(A; maxit, tol, rng)
     end
 end
 
-function powerit(A::AbstractOperator; maxit = 100, tol = 1.0e-6)
+# A fresh, fixed-seed generator per call, so the start vector does not depend on the global
+# RNG's state and therefore not on what the caller happened to draw before.
+_powerit_rng() = Random.Xoshiro(0x5eed)
+
+"""
+	powerit(A::AbstractOperator; maxit, tol, rng)
+
+Estimate `‖A‖` by the power method on `AᴴA`.
+
+The start vector is drawn from `rng`, which **defaults to a fixed-seed generator**, not to the
+global one. That matters well beyond reproducible tests: the iteration frequently exhausts
+`maxit` without meeting `tol` — the top of the spectrum is often close to degenerate, and
+convergence is then linear in the ratio of the two largest eigenvalues — so the result carries
+a start-vector-dependent error rather than a converged value. Drawing that vector from the
+global RNG made the estimate, and everything scaled by it, silently differ from run to run.
+Measured on an MRT 128²×8 encoding operator: 6.5e-4 relative spread over six calls, which
+propagated to a 7.9e-4 relative difference between two otherwise identical reconstructions.
+
+Note also that the iterates approach `‖A‖` **from below**, so a truncated run under-estimates
+the norm. A caller that needs a safe Lipschitz bound should add a margin rather than assume
+`tol` was met.
+"""
+function powerit(A::AbstractOperator; maxit = 100, tol = 1.0e-6, rng = _powerit_rng())
     # Power method for estimating the operator norm
     AHA = A' * A
     x = allocate_in_domain(A)
     y = similar(x)
-    Random.randn!(x)
+    Random.randn!(rng, x)
     normalize!(x)
     λ = zero(real(eltype(x)))
     λ_old = real(eltype(x))(Inf)

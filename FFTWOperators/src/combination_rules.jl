@@ -50,16 +50,16 @@ function can_be_combined(T1::ShiftOp, T2::AdjointOperator{<:DFT})
     return all(iseven, size(T2, 1)[collect(T1.dirs)])
 end
 function can_be_combined(T1::DFT, T2::AdjointOperator{<:ShiftOp})
-    return all(iseven, size(T1, 2)[collect(T2.dirs)])
+    return all(iseven, size(T1, 2)[collect(T2.A.dirs)])
 end
 function can_be_combined(T1::AdjointOperator{<:ShiftOp}, T2::DFT)
-    return all(iseven, size(T2, 1)[collect(T1.dirs)])
+    return all(iseven, size(T2, 1)[collect(T1.A.dirs)])
 end
 function can_be_combined(T1::AdjointOperator{<:DFT}, T2::AdjointOperator{<:ShiftOp})
-    return all(iseven, size(T1, 2)[collect(T2.dirs)])
+    return all(iseven, size(T1, 2)[collect(T2.A.dirs)])
 end
 function can_be_combined(T1::AdjointOperator{<:ShiftOp}, T2::AdjointOperator{<:DFT})
-    return all(iseven, size(T2, 1)[collect(T1.dirs)])
+    return all(iseven, size(T2, 1)[collect(T1.A.dirs)])
 end
 function combine(T1::DFT, T2::ShiftOp)
     return SignAlternation(codomain_type(T1), size(T1, 1), T2.dirs; array_type = codomain_array_type(T1)) * T1
@@ -74,16 +74,16 @@ function combine(T1::ShiftOp, T2::AdjointOperator{<:DFT})
     return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.dirs; array_type = domain_array_type(T2))
 end
 function combine(T1::DFT, T2::AdjointOperator{<:ShiftOp})
-    return SignAlternation(codomain_type(T1), size(T1, 1), T2.dirs; array_type = codomain_array_type(T1)) * T1
+    return SignAlternation(codomain_type(T1), size(T1, 1), T2.A.dirs; array_type = codomain_array_type(T1)) * T1
 end
 function combine(T1::AdjointOperator{<:ShiftOp}, T2::DFT)
-    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.dirs; array_type = domain_array_type(T2))
+    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.A.dirs; array_type = domain_array_type(T2))
 end
 function combine(T1::AdjointOperator{<:DFT}, T2::AdjointOperator{<:ShiftOp})
-    return SignAlternation(codomain_type(T1), size(T1, 1), T2.dirs; array_type = codomain_array_type(T1)) * T1
+    return SignAlternation(codomain_type(T1), size(T1, 1), T2.A.dirs; array_type = codomain_array_type(T1)) * T1
 end
 function combine(T1::AdjointOperator{<:ShiftOp}, T2::AdjointOperator{<:DFT})
-    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.dirs; array_type = domain_array_type(T2))
+    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.A.dirs; array_type = domain_array_type(T2))
 end
 
 # FFTShift/IFFTShift with DFT and SignAlternation
@@ -208,3 +208,91 @@ end
 function combine(T1::DiagOp, T2::SignAlternation)
     return DiagOp(domain_type(T1), size(T1, 2), T2 * diag(T1))
 end
+
+# SignAlternation ∘ (any square diagonal) ∘ SignAlternation
+#
+# A `SignAlternation` is a real ±1 diagonal and is its own inverse, and diagonals commute,
+# so `± M ± = M M±± = M` exactly, for any square diagonal `M` carrying the same `dirs`.
+#
+# This is what un-fuses the encoding operator's normal operator: with
+# `𝒜 = 𝒫 ∘ ± ∘ ℱ ∘ 𝒮`, `𝒜ᴴ𝒜` folds `𝒫ᴴ𝒫` into a single diagonal mask and leaves
+# `(…, ℱ, ±, 𝒫ᴴ𝒫, ±, ℱᴴ, …)` — a `±` pair the pairwise cancellation cannot see because
+# the mask sits between them. Every normal-operator application would otherwise pay two
+# full sign passes it does not owe.
+#
+# `L.dirs == R.dirs` is the guard that matters: two alternations over different dimension
+# sets do not cancel (their product is the alternation over the symmetric difference).
+function can_be_combined(L::SignAlternation, M::AbstractOperator, R::SignAlternation)
+    return L.dirs == R.dirs && L.dim_in == R.dim_in &&
+        is_linear(M) && is_diagonal(M) && size(M, 1) == size(M, 2)
+end
+combine(::SignAlternation, M::AbstractOperator, ::SignAlternation) = M
+
+# SignAlternation through a batch operator
+#
+# When none of the alternation's `dirs` is a batch dimension, its ±1 factor is constant along
+# the batch loop, so `± ∘ ⟳A == ⟳(±ₛ ∘ A)` exactly, with `±ₛ` the same alternation renumbered
+# to one slice. Pushing it inside puts it next to the operator the batch wraps — in MRT's
+# encoding operator that is the sensitivity-map `DiagOp` — where the `SignAlternation ∘ DiagOp`
+# rule above folds the signs into the maps once, at construction time, and the pass disappears
+# from every application.
+#
+# The rewrite is taken only when that fold actually happens: `±ₛ * inner` runs the same
+# combination machinery, and if it comes back a `Compose` nothing was absorbed. Pushing then
+# would only move the same work inside the batch loop (where it is also harder to thread), so
+# the rule declines and the alternation stays where it is.
+function _sign_alternation_slice(
+        L::SignAlternation, mask::NTuple{K, Bool}, full_size::NTuple{K, Int}, inner::AbstractOperator, side::Int
+    ) where {K}
+    length(L.dirs) == 0 && return nothing
+    any(d -> mask[d], L.dirs) && return nothing
+    slice_size = Tuple(full_size[d] for d in 1:K if !mask[d])
+    size(inner, side) == slice_size || return nothing
+    # A non-batch dimension `d` of the batched operator is the `count(!, mask[1:d])`-th
+    # dimension of the slice the wrapped operator sees.
+    slice_dirs = map(d -> count(k -> !mask[k], 1:d), L.dirs)
+    T = side == 1 ? codomain_type(inner) : domain_type(inner)
+    A = side == 1 ? codomain_array_type(inner) : domain_array_type(inner)
+    # Threading is decided per batch item by the batch loop, so the slice-level alternation
+    # never brings its own: `create_BatchOp` would switch it off for nesting safety anyway.
+    return SignAlternation(T, slice_size, slice_dirs; threaded = false, array_type = A)
+end
+
+function _push_sign_into_batch(L::SignAlternation, B::AbstractOperators.SimpleBatchOp)
+    inner = AbstractOperators._wrapped_operator(B)
+    mask = AbstractOperators.get_codomain_batch_dim_mask(typeof(B))
+    slice = _sign_alternation_slice(L, mask, B.codomain_size, inner, 1)
+    slice === nothing && return nothing
+    fused = slice * inner
+    fused isa Compose && return nothing
+    return AbstractOperators.create_BatchOp(
+        fused,
+        B.domain_size, AbstractOperators.get_domain_batch_dim_mask(typeof(B)),
+        B.codomain_size, mask;
+        threaded = is_threaded(B),
+    )
+end
+
+function _push_sign_into_batch(B::AbstractOperators.SimpleBatchOp, L::SignAlternation)
+    inner = AbstractOperators._wrapped_operator(B)
+    mask = AbstractOperators.get_domain_batch_dim_mask(typeof(B))
+    slice = _sign_alternation_slice(L, mask, B.domain_size, inner, 2)
+    slice === nothing && return nothing
+    fused = inner * slice
+    fused isa Compose && return nothing
+    return AbstractOperators.create_BatchOp(
+        fused,
+        B.domain_size, mask,
+        B.codomain_size, AbstractOperators.get_codomain_batch_dim_mask(typeof(B));
+        threaded = is_threaded(B),
+    )
+end
+
+function can_be_combined(L::SignAlternation, B::AbstractOperators.SimpleBatchOp)
+    return _push_sign_into_batch(L, B) !== nothing
+end
+function can_be_combined(B::AbstractOperators.SimpleBatchOp, L::SignAlternation)
+    return _push_sign_into_batch(B, L) !== nothing
+end
+combine(L::SignAlternation, B::AbstractOperators.SimpleBatchOp) = _push_sign_into_batch(L, B)
+combine(B::AbstractOperators.SimpleBatchOp, L::SignAlternation) = _push_sign_into_batch(B, L)

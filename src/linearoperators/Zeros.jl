@@ -95,8 +95,8 @@ is_positive_definite(::Zeros) = false
 is_positive_semidefinite(::Zeros) = true
 
 diag(::Zeros{C}) where {C} = zero(C)
-diag_AAc(L::Zeros) = 0
-diag_AcA(L::Zeros) = 0
+diag_AAc(L::Zeros) = zero(real(codomain_type(L)))
+diag_AcA(L::Zeros) = zero(real(domain_type(L)))
 
 has_optimized_normalop(::Zeros) = true
 get_normal_op(L::Zeros) = Zeros(domain_type(L), size(L, 2), domain_type(L), size(L, 2))

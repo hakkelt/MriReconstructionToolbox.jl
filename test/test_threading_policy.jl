@@ -48,8 +48,18 @@ end
     @test _fbthread(false) === FastBroadcast.False()
     @test _fbbool(_fbthread(true)) == true
     @test _fbbool(_fbthread(false)) == false
-    @test _fbbool(FastBroadcast.True) == true
-    @test _fbbool(FastBroadcast.False) == false
+
+    # Operators must store the singleton instance, not the type: `@.. thread = Th` calls
+    # `Th()` and a bare `DataType` fails there with `MethodError: no method matching
+    # DataType()`, while the `is_threaded` trait would still read as correct.
+    for Th in (
+            typeof(Sin((512,))).parameters[4],
+            typeof(DiagOp(randn(512))).parameters[1],
+            typeof(Scale(2.0, Eye(512))).parameters[1],
+        )
+        @test Th isa Union{FastBroadcast.True, FastBroadcast.False}
+        @test _fbbool(Th) isa Bool
+    end
 end
 
 @testitem "adapt_operator: shares when constraints hold, copies otherwise" tags = [:misc, :Threading] setup = [TestUtils] begin
@@ -110,6 +120,14 @@ end
     @test threading_threshold(FiniteDiff) == 2^16
     @test threading_threshold(DiagOp) == 2^17
     @test threading_threshold(Scale) == 2^22
+
+    # Variation is re-measured after its adjoint rewrite; below this it is a real
+    # pessimisation (5.4x at 2^10), not merely a wash. See its PROVENANCE comment.
+    @test threading_threshold(Variation) == 2^17
+    @test is_threaded(Variation(Float32, (128, 128); threaded = true)) == false
+    if Threads.nthreads() > 1
+        @test is_threaded(Variation(Float32, (512, 512); threaded = true)) == true
+    end
     @test threading_threshold(Sin) < threading_threshold(FiniteDiff) < threading_threshold(Scale)
 end
 

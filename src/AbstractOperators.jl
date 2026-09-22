@@ -54,10 +54,13 @@ include("linearoperators/ZeroPad.jl")
 include("linearoperators/Eye.jl")
 include("linearoperators/DiagOp.jl")
 include("linearoperators/GetIndex.jl")
+include("linearoperators/PermuteDims.jl")
+include("linearoperators/Hankel.jl")
 include("linearoperators/MatrixOp.jl")
 include("linearoperators/LMatrixOp.jl")
 include("linearoperators/FiniteDiff.jl")
 include("linearoperators/Variation.jl")
+include("linearoperators/SymmetrizedVariation.jl")
 include("linearoperators/LBFGS.jl")
 
 # Batch operators

@@ -36,7 +36,6 @@ import AbstractOperators:
     _resolve_threaded,
     _elementwise_threaded,
     threading_threshold,
-    THRESHOLD_MEMORY_BOUND,
     _copy_operator_impl
 
 """
