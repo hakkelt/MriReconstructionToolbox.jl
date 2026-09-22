@@ -580,7 +580,9 @@ println("stage 2 NRMSE ", round(nrmse1(x_stage2), digits = 4))
 #
 # ### What `‖𝒜‖` is used for
 #
-# MRT estimates $\|\mathcal{A}\|$ with a 20-step power iteration and hands the algorithm
+# MRT asks `estimate_opnorm` for a value that is certified **not** to fall below
+# $\|\mathcal{A}\|$ — a power iteration, which converges from below, paired with a closed-form
+# upper bound — and hands the algorithm
 # $L_f = n\|\mathcal{A}\|^2$ — the Lipschitz constant of the data term's gradient, with $n$ the
 # number of optimization variables (one, unless the model has `Component`s). It does **not**
 # rescale $\mathcal{A}$: that used to be the implementation, and it silently multiplied the
@@ -610,7 +612,7 @@ println("stage 2 NRMSE ", round(nrmse1(x_stage2), digits = 4))
 𝒜 = get_encoding_operator(data)
 estimate_opnorm(𝒜)                                                       # warm up
 t_estimate = minimum(@elapsed(estimate_opnorm(𝒜)) for _ in 1:5)
-println("the 20-step estimate costs ", round(1000 * t_estimate, digits = 1), " ms")
+println("the operator-norm estimate costs ", round(1000 * t_estimate, digits = 1), " ms")
 
 for kwargs in ((;), (; disable_operator_normalization = true))
     m = IterativeReconstruction(TotalVariation2D(5.0f-4); algorithm = ADMM(), maxit = 30, kwargs...)
@@ -625,13 +627,13 @@ end
 # %% [markdown]
 # ### The three options
 #
-# **`exact_opnorm = true`** — replace `estimate_opnorm`'s 20 power iterations with
-# `LinearAlgebra.opnorm`, run to convergence.
-# *Costs* a longer setup: the power iteration keeps applying $\mathcal{A}$ and
-# $\mathcal{A}^*$ until it stops moving instead of stopping at 20.
-# *Reach for it* when you need the true constant rather than a lower bound — the estimate
-# converges from below, so `1/Lf` is a slightly **larger** step than the theory guarantees, and
-# on an awkwardly conditioned operator that can cost monotonicity.
+# **`exact_opnorm = true`** — replace `estimate_opnorm` with `LinearAlgebra.opnorm`, run to
+# convergence.
+# *Costs* a longer setup: the iteration keeps applying $\mathcal{A}$ and $\mathcal{A}^*$ until it
+# stops moving, instead of stopping as soon as the certified interval is within `rel_margin`.
+# *Reach for it* when you need the true constant rather than a certified bound — `estimate_opnorm`
+# returns the upper end of that interval, so `1/Lf` is a slightly **smaller** step than the true
+# norm would give, which costs convergence rate but never safety.
 #
 # **Supplying the constant yourself** — `disable_operator_normalization` is not the only
 # alternative to estimating. Because MRT fills `Lf` in only when the algorithm does not already
@@ -738,7 +740,7 @@ compare_options(data_noncart, nrmse1; maxit = 30)
 # non-Cartesian data, which is why it is applied wherever the operator supports it.
 #
 # **Why `exact_opnorm` costs so much wall-clock time.** Not because of the iterations — `maxit`
-# is unchanged — but because of the setup. The 20-step estimate took a few tens of milliseconds
+# is unchanged — but because of the setup. The estimate took a few tens of milliseconds
 # in the cell above; running the power iteration to convergence takes roughly an order of
 # magnitude longer, while the whole 40-iteration solve is only a couple of hundred
 # milliseconds. The setup, not the solve, is what grew.
@@ -761,13 +763,13 @@ compare_options(data_noncart, nrmse1; maxit = 30)
 # switch on non-Cartesian data — it also removes the one Landweber step that makes the adjoint a
 # usable starting point — and if that is what you want, supply `x₀` yourself.
 #
-# **Why `exact_opnorm` gives the *worse* NRMSE at this budget.** It does not converge to a worse
-# image — it converges to the same one, a little more slowly. `estimate_opnorm` stops after 20
-# power iterations and so returns a slight **under**-estimate of `‖𝒜‖` (here about 0.6 % low),
-# which makes `Lf` too small and therefore `γ = 1/Lf` slightly *too large*. A larger step means
-# more progress per iteration, and at a truncated `maxit = 40` more progress is a lower NRMSE.
-# The exact norm gives the theoretically safe, slightly smaller step, and it lands a little
-# further back along the same trajectory. λ is not involved: since `‖𝒜‖` no longer rescales
+# **Why the two settings differ in NRMSE at this budget.** Neither converges to a worse image —
+# they converge to the same one, at slightly different rates. The two calls return slightly
+# different numbers for `‖𝒜‖`: `estimate_opnorm` returns the *upper* end of a certified interval,
+# while `LinearAlgebra.opnorm` iterates a power method that approaches the norm from *below*. The
+# larger of the two makes `Lf` larger and therefore `γ = 1/Lf` smaller, and a smaller step means
+# less progress per iteration, so at a truncated `maxit = 40` it lands a little further back along
+# the same trajectory. λ is not involved: since `‖𝒜‖` no longer rescales
 # `𝒜`, the objective being minimized is identical in both runs. The cell below checks that
 # directly by giving both enough iterations to converge.
 
