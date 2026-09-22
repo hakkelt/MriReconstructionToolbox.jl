@@ -94,6 +94,46 @@ FFTW.set_num_threads(NUM_THREADS)
 @info "BLAS/FFTW pinned" blas_threads = BLAS.get_num_threads() fftw_threads = FFTW.get_num_threads() mrireco_blas_threads = MRIRECO_BLAS_THREADS
 
 """
+    check_environment()
+
+Fail loudly instead of silently benchmarking under an environment that does not match what was
+requested. `scripts/probe.jl` (`benchmark/hpc/`) prints this same information for interactive
+debugging; here it is an assertion, run automatically by every section, because a mismatch
+silently invalidates the numbers rather than crashing anything -- exactly the kind of thing this
+suite exists to catch in a toolkit, not commit on its own.
+"""
+function check_environment()
+    cpus_allowed = let line = ""
+        for l in eachline("/proc/self/status")
+            startswith(l, "Cpus_allowed_list:") && (line = strip(split(l, ":")[2]))
+        end
+        line
+    end
+    n_allowed = sum(
+        r -> (p = split(r, "-"); length(p) == 1 ? 1 : parse(Int, p[2]) - parse(Int, p[1]) + 1),
+        split(cpus_allowed, ","),
+    )
+    n_allowed < NUM_THREADS && error(
+        "requested $NUM_THREADS threads but only $n_allowed CPUs are allowed " *
+            "(Cpus_allowed_list=$cpus_allowed) -- the SLURM allocation does not cover what was " *
+            "asked for; rerun with a matching --cpus-per-task",
+    )
+    Threads.nthreads() != NUM_THREADS && error(
+        "requested $NUM_THREADS threads but Julia started with $(Threads.nthreads()) -- pass -t $NUM_THREADS",
+    )
+    BLAS.get_num_threads() != NUM_THREADS && error(
+        "BLAS is pinned to $(BLAS.get_num_threads()) threads, not the requested $NUM_THREADS",
+    )
+    USE_MKL && get(ENV, "KMP_BLOCKTIME", "") != "0" && error(
+        "MKL is enabled but KMP_BLOCKTIME is $(get(ENV, "KMP_BLOCKTIME", "unset")), not \"0\" -- " *
+            "export it before starting Julia (see docs/src/high-level/performance.md); MKL's " *
+            "worker threads will otherwise spin and crowd out the ones being measured",
+    )
+    return nothing
+end
+check_environment()
+
+"""
     with_mrireco_blas(f)
 
 Run `f()` with BLAS at [`MRIRECO_BLAS_THREADS`](@ref) — what MRIReco set for itself — and restore
