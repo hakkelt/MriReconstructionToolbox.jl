@@ -6,12 +6,10 @@ version = "0.5.0"
 projects = ["test", "docs"]
 
 [deps]
-AbstractFFTs = "621f4979-c628-5d54-868e-fcf4e3e8185c"
 AbstractOperators = "d9c5613a-d543-52d8-9afd-8f241a8c3f1c"
 Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
 DSP = "717857b8-e6f2-59f4-9121-6e50c889abd2"
 DSPOperators = "d5a72628-6e2f-430e-82f5-561df0bb8116"
-DifferentiationInterface = "a0c0ee7d-e4b9-4e03-894e-1c5f64a51d63"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 FFTWOperators = "c59a084b-ba08-4f3f-af9e-f4298d6caa94"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -21,12 +19,10 @@ ProximalOperators = "a725b495-10eb-56fe-b38b-717eba820537"
 RecursiveArrayTools = "731186ca-8d62-57ce-b412-fbd966d074cd"
 
 [compat]
-AbstractFFTs = "1.5.0"
 AbstractOperators = "0.4"
 Combinatorics = "1.0.2"
 DSP = "0.5.1 - 0.8"
 DSPOperators = "0.1"
-DifferentiationInterface = "0.6"
 FFTW = "1"
 FFTWOperators = "0.1"
 LinearAlgebra = "1"

@@ -18,15 +18,13 @@
 
 ## Specifying solver and options
 
-You can pick the algorithm to use as `Solver` object from the
-[`ProximalAlgorithms.jl`](https://github.com/kul-forbes/ProximalAlgorithms.jl)
-package. Currently, the following algorithms are supported.
-
-```@docs
-ZeroFPR
-PANOC
-PANOCplus
-```
+You can pick the algorithm to use as a `Solver` object from the
+[`ProximalAlgorithms.jl`](https://github.com/JuliaFirstOrder/ProximalAlgorithms.jl)
+package — for example `PANOCplus()`, `ZeroFPR()`, `PANOC()`,
+`FastForwardBackward()`, or `CGNR()`. Each accepts options such as `maxit` and `tol`
+(see the ProximalAlgorithms documentation), which you may also override at
+[`solve`](@ref) time via keyword arguments. See
+[Choosing an algorithm](@ref) below for guidance on which to use.
 
 
 ## Parse and solve
@@ -40,7 +38,47 @@ solve
 ```
 
 Once again, the `Solver` objects is to be picked from
-[`ProximalAlgorithms.jl`](https://github.com/kul-forbes/ProximalAlgorithms.jl)).
+[`ProximalAlgorithms.jl`](https://github.com/JuliaFirstOrder/ProximalAlgorithms.jl)).
+
+## Choosing an algorithm
+
+If you do not pass a solver, `solve`/`@minimize` **auto-select** one by matching the
+problem structure against each algorithm's assumptions. You can inspect that matching
+directly:
+
+```@docs
+suggest_algorithm
+StructuredOptimization.print_diagnostics
+```
+
+As a rule of thumb:
+
+| Problem type | Recommended solver |
+|---|---|
+| `f(Ax) + g(x)`, `f` smooth (convex or not) | `PANOCplus` |
+| Purely proximal (`g(x)` only, or a sum of proximable terms) | `FastForwardBackward` |
+| Nonconvex smooth `f` | `ZeroFPR` or `PANOCplus` |
+| Least squares `‖Ax-b‖²` (+ optional ridge) | `CGNR` |
+
+!!! warning "PANOC / ZeroFPR stepsize"
+
+    `PANOC` and (less often) `ZeroFPR` can hit a "stepsize `gamma` became too small"
+    warning and return an unreliable point on some problems. Prefer `PANOCplus` for
+    convergence-critical work; reach for `PANOC`/`ZeroFPR` mainly when a problem is
+    nonconvex and `PANOCplus` struggles.
+
+## When parsing fails
+
+If no solver's assumptions can be satisfied, `solve` raises an error. Call
+[`print_diagnostics`](@ref StructuredOptimization.print_diagnostics) to see *why*: it lists each term that could not be
+prepared together with the property it failed to certify (`is_convex`,
+`is_proximable`, `is_smooth`, …). A common cause is asking a solver that requires
+convexity to handle a nonlinear (hence non-convex) composition such as
+`ls(sin(x) - b)` — the diagnostic reports `f requires is_convex`.
+
+If a term is *almost* usable but not proximable in closed form, `smooth(f)` replaces
+it with its Moreau envelope, which is smooth and can then be handled by a
+gradient-based solver — see [Functions](functions.md).
 
 ## References
 

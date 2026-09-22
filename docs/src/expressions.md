@@ -23,6 +23,7 @@ Variable
 ~
 size
 eltype
+get_name
 ```
 
 ## Summing expressions
@@ -43,7 +44,7 @@ As shown in the [Quick tutorial guide](@ref) it is possible to apply different m
 using a simple syntax.
 
 Alternatively, as shown in [Multiplying expressions](@ref), it is possible to define the mappings using
-[`AbstractOperators.jl`](https://github.com/kul-forbes/ProximalAlgorithms.jl) and to apply them
+[`AbstractOperators.jl`](https://github.com/JuliaFirstOrder/ProximalAlgorithms.jl) and to apply them
 to the variable (or expression) through multiplication.
 
 ### Basic mappings

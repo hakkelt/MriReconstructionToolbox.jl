@@ -8,11 +8,11 @@ This user-friendly interface
 acts as a parser to utilize
 three different packages:
 
-* [ProximalOperators.jl](https://github.com/kul-forbes/ProximalOperators.jl) provides proximal mappings of functions that are frequently used in signal processing and optimization.
+* [ProximalOperators.jl](https://github.com/JuliaFirstOrder/ProximalOperators.jl) provides proximal mappings of functions that are frequently used in signal processing and optimization.
 
-* [AbstractOperators.jl](https://github.com/kul-forbes/AbstractOperators.jl) provides algorithms for the evaluation and combination of forward and (Jacobian) adjoint of linear and nonlinear mappings.
+* [AbstractOperators.jl](https://github.com/JuliaFirstOrder/AbstractOperators.jl) provides algorithms for the evaluation and combination of forward and (Jacobian) adjoint of linear and nonlinear mappings.
 
-* [ProximalAlgorithms.jl](https://github.com/kul-forbes/ProximalAlgorithms.jl) is a library of proximal algorithms (aka splitting algorithms) solvers.
+* [ProximalAlgorithms.jl](https://github.com/JuliaFirstOrder/ProximalAlgorithms.jl) is a library of proximal algorithms (aka splitting algorithms) solvers.
 
 StructuredOptimization.jl can handle large-scale convex and nonconvex problems with nonsmooth cost functions. It supports complex variables as well. See the [Quick tutorial guide](@ref) and the [Demos](@ref).
 

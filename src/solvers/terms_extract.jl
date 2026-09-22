@@ -1,116 +1,76 @@
 # returns all variables of a cost function, in terms of appearance
-extract_variables(t::TermOrExpr) = variables(t) 
+extract_variables(t::TermOrExpr) = variables(t)
 
 function extract_variables(t::Union{Tuple, TermSet})
-  var_tuples = variables.(t)
-  vars = collect(Base.Iterators.flatten(var_tuples))
-  return tuple(unique(vars)...)
+    var_tuples = variables.(t)
+    vars = collect(Base.Iterators.flatten(var_tuples))
+    return tuple(unique(vars)...)
 end
 
-# extract functions from terms
-function extract_functions(t::Term)
-  disp = displacement(t)
-  f = disp == 0 ? t.f : PrecomposeDiagonal(t.f, one(t.lambda), disp) #for now I keep this
-  f = t.lambda == 1 ? f : Postcompose(f, t.lambda)                                  #for now I keep this
-  #TODO change this
-  return f
-end
-extract_functions(t::TermSet) = SeparableSum(extract_functions.(t))
+# The term's function with its weight λ applied, and nothing else.
+#
+# This is the one extraction convention in the package: a term is `λ · f(A·x + d)`, the
+# displacement `d` is carried by the affine operator (`extract_affines`/`affine`), and λ is
+# applied exactly once, here. Anything that folds the operator or the displacement into the
+# function is an *absorption* and belongs in `merge_function_with_operator`, which is the
+# only place that knows what the selected algorithm will ask of the term.
+weighted_function(t::Term) = t.lambda == 1 ? t.f : Postcompose(t.f, t.lambda)
+weighted_function(t::TermSet) = SeparableSum(weighted_function.(t)...)
 
-# extract functions from terms without displacement
-function extract_functions_nodisp(t::Term)
-  f = t.lambda == 1 ? t.f : Postcompose(t.f, t.lambda)
-  return f
-end
-extract_functions_nodisp(t::TermSet) = SeparableSum(extract_functions_nodisp.(t))
+# Extract the linear operators (`accessor = operator`) or the affine operators
+# keeping displacement (`accessor = affine`) from a term/expression, ordered to match
+# `xAll`. The two families are identical apart from which accessor they use, so they
+# share one implementation.
 
-# extract operators from terms
+#single term, single variable (split by type so the single-variable case stays
+# strictly more specific than the multi-variable `Term` method below — no ambiguity)
+_extract(accessor, ::Tuple{Variable}, t::AbstractExpression) = accessor(t)
+_extract(accessor, ::Tuple{Variable}, t::Term) = accessor(t)
+_extract(accessor, xAll::NTuple{N, Variable}, t::AbstractExpression) where {N} =
+    _sort_and_extract(accessor, xAll, expand(xAll, t))
+_extract(accessor, xAll::NTuple{N, Variable}, t::Term) where {N} =
+    _extract(accessor, xAll, TermSet(t))
+
+#multiple terms, multiple variables
+function _extract(accessor, xAll::NTuple{N, Variable}, t::TermSet) where {N}
+    ops = ()
+    for ti in t
+        tex = expand(xAll, ti)
+        ops = (ops..., _sort_and_extract(accessor, xAll, tex))
+    end
+    return vcat(ops...)
+end
+
+_sort_and_extract(accessor, ::Tuple{Variable}, t::TermOrExpr) = accessor(t)
+
+function _sort_and_extract(accessor, xAll::NTuple{N, Variable}, t::TermOrExpr) where {N}
+    p = zeros(Int, N)
+    xL = variables(t)
+    for i in eachindex(xAll)
+        p[i] = findfirst(xi -> xi == xAll[i], xL)
+    end
+    return accessor(t)[p]
+end
 
 # returns all operators with an order dictated by xAll
+extract_operators(xAll, t) = _extract(operator, xAll, t)
+# returns all affines (operators keeping displacement) with an order dictated by xAll
+extract_affines(xAll, t) = _extract(affine, xAll, t)
 
-#single term, single variable
-extract_operators(::Tuple{Variable}, t::AbstractExpression)  = operator(t)
-extract_operators(::Tuple{Variable}, t::Term)  = operator(t)
-extract_operators(xAll::NTuple{N,Variable}, t::AbstractExpression) where {N} = sort_and_extract_operators(xAll, expand(xAll, t))
-extract_operators(xAll::NTuple{N,Variable}, t::Term) where {N} = extract_operators(xAll, TermSet(t,))
-
-#multiple terms, multiple variables
-function extract_operators(xAll::NTuple{N,Variable}, t::TermSet) where {N}
-  ops = ()
-  for ti in t
-    tex = expand(xAll,ti)
-    ops = (ops...,sort_and_extract_operators(xAll,tex))
-  end
-  return vcat(ops...)
+# Expand a term/expression to the problem's full domain: every variable of `xAll` the
+# term does not mention gets a `Zeros` block, so all terms share one domain and their
+# operators can be stacked.
+#
+# The padding rule itself lives in `add_missing_vars` (addition_tricky_part.jl), which
+# does the same job at the operator level for `Usum_op`. Going through it keeps a single
+# rule for what a padded block looks like; here it is only wrapped back up as an
+# `Expression` over the widened variable tuple.
+function expand(xAll::NTuple{N, Variable}, ex::AbstractExpression) where {N}
+    ex = convert(Expression, ex)
+    new_vars, new_op = add_missing_vars(ex.x, ex.L, xAll)
+    return new_vars === ex.x ? ex : Expression(new_vars, new_op)
 end
 
-sort_and_extract_operators(::Tuple{Variable}, t::TermOrExpr) = operator(t)
-
-function sort_and_extract_operators(xAll::NTuple{N,Variable}, t::TermOrExpr) where {N}
-  p = zeros(Int,N)
-  xL = variables(t)
-  for i in eachindex(xAll)
-    p[i] = findfirst( xi -> xi == xAll[i], xL)
-  end
-  return operator(t)[p]
-end
-
-# extract affines from terms
-
-# returns all affines with an order dictated by xAll
-
-#single term, single variable
-extract_affines(::Tuple{Variable}, t::AbstractExpression)  = affine(t)
-extract_affines(::Tuple{Variable}, t::Term)  = affine(t)
-extract_affines(xAll::NTuple{N,Variable}, t::AbstractExpression) where {N} = sort_and_extract_affines(xAll, expand(xAll, t))
-extract_affines(xAll::NTuple{N,Variable}, t::Term) where {N} = extract_affines(xAll, TermSet(t,))
-
-#multiple terms, multiple variables
-function extract_affines(xAll::NTuple{N,Variable}, t::TermSet) where {N}
-  ops = ()
-  for ti in t
-    tex = expand(xAll,ti)
-    ops = (ops...,sort_and_extract_affines(xAll,tex))
-  end
-  return vcat(ops...)
-end
-
-sort_and_extract_affines(::Tuple{Variable}, t::TermOrExpr) = affine(t)
-
-function sort_and_extract_affines(xAll::NTuple{N,Variable}, t::TermOrExpr) where {N}
-  p = zeros(Int,N)
-  xL = variables(t)
-  for i in eachindex(xAll)
-    p[i] = findfirst( xi -> xi == xAll[i], xL)
-  end
-  return affine(t)[p]
-end
-
-# expand term domain dimensions
-function expand(xAll::NTuple{N,Variable}, t::Term) where {N}
-  xt   = variables(t)
-  C    = codomain_type(operator(t))
-  size_out = size(operator(t),1)
-  ex = t.A
-
-  for x in xAll
-    if !( x in variables(t) ) 
-      ex += Zeros(eltype(~x),size(x),C,size_out)*x
-    end
-  end
-  return Term(t.lambda, t.f, ex)
-end
-
-function expand(xAll::NTuple{N,Variable}, ex::AbstractExpression) where {N}
-  ex = convert(Expression,ex)
-  xt   = variables(ex)
-  C    = codomain_type(operator(ex))
-  size_out = size(operator(ex),1)
-
-  for x in xAll
-    if !( x in variables(ex) ) 
-      ex += Zeros(eltype(~x),size(x),C,size_out)*x
-    end
-  end
-  return ex
-end
+# Preserve λ, f and the term's repr (so diagnostics stay readable after expansion).
+expand(xAll::NTuple{N, Variable}, t::Term) where {N} =
+    Term(t.lambda, t.f, expand(xAll, t.A), t.repr)
