@@ -493,8 +493,8 @@ The operator norm is defined as: `‖A‖ = sup_{x != 0} ‖A*x‖ / ‖x‖`.
 
 ## Keyword arguments
 
-- `rel_margin = 0.01`: the accuracy the power iteration is run to, when it is run at all. See
-  "What is returned" below for what it does and does not guarantee.
+- `rel_margin = 0.01`: how far from `‖A‖` the result may be. See "What is returned" below for
+  what it does and does not guarantee.
 - `side = :upper`: `:upper` never returns a value below `‖A‖`, which is what a Lipschitz
   constant needs; `:accurate` returns the closest value instead, which is what a rescaling
   needs. See "Which side to ask for".
@@ -510,18 +510,15 @@ The operator norm is defined as: `‖A‖ = sup_{x != 0} ‖A*x‖ / ‖x‖`.
 | case | result | guarantee |
 |:-----|:-------|:----------|
 | `has_fast_opnorm(A)` | `opnorm(A)` | exact, no iteration |
-| `side = :upper`, `U` finite | `U` | `U ≥ ‖A‖`, certified, **no iteration** |
+| `side = :upper`, `U` finite | `U` | `U ≥ ‖A‖`, certified |
 | `side = :upper`, `U = Inf` | `sqrt(θ + ‖r‖)` | heuristic, see below |
 | `side = :accurate` | `min(L, U)` | `≤ ‖A‖` |
 
-A finite `U` ends `:upper` immediately. Iterating could only say how loose `U` is — the value
-returned would not move, since `L` never rises above `‖A‖` and `U` never falls below it — so
-nothing is spent on measuring that. A loose `U` therefore costs convergence rate silently; ask
-for `:accurate` alongside, or call `powerit`, when the slack itself matters. Measured on a 128²×8
-Cartesian SENSE operator, `U/‖A‖ - 1` is 1.2e-7 and the call costs no operator applications at
-all, against roughly 15 ms of power iteration.
-
-`rel_margin` governs the other two rows, where the iteration does run.
+`rel_margin` is a promise about the value returned, and it is kept in every row. A certificate is
+never known to be within the margin on its own — `U ≤ L (1 + rel_margin)` is the only computable
+statement of that — so the iteration runs until it holds, and `U` is loose exactly when it cannot
+be made to. If `maxit` runs out first, `U` is returned with a warning naming the achieved slack:
+still safe, merely loose, and loose costs convergence rate while low costs convergence.
 
 **The `U = Inf` branch is a heuristic, not a certificate.** `minᵢ |λᵢ - θ| ≤ ‖r‖` is exact
 [2, Thm 4.5.1], but it localises *some* eigenvalue near `θ`, so `λmax ≤ θ + ‖r‖` needs that one
@@ -556,23 +553,24 @@ function estimate_opnorm(
     has_fast_opnorm(A) && return opnorm(A)
 
     upper = opnorm_bound(A)
-    # A finite certificate already answers the question `:upper` asks. Iterating could only
-    # measure how loose it is — the value returned would not move — so nothing is spent on it.
-    side === :upper && isfinite(upper) && return convert(_opnorm_eltype(A), upper)
-
-    # Without one, the target is accuracy, so the iteration uses its own residual test.
-    lower, θ, resid = _powerit(A; maxit, rel_margin, rng)
+    # `rel_margin` is a promise about the value returned, so it is checked against the value
+    # returned. A certificate is only known to be within the margin once the iteration has
+    # climbed to meet it, which is what `_powerit` is asked to do when `upper` is finite.
+    lower, θ, resid = _powerit(A; maxit, rel_margin, rng, upper = side === :upper ? upper : Inf)
     # `:accurate` wants the closest value, and a certificate the iterate happens to exceed is
     # still an upper bound on the truth.
     side === :accurate && return isfinite(upper) ? min(lower, oftype(lower, upper)) : lower
+
+    if isfinite(upper)
+        if upper > lower * (1 + rel_margin) && lower > 0
+            @warn "estimate_opnorm: the closed-form bound is looser than the requested margin" achieved =
+                upper / lower - 1 rel_margin maxit
+        end
+        return oftype(lower, upper)
+    end
     # No certificate available: the residual heuristic, which at least errs upwards.
     return sqrt(θ + resid)
 end
-
-# The real type a norm of `A` is reported in. A multi-domain operator has one per domain.
-_opnorm_eltype(A::AbstractOperator) = _opnorm_eltype(domain_type(A))
-_opnorm_eltype(T::Type) = float(real(T))
-_opnorm_eltype(T::Tuple) = promote_type(map(_opnorm_eltype, T)...)
 
 # A fresh, fixed-seed generator per call, so the start vector does not depend on the global
 # RNG's state and therefore not on what the caller happened to draw before.
@@ -601,11 +599,11 @@ the global RNG the same operator gave a 6.5e-4 relative spread over six calls.
 1. Golub, Van Loan, "Matrix Computations", 4th ed., Johns Hopkins (2013).
 """
 function powerit(A::AbstractOperator; maxit = 100, rel_margin = 1.0e-6, rng = _powerit_rng())
-    return first(_powerit(A; maxit, rel_margin, rng))
+    return first(_powerit(A; maxit, rel_margin, rng, upper = Inf))
 end
 
 """
-	_powerit(A; maxit, rel_margin, rng) -> (lower, θ, resid)
+	_powerit(A; maxit, rel_margin, rng, upper) -> (lower, θ, resid)
 
 One power iteration on `B = AᴴA`, reporting what its callers need rather than just a number:
 
@@ -615,16 +613,19 @@ One power iteration on `B = AᴴA`, reporting what its callers need rather than 
 - `resid = ‖Bx - θx‖`, as `sqrt(‖Bx‖² - θ²)`: the residual is orthogonal to `x` [1, §4.3], so it
   costs no extra application, vector or pass.
 
-The loop stops on `resid / (2θ) ≤ rel_margin`; the factor 2 is the square root between `λ` and
-`‖A‖`, and dropping it makes the test twice as strict as asked. There is no certificate-based
-stopping rule here on purpose: a caller holding a finite `opnorm_bound` and wanting only a safe
-value has its answer already and never reaches this function.
+The loop stops on `resid / (2θ) ≤ rel_margin` — the factor 2 is the square root between `λ` and
+`‖A‖`, and dropping it makes the test twice as strict as asked — or, with a finite `upper`, as
+soon as `upper ≤ lower (1 + rel_margin)`. The second test is what lets a caller returning `upper`
+keep its promise about the margin: the certificate itself does not improve with iteration, but
+whether it sits within the margin can only be established by raising `lower` to meet it. Either
+test ending the loop ends it, since neither the certificate nor the iterate has anything left to
+gain from the other's criterion.
 
 ## References
 
 1. Parlett, "The Symmetric Eigenvalue Problem", SIAM Classics in Applied Mathematics 20 (1998).
 """
-function _powerit(A::AbstractOperator; maxit, rel_margin, rng)
+function _powerit(A::AbstractOperator; maxit, rel_margin, rng, upper)
     AHA = A' * A
     x = allocate_in_domain(A)
     y = similar(x)
@@ -643,6 +644,7 @@ function _powerit(A::AbstractOperator; maxit, rel_margin, rng)
         θ = real(dot(x, y))
         resid = sqrt(max(zero(R), nrm^2 - θ^2))
         θ > 0 && resid / (2θ) <= rel_margin && break
+        isfinite(upper) && upper <= sqrt(nrm) * (1 + rel_margin) && break
         @.. thread = true x = y / nrm
     end
 

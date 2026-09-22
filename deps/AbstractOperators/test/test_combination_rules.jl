@@ -1,0 +1,1009 @@
+@testitem "CR: AffineAdd Combinations" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 5
+    A = randn(n, n)
+    b1 = randn(n)
+    b2 = randn(n)
+
+    # Create affine operators
+    op1 = AffineAdd(MatrixOp(A), b1)
+    op2 = AffineAdd(DiagOp(ones(n)), b2)
+
+    @test can_be_combined(op1, op2)
+
+    # Test combination result
+    combined = combine(op1, op2)
+    @test combined isa AffineAdd
+    @test combined.d ≈ A * b2 .+ b1
+
+    # Test with different signs
+    op3 = AffineAdd(MatrixOp(A), b1, false)
+    combined_diff_signs = combine(op1, op3)
+    @test combined_diff_signs.d ≈ A * b1 .- b1
+
+    # Test matrix-op + affine-op
+    A2 = randn(n, n)
+    op4 = MatrixOp(A2)
+
+    @test can_be_combined(op4, op1)
+
+    combined_mat_affine = combine(op4, op1)
+    @test combined_mat_affine isa AffineAdd
+    @test combined_mat_affine.A isa MatrixOp
+    @test combined_mat_affine.d ≈ A2 * b1
+    @test combined_mat_affine.A.A ≈ A2 * A
+
+end
+
+@testitem "CR: Compose Combinations" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 3
+    A = randn(n, n)
+    B = randn(n, n)
+
+    # Create composed operators
+    op1 = Compose(MatrixOp(A), DiagOp(ones(n)))
+    op2 = Compose(MatrixOp(B), Eye(n))
+
+    @test can_be_combined(op1, op2)
+
+    combined = combine(op1, op2)
+    @test combined isa MatrixOp
+    @test combined.A ≈ A * Diagonal(ones(n)) * B
+
+    # Test with single operator
+    single_op = MatrixOp(A)
+    composed_op = Compose(MatrixOp(B), Eye(n))
+
+    @test can_be_combined(single_op, composed_op)
+    combined_single = combine(single_op, composed_op)
+    @test combined_single isa MatrixOp
+    @test combined_single.A ≈ A * B
+
+    # Compose of Composes with Matrices
+    n = 4
+    A = randn(n, n)
+    B = randn(n, n)
+    comp1 = Compose(MatrixOp(A), FiniteDiff((n + 1,)))    # A*(diff(x))
+    comp2 = Compose(FiniteDiff((n,)), MatrixOp(B))      # diff(B*x)
+    @test can_be_combined(comp2, comp1)
+    combined_cc = combine(comp2, comp1)
+    x = randn(n + 1)
+    @test combined_cc * x ≈ comp2 * (comp1 * x)
+
+    # Left matrix with Compose (generic combine(L, R::Compose) path)
+    C = randn(n, n)
+    left_mat = MatrixOp(C)
+    @test can_be_combined(left_mat, comp1)
+    combined_lc = combine(left_mat, comp1)
+    x = randn(n + 1)
+    @test combined_lc * x ≈ left_mat * (comp1 * x)
+end
+
+@testitem "CR: DCAT Combinations" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 4
+    A = [randn(n, n) for _ in 1:2]
+    d = [randn(n) for _ in 1:2]
+
+    # Create DCAT operator
+    matrix_ops = DCAT(MatrixOp.(A)...)
+    diag_ops = DCAT(DiagOp.(d)...)
+
+    @test can_be_combined(diag_ops, matrix_ops)
+    combined_dcat = combine(diag_ops, matrix_ops)
+    @test combined_dcat isa DCAT
+    @test combined_dcat.A[1].A ≈ Diagonal(d[1]) * A[1]
+    @test combined_dcat.A[2].A ≈ Diagonal(d[2]) * A[2]
+end
+
+@testitem "CR: HCAT Combinations" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 3
+    A = randn(n, n)
+    B = randn(n, n)
+    d = randn(n)
+
+    # Create HCAT operator
+    hcat_op = HCAT(MatrixOp(A), MatrixOp(B))
+    diag_op = DiagOp(d)
+
+    @test can_be_combined(diag_op, hcat_op)
+    combined_hcat = combine(diag_op, hcat_op)
+    @test combined_hcat isa HCAT
+    @test size(combined_hcat) == ((3,), ((3,), (3,)))
+    @test combined_hcat.A[1].A ≈ d .* A
+    @test combined_hcat.A[2].A ≈ d .* B
+end
+
+@testitem "CR: Scale+Matrix Combinations" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 4
+    A = randn(n, n)
+    B = randn(n, n)
+
+    # Create scale operators
+    matrix_op = MatrixOp(A)
+    scale_op = Scale(3.0, MatrixOp(B))
+
+    @test can_be_combined(scale_op, matrix_op)
+    combined = combine(scale_op, matrix_op)
+    @test combined isa MatrixOp
+    @test combined.A ≈ 3.0 * B * A
+
+    @test can_be_combined(matrix_op, scale_op)
+    combined = combine(matrix_op, scale_op)
+    @test combined isa MatrixOp
+    @test combined.A ≈ 3 * A * B
+
+    # Test with adjoint
+    @test can_be_combined(matrix_op, scale_op')
+    combined = combine(matrix_op, scale_op')
+    @test combined isa MatrixOp
+    @test combined.A ≈ 3 * A * B'
+
+    @test can_be_combined(scale_op', matrix_op)
+    combined = combine(scale_op', matrix_op)
+    @test combined isa MatrixOp
+    @test combined.A ≈ 3 * B' * A
+
+    @test can_be_combined(matrix_op', scale_op)
+    combined = combine(matrix_op', scale_op)
+    @test combined isa MatrixOp
+    @test combined.A ≈ 3 * A' * B
+
+    @test can_be_combined(scale_op, matrix_op')
+    combined = combine(scale_op, matrix_op')
+    @test combined isa MatrixOp
+    @test combined.A ≈ 3 * B * A'
+
+    @test can_be_combined(scale_op', matrix_op')
+    combined = combine(scale_op', matrix_op')
+    @test combined isa MatrixOp
+    @test combined.A ≈ 3 * B' * A'
+
+    @test can_be_combined(matrix_op', scale_op')
+    combined = combine(matrix_op', scale_op')
+    @test combined isa MatrixOp
+    @test combined.A ≈ 3 * A' * B'
+end
+
+@testitem "CR: Sum Combinations" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 3
+    A = randn(n, n)
+    B = randn(n, n)
+    d = randn(n)
+
+    diag_op = DiagOp(d)
+    sum_op = Sum(MatrixOp(A), MatrixOp(B))
+
+    @test can_be_combined(diag_op, sum_op)
+    combined = combine(diag_op, sum_op)
+    @test combined isa Sum
+    @test combined.A[1].A ≈ Diagonal(d) * A
+    @test combined.A[2].A ≈ Diagonal(d) * B
+end
+
+@testitem "CR: MatrixOp Combinations" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 4
+    m = 3
+    A = randn(n, m)
+    B = randn(m, n)
+
+    # Basic MatrixOp combinations
+    op1 = MatrixOp(A)
+    op2 = MatrixOp(B)
+
+    @test can_be_combined(op2, op1)
+    combined = combine(op2, op1)
+    @test combined isa MatrixOp
+    @test combined.A ≈ B * A
+
+    # MatrixOp with adjoint
+    C = randn(n, m)
+    op3 = MatrixOp(C)
+    adj_op = op3'
+    @test can_be_combined(op1, adj_op)
+    combined_adj = combine(op1, adj_op)
+    @test combined_adj.A ≈ A * C'
+
+    # MatrixOp with DiagOp
+    d = randn(m)
+    diag_op = DiagOp(d)
+    @test can_be_combined(op1, diag_op)
+    combined_diag = combine(op1, diag_op)
+    @test combined_diag.A ≈ A * Diagonal(d)
+end
+
+@testitem "CR: MatrixOp does not absorb a matrix-valued diagonal" tags = [
+    :calculus, :CombinationRules,
+] begin
+    using LinearAlgebra, Random
+    using AbstractOperators
+    using AbstractOperators: can_be_combined
+
+    # A `MatrixOp` with a multi-dimensional domain applies its matrix column by column, so a
+    # `DiagOp` whose diagonal is a matrix weights each column by a different diagonal. No single
+    # matrix represents that, and folding it anyway used to yield the ordinary matrix product
+    # `M * d`, which agrees with the composition nowhere.
+    Random.seed!(3)
+    n = 8
+    M = MatrixOp(randn(n, n), n)
+    W = DiagOp(randn(n, n))
+    x = randn(n, n)
+
+    @test !can_be_combined(M, W)
+    @test !can_be_combined(W, M)
+    @test (M * W) * x ≈ M * (W * x)
+    @test (W * M) * x ≈ W * (M * x)
+    @test !can_be_combined(M', W')
+    @test !can_be_combined(W', M')
+
+    # A vector diagonal is still folded, in both orders, and still correctly.
+    v = DiagOp(randn(n))
+    Mv = MatrixOp(randn(n, n))
+    y = randn(n)
+    @test can_be_combined(Mv, v)
+    @test Mv * v isa MatrixOp
+    @test (Mv * v) * y ≈ Mv * (v * y)
+    @test (v * Mv) * y ≈ v * (Mv * y)
+end
+
+@testitem "CR: Scale+Eye/DiagOp Combinations" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 3
+    α = 2.0
+    β = 3.0
+
+    # Scale with Eye
+    scale1 = Scale(α, Eye(n))
+    scale2 = Scale(β, Eye(n))
+
+    @test can_be_combined(scale1, scale2)
+    combined = combine(scale1, scale2)
+    @test combined isa Scale
+    @test combined.coeff ≈ α * β
+
+    # Scale with DiagOp
+    d = randn(n)
+    diag_op = DiagOp(d)
+    @test can_be_combined(scale1, diag_op)
+    combined_diag = combine(scale1, diag_op)
+    @test combined_diag isa DiagOp
+    @test combined_diag.d ≈ α * d
+
+    # Scale with adjoint
+    adj_scale = scale2'
+    @test can_be_combined(scale1, adj_scale)
+    combined = combine(scale1, adj_scale)
+    x = randn(n)
+    y = combined * x
+    @test y ≈ α * β * x
+end
+
+@testitem "CR: Zeros Combinations" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 4
+    m = 3
+
+    zeros_op1 = Zeros(Float64, (n,), Float64, (m,))
+    zeros_op2 = Zeros(Float64, (n,), Float64, (m,))
+
+    # Zeros with Zeros
+    @test can_be_combined(zeros_op1, zeros_op2)
+    combined = combine(zeros_op1, zeros_op2)
+    @test combined isa Zeros
+    @test size(combined) == ((m,), (n,))
+
+    # Zeros with DiagOp
+    d = randn(n)
+    diag_op = DiagOp(d)
+    @test can_be_combined(zeros_op1, diag_op)
+    combined_diag = combine(zeros_op1, diag_op)
+    @test combined_diag isa Zeros
+    @test size(combined_diag) == ((m,), (n,))
+
+    # type-changing Zeros with DiagOp
+    zeros_op3 = Zeros(Float64, (n,), Float32, (m,))
+    @test can_be_combined(zeros_op3, diag_op)
+    combined_diag2 = combine(zeros_op3, diag_op)
+    @test combined_diag2 isa Zeros
+    @test size(combined_diag2) == ((m,), (n,))
+    @test domain_type(combined_diag2) == Float64
+    @test codomain_type(combined_diag2) == Float32
+
+    # type-changing DiagOp with Zeros
+    diag_op2 = DiagOp(Float64, (m,), rand(ComplexF64, m))
+    @test can_be_combined(diag_op2, zeros_op3)
+    combined_diag3 = combine(diag_op2, zeros_op3)
+    @test combined_diag3 isa Zeros
+    @test size(combined_diag3) == ((m,), (n,))
+    @test domain_type(combined_diag3) == Float64
+    @test codomain_type(combined_diag3) == ComplexF64
+end
+
+@testitem "CR: DiagOp Combinations" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 5
+    d1 = randn(n)
+    d2 = randn(n)
+
+    # DiagOp with DiagOp
+    diag1 = DiagOp(d1)
+    diag2 = DiagOp(d2)
+
+    @test can_be_combined(diag1, diag2)
+    combined = combine(diag1, diag2)
+    @test combined isa DiagOp
+    @test combined.d ≈ d1 .* d2
+
+    # DiagOp with adjoint
+    adj_diag = diag2'
+    @test can_be_combined(diag1, adj_diag)
+    combined_adj = combine(diag1, adj_diag)
+    @test combined_adj isa DiagOp
+    @test combined_adj.d ≈ d1 .* conj.(d2)
+
+    # DiagOp with Scale
+    α = 2.0
+    scale_op = Scale(α, Eye(n))
+    @test can_be_combined(diag1, scale_op)
+    combined_scale = combine(diag1, scale_op)
+    @test combined_scale isa DiagOp
+    @test combined_scale.d ≈ α * d1
+end
+
+@testitem "CR: Eye Combinations" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 4
+    eye_op = Eye(n)
+
+    # Eye with any linear operator
+    A = randn(n, n)
+    mat_op = MatrixOp(A)
+
+    @test can_be_combined(mat_op, eye_op)
+    combined = combine(mat_op, eye_op)
+    @test combined isa MatrixOp
+    @test combined.A ≈ A
+
+    # Eye with Scale
+    α = 2.0
+    scale_op = Scale(α, Eye(n))
+    @test can_be_combined(eye_op, scale_op)
+    combined_scale = combine(eye_op, scale_op)
+    @test combined_scale isa Scale
+    @test combined_scale.coeff ≈ α
+
+    # Eye with adjoint
+    adj_eye = eye_op'
+    @test can_be_combined(eye_op, adj_eye)
+    combined_adj = combine(eye_op, adj_eye)
+    @test combined_adj isa Eye
+end
+
+@testitem "CR: Mixed - Scale and Compose rules" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 4
+    A = randn(n, n)
+    B = randn(n, n)
+    α = 1.7
+    β = -0.9
+
+    comp1 = Compose(MatrixOp(A), FiniteDiff((n + 1,)))    # A*(diff(x))
+    comp2 = Compose(FiniteDiff((n,)), MatrixOp(B))        # diff(B*x)
+
+    # Scale with Compose (combine(L::Scale, R::Compose))
+    scale_left = Scale(α, FiniteDiff((n,)))
+    @test can_be_combined(scale_left, comp1)
+    combined_sc = combine(scale_left, comp1)
+    x = randn(n + 1)
+    @test combined_sc * x ≈ scale_left * (comp1 * x)
+
+    # Adjoint Scale with Compose (combine(L::AdjointOperator{<:Scale}, R::Compose))
+    scale_left_adj = scale_left'
+    @test can_be_combined(scale_left_adj, comp2)
+    combined_sac = combine(scale_left_adj, comp2)
+    x = randn(n)
+    @test combined_sac * x ≈ scale_left_adj * (comp2 * x)
+
+    # Compose with Scale (combine(L::Compose, R::Scale))
+    scale_right = Scale(β, FiniteDiff((n + 1,)))
+    @test can_be_combined(comp2, scale_right)
+    combined_cs = combine(comp2, scale_right)
+    x = randn(n + 1)
+    @test combined_cs * x ≈ comp2 * (scale_right * x)
+
+    # Compose with Adjoint Scale (combine(L::Compose, R::AdjointOperator{<:Scale}))
+    scale_right = Scale(β, FiniteDiff((n,)))
+    scale_right_adj = scale_right'
+    @test can_be_combined(comp2, scale_right_adj)
+    combined_csa = combine(comp2, scale_right_adj)
+    x = randn(n - 1)  # domain of combined_csa = domain of scale_right_adj = (n-1,)
+    @test combined_csa * x ≈ comp2 * (scale_right_adj * x)
+end
+
+@testitem "CR: Mixed - Scale DiagOp adjoint rules" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 4
+    A = randn(n, n)
+    α = 1.7
+    β = -0.9
+
+    dvec = randn(n)
+    diag_op = DiagOp(dvec)
+    diag_op_adj = diag_op'
+    mat_op = MatrixOp(A)
+
+    # Adjoint Scale with DiagOp (combine(T1::AdjointOperator{<:Scale}, T2::DiagOp))
+    scale_left = Scale(α, FiniteDiff((n + 1,)))
+    scale_left_adj = scale_left'
+    @test can_be_combined(scale_left_adj, diag_op)
+    combined_asd = combine(scale_left_adj, diag_op)
+    x = randn(n)
+    @test combined_asd * x ≈ scale_left_adj * (diag_op * x)
+
+    # DiagOp' with Scale (combine(T1::AdjointOperator{<:DiagOp}, T2::Scale))
+    scale_right = Scale(β, FiniteDiff((n + 1,)))
+    @test can_be_combined(diag_op_adj, scale_right)
+    combined_das = combine(diag_op_adj, scale_right)
+    x = randn(n + 1)
+    @test combined_das * x ≈ diag_op_adj * (scale_right * x)
+
+    # Scale' with DiagOp' (combine(T1::AdjointOperator{<:Scale}, T2::AdjointOperator{<:DiagOp}))
+    scale_left = Scale(α, FiniteDiff((n + 1,)))
+    scale_left_adj = scale_left'
+    @test can_be_combined(scale_left_adj, diag_op_adj)
+    combined_sad = combine(scale_left_adj, diag_op_adj)
+    x = randn(n)
+    @test combined_sad * x ≈ scale_left_adj * (diag_op_adj * x)
+
+    # Adjoint DiagOp with MatrixOp (both orders to exercise can_be_combined variants)
+    @test can_be_combined(diag_op_adj, mat_op)
+    combined_dm = combine(diag_op_adj, mat_op)
+    @test combined_dm * x ≈ diag_op_adj * (mat_op * x)
+    @test can_be_combined(mat_op, diag_op_adj)
+    combined_md = combine(mat_op, diag_op_adj)
+    @test combined_md * x ≈ mat_op * (diag_op_adj * x)
+
+    # Scale' with MatrixOp' (combine(T1::AdjointOperator{<:Scale}, T2::AdjointOperator{<:MatrixOp}))
+    mat_op_adj = mat_op'
+    scale_left = Scale(α, FiniteDiff((n + 1,)))
+    scale_left_adj = scale_left'
+    @test can_be_combined(scale_left_adj, mat_op_adj)
+    combined_sma = combine(scale_left_adj, mat_op_adj)
+    x = randn(n)
+    @test combined_sma * x ≈ scale_left_adj * (mat_op_adj * x)
+end
+
+@testitem "CR: Mixed - Compose combination branches" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 4
+    A = randn(n, n)
+    α = 1.7
+
+    # Branch: combine(L, R::Compose) -> if branch (combined isa Compose)
+    M = MatrixOp(rand(n, n - 2))
+    S = Scale(α, FiniteDiff((n - 1,)) * FiniteDiff((n,)))
+    C = S * FiniteDiff((n + 1,))
+    @test can_be_combined(M, C)
+    combined = combine(M, C)
+    x = randn(n + 1)
+    @test combined * x ≈ M.A * (α * diff(diff(diff(x))))
+
+    # Branch: combine(L::Compose, R::Compose) -> if branch (combined isa Compose)
+    C1 = Compose(FiniteDiff((n,)), MatrixOp(A))
+    C2 = Scale(α, FiniteDiff((n + 1,))) * FiniteDiff((n + 2,))
+    @test can_be_combined(C1, C2)
+    combined_cc = combine(C1, C2)
+    x = randn(n + 2)
+    @test combined_cc * x ≈ C1 * (C2 * x)
+
+    # Branch: combine(L::Scale, R::Compose) -> if branch (can_be_combined(L.A, R.A[end]))
+    C3 = Scale(α, FiniteDiff((n + 1,))) * FiniteDiff((n + 2,))
+    @test can_be_combined(S, C3)
+    combined_sc = combine(S, C3)
+    x = randn(n + 2)
+    @test combined_sc * x ≈ S * (C3 * x)
+end
+
+@testitem "CR: Mixed - Scale Compose branch coverage" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n2 = 5
+    A1 = randn(n2, n2)
+    A2 = randn(n2, n2)
+
+    comp_tail = Compose(MatrixOp(A2), FiniteDiff((n2 + 1,)))
+    scl = Scale(2.3, MatrixOp(A1))
+    x2 = randn(n2 + 1)
+
+    # Branch: combine(L::Scale, R::Compose) -> if branch (can_be_combined(L.A, R.A[end]))
+    comb_sc_if = combine(scl, comp_tail)
+    @test comb_sc_if * x2 ≈ scl * (comp_tail * x2)
+
+    # Branch: combine(L::AdjointOperator{<:Scale}, R::Compose) -> if branch
+    scl_adj = scl'
+    comp_tail2 = Compose(MatrixOp(A2), FiniteDiff((n2 + 1,)))
+    comb_sac_if = combine(scl_adj, comp_tail2)
+    @test comb_sac_if * x2 ≈ scl_adj * (comp_tail2 * x2)
+
+    # Branch: combine(L::Compose, R::Scale) -> if branch
+    comp_head = Compose(FiniteDiff((n2,)), MatrixOp(A2))
+    scl_r = Scale(-1.1, FiniteDiff((n2 + 1,)))
+    comb_cs_if = combine(comp_head, scl_r)
+    @test comb_cs_if * x2 ≈ comp_head * (scl_r * x2)
+
+    # Branch: combine(L::Compose, R::AdjointOperator{<:Scale}) -> if branch
+    scl_r = Scale(-1.1, FiniteDiff((n2,)))
+    scl_r_adj = scl_r'
+    comb_csa_if = combine(comp_head, scl_r_adj)
+    x3 = randn(n2 - 1)
+    @test comb_csa_if * x3 ≈ comp_head * (scl_r_adj * x3)
+end
+
+@testitem "CR: Mixed - Scale DiagOp branch coverage" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n2 = 5
+    A2 = randn(n2, n2)
+    x2 = randn(n2 + 1)
+    x3 = randn(n2)
+
+    # Branch: combine(T1::Scale, T2::MatrixOp) -> if branch (can_be_combined)
+    scl_mat_if = Scale(0.7, FiniteDiff((n2,)))
+    mat2 = MatrixOp(A2)
+    comb_scale_mat_if = combine(scl_mat_if, mat2)
+    @test comb_scale_mat_if * x3 ≈ scl_mat_if * (mat2 * x3)
+
+    # Branch: combine(T1::Scale, T2::DiagOp) -> else branch (non-combinable path)
+    fd = FiniteDiff((n2 + 1,))
+    scl_fd = Scale(1.5, fd)
+    diag_long = DiagOp(randn(n2 + 1))
+    comb_scale_diag_else = combine(scl_fd, diag_long)
+    @test comb_scale_diag_else * x2 ≈ scl_fd * (diag_long * x2)
+
+    # Branch: combine(T1::AdjointOperator{<:Scale}, T2::DiagOp) -> if branch
+    sclA = Scale(1.2, FiniteDiff((n2 + 1,)))
+    sclA_adj = sclA'
+    diagA = DiagOp(randn(n2))
+    comb_asd_if = combine(sclA_adj, diagA)
+    @test comb_asd_if * x3 ≈ sclA_adj * (diagA * x3)
+
+    # Branch: combine(T1::DiagOp, T2::Scale) else branch (non-combinable)
+    scl_fd2 = Scale(-0.4, FiniteDiff((n2 + 1,)))
+    diag_diff = DiagOp(randn(n2))
+    comb_diag_scale_else = combine(diag_diff, scl_fd2)
+    @test comb_diag_scale_else * x2 ≈ diag_diff * (scl_fd2 * x2)
+
+    # Branch: combine(T1::AdjointOperator{<:DiagOp}, T2::Scale) -> if branch
+    diag_if = DiagOp(randn(n2))
+    diag_if_adj = diag_if'
+    scl_lin = Scale(0.9, FiniteDiff((n2 + 1,)))
+    comb_adjdiag_scale_if = combine(diag_if_adj, scl_lin)
+    @test comb_adjdiag_scale_if * x2 ≈ diag_if_adj * (scl_lin * x2)
+
+    # Branch: combine(T1::AdjointOperator{<:Scale}, T2::AdjointOperator{<:DiagOp}) -> if branch
+    scl_lin_adj = scl_lin'
+    diag_if_adj2 = diag_if'
+    comb_sad_if = combine(scl_lin_adj, diag_if_adj2)
+    @test comb_sad_if * x3 ≈ scl_lin_adj * (diag_if_adj2 * x3)
+
+    # Exercise can_be_combined variants for matrix/diag adjoint combinations
+    mat_op2 = MatrixOp(A2)
+    diag_base = DiagOp(randn(n2))
+    @test can_be_combined(diag_base, mat_op2)
+    @test can_be_combined(mat_op2, diag_base)
+    @test can_be_combined(diag_base', mat_op2)
+    @test can_be_combined(mat_op2, diag_base')
+    @test can_be_combined(mat_op2', diag_base)
+    @test can_be_combined(diag_base, mat_op2')
+    @test can_be_combined(diag_base', mat_op2')
+    @test can_be_combined(mat_op2', diag_base')
+end
+
+@testitem "CR: Fallback and Null cases" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    # Fallback combine path should error for unsupported nonlinear pair
+    @test_throws ErrorException combine(Sigmoid(Float64, (3,), 2), Pow(Float64, (3,), 2.0))
+
+    # Null propagation through combine
+    z = Zeros(Float64, (3,), Float64, (4,))
+    M = MatrixOp(randn(4, 3))
+    @test is_null(combine(z, M))
+    @test is_null(combine(M, z))
+end
+
+@testitem "CR: DiagOp adjoint-left combinations" tags = [:calculus, :CombinationRules] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 5
+    d1 = randn(n)
+    d2 = randn(n)
+    diag1 = DiagOp(d1)
+    diag2 = DiagOp(d2)
+
+    # DiagOp' * DiagOp
+    adj1 = diag1'
+    @test can_be_combined(adj1, diag2)
+    c1 = combine(adj1, diag2)
+    @test c1 isa DiagOp
+    @test c1.d ≈ conj.(d1) .* d2
+
+    # DiagOp' * DiagOp'
+    adj2 = diag2'
+    @test can_be_combined(adj1, adj2)
+    c2 = combine(adj1, adj2)
+    @test c2 isa DiagOp
+    @test c2.d ≈ conj.(d1) .* conj.(d2)
+end
+
+@testitem "CR: can_be_combined with Eye" tags = [:calculus, :CombinationRules] begin
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 4
+    eye = Eye(n)
+    fd = FiniteDiff(Float64, (n + 1,), 1)
+
+    @test can_be_combined(fd, eye)
+    c = combine(fd, eye)
+    @test c isa typeof(fd)
+    x = randn(n + 1)
+    @test c * x ≈ fd * x
+end
+
+@testitem "CR: MatrixOp and Scale combinations (adjoint variants)" tags = [
+    :calculus, :CombinationRules,
+] begin
+    using LinearAlgebra
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    n = 4
+    A = randn(n, n)
+    B = randn(n, n)
+    α = 1.5
+    mat = MatrixOp(A)
+    mat_adj = mat'
+    scl = Scale(α, Eye(n))
+
+    # MatrixOp' * MatrixOp
+    @test can_be_combined(mat_adj, mat)
+    c1 = combine(mat_adj, mat)
+    @test c1 isa MatrixOp
+    @test c1.A ≈ A' * A
+
+    # MatrixOp * MatrixOp'
+    @test can_be_combined(mat, mat_adj)
+    c2 = combine(mat, mat_adj)
+    @test c2.A ≈ A * A'
+
+    # MatrixOp' * MatrixOp'
+    @test can_be_combined(mat_adj, mat_adj)
+    c3 = combine(mat_adj, mat_adj)
+    @test c3.A ≈ A' * A'
+
+    # AdjointMatrixOp * Scale
+    @test can_be_combined(mat_adj, scl)
+    c4 = combine(mat_adj, scl)
+    x = randn(n)
+    @test c4 * x ≈ mat_adj * (scl * x)
+
+    # Scale * AdjointMatrixOp
+    @test can_be_combined(scl, mat_adj)
+    c5 = combine(scl, mat_adj)
+    @test c5 * x ≈ scl * (mat_adj * x)
+
+    # AdjointScale * MatrixOp
+    scl_op = Scale(α, FiniteDiff(Float64, (n + 1,), 1))
+    scl_adj = scl_op'
+    @test can_be_combined(scl_adj, mat)
+    c6 = combine(scl_adj, mat)
+    x2 = randn(n)
+    @test c6 * x2 ≈ scl_adj * (mat * x2)
+
+    # AdjointScale * AdjointMatrixOp
+    @test can_be_combined(scl_adj, mat_adj)
+    c7 = combine(scl_adj, mat_adj)
+    @test c7 * x ≈ scl_adj * (mat_adj * x)
+end
+
+@testitem "CR: generic combine branches" tags = [:calculus, :CombinationRules] begin
+    using AbstractOperators
+    using AbstractOperators: combine
+
+    n = 4
+    mat = MatrixOp(randn(n, n))
+    eye = Eye(Float64, (n,))
+    z = Zeros(Float64, (n,), Float64, (n,))
+
+    # combine(L, R) where is_eye(R) → returns L (line 345)
+    result = combine(mat, eye)
+    @test result === mat
+
+    # combine(L, R) where is_null(R), L linear, zero displacement, square → returns R (line 354)
+    diag_op = DiagOp(ones(n))  # square, linear, zero displacement
+    result2 = combine(diag_op, z)
+    @test result2 === z
+end
+
+@testitem "CR: a shape-changing identity is not combinable" tags = [:calculus, :CombinationRules] begin
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, combine
+
+    # `Reshape(Eye(...), dims...)` is the identity on the values but not on the shape, so it may not be
+    # dropped from a composition: the neighbouring operator would be left with an input of the wrong number
+    # of dimensions. It used to be reported as combinable and then fail inside `combine`.
+    reshaping_eye = Reshape(Eye(Float64, (12, 2)), 4, 3, 2)
+    gradient = Variation(Float64, (4, 3, 2); threaded = false)
+
+    @test AbstractOperators.is_eye(reshaping_eye)
+    @test !can_be_combined(gradient, reshaping_eye)
+
+    composed = gradient * reshaping_eye
+    x = randn(12, 2)
+    @test composed * x == gradient * reshape(x, 4, 3, 2)
+
+    # A shape-preserving identity is still dropped, on either side.
+    square_eye = Eye(Float64, (12, 2))
+    scaling = DiagOp(ones(12, 2))
+    @test can_be_combined(scaling, square_eye)
+    @test combine(scaling, square_eye) === scaling
+    @test can_be_combined(square_eye, scaling)
+    @test combine(square_eye, scaling) === scaling
+end
+
+@testitem "estimate_opnorm is deterministic" tags = [:misc, :calculus] begin
+    using AbstractOperators
+    using AbstractOperators: estimate_opnorm, powerit
+    using LinearAlgebra: opnorm
+    using Random
+
+    # The power iteration starts from a fixed-seed vector, not from the global RNG.  It
+    # regularly exhausts `maxit` without reaching its margin (a near-degenerate top of the
+    # spectrum converges linearly and slowly), so the start vector leaks into the *result*, not
+    # merely into how many iterations it takes — and anything normalized by that number then
+    # differs from run to run.
+    M = randn(MersenneTwister(3), 40, 25)
+    L = MatrixOp(M)
+
+    vals = [estimate_opnorm(L) for _ in 1:5]
+    @test all(==(vals[1]), vals)
+    pvals = [powerit(L) for _ in 1:3]
+    @test all(==(pvals[1]), pvals)
+
+    # ... and it neither depends on nor consumes the global RNG
+    Random.seed!(1)
+    a = estimate_opnorm(L)
+    r1 = rand()
+    Random.seed!(1)
+    b = estimate_opnorm(L)
+    r2 = rand()
+    @test a == b
+    @test r1 == r2
+
+    # an explicit `rng` still overrides the default, and the estimate stays close to the truth
+    exact = opnorm(M)
+    @test isapprox(estimate_opnorm(L; rng = MersenneTwister(7)), exact, rtol = 0.05)
+
+    # the iterates approach ‖A‖ from below, so a truncated run under-estimates it
+    @test estimate_opnorm(L) <= exact * (1 + 1.0e-8)
+    @test isapprox(powerit(L; maxit = 500, rel_margin = 1.0e-12), exact, rtol = 1.0e-6)
+end
+
+@testitem "CR: two batches over the same batching collapse into one" tags = [
+    :calculus, :CombinationRules, :batching,
+] begin
+    using LinearAlgebra, Random
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, is_threaded
+
+    Random.seed!(11)
+    d1, d2 = randn(ComplexF64, 4, 6), randn(ComplexF64, 4, 6)
+    B1 = BatchOp(DiagOp(d1; threaded = false), (5,); threaded = false)
+    B2 = BatchOp(DiagOp(d2; threaded = false), (5,); threaded = false)
+    x = randn(ComplexF64, 4, 6, 5)
+    y = randn(ComplexF64, 4, 6, 5)
+
+    @test can_be_combined(B1, B2)
+    C = B1 * B2
+    @test C isa AbstractOperators.SimpleBatchOp
+    @test C * x ≈ B1 * (B2 * x)
+    @test C' * y ≈ B2' * (B1' * y)
+
+    # The same batch size but a batch dimension in a different position is a different batching.
+    Bm = BatchOp(DiagOp(randn(ComplexF64, 6, 5); threaded = false), (4,), (:b, :_, :_); threaded = false)
+    @test !can_be_combined(Bm, B2)
+    @test Bm * B2 isa Compose
+    @test (Bm * B2) * x ≈ Bm * (B2 * x)
+
+    # A `SpreadingBatchOp` combines slice for slice with a batch over the same batching, the
+    # single operator of the simple side pairing with each of its own.
+    ops = [DiagOp(randn(ComplexF64, 4, 6); threaded = false) for _ in 1:5]
+    SP = BatchOp(ops, (:_, :_, :s); threaded = false)
+    @test can_be_combined(SP, B2)
+    @test SP * B2 isa AbstractOperators.SpreadingBatchOp
+    @test (SP * B2) * x ≈ SP * (B2 * x)
+    @test (B2 * SP) * x ≈ B2 * (SP * x)
+    @test (SP * B2)' * y ≈ B2' * (SP' * y)
+end
+
+@testitem "CR: two spreading batches combine slice for slice" tags = [
+    :calculus, :CombinationRules, :batching,
+] begin
+    using LinearAlgebra, Random
+    using AbstractOperators
+    using AbstractOperators: can_be_combined, get_spreading_dims
+
+    Random.seed!(31)
+    mk() = [DiagOp(randn(ComplexF64, 4, 6); threaded = false) for _ in 1:5]
+    S1 = BatchOp(mk(), (:_, :_, :s); threaded = false)
+    S2 = BatchOp(mk(), (:_, :_, :s); threaded = false)
+    x = randn(ComplexF64, 4, 6, 5)
+    y = randn(ComplexF64, 4, 6, 5)
+
+    @test can_be_combined(S1, S2)
+    C = S1 * S2
+    @test C isa AbstractOperators.SpreadingBatchOp
+    @test get_spreading_dims(typeof(C)) == get_spreading_dims(typeof(S1))
+    @test C * x ≈ S1 * (S2 * x)
+    @test C' * y ≈ S2' * (S1' * y)
+
+    # Two batches that spread over different dimensions have no common grid of operators, so
+    # there is no slice-for-slice pairing to make and they stay apart.
+    Random.seed!(41)
+    As = BatchOp(mk(), (5,), (:_, :_, :s, :b); threaded = false)
+    At = BatchOp(mk(), (5,), (:_, :_, :b, :s); threaded = false)
+    @test get_spreading_dims(typeof(As)) != get_spreading_dims(typeof(At))
+    @test !can_be_combined(As, At)
+    @test As * At isa Compose
+    x4 = randn(ComplexF64, 4, 6, 5, 5)
+    @test (As * At) * x4 ≈ As * (At * x4)
+end
+
+@testitem "CR: the threading strategy of a spreading batch survives" tags = [
+    :calculus, :CombinationRules, :batching,
+] begin
+    using LinearAlgebra, Random
+    using AbstractOperators
+    using AbstractOperators: ThreadingStrategy
+
+    Random.seed!(62)
+    n = 512
+    x = randn(ComplexF64, n, 4)
+    strategies = (
+        ThreadingStrategy.COPYING, ThreadingStrategy.LOCKING, ThreadingStrategy.FIXED_OPERATOR,
+    )
+    for strategy in strategies
+        # A `Compose` owns buffers, so it is not thread safe and the strategy actually matters.
+        inner() = DiagOp(randn(ComplexF64, n, n); threaded = false) *
+            BroadCast(Eye(zeros(ComplexF64, n)), (n, n); threaded = false)
+        G = BatchOp(
+            [inner() for _ in 1:4], (:_, :s) => (:_, :_, :s);
+            threaded = true, threading_strategy = strategy,
+        )
+        D = BatchOp(
+            [DiagOp(randn(ComplexF64, n, n); threaded = false) for _ in 1:4], (:_, :_, :s);
+            threaded = true, threading_strategy = strategy,
+        )
+        C = D * G
+        @test C isa AbstractOperators.SpreadingBatchOp
+        @test typeof(C).name.wrapper === typeof(G).name.wrapper
+        @test C * x ≈ D * (G * x)
+    end
+end
+
+@testitem "CR: what counts as separable over the batch dimensions" tags = [
+    :calculus, :CombinationRules, :batching,
+] begin
+    using LinearAlgebra, Random
+    using AbstractOperators
+    using AbstractOperators: _slice_operator
+
+    Random.seed!(71)
+    mask = (false, false, true)
+
+    # A diagonal that repeats along the batch dimension weights every slice the same way; one
+    # that varies along it does not, and must not be folded in.
+    repeated = DiagOp(repeat(randn(ComplexF64, 4, 6), 1, 1, 5); threaded = false)
+    varying = DiagOp(randn(ComplexF64, 4, 6, 5); threaded = false)
+    @test _slice_operator(repeated, mask) isa DiagOp
+    @test _slice_operator(varying, mask) === nothing
+    @test _slice_operator(DiagOp(ComplexF64, (4, 6, 5), 2.0 + 0im; threaded = false), mask) isa DiagOp
+
+    # Scaling, adjoining and summing all act within a slice, so each is separable exactly when
+    # what it wraps is.
+    @test _slice_operator(3.0 * repeated, mask) !== nothing
+    @test _slice_operator(repeated', mask) !== nothing
+    @test _slice_operator(repeated + repeated, mask) !== nothing
+    @test _slice_operator(3.0 * varying, mask) === nothing
+    @test _slice_operator(varying', mask) === nothing
+    @test _slice_operator(repeated + varying, mask) === nothing
+
+    # And the folding is correct in both directions, not merely permitted.
+    B = BatchOp(DiagOp(randn(ComplexF64, 4, 6); threaded = false), (5,); threaded = false)
+    x = randn(ComplexF64, 4, 6, 5)
+    y = randn(ComplexF64, 4, 6, 5)
+    for L in (repeated, 3.0 * repeated, repeated')
+        @test (L * B) * x ≈ L * (B * x)
+        @test (B * L) * x ≈ B * (L * x)
+        @test (L * B)' * y ≈ B' * (L' * y)
+    end
+    @test repeated * B isa AbstractOperators.SimpleBatchOp
+    @test varying * B isa Compose
+    @test (varying * B) * x ≈ varying * (B * x)
+end
+
+@testitem "CR: batch threading survives a combination" tags = [
+    :calculus, :CombinationRules, :batching,
+] begin
+    using LinearAlgebra, Random
+    using AbstractOperators
+    using AbstractOperators: is_threaded
+
+    Random.seed!(12)
+    # Large enough that the threading policy actually says yes, so the assertion is about the
+    # combination preserving the answer rather than about the policy declining twice.
+    B1 = BatchOp(DiagOp(randn(ComplexF64, 256, 256); threaded = false), (8,); threaded = true)
+    B2 = BatchOp(DiagOp(randn(ComplexF64, 256, 256); threaded = false), (8,); threaded = true)
+    x = randn(ComplexF64, 256, 256, 8)
+
+    C = B1 * B2
+    @test C isa AbstractOperators.SimpleBatchOp
+    @test is_threaded(C) == (is_threaded(B1) || is_threaded(B2))
+    @test C * x ≈ B1 * (B2 * x)
+end
