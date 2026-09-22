@@ -14,17 +14,13 @@
 #     MRT_BENCH_MATLAB=/opt/software/packages/matlab/r2024b/bin/matlab \
 #         julia --project=benchmark/comparison benchmark/comparison/scripts/compare_structured_low_rank.jl
 
-using MriReconstructionToolbox
 using MriReconstructionToolbox: CartesianAcquisitionInfo
 using NamedDims
-using LinearAlgebra
-using FFTW
 using Random
 using Test
 
-include("../src/ComparisonHarness.jl")
-using .ComparisonHarness: check_nrmse, nrmse, generate_multicoil_brain
-include("../src/loraks_bridge.jl")
+include(joinpath(@__DIR__, "_setup.jl"))
+include(joinpath(@__DIR__, "..", "src", "loraks_bridge.jl"))
 using .LORAKSBridge: loraks_available, loraks_recon, loraks_citation, LORAKS_DIR
 
 rss(x) = sqrt.(dropdims(sum(abs2, unname(x); dims = 3); dims = 3))
@@ -61,7 +57,7 @@ rss(x) = sqrt.(dropdims(sum(abs2, unname(x); dims = 3); dims = 3))
                 acq,
                 IterativeReconstruction(
                     reg; signal_model = KSpaceToImage(RootSumSquares()),
-                    algorithm = ADMM(), maxit = 60,
+                    algorithm = MriReconstructionToolbox.ADMM(), maxit = 60,
                 );
                 verbosity = Silent(),
             )

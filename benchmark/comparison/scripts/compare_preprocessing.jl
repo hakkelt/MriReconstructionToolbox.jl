@@ -1,15 +1,7 @@
-using Pkg
-Pkg.activate(joinpath(@__DIR__, ".."))
-
 using Test
-using MriReconstructionToolbox
-using LinearAlgebra
-using Statistics
 using FFTW: fftshift
 
-# Add our comparison harness
-include("../src/ComparisonHarness.jl")
-using .ComparisonHarness
+include(joinpath(@__DIR__, "_setup.jl"))
 
 @info "Starting Preprocessing Comparisons"
 
@@ -21,7 +13,7 @@ using .ComparisonHarness
         # Generate data
         N = 64
         num_coils = 8
-        img, kspace, true_sens = ComparisonHarness.generate_multicoil_brain(N = N, num_coils = num_coils)
+        img, kspace, true_sens = generate_multicoil_brain(N = N, num_coils = num_coils)
 
         # 1. MriReconstructionToolbox
         # We need a calibration region. ESPIRiT usually extracts the center of k-space internally if we pass the whole k-space.
@@ -41,15 +33,15 @@ using .ComparisonHarness
         # 2. BART
         # We pass the full k-space. BART ecalib with -r 24 will extract the center 24x24 internally.
         bart_kspace = ComplexF32.(reshape(kspace, (N, N, 1, num_coils)))
-        bart_res = ComparisonHarness.run_bart(2, "ecalib -r 24 -c 0 -m 1", bart_kspace)
+        bart_res = run_bart(2, "ecalib -r 24 -c 0 -m 1", bart_kspace)
         bart_sens = bart_res[1]
 
         # 3. SigPy
         # SigPy expects data in [coils, Y, X] (or Z, Y, X).
         sp_kspace = permutedims(kspace, (3, 2, 1))
         # SigPy crop default is 0.95 (which is eigenvalue threshold?). Let's set it to 0.
-        sp_app = ComparisonHarness.sigpy_mri_app.EspiritCalib(sp_kspace, calib_width = 24, crop = 0.0, show_pbar = false)
-        sp_sens = sp_app.run()
+        espirit_app = sp_app.EspiritCalib(sp_kspace, calib_width = 24, crop = 0.0, show_pbar = false)
+        sp_sens = espirit_app.run()
 
         @test size(bart_sens) == (N, N, 1, num_coils)
         @test size(sp_sens) == (num_coils, N, N) # Assuming sp returns coils first
@@ -87,7 +79,7 @@ using .ComparisonHarness
         N = 64
         num_coils = 8
         target_coils = 4
-        _, kspace, _ = ComparisonHarness.generate_multicoil_brain(N = N, num_coils = num_coils)
+        _, kspace, _ = generate_multicoil_brain(N = N, num_coils = num_coils)
 
         # 1. MRT SVD Compression
         comp_mrt_svd, C_svd = MriReconstructionToolbox.compress_coils(kspace, target_coils, method = MriReconstructionToolbox.SVDCompression())
@@ -99,7 +91,7 @@ using .ComparisonHarness
 
         # 3. BART
         bart_kspace = ComplexF32.(reshape(kspace, (N, N, 1, num_coils)))
-        bart_comp_res = ComparisonHarness.run_bart(1, "cc -p $target_coils -S", bart_kspace)
+        bart_comp_res = run_bart(1, "cc -p $target_coils -S", bart_kspace)
         @test size(bart_comp_res) == (N, N, 1, target_coils)
 
         # Total energy in the compressed coils should be similar
@@ -117,14 +109,14 @@ using .ComparisonHarness
         delay_x = 0.5
         delay_y = 0.2
         delay_xy = 0.1
-        traj = ComparisonHarness.run_bart(1, "traj -r -x $N -y $Nspokes -G -q $(delay_x):$(delay_y):$(delay_xy)")
+        traj = run_bart(1, "traj -r -x $N -y $Nspokes -G -q $(delay_x):$(delay_y):$(delay_xy)")
 
         # 2. Generate radial k-space data
-        ksp = ComparisonHarness.run_bart(1, "phantom -k -t", traj)
+        ksp = run_bart(1, "phantom -k -t", traj)
 
         # 3. Estimate with BART estdelay -R
         # Usage: estdelay ... <trajectory> <data> [<qf>]
-        qf_bart = ComparisonHarness.run_bart(1, "estdelay -R", traj, ksp)
+        qf_bart = run_bart(1, "estdelay -R", traj, ksp)
 
         # 4. Estimate with MriReconstructionToolbox RING
         ksp_mrt = dropdims(ksp, dims = 1) # Remove BART's singleton readout dimension
@@ -158,7 +150,7 @@ using .ComparisonHarness
         # BART Prewhitening
         # whiten <input> <ndata> <output> [<optmat_out>] [<covar_out>]
         # BART's whiten command computes the noise covariance and whitens the input.
-        bart_out, bart_opt, bart_cov = ComparisonHarness.run_bart(3, "whiten", data, noise_data)
+        bart_out, bart_opt, bart_cov = run_bart(3, "whiten", data, noise_data)
 
         # MRT Prewhitening (tell it coils are at dim 4)
         mrt_cov = MriReconstructionToolbox.estimate_noise_covariance(noise_data, coil_dim = 4)
