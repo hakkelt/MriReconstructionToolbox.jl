@@ -13,7 +13,8 @@ MRIReco against, so the two folders never re-measure the same thing.
 |---|---|
 | `scripts/recon_bench.jl` | end-to-end `reconstruct` timings for the standard method set (TV, L1-wavelet, TGV, CG-SENSE, low-rank, temporal TV, GRAPPA), 1 vs N threads, OpenBLAS vs MKL. Writes `results/mrt_<backend>_<n>threads.json`. |
 | `scripts/threading_sweep.jl` | the BLAS-1 (CG-shaped) and BLAS-3 (SVD-shaped) work-item sweeps behind `SERIAL_BLAS_THRESHOLD_BYTES` and `maybe_disable_unsplit_threading`. |
-| `scripts/probe.jl` | what the process sees of its own core budget (`Cpus_allowed_list`, `jl_effective_threads`, the `LinearAlgebra` default, SLURM env). |
+| `scripts/serial_blas_threshold_sweep.jl` | re-fits `SERIAL_BLAS_THRESHOLD_BYTES` against real reconstruction solves rather than `threading_sweep.jl`'s synthetic CG reproducer; interleaved threaded/serial (A/B/A/B…) runs since whole-solve timing here swings ±30-60% run to run. |
+| `scripts/probe.jl` | what the process sees of its own core budget (`Cpus_allowed_list`, `jl_effective_threads`, the `LinearAlgebra` default, SLURM env). `benchmark/comparison/scripts/_setup.jl`'s `check_environment()` runs the same checks automatically and fails the job on a mismatch instead of just printing one; run this by hand for the interactive/diagnostic version. |
 
 ## Running
 
@@ -23,6 +24,8 @@ julia --project=benchmark/hpc -t 8 benchmark/hpc/scripts/recon_bench.jl --thread
 
 julia --project=benchmark/hpc -t 8 benchmark/hpc/scripts/threading_sweep.jl mkl 8 cg
 julia --project=benchmark/hpc -t 8 benchmark/hpc/scripts/threading_sweep.jl mkl 8 svd
+
+julia --project=benchmark/hpc -t 8 benchmark/hpc/scripts/serial_blas_threshold_sweep.jl openblas --rounds=3 --reps=3
 ```
 
 ## Real scanner data
