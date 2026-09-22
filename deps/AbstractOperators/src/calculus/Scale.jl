@@ -169,8 +169,10 @@ remove_displacement(S::Scale) = _rethread_scale(S, S.coeff, S.coeff_conj, remove
 
 has_fast_opnorm(L::Scale) = has_fast_opnorm(L.A)
 LinearAlgebra.opnorm(L::Scale) = abs(L.coeff) * LinearAlgebra.opnorm(L.A)
-estimate_opnorm(L::Scale) = abs(L.coeff) * estimate_opnorm(L.A)
 opnorm_bound(L::Scale) = abs(L.coeff) * opnorm_bound(L.A)
+# A positive factor scales both ends of the interval alike, so the inner call's margin and side
+# survive it and the keywords are forwarded rather than swallowed.
+estimate_opnorm(L::Scale; kwargs...) = abs(L.coeff) * estimate_opnorm(L.A; kwargs...)
 
 # utils
 

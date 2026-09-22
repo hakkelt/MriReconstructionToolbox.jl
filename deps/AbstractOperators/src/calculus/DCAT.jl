@@ -374,9 +374,11 @@ diag_AcA(L::DCAT{N, Tuple{E, Vararg{E, M}}}) where {N, M, E <: Eye} = diag_AcA(L
 
 has_fast_opnorm(L::DCAT) = all(has_fast_opnorm.(L.A))
 LinearAlgebra.opnorm(L::DCAT) = maximum(opnorm.(L.A))
-estimate_opnorm(L::DCAT) = maximum(estimate_opnorm.(L.A))
 # Block diagonal: the blocks act on orthogonal subspaces, so the largest one decides.
 opnorm_bound(L::DCAT) = maximum(opnorm_bound.(L.A))
+# Asking each block separately beats one iteration over the whole block-diagonal operator, and the
+# keywords reach the blocks, so the margin and the side the caller asked for are what it gets.
+estimate_opnorm(L::DCAT; kwargs...) = maximum(estimate_opnorm(A; kwargs...) for A in L.A)
 
 # PROVENANCE: measured. DCAT block sweep: at 2^16 per block it wins at 4 blocks (1.18x)
 # and 8 blocks (1.9x); at 2^12 per block it loses badly (0.26x).

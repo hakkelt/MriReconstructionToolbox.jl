@@ -374,7 +374,6 @@ function LinearAlgebra.opnorm(R::OperatorBroadCast{T, N, M, true}) where {T, N, 
     return _replication_factor(R) * LinearAlgebra.opnorm(R.A[1])
 end
 
-opnorm_bound(R::NoOperatorBroadCast) = float(LinearAlgebra.opnorm(R))
 function opnorm_bound(R::OperatorBroadCast{T, N, M, false}) where {T, N, M}
     return _replication_factor(R) * opnorm_bound(R.A)
 end
@@ -393,11 +392,10 @@ exact rather than an inequality. Leaving it out — which `opnorm(::OperatorBroa
 forwarding straight to the inner operator — under-reports the norm by `sqrt(c)`, and an
 under-reported norm is the direction that breaks a Lipschitz constant.
 """
-function _replication_factor(R::OperatorBroadCast{T, N, M}) where {T, N, M}
-    inner = R isa OperatorBroadCast{T, N, M, true} ? R.A[1] : R.A
-    dim_in = size(inner, 1)
-    copies = prod(R.dim_out[d] for d in 1:M if d > length(dim_in) || dim_in[d] != R.dim_out[d]; init = 1)
-    return real(T)(sqrt(copies))
+function _replication_factor(R::OperatorBroadCast{T}) where {T}
+    # `idxs` is built by the constructor as the Cartesian range of exactly the broadcast
+    # dimensions, so its length is the number of copies with nothing left to re-derive.
+    return real(T)(sqrt(length(R.idxs)))
 end
 
 """
