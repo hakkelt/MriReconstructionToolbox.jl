@@ -276,9 +276,11 @@ function _estimate_sensitivities_batched(kspace::AbstractArray, method, c_idx, i
             # them (as the iterative solvers do) produces NaNs several stages later.
             @warn "Sensitivity estimation produced all-zero maps from k-space that is not " *
                 "empty: the calibration region at the centre of the encoded matrix holds no " *
-                "signal. The k-space centre is most likely not where the header says it is — " *
-                "check `head.center_sample` and the encoding limits of the file it came from, " *
-                "or pass maps estimated by hand." maxlog = 1
+                "signal. Either the k-space centre is not where the header says it is — check " *
+                "`head.center_sample` and the encoding limits of the file it came from — or a " *
+                "spatial axis is too short for the calibration region to fit, which is what a " *
+                "3D acquisition holding a single partition looks like (reconstruct that one as " *
+                "2D). Otherwise, pass maps estimated by hand." maxlog = 1
         end
         return slab_maps
     end

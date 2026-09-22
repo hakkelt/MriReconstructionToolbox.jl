@@ -34,6 +34,16 @@ function get_task_splitting_plan(acq_data, method::ReconstructionMethod, config)
             variable_batch_dims = setdiff(variable_batch_dims, affected_dims)
         end
     end
+    # A `DirectReconstruction` that combines the coils of a maps-less acquisition consumes the
+    # coil axis exactly as a sensitivity operator would: it is not a batch dimension (slicing it
+    # would reduce one channel at a time and never combine anything) and it is not a dimension of
+    # the result. `variable_size`/`output_dims` already drop it, so the indices below are computed
+    # in the coil-free variable layout, while `kspace_batch_dims` keeps mapping onto a k-space
+    # that still has the channel axis -- which is what `dim_index_offset` is for.
+    combines_coils = _direct_combines_coils(method, acq_data)
+    if combines_coils
+        variable_batch_dims = setdiff(variable_batch_dims, (image_dims[_direct_image_coil_dim(acq_data)],))
+    end
     variable_batch_dims = tuple(variable_batch_dims...)
 
     if variable_batch_dims == () # no batch dimensions, no splitting
@@ -65,6 +75,14 @@ function get_task_splitting_plan(acq_data, method::ReconstructionMethod, config)
         dim_index_offset -= 1 # account for coil dimension in k-space
     end
     kspace_batch_dims = tuple((d - dim_index_offset for d in variable_batch_dims)...)
+
+    # `variable_batch_dims` was resolved against `image_dims`, which still lists the coil axis;
+    # the variable itself no longer has it, so every dimension behind the coil moves up one. Done
+    # after `kspace_batch_dims`, which is a mapping onto the k-space and needs the original index.
+    if combines_coils
+        c = _direct_image_coil_dim(acq_data)
+        variable_batch_dims = tuple((d > c ? d - 1 : d for d in variable_batch_dims)...)
+    end
 
     slices_sensitivity_maps = (
         !isnothing(acq_data.sensitivity_maps) &&

@@ -8,7 +8,8 @@ graph LR
     Raw[Raw AcquisitionInfo] --> Prewhiten[prewhiten]
     Prewhiten --> Compress[compress_coils]
     Compress --> Sens[estimate_sensitivities]
-    Sens --> Recon[reconstruct]
+    Sens --> Norm[normalize_sensitivity_maps]
+    Norm --> Recon[reconstruct]
 ```
 
 ## Noise Prewhitening
@@ -79,6 +80,12 @@ centred image grid the non-Cartesian reconstruction itself uses.
   dimensions not named here are estimated slab by slab, as for Cartesian data; pass
   `average_dims = ()` for one set of maps per frame.
 
+A slab whose calibration region holds no signal yields all-zero maps, and MRT warns rather than
+returning them silently. Two file-level causes account for almost every occurrence: a header whose
+`center_sample` does not match where the k-space energy is, and a 3D acquisition loaded with a
+single partition, where the calibration region cannot fit along `:kz` — reconstruct that one as 2D
+instead. `examples/mridata/` demonstrates both.
+
 ### Methods:
 - `SelfCalibrating(; calib_size = 24)`: Smooth low-resolution calibration from central k-space auto-calibration signal (ACS) lines, normalized by root-sum-of-squares (McKenzie et al. 2002). Fastest method for Cartesian data with an ACS region.
 - `AdaptiveCombine(; kernel_size = 5)`: Local array correlation matrix eigenanalysis (Walsh et al. 2000). Needs no dedicated calibration scan and provides SNR-optimal coil combination.
@@ -96,6 +103,30 @@ acquisition declares in `shifted_image_dims` — which raw scanner data always d
 bare k-space array and attached to a shifted acquisition are rolled by half the FOV relative to
 every image they multiply, which does not merely displace the reconstruction — it makes it wrong
 everywhere.
+
+## Sensitivity Map Normalization
+
+The overall scale of a sensitivity map set is arbitrary: it depends on how the maps were estimated,
+not on the anatomy. `normalize_sensitivity_maps` divides them by $\sqrt{\sum_c |S_c(r)|^2}$ so the
+coil sum of squares is one wherever there is signal, which is the conventional SENSE scaling
+(Pruessmann et al. 1999, Roemer et al. 1990).
+
+```@docs
+normalize_sensitivity_maps
+```
+
+```julia
+acq = estimate_sensitivities(acq; method = ESPIRiT())
+acq = normalize_sensitivity_maps(acq)
+```
+
+### When not to use it
+
+The docstring above lists what normalization buys and why it is not the default. One limit it does
+not state: the $\|\mathcal{A}\| \le 1$ argument holds for a plain projection-times-unitary encoding
+chain, with equality for fully sampled Cartesian SENSE. Put an NUFFT, density compensation or coil
+compression in the chain and the bound no longer follows from the maps alone, so the other two
+benefits remain but the free operator norm does not.
 
 ## Non-Cartesian Gradient Delay Correction
 

@@ -122,7 +122,8 @@ supertype.
 ## 5. Function names
 
 **Rule 5.1 — Verb phrases for actions, specific enough to survive `using`.** `reconstruct`,
-`build_model`, `estimate_sensitivities`, `compress_coils`, `correct_gradient_delays`,
+`build_model`, `estimate_sensitivities`, `normalize_sensitivity_maps`, `compress_coils`,
+`correct_gradient_delays`,
 `simulate_acquisition`, `create_sampling_pattern`. A bare generic verb (`calculate`, `lower`,
 `total`) is acceptable only for a name that is not exported.
 

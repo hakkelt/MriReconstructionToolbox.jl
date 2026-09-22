@@ -103,6 +103,64 @@ function patch_algorithm_with_default_values(algorithm::Tuple, Lf::Union{Nothing
     return map(a -> patch_algorithm_with_default_values(a, Lf; eltype_real), algorithm)
 end
 
+"""
+	consumes_lf(algorithm) -> Bool
+
+Whether this algorithm actually reads the `Lf` hint that
+[`patch_algorithm_with_default_values`](@ref) is handed — i.e. whether estimating `‖𝒜‖` buys the
+solve anything.
+
+It is deliberately a mirror of the dispatch above, and lives beside it so the two cannot drift.
+Three of those methods use `Lf`: the forward-backward family takes it as a step size, and
+Douglas-Rachford derives `gamma = 1/Lf` from it. The `ADMMIteration` method does not, and neither
+does the generic fallback — ADMM with a fixed or adaptive penalty and an inner CG `x`-update has
+no Lipschitz step at all (`ProximalAlgorithms`' `admm.jl` has no `Lf` field), so the power
+iteration that produced the number was pure cost.
+
+Measured, AMD EPYC 7352, 1 thread, `OPENBLAS_NUM_THREADS=1`, 2026-09-21: `estimate_opnorm` is
+48.4 ms of a 444 ms ADMM low-rank solve (10.9%) and 50.2 ms of a 165 ms solve on the
+128²×8-coil sparsity case. A FISTA row still pays it, and should: there the number is the step
+size, and an `Lf` that is too small costs convergence.
+"""
+consumes_lf(
+    ::ProximalAlgorithms.IterativeAlgorithm{
+        <:Union{
+            ProximalAlgorithms.ForwardBackwardIteration,
+            ProximalAlgorithms.FastForwardBackwardIteration,
+            ProximalAlgorithms.POGMIteration,
+            ProximalAlgorithms.DouglasRachfordIteration,
+        },
+    }
+) = true
+consumes_lf(algorithms::Tuple) = any(consumes_lf, algorithms)
+consumes_lf(::Any) = false
+
+"""
+	opnorm_rel_margin(algorithm) -> Real
+
+How far above `‖𝒜‖` the estimate handed to this algorithm as `Lf` may sit, as a relative margin
+for `AbstractOperators.estimate_opnorm`.
+
+Every algorithm that reads `Lf` here takes the step size to be exactly `1 / Lf`
+(`forward_backward.jl:37`, `fast_forward_backward.jl:44`, `pogm.jl:50`) and none of them
+backtracks while `Lf` is supplied, so nothing corrects a value that came out too low. The estimate
+is therefore always asked for from above — that is `estimate_opnorm`'s `side = :upper` default —
+and this margin only says how much overshoot to accept before spending more iterations closing the
+gap. Overshoot costs convergence rate; a value below `‖𝒜‖` costs convergence itself.
+
+POGM gets the tightest margin because it is the least forgiving: an estimate 1.2% low has been
+observed to diverge it, where the forward-backward family only slows down. Where the closed-form
+[`AbstractOperators.opnorm_bound`](@ref) is finite and tight — every Cartesian SENSE operator —
+the margin is met on iteration zero and costs nothing either way.
+"""
+opnorm_rel_margin(
+    ::ProximalAlgorithms.IterativeAlgorithm{<:ProximalAlgorithms.POGMIteration}
+) = 1.0e-3
+# `init` so an empty candidate list falls back to the default margin rather than throwing from
+# inside `minimum`; the error a caller needs then is about having no algorithm, not about a margin.
+opnorm_rel_margin(algorithms::Tuple) = minimum(opnorm_rel_margin, algorithms; init = 0.01)
+opnorm_rel_margin(::Any) = 0.01
+
 function build_model(
         𝒜::AbstractOperator, y::AbstractArray, regs::Tuple;
         threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing,

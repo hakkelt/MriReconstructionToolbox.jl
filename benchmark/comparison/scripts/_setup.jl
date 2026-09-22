@@ -16,12 +16,14 @@ let i = findfirst(a -> startswith(a, "--threads="), ARGS)
     global const NUM_THREADS = i === nothing ? Threads.nthreads() : parse(Int, split(ARGS[i], "=")[2])
 end
 
+# Which BART build to time against. Two builds because the comparison is per BLAS backend; the
+# paths are where they live on this cluster, overridable for any other machine.
 if USE_MKL
     @info "Enabling Intel MKL backend via MKL.jl"
     using MKL
-    const BART_BINARY = "/project/c_mrrecon/bart_mkl"
+    const BART_BINARY = get(ENV, "MRT_BENCH_BART_MKL", "/project/c_mrrecon/bart_mkl")
 else
-    const BART_BINARY = "/project/c_mrrecon/bart_openblas"
+    const BART_BINARY = get(ENV, "MRT_BENCH_BART_OPENBLAS", "/project/c_mrrecon/bart_openblas")
 end
 const FW = "MRT ($(USE_MKL ? "MKL" : "OpenBLAS"))"
 const BART_FW = "BART ($(USE_MKL ? "MKL" : "OpenBLAS"))"
@@ -54,7 +56,7 @@ ENV["OMP_PROC_BIND"] = "close"
 ENV["OMP_PLACES"] = "{$CPU_STR}"
 
 using MriReconstructionToolbox
-using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+using MriReconstructionToolbox: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
 using GeometricMedicalPhantoms
 using LinearAlgebra
 using Statistics
@@ -64,17 +66,51 @@ using BartIO
 using PyCall
 using MRIReco
 
-# MRIReco's own `__init__` pins BLAS only when `Threads.nthreads() > 1`
-# (MRIReco.jl:20-26 — the other branch is Windows-only), so a `-t 1` run on Linux leaves OpenBLAS
-# at its `jl_effective_threads`-derived default, i.e. most of the node. RegularizedLeastSquares
-# then makes ~30 BLAS-1 calls per ADMM outer iteration (`norm`/`dot`/`rmul!` in `cg.jl` and the
-# residual block), each spawning and joining a full thread team over a ~9k-element vector. That
-# alone measured 346 s for a 20-iteration TV solve that takes 1.08 s with BLAS pinned — a 320x
-# artifact that has nothing to do with MRIReco's reconstruction math. Pin it explicitly, for every
-# toolkit, so the thread count under test is the one we asked for.
+"""
+    MRIRECO_BLAS_THREADS
+
+The BLAS thread count MRIReco chose for itself, captured before this file overrides it.
+
+`MRIReco.__init__` sets `BLAS.set_num_threads(1)` when `Threads.nthreads() > 1`
+(MRIReco.jl:20-26 — the other branch is Windows-only). That is a deliberate choice by the
+package under test, and the harness must not silently undo it: setting the count here, *after*
+`using MRIReco`, left every timed MRIReco row at `NUM_THREADS` while MRT pinned BLAS inside its
+own solve, so the two toolkits were compared under different BLAS policies for no reason other
+than the order of two lines in this file.
+
+At `-t 1` on Linux MRIReco makes no choice at all, and OpenBLAS stays at its
+`jl_effective_threads`-derived default — most of the node. That is not a policy to respect but a
+known artifact: RegularizedLeastSquares makes ~30 BLAS-1 calls per ADMM outer iteration
+(`norm`/`dot`/`rmul!` in `cg.jl` and the residual block), each spawning a full thread team over a
+~9k-element vector, measured at 346 s for a TV solve that takes 1.08 s with BLAS pinned. So the
+single-threaded case still gets `NUM_THREADS` (which is 1 there anyway).
+"""
+const MRIRECO_BLAS_THREADS = Threads.nthreads() > 1 ? BLAS.get_num_threads() : NUM_THREADS
+
+# Everything else runs at the thread count under test. `with_mrireco_blas` puts MRIReco's own
+# choice back for the duration of an MRIReco call, and restores this afterwards.
 BLAS.set_num_threads(NUM_THREADS)
 FFTW.set_num_threads(NUM_THREADS)
-@info "BLAS/FFTW pinned" blas_threads = BLAS.get_num_threads() fftw_threads = FFTW.get_num_threads()
+@info "BLAS/FFTW pinned" blas_threads = BLAS.get_num_threads() fftw_threads = FFTW.get_num_threads() mrireco_blas_threads = MRIRECO_BLAS_THREADS
+
+"""
+    with_mrireco_blas(f)
+
+Run `f()` with BLAS at [`MRIRECO_BLAS_THREADS`](@ref) — what MRIReco set for itself — and restore
+`NUM_THREADS` afterwards, including on exception.
+
+Every timed MRIReco call goes through this, so MRIReco is measured under its own threading policy
+and MRT under its own, rather than both under whichever one happened to be set last.
+"""
+function with_mrireco_blas(f)
+    MRIRECO_BLAS_THREADS == NUM_THREADS && return f()
+    BLAS.set_num_threads(MRIRECO_BLAS_THREADS)
+    try
+        return f()
+    finally
+        BLAS.set_num_threads(NUM_THREADS)
+    end
+end
 
 include(joinpath(@__DIR__, "..", "src", "ComparisonHarness.jl"))
 using .ComparisonHarness: check_nrmse, nrmse, run_bart, generate_multicoil_brain,
@@ -91,7 +127,7 @@ const BART_SPAWN = let times = Float64[]
     for _ in 1:10
         t0 = time_ns()
         read(pipeline(ignorestatus(`$BART_BINARY version`)), String)
-        push!(times, (time_ns() - t0) / 1e9)
+        push!(times, (time_ns() - t0) / 1.0e9)
     end
     minimum(times)
 end
@@ -117,7 +153,7 @@ function bart_overhead(inputs...; reps = 5)
         for _ in 1:reps
             t0 = time_ns()
             run_bart(1, "copy", inp)
-            push!(ts, (time_ns() - t0) / 1e9)
+            push!(ts, (time_ns() - t0) / 1.0e9)
         end
         push!(io, max(0.0, minimum(ts) - BART_SPAWN) / 2)   # one-way transfer for this array
     end
@@ -137,14 +173,14 @@ function time_bart(cmd::AbstractString, inputs...; nout::Int = 1, num_runs::Int 
     ovh = bart_overhead(inputs...)
     t0 = time_ns()
     res = run_bart(nout, cmd, inputs...)
-    warm = (time_ns() - t0) / 1e9 - ovh
+    warm = (time_ns() - t0) / 1.0e9 - ovh
     wis = warm > heavy_threshold
     wis && run_bart(nout, cmd, inputs...; wisdom = true)   # build the measured plan once
     times = Float64[]
     for _ in 1:num_runs
         t0 = time_ns()
         res = run_bart(nout, cmd, inputs...; wisdom = wis)
-        push!(times, (time_ns() - t0) / 1e9)
+        push!(times, (time_ns() - t0) / 1.0e9)
     end
     @info @sprintf("BART '%s': overhead %.1f ms, wisdom %s", first(split(cmd)), ovh * 1000, wis)
     return max(1.0e-5, minimum(times) - ovh), max(1.0e-5, median(times) - ovh), res
@@ -163,7 +199,7 @@ function time_reconstruction(f; num_runs = 3, is_bart = false)
     for _ in 1:num_runs
         t0 = time_ns()
         res = f()
-        push!(times, (time_ns() - t0) / 1e9)
+        push!(times, (time_ns() - t0) / 1.0e9)
     end
     return minimum(times), median(times), res
 end
@@ -171,10 +207,12 @@ end
 # MRT baseline times owned by benchmark/hpc/recon_bench.jl. If the merged JSON is present we take
 # its `time_ms` for the MRT rows instead of re-timing (the recon still runs once for NRMSE).
 const _MRT_BASELINE = let
-    f = normpath(joinpath(
-        @__DIR__, "..", "..", "hpc", "results",
-        "mrt_$(USE_MKL ? "mkl" : "openblas")_$(NUM_THREADS)threads.json",
-    ))
+    f = normpath(
+        joinpath(
+            @__DIR__, "..", "..", "hpc", "results",
+            "mrt_$(USE_MKL ? "mkl" : "openblas")_$(NUM_THREADS)threads.json",
+        )
+    )
     d = Dict{Tuple{String, String}, Float64}()
     if isfile(f)
         for b in JSON.parsefile(f)["benchmarks"]
@@ -237,14 +275,61 @@ function write_section(name::AbstractString)
         )
     end
     for r in results
-        @printf("%-14s | %-26s | %-22s | %7d | %10.2f ms | %10.2e | %10.2e\n",
-            r.category, r.method, r.framework, r.threads, r.time_ms, r.nrmse_gt, r.nrmse_mrt)
+        @printf(
+            "%-14s | %-26s | %-22s | %7d | %10.2f ms | %10.2e | %10.2e\n",
+            r.category, r.method, r.framework, r.threads, r.time_ms, r.nrmse_gt, r.nrmse_mrt
+        )
     end
     @info "wrote section" path n = length(results)
     return path
 end
 
+"""
+    CMP_CTYPE / CMP_RTYPE
+
+The complex (and matching real) element type every toolkit reconstructs in. **`ComplexF32`**, which
+is what BART is: its `complex float` is a pair of `float32`, with no double-precision build option,
+so a double-precision run of the other four compares a toolkit doing twice the memory traffic
+against one that is not. Single precision is also what MRI reconstruction is done in — k-space off
+the scanner is 16-bit integer or 32-bit float.
+
+Set `CMP_PRECISION=double` to go back to `ComplexF64` for everything except BART, which cannot.
+
+Only the *solve* runs in this type. Each bridge promotes its result to `ComplexF64` on the way out,
+outside the timed region, so the NRMSE column is not itself computed at the precision under test.
+"""
+const CMP_CTYPE = get(ENV, "CMP_PRECISION", "single") == "double" ? ComplexF64 : ComplexF32
+const CMP_RTYPE = real(CMP_CTYPE)
+@info "comparison precision" ctype = CMP_CTYPE
+
 # Shared 2D multi-coil brain phantom (most sections).
+#
+# The sensitivity maps are handed to every toolkit exactly as the generator produces them.
+# `normalize_sensitivity_maps` is deliberately not called: it would give MRT a known operator norm
+# and so a free step size, while MRIReco's `SensitivityOp` and BART's `pics` normalize nothing, and
+# the comparison is supposed to measure the solvers rather than one side's preprocessing. Leave the
+# omission in place.
 const N = 128
 const Nc = 8
-const IMG_MC, KSPACE_MC, CMAP = generate_multicoil_brain(N = N, num_coils = Nc)
+const IMG_MC, KSPACE_MC, CMAP = let (i, k, c) = generate_multicoil_brain(N = N, num_coils = Nc)
+    (i, CMP_CTYPE.(k), CMP_CTYPE.(c))
+end
+
+"""
+	generate_dynamic_brain(; N, num_coils, num_frames) -> (img, kspace, cmap)
+
+`generate_dynamic_multicoil_brain` with its k-space and sensitivity maps put in `CMP_CTYPE`, the
+way the shared 2D phantom above already is.
+
+The conversion is the point of the wrapper. The generator returns `ComplexF64`, and the three
+scripts that used it directly handed that straight to MRT while building every competitor's input
+as `CMP_CTYPE` (`kbart = zeros(ComplexF32, …)`, `ksp_z = zeros(CMP_CTYPE, …)`), so the dynamic
+section was timing MRT in double precision against everyone else in single. Measured on the
+64²×4-coil×8-frame case, 1 thread, 2026-09-21: global low-rank 642.3 ms at `ComplexF64` against
+444.1 ms at `ComplexF32`, locally low-rank 692.9 against 481.0 — about 1.45x, which was most of
+that section's reported gap.
+"""
+function generate_dynamic_brain(; N::Int, num_coils::Int, num_frames::Int)
+    img, ksp, cmap = generate_dynamic_multicoil_brain(; N, num_coils, num_frames)
+    return img, CMP_CTYPE.(ksp), CMP_CTYPE.(cmap)
+end

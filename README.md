@@ -108,6 +108,11 @@ img = reconstruct(acq, IterativeReconstruction(L1Wavelet2D(5e-3)))
 - [Regularization Options](https://hakkelt.github.io/MriReconstructionToolbox.jl/high-level/regularization/) - Available regularizers
 - [Simulation Tools](https://hakkelt.github.io/MriReconstructionToolbox.jl/high-level/simulation/) - Creating synthetic data
 
+**Real scanner data:** [`examples/`](examples/README.md) holds one runnable script per data type of
+every source in the [MRITestData](https://github.com/hakkelt/MRITestData.jl) catalog — mridata.org,
+OCMR, CMRxRecon2024, CMRxRecon-300, USC Speech, M4Raw and fastMRI — from single-coil Cartesian
+knees to spiral real-time speech and golden-angle stack-of-stars.
+
 ## Design Philosophy
 
 **Beginner-Friendly, Expert-Powerful**

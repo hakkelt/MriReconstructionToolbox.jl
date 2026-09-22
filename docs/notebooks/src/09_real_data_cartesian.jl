@@ -364,6 +364,37 @@ for (label, maps) in (
 end
 
 # %% [markdown]
+# ### Normalizing the maps
+#
+# The overall scale of a map set is arbitrary — it follows from how the maps were estimated, not
+# from the anatomy. `normalize_sensitivity_maps(acq)` returns a copy divided by
+# $\sqrt{\sum_c |S_c(r)|^2}$, the conventional SENSE scaling (Pruessmann et al. 1999). The factor
+# is real and positive at every voxel, so the relative magnitude and phase between coils — the only
+# thing the maps encode — is untouched. Voxels far below the peak sum of squares are set to zero
+# instead of divided: out there the sum is noise.
+
+# %%
+acq_norm = normalize_sensitivity_maps(acq_espirit)
+for (label, maps) in (("estimated", maps_espirit), ("normalized", acq_norm.sensitivity_maps))
+    sos = dropdims(sum(abs2, unname(maps); dims = 3), dims = 3)
+    inside = sos[sos .> 1.0e-3 * maximum(sos)]
+    println(rpad(label, 12), " sum_c |S_c|^2 over the object: ",
+        round.(extrema(inside), sigdigits = 4))
+end
+
+# %% [markdown]
+# Two things follow. The image comes back on the conventional intensity scale, so a regularization
+# strength carries over from one dataset to the next instead of competing with the map scale. And
+# the encoding operator becomes a contraction, $\|\mathcal{A}\| \le 1$, with equality when the
+# k-space is fully sampled — so the step size behind every iterative solve comes from a closed-form
+# bound rather than a power iteration.
+#
+# It is not automatic, and should not be: rescaling maps you supplied changes the units of the
+# image you get back. It also stops being the whole story once the chain is more than a projection
+# times a unitary transform — an NUFFT, density compensation or coil compression each break the
+# $\|\mathcal{A}\| \le 1$ argument.
+
+# %% [markdown]
 # ### Coil compression
 #
 # With four channels there is little to gain, but the mechanics are the same as on a 32-channel

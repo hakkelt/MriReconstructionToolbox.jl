@@ -854,8 +854,16 @@ has_fast_opnorm(L::SpreadingBatchOp) = all(has_fast_opnorm.(L.operators))
 LinearAlgebra.opnorm(L::SpreadingBatchOp) = maximum(LinearAlgebra.opnorm.(L.operators))
 has_fast_opnorm(L::SpreadingBatchOpCopying) = all(has_fast_opnorm.(L.operators[1]))
 LinearAlgebra.opnorm(L::SpreadingBatchOpCopying) = maximum(LinearAlgebra.opnorm.(L.operators[1]))
-estimate_opnorm(L::SpreadingBatchOp) = maximum(estimate_opnorm.(L.operators))
-estimate_opnorm(L::SpreadingBatchOpCopying) = maximum(estimate_opnorm.(L.operators[1]))
+# Spreading dims select the operator, so the blocks are disjoint: block diagonal, as `DCAT`.
+opnorm_bound(L::SpreadingBatchOp) = maximum(opnorm_bound.(L.operators))
+opnorm_bound(L::SpreadingBatchOpCopying) = maximum(opnorm_bound.(L.operators[1]))
+# Each block answers for itself, with the caller's keywords, and the largest answer wins.
+function estimate_opnorm(L::SpreadingBatchOp; kwargs...)
+    return maximum(estimate_opnorm(A; kwargs...) for A in L.operators)
+end
+function estimate_opnorm(L::SpreadingBatchOpCopying; kwargs...)
+    return maximum(estimate_opnorm(A; kwargs...) for A in L.operators[1])
+end
 
 # Utility
 

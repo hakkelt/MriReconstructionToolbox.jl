@@ -295,6 +295,39 @@ function remove_slicing(L::Compose)
 end
 
 diag(L::Compose) = is_sliced(L) ? diag(L.A[2]) : prod(diag.(L.A))
+
+"""
+Exact `‖R ∘ L‖` for an adjacent pair of factors whose composed norm is known in closed form and
+strictly better than the submultiplicative product `opnorm_bound(R) * opnorm_bound(L)`, or
+`nothing` when the pair is not one of those.
+
+The pair that matters is a `DiagOp` on top of a replicating `BroadCast`; its method lives in
+`calculus/BroadCast.jl`, which is included after this file.
+"""
+_fused_pair_opnorm(L, R) = nothing
+
+"""
+An upper bound on `‖L‖` by submultiplicativity over the factors, tightened wherever two adjacent
+factors have an exactly known composed norm that beats their product (see `_fused_pair_opnorm`).
+"""
+function opnorm_bound(L::Compose)
+    bound = 1.0
+    i = 1
+    n = length(L.A)
+    while i <= n
+        # `L.A` is stored in application order, so `L.A[i]` feeds `L.A[i + 1]`.
+        pair = i < n ? _fused_pair_opnorm(L.A[i], L.A[i + 1]) : nothing
+        if pair === nothing
+            bound *= opnorm_bound(L.A[i])
+            i += 1
+        else
+            bound *= pair
+            i += 2
+        end
+        isfinite(bound) || return Inf
+    end
+    return bound
+end
 function diag_AAc(L::Compose)
     return if is_AAc_diagonal(L)
         diag_AAc(L.A[2])
