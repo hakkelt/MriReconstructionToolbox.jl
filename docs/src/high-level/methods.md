@@ -73,8 +73,10 @@ The `signal_model` keyword sets how the optimization variable maps to the image:
 #### Solver Selection and Configuration
 
 - `algorithm`: Solver algorithm (e.g., `FISTA()`, `ADMM()`, `DouglasRachford()`, `CG()`, `CGNR()`) or candidate tuple. Defaults to `DEFAULT_ALGORITHMS` (`(CG(), CGNR(), POGM(), ADMM(), DouglasRachford())`), where the appropriate solver is selected based on model convexity and smoothness.
-- `exact_opnorm`: Compute $\|\mathcal{A}\|$ with a fully converged power iteration instead of the
-  20-iteration estimate. The estimate converges from below, so it is a slight *under*-estimate.
+- `exact_opnorm`: Compute $\|\mathcal{A}\|$ with a fully converged power iteration instead of
+  `estimate_opnorm`. The estimate returns the upper end of a certified interval — a power
+  iteration, which converges from below, paired with a closed-form upper bound — so it is a slight
+  *over*-estimate, which costs convergence rate but never the safety of the step size.
 - `disable_operator_normalization`: Skip the $\|\mathcal{A}\|$ estimate and let the algorithm derive
   its own step size. (The name predates the change described below — it no longer rescales
   $\mathcal{A}$, because nothing does.)

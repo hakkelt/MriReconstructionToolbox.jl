@@ -120,24 +120,13 @@ acq = estimate_sensitivities(acq; method = ESPIRiT())
 acq = normalize_sensitivity_maps(acq)
 ```
 
-### What it buys
-
-- The encoding operator becomes a contraction, $\|\mathcal{A}\| \le 1$, with equality for fully
-  sampled Cartesian SENSE. The operator norm behind the step size is then known rather than
-  estimated, which removes a power iteration from every `reconstruct` call.
-- The reconstructed image carries the conventional intensity scale instead of one inherited from
-  the map estimator.
-- Regularization strengths become comparable across datasets, because $\lambda$ no longer competes
-  with an arbitrary map scale.
-
 ### When not to use it
 
-It is not applied automatically, and should not be, when the map scale is meaningful to you: it
-changes the units of the image you get back. Nor does it help where the encoding chain is not a
-plain projection-times-unitary — with an NUFFT, density compensation or coil compression in the
-chain, $\|\mathcal{A}\| \le 1$ no longer follows from the maps alone. The divisor is also noise
-outside the object, which is why voxels below `threshold` times the peak sum of squares are set to
-zero rather than divided.
+The docstring above lists what normalization buys and why it is not the default. One limit it does
+not state: the $\|\mathcal{A}\| \le 1$ argument holds for a plain projection-times-unitary encoding
+chain, with equality for fully sampled Cartesian SENSE. Put an NUFFT, density compensation or coil
+compression in the chain and the bound no longer follows from the maps alone, so the other two
+benefits remain but the free operator norm does not.
 
 ## Non-Cartesian Gradient Delay Correction
 

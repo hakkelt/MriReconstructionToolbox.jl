@@ -61,7 +61,10 @@ function normalize_sensitivity_maps(
     T = real(eltype(maps))
     total = sum(abs2, maps; dims = c_idx)
     cutoff = T(threshold) * maximum(total)
-    # A voxel with no signal keeps its zeros rather than being divided by noise.
-    scale = map(t -> (t > 0 && t >= cutoff) ? inv(sqrt(t)) : zero(T), total)
-    return maps .* scale
+    return @. maps * _normalization_scale(total, cutoff)
 end
+
+# A voxel with no signal keeps its zeros rather than being divided by noise. Written as a named
+# function so it fuses into the broadcast above instead of materializing a whole array of factors.
+_normalization_scale(total::T, cutoff::T) where {T} =
+    (total > 0 && total >= cutoff) ? inv(sqrt(total)) : zero(T)
