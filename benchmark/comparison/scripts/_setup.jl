@@ -244,30 +244,8 @@ function time_reconstruction(f; num_runs = 3, is_bart = false)
     return minimum(times), median(times), res
 end
 
-# MRT baseline times owned by benchmark/hpc/recon_bench.jl. If the merged JSON is present we take
-# its `time_ms` for the MRT rows instead of re-timing (the recon still runs once for NRMSE).
-const _MRT_BASELINE = let
-    f = normpath(
-        joinpath(
-            @__DIR__, "..", "..", "hpc", "results",
-            "mrt_$(USE_MKL ? "mkl" : "openblas")_$(NUM_THREADS)threads.json",
-        )
-    )
-    d = Dict{Tuple{String, String}, Float64}()
-    if isfile(f)
-        for b in JSON.parsefile(f)["benchmarks"]
-            d[(b["category"], b["method"])] = b["time_ms"]
-        end
-        @info "using MRT baseline from benchmark/hpc/" file = f n = length(d)
-    else
-        @info "no MRT baseline; timing MRT rows inline" expected = f
-    end
-    d
-end
-
+# MRT is always timed inline; no cached baseline mechanism (removed with recon_bench.jl).
 function time_mrt(category, method, f)
-    k = (category, method)
-    haskey(_MRT_BASELINE, k) && return _MRT_BASELINE[k] / 1000, _MRT_BASELINE[k] / 1000, f()
     return time_reconstruction(f)
 end
 

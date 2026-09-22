@@ -4,24 +4,22 @@ MRT-only performance measurement. No external frameworks — that is `benchmark/
 
 This folder owns the numbers that describe MRT's own behaviour: how a reconstruction scales
 with thread count, where intra-operator threading starts to pay, what the BLAS crossover is.
-`benchmark/comparison/` consumes the JSON produced here as the MRT baseline it diffs BART / SigPy /
-MRIReco against, so the two folders never re-measure the same thing.
 
 ## Scripts
 
 | script | what it measures |
 |---|---|
-| `scripts/recon_bench.jl` | end-to-end `reconstruct` timings for the standard method set (TV, L1-wavelet, TGV, CG-SENSE, low-rank, temporal TV, GRAPPA), 1 vs N threads, OpenBLAS vs MKL. Writes `results/mrt_<backend>_<n>threads.json`. |
 | `scripts/threading_sweep.jl` | the BLAS-1 (CG-shaped) and BLAS-3 (SVD-shaped) work-item sweeps behind `SERIAL_BLAS_THRESHOLD_BYTES` and `maybe_disable_unsplit_threading`. |
 | `scripts/serial_blas_threshold_sweep.jl` | re-fits `SERIAL_BLAS_THRESHOLD_BYTES` against real reconstruction solves rather than `threading_sweep.jl`'s synthetic CG reproducer; interleaved threaded/serial (A/B/A/B…) runs since whole-solve timing here swings ±30-60% run to run. |
 | `scripts/probe.jl` | what the process sees of its own core budget (`Cpus_allowed_list`, `jl_effective_threads`, the `LinearAlgebra` default, SLURM env). `benchmark/comparison/scripts/_setup.jl`'s `check_environment()` runs the same checks automatically and fails the job on a mismatch instead of just printing one; run this by hand for the interactive/diagnostic version. |
 
+MRT-only end-to-end timings are no longer produced here — `recon_bench.jl` was removed;
+`benchmark/comparison/scripts/run_all.jl` now always times MRT inline (see "Baseline for
+`benchmark/comparison/`" below).
+
 ## Running
 
 ```sh
-julia --project=benchmark/hpc -t 8 benchmark/hpc/scripts/recon_bench.jl --threads=8            # OpenBLAS
-julia --project=benchmark/hpc -t 8 benchmark/hpc/scripts/recon_bench.jl --threads=8 --use-mkl  # MKL
-
 julia --project=benchmark/hpc -t 8 benchmark/hpc/scripts/threading_sweep.jl mkl 8 cg
 julia --project=benchmark/hpc -t 8 benchmark/hpc/scripts/threading_sweep.jl mkl 8 svd
 
@@ -44,12 +42,12 @@ full per-data-type catalog survey with the open pick first (M4RAW / MRIDATA / OC
 multi-coil Cartesian, USC_SPEECH for spiral, **OCMR `us_*`** as the open GRAPPA-undersampled
 alternative to the Synapse-gated CMRxRecon-300).
 
-Opt in with an environment variable; `recon_bench.jl` / `benchmark/benchmarks.jl` /
-`benchmark/comparison/scripts/run_real.jl` then append a **Real Data** block plus a **Real Data 1ch**
-block, each with CG-SENSE + undersampled TV / L1-wavelet:
+Opt in with an environment variable; `benchmark/ci/benchmarks.jl` / `benchmark/comparison/scripts/run_real.jl`
+then append a **Real Data** block plus a **Real Data 1ch** block, each with CG-SENSE + undersampled
+TV / L1-wavelet:
 
 ```sh
-MRT_BENCH_REAL_DATA=1 julia --project=benchmark/hpc -t 8 benchmark/hpc/scripts/recon_bench.jl --threads=8
+MRT_BENCH_REAL_DATA=1 julia --project=benchmark/ci -t 8 benchmark/ci/benchmarks.jl
 ```
 
 | variable | default | meaning |
@@ -70,22 +68,10 @@ for the documentation's comparison page) is committed.
 
 ## Cluster: full re-verification
 
-`scripts/slurm_full_matrix.sh` runs the 1T/8T × OpenBLAS/MKL matrix on the `test` node, one
-exclusive job per phase so nothing contends:
+`scripts/slurm_full_matrix.sh` runs the `compare-*` phases (`run_all.jl`, MRT timed inline) on the
+`test` node, one exclusive job per phase so nothing contends:
 
 ```sh
-b=$(sbatch --parsable benchmark/hpc/scripts/slurm_full_matrix.sh baseline)
-o=$(sbatch --parsable --dependency=afterany:$b benchmark/hpc/scripts/slurm_full_matrix.sh compare-openblas)
-sbatch          --dependency=afterany:$o benchmark/hpc/scripts/slurm_full_matrix.sh compare-mkl
+sbatch benchmark/hpc/scripts/slurm_full_matrix.sh compare-openblas
+sbatch benchmark/hpc/scripts/slurm_full_matrix.sh compare-mkl
 ```
-
-`baseline` writes `results/mrt_*.json`; the `compare-*` phases read those and write
-`benchmark/comparison/results/benchmark_*.json`. `scripts/run_slurm.sh` is the baseline-only shortcut.
-
-## Baseline for `benchmark/comparison/`
-
-`benchmark/comparison/scripts/_setup.jl` (`time_mrt`, shared by `run_all.jl`'s per-section
-scripts) reads `benchmark/hpc/results/mrt_<backend>_<n>threads.json` when it exists and takes
-those times straight as the MRT column instead of re-timing (the reconstruction still runs once,
-untimed, for the cross-framework NRMSE checks). Regenerate the baseline here first, then run the
-comparison suite.
