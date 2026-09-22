@@ -409,3 +409,6 @@ end
 function estimate_opnorm(L::SimpleBatchOpMultiThreaded)
     return estimate_opnorm(L.operator[1])
 end
+# Block diagonal with identical blocks: one operator, applied per batch slice.
+opnorm_bound(L::SimpleBatchOpSingleThreaded) = opnorm_bound(L.operator)
+opnorm_bound(L::SimpleBatchOpMultiThreaded) = opnorm_bound(L.operator[1])

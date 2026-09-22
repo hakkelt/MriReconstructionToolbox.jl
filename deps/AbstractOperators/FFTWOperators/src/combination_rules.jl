@@ -209,6 +209,49 @@ function combine(T1::DiagOp, T2::SignAlternation)
     return DiagOp(domain_type(T1), size(T1, 2), T2 * diag(T1))
 end
 
+# Shift operators inside a batch
+#
+# What a `SignAlternation` or a shift does at an index depends only on the coordinates along its
+# `dirs`. Along every other dimension it acts identically, so as long as none of `dirs` is a batch
+# dimension the operator is one and the same pattern applied to each slice, and that pattern is
+# the same operator over the slice's own dimensions. Neither builds a plan, so recognising this
+# stays cheap enough to do while combination rules are only being tried.
+
+# The slice's dimensions, and where each of `dirs` ends up among them, or `nothing` when `dirs`
+# reaches a batch dimension and the operator therefore differs from slice to slice.
+function _sliced_dims_and_dirs(dim_in::NTuple{N, Int}, dirs, batch_dim_mask::NTuple{N, Bool}) where {N}
+    any(d -> batch_dim_mask[d], dirs) && return nothing
+    slice_dim_in = Tuple(dim_in[d] for d in 1:N if !batch_dim_mask[d])
+    slice_position = cumsum(.!batch_dim_mask)
+    return slice_dim_in, Tuple(slice_position[d] for d in dirs)
+end
+
+function _slice_operator(
+        L::SignAlternation{T, N, M, Th, S}, batch_dim_mask::NTuple{N, Bool}
+    ) where {T, N, M, Th, S}
+    sliced = _sliced_dims_and_dirs(L.dim_in, L.dirs, batch_dim_mask)
+    sliced === nothing && return nothing
+    return SignAlternation(
+        T, sliced[1], sliced[2]; threaded = is_threaded(L), array_type = S
+    )
+end
+
+function _slice_operator(
+        L::FFTShift{T, N, M, S}, batch_dim_mask::NTuple{N, Bool}
+    ) where {T, N, M, S}
+    sliced = _sliced_dims_and_dirs(L.dim_in, L.dirs, batch_dim_mask)
+    sliced === nothing && return nothing
+    return FFTShift(T, sliced[1], sliced[2]; array_type = S)
+end
+
+function _slice_operator(
+        L::IFFTShift{T, N, M, S}, batch_dim_mask::NTuple{N, Bool}
+    ) where {T, N, M, S}
+    sliced = _sliced_dims_and_dirs(L.dim_in, L.dirs, batch_dim_mask)
+    sliced === nothing && return nothing
+    return IFFTShift(T, sliced[1], sliced[2]; array_type = S)
+end
+
 # SignAlternation ∘ (any square diagonal) ∘ SignAlternation
 #
 # A `SignAlternation` is a real ±1 diagonal and is its own inverse, and diagonals commute,
@@ -228,71 +271,9 @@ function can_be_combined(L::SignAlternation, M::AbstractOperator, R::SignAlterna
 end
 combine(::SignAlternation, M::AbstractOperator, ::SignAlternation) = M
 
-# SignAlternation through a batch operator
-#
-# When none of the alternation's `dirs` is a batch dimension, its ±1 factor is constant along
-# the batch loop, so `± ∘ ⟳A == ⟳(±ₛ ∘ A)` exactly, with `±ₛ` the same alternation renumbered
-# to one slice. Pushing it inside puts it next to the operator the batch wraps — in MRT's
-# encoding operator that is the sensitivity-map `DiagOp` — where the `SignAlternation ∘ DiagOp`
-# rule above folds the signs into the maps once, at construction time, and the pass disappears
-# from every application.
-#
-# The rewrite is taken only when that fold actually happens: `±ₛ * inner` runs the same
-# combination machinery, and if it comes back a `Compose` nothing was absorbed. Pushing then
-# would only move the same work inside the batch loop (where it is also harder to thread), so
-# the rule declines and the alternation stays where it is.
-function _sign_alternation_slice(
-        L::SignAlternation, mask::NTuple{K, Bool}, full_size::NTuple{K, Int}, inner::AbstractOperator, side::Int
-    ) where {K}
-    length(L.dirs) == 0 && return nothing
-    any(d -> mask[d], L.dirs) && return nothing
-    slice_size = Tuple(full_size[d] for d in 1:K if !mask[d])
-    size(inner, side) == slice_size || return nothing
-    # A non-batch dimension `d` of the batched operator is the `count(!, mask[1:d])`-th
-    # dimension of the slice the wrapped operator sees.
-    slice_dirs = map(d -> count(k -> !mask[k], 1:d), L.dirs)
-    T = side == 1 ? codomain_type(inner) : domain_type(inner)
-    A = side == 1 ? codomain_array_type(inner) : domain_array_type(inner)
-    # Threading is decided per batch item by the batch loop, so the slice-level alternation
-    # never brings its own: `create_BatchOp` would switch it off for nesting safety anyway.
-    return SignAlternation(T, slice_size, slice_dirs; threaded = false, array_type = A)
-end
-
-function _push_sign_into_batch(L::SignAlternation, B::AbstractOperators.SimpleBatchOp)
-    inner = AbstractOperators._wrapped_operator(B)
-    mask = AbstractOperators.get_codomain_batch_dim_mask(typeof(B))
-    slice = _sign_alternation_slice(L, mask, B.codomain_size, inner, 1)
-    slice === nothing && return nothing
-    fused = slice * inner
-    fused isa Compose && return nothing
-    return AbstractOperators.create_BatchOp(
-        fused,
-        B.domain_size, AbstractOperators.get_domain_batch_dim_mask(typeof(B)),
-        B.codomain_size, mask;
-        threaded = is_threaded(B),
-    )
-end
-
-function _push_sign_into_batch(B::AbstractOperators.SimpleBatchOp, L::SignAlternation)
-    inner = AbstractOperators._wrapped_operator(B)
-    mask = AbstractOperators.get_domain_batch_dim_mask(typeof(B))
-    slice = _sign_alternation_slice(L, mask, B.domain_size, inner, 2)
-    slice === nothing && return nothing
-    fused = inner * slice
-    fused isa Compose && return nothing
-    return AbstractOperators.create_BatchOp(
-        fused,
-        B.domain_size, mask,
-        B.codomain_size, AbstractOperators.get_codomain_batch_dim_mask(typeof(B));
-        threaded = is_threaded(B),
-    )
-end
-
-function can_be_combined(L::SignAlternation, B::AbstractOperators.SimpleBatchOp)
-    return _push_sign_into_batch(L, B) !== nothing
-end
-function can_be_combined(B::AbstractOperators.SimpleBatchOp, L::SignAlternation)
-    return _push_sign_into_batch(B, L) !== nothing
-end
-combine(L::SignAlternation, B::AbstractOperators.SimpleBatchOp) = _push_sign_into_batch(L, B)
-combine(B::AbstractOperators.SimpleBatchOp, L::SignAlternation) = _push_sign_into_batch(B, L)
+# `c2-cancel-sign-alternation-pair` also pushed a `SignAlternation` into a `SimpleBatchOp`
+# directly, through a `_push_sign_into_batch` helper. `_slice_operator` above subsumes it: the
+# generic batch rules in `AbstractOperators/src/combination_rules.jl` apply to both batch
+# families and to every operator that declares a slice factor, not to `SignAlternation` and
+# `SimpleBatchOp` alone. The narrower methods would shadow the general ones, so they are dropped
+# here.

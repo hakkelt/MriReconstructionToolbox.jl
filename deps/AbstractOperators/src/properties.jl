@@ -28,7 +28,8 @@ export ndoms,
     displacement,
     remove_displacement,
     is_thread_safe,
-    estimate_opnorm
+    estimate_opnorm,
+    opnorm_bound
 
 """
 	domain_type(A::AbstractOperator)
@@ -432,19 +433,55 @@ It is computed using the power method by default, unless the operator has a fast
 
 The operator norm is defined as: `‖A‖ = sup_{x != 0} ‖A*x‖ / ‖x‖`.
 
-Parameters of power iteration:
-- Maximum number of iterations: 100
-- Tolerance for convergence: 1e-6
-These parameters can be adjusted in the [estimate_opnorm](@ref) function.
+Unless the operator has a fast implementation, this runs `powerit` with `maxit = 100` and
+`rel_margin = 1e-6`, from a fixed pseudo-random start vector — so it is a deterministic function
+of `A`, and, like every power iteration, it approaches the norm from below.
 
-The power iteration starts from a fixed pseudo-random vector, so this is a deterministic
-function of `A` (see [`powerit`](@ref)).
+Use `estimate_opnorm` to trade accuracy for time, to ask for a value that is guaranteed *not* to
+fall below `‖A‖`, or to set the margin explicitly.
 """
 function LinearAlgebra.opnorm(A::AbstractOperator)
     return powerit(A)
 end
 
 has_fast_opnorm(::AbstractOperator) = false
+
+"""
+	opnorm_bound(A::AbstractOperator)
+
+A **certified upper bound** on `opnorm(A)`, in closed form, or `Inf` when none is known.
+
+Every method must satisfy `opnorm_bound(A) >= opnorm(A)`. `Inf` propagates through the
+combinator rules, so one unknown leaf makes the whole expression unknown rather than wrong.
+
+`powerit` converges to `‖A‖` from below [1, §8.2], so it certifies only a *lower* bound; turning
+it into an upper one needs a Kato–Temple gap estimate [2, Thm 4.6.1], which is not free. A
+structural bound is the cheap certificate, and `estimate_opnorm` pairs the two into an interval.
+
+The bounded quantity is the norm induced by the operator's **declared** adjoint — the same one
+`powerit` measures — which for a non-unitary `DFT` normalization is not the textbook spectral
+norm.
+
+| operator      | bound                               | basis              |
+|:--------------|:------------------------------------|:-------------------|
+| `Compose`     | `prod` of the factors               | submultiplicativity [1, §2.3] |
+| `VCAT`,`HCAT` | `sqrt` of the sum of squares        | `‖[A; B]x‖² = ‖Ax‖² + ‖Bx‖²`, Cauchy–Schwarz |
+| `DCAT`        | `maximum` of the blocks             | blocks act on orthogonal subspaces [3, §2.1] |
+| `Sum`         | `sum` of the terms                  | triangle inequality |
+| `Scale`       | `abs(coeff)` times the bound        | exact              |
+| `AffineAdd`   | the linear part, if `d == 0`        | see its method     |
+
+A leaf with `has_fast_opnorm` contributes its exact norm.
+
+## References
+
+1. Golub, Van Loan, "Matrix Computations", 4th ed., Johns Hopkins (2013).
+2. Parlett, "The Symmetric Eigenvalue Problem", SIAM Classics in Applied Mathematics 20 (1998).
+3. Horn, Johnson, "Topics in Matrix Analysis", Cambridge (1991).
+
+See also: `estimate_opnorm`, `has_fast_opnorm`, `powerit`.
+"""
+opnorm_bound(A::AbstractOperator) = has_fast_opnorm(A) ? float(LinearAlgebra.opnorm(A)) : Inf
 
 """
 	estimate_opnorm(A::AbstractOperator)
@@ -454,23 +491,78 @@ It is computed using the power method with reduced iterations unless the operato
 
 The operator norm is defined as: `‖A‖ = sup_{x != 0} ‖A*x‖ / ‖x‖`.
 
-Parameters of power iteration:
-- Maximum number of iterations: 20
-- Tolerance for convergence: 0.01
-These parameters can be adjusted by passing `maxit` and `tol` keyword arguments. E.g.:
-```julia
-julia> estimate_opnorm(A; maxit=50, tol=1e-6)
-```
+## Keyword arguments
 
-The power iteration starts from a **fixed** pseudo-random vector (see [`powerit`](@ref)), so
-repeated calls on the same operator return the same number.
+- `rel_margin = 0.01`: how far above `‖A‖` the result may be. See "What is returned" below for
+  what it does and does not guarantee.
+- `side = :upper`: `:upper` never returns a value below `‖A‖`, which is what a Lipschitz
+  constant needs; `:accurate` returns the closest value instead, which is what a rescaling
+  needs. See "Which side to ask for".
+- `maxit = 100`: iteration cap.
+- `rng`: start vector source, a **fixed-seed** generator by default (see `powerit`), so
+  repeated calls on the same operator return the same number.
+
+## What is returned
+
+`powerit` gives a certified lower bound `L`; [`opnorm_bound`](@ref) gives a certified upper bound
+`U`, or `Inf`. This combines them:
+
+| case | result | guarantee |
+|:-----|:-------|:----------|
+| `has_fast_opnorm(A)` | `opnorm(A)` | exact, no iteration |
+| `side = :accurate` | `L` | `L ≤ ‖A‖` |
+| `side = :upper`, `U` finite | `U` | `U ≥ ‖A‖`, certified |
+| `side = :upper`, `U = Inf` | `sqrt(θ + ‖r‖)` | heuristic, see below |
+
+The loop stops once `U ≤ L (1 + rel_margin)`, so an already-tight `U` costs no iterations. If
+`maxit` runs out first, `U` is returned with a warning naming the achieved slack: still safe,
+merely loose, and loose costs convergence rate while low costs convergence.
+
+**The `U = Inf` branch is a heuristic, not a certificate.** `minᵢ |λᵢ - θ| ≤ ‖r‖` is exact
+[2, Thm 4.5.1], but it localises *some* eigenvalue near `θ`, so `λmax ≤ θ + ‖r‖` needs that one
+to be `λmax`; the rigorous form is Kato–Temple's `|θ - λ| ≤ ‖r‖²/δ` [2, Thm 4.6.1], whose gap `δ`
+costs a second eigenvalue. `sqrt(θ + ‖r‖)` is also a much looser *estimate* than `sqrt(θ)` —
+`O(ε)` against `O(ε²)` in the eigenvector angle [2, §4.3]. What it buys is the sign.
+
+## Which side to ask for
+
+`:upper` is right for a **Lipschitz constant**: Beck and Teboulle [1, §4] require `L ≥ L(∇f)`,
+and with a fixed step `γ = 1/Lf` nothing corrects a low value. It is wrong for rescaling, penalty
+selection or seeding a backtracking search, where accuracy matters and neither direction is
+unsafe — pass `:accurate` there, and never for a step size.
+
+## References
+
+1. Beck, Teboulle, "A Fast Iterative Shrinkage-Thresholding Algorithm for Linear Inverse
+   Problems", SIAM J. Imaging Sciences 2(1), 183-202 (2009).
+2. Parlett, "The Symmetric Eigenvalue Problem", SIAM Classics in Applied Mathematics 20 (1998).
+
+See also: [`opnorm_bound`](@ref), `powerit`, `has_fast_opnorm`.
 """
-function estimate_opnorm(A::AbstractOperator; maxit = 20, tol = 1.0e-3, rng = _powerit_rng())
-    if has_fast_opnorm(A)
-        return opnorm(A)
-    else
-        return powerit(A; maxit, tol, rng)
+function estimate_opnorm(
+        A::AbstractOperator;
+        rel_margin = 0.01,
+        side::Symbol = :upper,
+        maxit = 100,
+        rng = _powerit_rng(),
+    )
+    side in (:upper, :accurate) ||
+        throw(ArgumentError("`side` must be `:upper` or `:accurate`, got $(repr(side))"))
+    has_fast_opnorm(A) && return opnorm(A)
+
+    upper = opnorm_bound(A)
+    lower, θ, resid = _powerit(A; maxit, rel_margin, rng, upper)
+    side === :accurate && return lower
+
+    if isfinite(upper)
+        if upper > lower * (1 + rel_margin) && lower > 0
+            @warn "estimate_opnorm: the closed-form bound is looser than the requested margin" achieved =
+                upper / lower - 1 rel_margin maxit
+        end
+        return oftype(lower, upper)
     end
+    # No certificate available: the residual heuristic, which at least errs upwards.
+    return sqrt(θ + resid)
 end
 
 # A fresh, fixed-seed generator per call, so the start vector does not depend on the global
@@ -478,44 +570,78 @@ end
 _powerit_rng() = Random.Xoshiro(0x5eed)
 
 """
-	powerit(A::AbstractOperator; maxit, tol, rng)
+	powerit(A::AbstractOperator; maxit, rel_margin, rng)
 
-Estimate `‖A‖` by the power method on `AᴴA`.
+A **lower** bound on `‖A‖` from the power method on `AᴴA`.
 
-The start vector is drawn from `rng`, which **defaults to a fixed-seed generator**, not to the
-global one. That matters well beyond reproducible tests: the iteration frequently exhausts
-`maxit` without meeting `tol` — the top of the spectrum is often close to degenerate, and
-convergence is then linear in the ratio of the two largest eigenvalues — so the result carries
-a start-vector-dependent error rather than a converged value. Drawing that vector from the
-global RNG made the estimate, and everything scaled by it, silently differ from run to run.
-Measured on an MRT 128²×8 encoding operator: 6.5e-4 relative spread over six calls, which
-propagated to a 7.9e-4 relative difference between two otherwise identical reconstructions.
+The iterates approach `‖A‖` from below and never cross it, so this is never safe as a step-size
+denominator; `estimate_opnorm` is, since it pairs this with a certified upper bound.
 
-Note also that the iterates approach `‖A‖` **from below**, so a truncated run under-estimates
-the norm. A caller that needs a safe Lipschitz bound should add a margin rather than assume
-`tol` was met.
+`rel_margin` is an error target, not a progress test. The keyword it replaced, `tol`, compared
+two successive iterates — how fast the iteration moves, not how far it has left. Measured on a
+128²×8 operator, it stopped at the same value for `maxit = 40` and `maxit = 80`, 0.84% below the
+truth.
+
+The start vector is drawn from `rng`, a **fixed-seed** generator by default. That is not only for
+reproducible tests: convergence is linear in `|λ₂/λ₁|` [1, §8.2.1], so with a near-degenerate top
+of the spectrum `maxit` is usually exhausted and the start vector leaks into the *result*. From
+the global RNG the same operator gave a 6.5e-4 relative spread over six calls.
+
+## References
+
+1. Golub, Van Loan, "Matrix Computations", 4th ed., Johns Hopkins (2013).
 """
-function powerit(A::AbstractOperator; maxit = 100, tol = 1.0e-6, rng = _powerit_rng())
-    # Power method for estimating the operator norm
+function powerit(A::AbstractOperator; maxit = 100, rel_margin = 1.0e-6, rng = _powerit_rng())
+    return first(_powerit(A; maxit, rel_margin, rng, upper = Inf))
+end
+
+"""
+	_powerit(A; maxit, rel_margin, rng, upper) -> (lower, θ, resid)
+
+One power iteration on `B = AᴴA`, reporting what its callers need rather than just a number:
+
+- `lower = sqrt(‖Bx‖)` for the final unit iterate `x`, a certified lower bound on `‖A‖`. `‖Bx‖`
+  beats the Rayleigh quotient here because `θ ≤ ‖Bx‖ ≤ λmax` for positive semidefinite `B`.
+- `θ = xᴴBx`, the Rayleigh quotient.
+- `resid = ‖Bx - θx‖`, as `sqrt(‖Bx‖² - θ²)`: the residual is orthogonal to `x` [1, §4.3], so it
+  costs no extra application, vector or pass.
+
+With a finite `upper` the loop stops once `upper ≤ lower (1 + rel_margin)` — the certificate does
+not improve with iteration, so there is nothing to gain past that. Otherwise it uses
+`resid / (2θ)`; the factor 2 is the square root between `λ` and `‖A‖`, and dropping it makes the
+test twice as strict as asked.
+
+## References
+
+1. Parlett, "The Symmetric Eigenvalue Problem", SIAM Classics in Applied Mathematics 20 (1998).
+"""
+function _powerit(A::AbstractOperator; maxit, rel_margin, rng, upper)
     AHA = A' * A
     x = allocate_in_domain(A)
     y = similar(x)
     Random.randn!(rng, x)
     normalize!(x)
-    λ = zero(real(eltype(x)))
-    λ_old = real(eltype(x))(Inf)
+    R = real(eltype(x))
+    nrm = zero(R)
+    θ = zero(R)
+    resid = R(Inf)
 
     for _ in 1:maxit
         mul!(y, AHA, x)
-        λ = norm(y)
-        if abs(λ - λ_old) < max(tol * λ, tol)
-            break
+        nrm = norm(y)
+        # A null operator: every bound is zero and dividing by `nrm` below would not be defined.
+        nrm == 0 && return (zero(R), zero(R), zero(R))
+        θ = real(dot(x, y))
+        resid = sqrt(max(zero(R), nrm^2 - θ^2))
+        if isfinite(upper)
+            upper <= sqrt(nrm) * (1 + rel_margin) && break
+        else
+            θ > 0 && resid / (2θ) <= rel_margin && break
         end
-        λ_old = λ
-        @.. thread = true x = y / λ
+        @.. thread = true x = y / nrm
     end
 
-    return sqrt(λ)
+    return (sqrt(nrm), θ, resid)
 end
 
 #printing

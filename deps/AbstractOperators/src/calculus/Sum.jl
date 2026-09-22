@@ -178,6 +178,9 @@ is_full_column_rank(L::Sum) = any(is_full_column_rank.(L.A))
 
 diag(L::Sum) = (+).(diag.(L.A)...)
 
+# Triangle inequality on `(A + B) x = Ax + Bx`.
+opnorm_bound(L::Sum) = sum(opnorm_bound.(L.A))
+
 # utils
 function permute(S::Sum, p::AbstractVector{Int})
     AA = ([permute(A, p) for A in S.A]...,)

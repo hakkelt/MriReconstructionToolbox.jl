@@ -101,6 +101,8 @@ end
 
 has_fast_opnorm(R::Reshape) = has_fast_opnorm(R.A)
 LinearAlgebra.opnorm(R::Reshape) = LinearAlgebra.opnorm(R.A)
+# A reshape is an isometry of the underlying vector, so it changes no norm.
+opnorm_bound(R::Reshape) = opnorm_bound(R.A)
 
 _children(R::Reshape) = (R.A,)
 is_threaded(R::Reshape) = _is_threaded_from_children(R)

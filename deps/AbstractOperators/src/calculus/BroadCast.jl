@@ -367,8 +367,59 @@ has_fast_opnorm(R::OperatorBroadCast{T, N, M, true}) where {T, N, M} = has_fast_
 function LinearAlgebra.opnorm(R::NoOperatorBroadCast{T, N, M}) where {T, N, M}
     return real(T)(sqrt(prod(R.dim_out[d] for d in 1:M if R.dim_out[d] != R.reshaped_dim_in[d])))
 end
-LinearAlgebra.opnorm(R::OperatorBroadCast{T, N, M, false}) where {T, N, M} = LinearAlgebra.opnorm(R.A)
-LinearAlgebra.opnorm(R::OperatorBroadCast{T, N, M, true}) where {T, N, M} = LinearAlgebra.opnorm(R.A[1])
+function LinearAlgebra.opnorm(R::OperatorBroadCast{T, N, M, false}) where {T, N, M}
+    return _replication_factor(R) * LinearAlgebra.opnorm(R.A)
+end
+function LinearAlgebra.opnorm(R::OperatorBroadCast{T, N, M, true}) where {T, N, M}
+    return _replication_factor(R) * LinearAlgebra.opnorm(R.A[1])
+end
+
+opnorm_bound(R::NoOperatorBroadCast) = float(LinearAlgebra.opnorm(R))
+function opnorm_bound(R::OperatorBroadCast{T, N, M, false}) where {T, N, M}
+    return _replication_factor(R) * opnorm_bound(R.A)
+end
+function opnorm_bound(R::OperatorBroadCast{T, N, M, true}) where {T, N, M}
+    return _replication_factor(R) * opnorm_bound(R.A[1])
+end
+
+"""
+	_replication_factor(R::OperatorBroadCast)
+
+How much a broadcast scales the norm of what it replicates: `sqrt` of the number of copies each
+entry of the inner operator's output is written to.
+
+Replicating a vector `c` times multiplies its 2-norm by exactly `sqrt(c)`, so this factor is
+exact rather than an inequality. Leaving it out — which `opnorm(::OperatorBroadCast)` did, by
+forwarding straight to the inner operator — under-reports the norm by `sqrt(c)`, and an
+under-reported norm is the direction that breaks a Lipschitz constant.
+"""
+function _replication_factor(R::OperatorBroadCast{T, N, M}) where {T, N, M}
+    inner = R isa OperatorBroadCast{T, N, M, true} ? R.A[1] : R.A
+    dim_in = size(inner, 1)
+    copies = prod(R.dim_out[d] for d in 1:M if d > length(dim_in) || dim_in[d] != R.dim_out[d]; init = 1)
+    return real(T)(sqrt(copies))
+end
+
+"""
+	_fused_pair_opnorm(B::NoOperatorBroadCast, D::DiagOp)
+
+Exact `‖D ∘ B‖` for a `DiagOp` applied on top of a replicating `BroadCast`.
+
+`D ∘ B` is block diagonal with one single-column block per input position, so its norm is the
+largest block norm [1, §2.1] — that is, `max_r sqrt(sum_c |d[r, c]|²)` over the broadcast
+positions `c`. The submultiplicative product gives `maximum(abs, d) * sqrt(c)` instead, which
+overshoots by up to the square root of the number of copies.
+
+## References
+
+1. Horn, Johnson, "Topics in Matrix Analysis", Cambridge (1991).
+"""
+function _fused_pair_opnorm(B::NoOperatorBroadCast{T, N, M}, D::DiagOp) where {T, N, M}
+    size(D, 2) == B.dim_out || return nothing
+    bdims = Tuple(d for d in 1:M if B.reshaped_dim_in[d] != B.dim_out[d])
+    isempty(bdims) && return nothing
+    return float(sqrt(maximum(sum(abs2, D.d; dims = bdims))))
+end
 
 # utils
 
