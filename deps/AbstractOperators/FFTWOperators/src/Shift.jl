@@ -305,25 +305,48 @@ function _alternate_sign!(
     if isempty(dirs)
         return x
     end
-    in1 = 1 in dirs
     rest_mask = ntuple(k -> (k + 1) in dirs, Val(N - 1))
     rest_range = CartesianIndices(Base.tail(size(x)))
     use_threads = threaded && Threads.nthreads() > 1
-    if use_threads && length(rest_range) > 1
-        @inbounds @batch for J in rest_range
-            _alternate_sign_column!(x, in1, rest_mask, J)
+    # `in1` decides the shape of the inner loop, so it is lifted to a type parameter here
+    # rather than tested per element inside it.
+    if 1 in dirs
+        _alternate_sign_columns!(x, Val(true), rest_mask, rest_range, use_threads)
+    else
+        _alternate_sign_columns!(x, Val(false), rest_mask, rest_range, use_threads)
+    end
+    return x
+end
+
+function _alternate_sign_columns!(
+        x::AbstractArray, ::Val{IN1}, rest_mask::NTuple{K, Bool},
+        rest_range::CartesianIndices, use_threads::Bool
+    ) where {IN1, K}
+    n = size(x, 1)
+    ncol = length(rest_range)
+    if use_threads && ncol > 1
+        # `Threads.@threads`, not `@batch`, and only here: this loop's body is a call out to
+        # `_alternate_sign_column!` rather than straight-line element work, and `Polyester.@batch`
+        # does not resolve such a body statically inside a precompiled package — every call takes
+        # a dynamic path instead. Measured on a 128x128x8 `ComplexF32` out-of-place pass, AMD
+        # EPYC 7352, 8 Julia threads, 2026-09-21: 583.0 us with `@batch` against 56.4 us for the
+        # serial loop it was supposed to beat, and 21.0 us here. The single-column `@batch`
+        # kernels below are straight-line and keep it; measured on a 2^20 vector they are 4.8x
+        # (out of place) and 10.6x (in place) up on serial.
+        @inbounds Threads.@threads for c in 1:ncol
+            _alternate_sign_column!(x, Val(IN1), rest_mask, rest_range[c], c, n, Val(false))
         end
-    elseif use_threads && size(x, 1) > 1
+    elseif use_threads && n > 1
         # A single trailing column (a vector, or an `n×1`): the column loop has nothing to
         # spread across workers, so thread dimension 1 itself rather than run the whole pass
         # sequentially.
-        _alternate_sign_column!(x, in1, rest_mask, first(rest_range), Val(true))
+        _alternate_sign_column!(x, Val(IN1), rest_mask, first(rest_range), 1, n, Val(true))
     else
-        @inbounds for J in rest_range
-            _alternate_sign_column!(x, in1, rest_mask, J)
+        @inbounds for c in 1:ncol
+            _alternate_sign_column!(x, Val(IN1), rest_mask, rest_range[c], c, n, Val(false))
         end
     end
-    return x
+    return
 end
 
 # Dimension 1's own alternation, and the parity contribution of dimensions 2:N for one column.
@@ -346,24 +369,93 @@ const MIN_ELEMENTS_FOR_COLUMN_THREADING = 4096
     return isodd(rest_flips) ? -1 : 1
 end
 
+# A column of an array that indexes linearly and starts at 1 is the contiguous stretch
+# `(c - 1) * size(x, 1) .+ (1:size(x, 1))` of its linear index space — the AbstractArray
+# interface guarantees linear indexing runs in column-major order. Addressing it that way
+# instead of splatting a `CartesianIndex` into the inner loop is what makes the kernel
+# vectorize; the Cartesian form below is the correctness fallback for everything else
+# (non-contiguous views, offset axes).
+@inline function _has_linear_columns(x::AbstractArray)
+    return IndexStyle(x) === IndexLinear() && !Base.has_offset_axes(x)
+end
+
 # The parity contribution from dims 2:N is loop-invariant across dim 1, so it is computed once
 # per column ("per-slab base parity") and the inner loop over dim 1 — the only dimension that
 # can alternate every element — vectorizes with `@simd`. `Val(true)` spreads that inner loop
 # over workers instead, for the caller that has only one column to work with; the branch is on a
 # type parameter, so the unused loop is compiled away.
 @inline function _alternate_sign_column!(
-        x::AbstractArray, in1::Bool, rest_mask::NTuple{K, Bool}, J::CartesianIndex,
-        ::Val{TH} = Val(false)
-    ) where {K, TH}
-    Jt = Tuple(J)
-    column_sign = _column_sign(rest_mask, J)
-    if TH
-        @inbounds @batch minbatch = MIN_ELEMENTS_FOR_COLUMN_THREADING for i in axes(x, 1)
-            x[i, Jt...] *= column_sign * _dim1_sign(in1, i)
-        end
+        x::AbstractArray, ::Val{IN1}, rest_mask::NTuple{K, Bool}, J::CartesianIndex,
+        c::Integer, n::Integer, ::Val{TH} = Val(false)
+    ) where {IN1, K, TH}
+    neg = _column_sign(rest_mask, J) < 0
+    if _has_linear_columns(x)
+        _alt_column_linear!(x, Val(IN1), neg, (c - 1) * n, n, Val(TH))
     else
-        @inbounds @simd for i in axes(x, 1)
-            x[i, Jt...] *= column_sign * _dim1_sign(in1, i)
+        _alt_column_cartesian!(x, Val(IN1), neg, Tuple(J), Val(TH))
+    end
+    return
+end
+
+# In place, every sign is ±1 and the operation is its own inverse, so only the elements that
+# actually flip need to be touched at all: a strided half pass of negations, not a full pass of
+# multiplications. That is worth 1.7-8.9x over the full pass, measured; see
+# `threading_threshold(::Type{<:SignAlternation})`.
+@inline function _alt_column_linear!(
+        x::AbstractArray, ::Val{IN1}, neg::Bool, base::Integer, n::Integer, ::Val{TH}
+    ) where {IN1, TH}
+    if IN1
+        # `neg` flips the whole column, so the elements left standing are the even ones;
+        # without it the alternation itself flips the even ones.
+        start = neg ? 1 : 2
+        if TH
+            @inbounds @batch minbatch = MIN_ELEMENTS_FOR_COLUMN_THREADING for i in start:2:n
+                x[base + i] = -x[base + i]
+            end
+        else
+            @inbounds @simd for i in start:2:n
+                x[base + i] = -x[base + i]
+            end
+        end
+    elseif neg
+        if TH
+            @inbounds @batch minbatch = MIN_ELEMENTS_FOR_COLUMN_THREADING for i in 1:n
+                x[base + i] = -x[base + i]
+            end
+        else
+            @inbounds @simd for i in 1:n
+                x[base + i] = -x[base + i]
+            end
+        end
+    end
+    return
+end
+
+@inline function _alt_column_cartesian!(
+        x::AbstractArray, ::Val{IN1}, neg::Bool, Jt::Tuple, ::Val{TH}
+    ) where {IN1, TH}
+    ax = axes(x, 1)
+    f, l = first(ax), last(ax)
+    if IN1
+        start = (isodd(f) == neg) ? f : f + 1
+        if TH
+            @inbounds @batch minbatch = MIN_ELEMENTS_FOR_COLUMN_THREADING for i in start:2:l
+                x[i, Jt...] = -x[i, Jt...]
+            end
+        else
+            @inbounds @simd for i in start:2:l
+                x[i, Jt...] = -x[i, Jt...]
+            end
+        end
+    elseif neg
+        if TH
+            @inbounds @batch minbatch = MIN_ELEMENTS_FOR_COLUMN_THREADING for i in ax
+                x[i, Jt...] = -x[i, Jt...]
+            end
+        else
+            @inbounds @simd for i in ax
+                x[i, Jt...] = -x[i, Jt...]
+            end
         end
     end
     return
@@ -411,39 +503,99 @@ function _alternate_sign!(
         y .= x
         return y
     end
-    in1 = 1 in dirs
     rest_mask = ntuple(k -> (k + 1) in dirs, Val(N - 1))
     rest_range = CartesianIndices(Base.tail(size(x)))
     use_threads = threaded && Threads.nthreads() > 1
-    if use_threads && length(rest_range) > 1
-        @inbounds @batch for J in rest_range
-            _alternate_sign_column!(y, x, in1, rest_mask, J)
-        end
-    elseif use_threads && size(x, 1) > 1
-        # See the in-place variant: a single trailing column leaves the column loop with nothing
-        # to spread, so thread dimension 1 instead.
-        _alternate_sign_column!(y, x, in1, rest_mask, first(rest_range), Val(true))
+    if 1 in dirs
+        _alternate_sign_columns!(y, x, Val(true), rest_mask, rest_range, use_threads)
     else
-        @inbounds for J in rest_range
-            _alternate_sign_column!(y, x, in1, rest_mask, J)
-        end
+        _alternate_sign_columns!(y, x, Val(false), rest_mask, rest_range, use_threads)
     end
     return y
 end
 
+function _alternate_sign_columns!(
+        y::AbstractArray, x::AbstractArray, ::Val{IN1}, rest_mask::NTuple{K, Bool},
+        rest_range::CartesianIndices, use_threads::Bool
+    ) where {IN1, K}
+    n = size(x, 1)
+    ncol = length(rest_range)
+    if use_threads && ncol > 1
+        # See the in-place variant: `@batch` mis-compiles this call-out body in a precompiled
+        # package and loses to the serial loop by an order of magnitude.
+        @inbounds Threads.@threads for c in 1:ncol
+            _alternate_sign_column!(y, x, Val(IN1), rest_mask, rest_range[c], c, n, Val(false))
+        end
+    elseif use_threads && n > 1
+        # See the in-place variant: a single trailing column leaves the column loop with nothing
+        # to spread, so thread dimension 1 instead.
+        _alternate_sign_column!(y, x, Val(IN1), rest_mask, first(rest_range), 1, n, Val(true))
+    else
+        @inbounds for c in 1:ncol
+            _alternate_sign_column!(y, x, Val(IN1), rest_mask, rest_range[c], c, n, Val(false))
+        end
+    end
+    return
+end
+
 @inline function _alternate_sign_column!(
-        y::AbstractArray, x::AbstractArray, in1::Bool, rest_mask::NTuple{K, Bool}, J::CartesianIndex,
-        ::Val{TH} = Val(false)
-    ) where {K, TH}
-    Jt = Tuple(J)
-    column_sign = _column_sign(rest_mask, J)
+        y::AbstractArray, x::AbstractArray, ::Val{IN1}, rest_mask::NTuple{K, Bool},
+        J::CartesianIndex, c::Integer, n::Integer, ::Val{TH} = Val(false)
+    ) where {IN1, K, TH}
+    neg = _column_sign(rest_mask, J) < 0
+    if _has_linear_columns(y) && _has_linear_columns(x)
+        _alt_column_linear!(y, x, Val(IN1), neg, (c - 1) * n, n, Val(TH))
+    else
+        _alt_column_cartesian!(y, x, Val(IN1), neg, Tuple(J), Val(TH))
+    end
+    return
+end
+
+# Out of place every element of `y` must be written whatever its sign, so — unlike the in-place
+# kernel — there is no half pass to be had and the loop stays contiguous, the sign coming from a
+# branchless select. Against the previous splatted-`CartesianIndex` loop this is 6.4x on the
+# dynamic case, serial (measured, AMD EPYC 7352, ComplexF32, 2026-09-20).
+@inline function _alt_column_linear!(
+        y::AbstractArray, x::AbstractArray, ::Val{IN1}, neg::Bool,
+        base::Integer, n::Integer, ::Val{TH}
+    ) where {IN1, TH}
+    if IN1
+        s = neg ? -1 : 1
+        if TH
+            @inbounds @batch minbatch = MIN_ELEMENTS_FOR_COLUMN_THREADING for i in 1:n
+                y[base + i] = ifelse(isodd(i), s, -s) * x[base + i]
+            end
+        else
+            @inbounds @simd for i in 1:n
+                y[base + i] = ifelse(isodd(i), s, -s) * x[base + i]
+            end
+        end
+    else
+        s = neg ? -1 : 1
+        if TH
+            @inbounds @batch minbatch = MIN_ELEMENTS_FOR_COLUMN_THREADING for i in 1:n
+                y[base + i] = s * x[base + i]
+            end
+        else
+            @inbounds @simd for i in 1:n
+                y[base + i] = s * x[base + i]
+            end
+        end
+    end
+    return
+end
+
+@inline function _alt_column_cartesian!(
+        y::AbstractArray, x::AbstractArray, ::Val{IN1}, neg::Bool, Jt::Tuple, ::Val{TH}
+    ) where {IN1, TH}
+    column_sign = neg ? -1 : 1
     if TH
         @inbounds @batch minbatch = MIN_ELEMENTS_FOR_COLUMN_THREADING for i in axes(x, 1)
-            y[i, Jt...] = column_sign * _dim1_sign(in1, i) * x[i, Jt...]
+            y[i, Jt...] = column_sign * _dim1_sign(IN1, i) * x[i, Jt...]
         end
     else
         @inbounds @simd for i in axes(x, 1)
-            y[i, Jt...] = column_sign * _dim1_sign(in1, i) * x[i, Jt...]
+            y[i, Jt...] = column_sign * _dim1_sign(IN1, i) * x[i, Jt...]
         end
     end
     return
@@ -472,6 +624,9 @@ function mul!(
         y::AbstractArray, L::SignAlternation{T, N, M, Th}, b::AbstractArray
     ) where {T, N, M, Th}
     check(y, L, b)
+    # In place the kernel only has to touch the elements that flip, so an aliased call is
+    # worth routing to the in-place variant rather than copying each element onto itself.
+    y === b && return _alternate_sign!(y, L.dirs; threaded = Th)
     return _alternate_sign!(y, b, L.dirs; threaded = Th)
 end
 
@@ -634,9 +789,38 @@ function ifftshift_op(
     return _shift_op(IFFTShift, op, domain_shifts, codomain_shifts)
 end
 
-# Sign alternation is a strided in-place multiply by ±1 -- pure data movement, so it sits at
-# the memory-bound threshold.
-threading_threshold(::Type{<:SignAlternation}) = THRESHOLD_MEMORY_BOUND
+"""
+	threading_threshold(::Type{<:SignAlternation})
+
+PROVENANCE: measured (AMD EPYC 7352, 8 Julia threads, OPENBLAS_NUM_THREADS=1, ComplexF32,
+`@belapsed` minimum, 2026-09-21), sweeping serial against threaded over powers of two. Ratios
+are serial/threaded, so above 1 threading pays:
+
+| elements | vector, `dirs = (1,)` | `N x N x 8`, `dirs = (1, 2)` | `dirs = (1,)` | `dirs = (2,)` |
+|---|---|---|---|---|
+| 2^12 | 1.06x | 0.18x | 0.20x | 0.09x |
+| 2^13 | 0.72x | 0.25x | 0.28x | 0.12x |
+| 2^14 | 1.29x | 0.72x | 0.65x | 0.30x |
+| 2^15 | 2.68x | 1.12x | 1.06x | 0.49x |
+| 2^16 | 3.50x | 1.84x | 1.86x | 1.03x |
+| 2^17 | 3.72x | 2.81x | 2.78x | 1.75x |
+| 2^18 | 3.90x | 3.49x | 3.40x | 2.48x |
+
+2^16 is the first size that pays across *every* shape and `dirs`, so it is the one the policy
+uses. `dirs = (2,)` sets it: alternating a dimension other than the first makes whole columns
+uniform, so the kernel's per-column work is a plain scale and there is less of it to spread.
+
+The earlier revision of this table was measured on one-dimensional inputs only, and put the
+threshold at 2^14 on 4.15x at that size. A vector is the one shape that never enters the
+multi-column loop -- it takes the single-column `@batch` kernels instead -- so the sweep never
+exercised the path that carries every real array, and did not see that that path was slower
+threaded than serial at *any* size. The columns above marked `N x N x 8` are that path.
+
+The shared `THRESHOLD_MEMORY_BOUND` this used to return is 2^18 -- four times too high -- which
+switched threading off for whole classes of real problem: MRT's dynamic encoding operator is
+2^17 elements and was running the alternation on one thread.
+"""
+threading_threshold(::Type{<:SignAlternation}) = 2^16
 is_threaded(::SignAlternation{T, N, M, Th}) where {T, N, M, Th} = Th
 supports_threading(::SignAlternation) = true
 
