@@ -34,8 +34,8 @@ struct Scale{Th, T <: Number, L <: AbstractOperator} <: AbstractOperator
             )
         end
         return _scale_threaded(threaded, L) ?
-               new{FastBroadcast.True(), typeof(coeff), typeof(L)}(coeff, coeff_conj, L) :
-               new{FastBroadcast.False(), typeof(coeff), typeof(L)}(coeff, coeff_conj, L)
+            new{FastBroadcast.True(), typeof(coeff), typeof(L)}(coeff, coeff_conj, L) :
+            new{FastBroadcast.False(), typeof(coeff), typeof(L)}(coeff, coeff_conj, L)
     end
 end
 
@@ -170,6 +170,7 @@ remove_displacement(S::Scale) = _rethread_scale(S, S.coeff, S.coeff_conj, remove
 has_fast_opnorm(L::Scale) = has_fast_opnorm(L.A)
 LinearAlgebra.opnorm(L::Scale) = abs(L.coeff) * LinearAlgebra.opnorm(L.A)
 estimate_opnorm(L::Scale) = abs(L.coeff) * estimate_opnorm(L.A)
+opnorm_bound(L::Scale) = abs(L.coeff) * opnorm_bound(L.A)
 
 # utils
 

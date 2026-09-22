@@ -38,6 +38,7 @@ AdjointOperator(L::AdjointOperator) = L.A
 has_fast_opnorm(L::AdjointOperator) = has_fast_opnorm(L.A)
 LinearAlgebra.opnorm(L::AdjointOperator) = opnorm(L.A)
 estimate_opnorm(L::AdjointOperator) = estimate_opnorm(L.A)
+opnorm_bound(L::AdjointOperator) = opnorm_bound(L.A)
 
 Base.:(==)(L1::AdjointOperator{T}, L2::AdjointOperator{T}) where {T} = L1.A == L2.A
 size(L::AdjointOperator) = size(L.A, 2), size(L.A, 1)
