@@ -284,14 +284,7 @@ branch = "master"
 parent = ""
 pr = "JuliaFirstOrder/StructuredOptimization.jl#44"
 
-[[StructuredOptimization.stack]]
-branch = "fix/normalop-ls-multivar"
-parent = "master"
-pr = "hakkelt/StructuredOptimization.jl#1"
-
-# The consolidation work, which reworks most of what `fix/normalop-ls-multivar` touches and
-# merges it, so it is stacked on it. Still without a PR.
-[[StructuredOptimization.stack]]
-branch = "phase-0-2-consolidation"
-parent = "fix/normalop-ls-multivar"
-pr = ""
+# `fix/normalop-ls-multivar` and `phase-0-2-consolidation` are deliberately absent: both were
+# stale 2023-rooted branches whose content master already carries in full (confirmed by a direct
+# tree diff, not just ancestry) via job 67605f8c's `so-consolidated` branch, merged into master
+# 2026-09-19..22. PR#1 (fork) closed unmerged; both branches deleted, local and on the fork.
