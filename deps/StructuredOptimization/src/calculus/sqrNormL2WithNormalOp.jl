@@ -196,7 +196,7 @@ normal operator is still the cheaper of the two.
 """
 function fused_normal_op(L::AbstractOperator)
     (is_linear(L) && !is_eye(L)) || return nothing
-    AbstractOperators.has_optimized_normalop(L) && return L' * L
+    reuses_optimized_normalop(L) && return L' * L
     normal_op_worthwhile(L) || return nothing
     LᴴL = L' * L
     return LᴴL isa AbstractOperators.Compose ? nothing : LᴴL
@@ -288,9 +288,26 @@ function normal_op_applicable(f::SqrNormL2, op::AbstractOperator, disp, λ)
     # `normal_op_worthwhile` because such an operator typically maps into a *smaller* codomain
     # than its domain, `normal_op_fuses` because `get_normal_op(::Compose)` fuses the innermost
     # adjoint pair and legitimately stays a `Compose`.
-    AbstractOperators.has_optimized_normalop(op) && return true
+    reuses_optimized_normalop(op) && return true
     return normal_op_worthwhile(op) && normal_op_fuses(op)
 end
+
+"""
+    reuses_optimized_normalop(op)
+
+`AbstractOperators.has_optimized_normalop(op)`, except for a bare `MatrixOp`.
+
+`has_optimized_normalop(::MatrixOp)` is unconditionally `true` -- a `MatrixOp` can always
+literally form `Aᴴ*A` -- but `get_normal_op(::MatrixOp)` does that by building the dense
+Gram matrix, the exact `O(n²m)` cost this whole scoring scheme exists to avoid paying
+unconditionally. Treating that as "optimized" would fold every `MatrixOp` into the normal-op
+formulation regardless of shape, which is precisely the case `normal_op_worthwhile` exists to
+gate. The predicate is trustworthy everywhere else it holds: `Eye`, `DiagOp`, `GetIndex`,
+`Hankel` and `Zeros` all mean it in the "cheap regardless of shape" sense, and `HCAT` means it
+in the "one shared computation instead of N identical ones" sense (see `has_optimized_normalop`
+in `AbstractOperators.HCAT.jl`) -- neither of which describes what a `MatrixOp` offers.
+"""
+reuses_optimized_normalop(op) = AbstractOperators.has_optimized_normalop(op) && !(op isa AbstractOperators.MatrixOp)
 
 # `size(op, i)` is a plain size tuple for a single-block operator and a tuple of such
 # tuples for a block operator (`HCAT`, `VCAT`), so count the elements of either shape.
@@ -306,6 +323,7 @@ _total_length(size_::Tuple) = sum(_total_length, size_)
 # applications against the 2N of applying the `HCAT` and its adjoint in turn, so a single
 # block left as a `Compose` already makes it the more expensive of the two.
 function fused_normal_op(L::AbstractOperators.HCAT)
+    AbstractOperators.has_optimized_normalop(L) && return L' * L
     normal_op_worthwhile(L) || return nothing
     rows = ()
     for Li in L.A

@@ -3,11 +3,11 @@ module StructuredOptimization
 using LinearAlgebra
 using RecursiveArrayTools
 using ProximalCore
-using ..AbstractOperators, ..DSPOperators, ..FFTWOperators
-using ..ProximalOperators
-using ..ProximalAlgorithms
+using AbstractOperators, DSPOperators, FFTWOperators
+using ProximalOperators
+using ProximalAlgorithms
 using Combinatorics: permutations, powerset
-using ..ProximalAlgorithms: IterativeAlgorithm, override_parameters
+using ProximalAlgorithms: IterativeAlgorithm, override_parameters
 
 abstract type AbstractExpression end
 
