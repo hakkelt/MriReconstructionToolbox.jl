@@ -118,7 +118,7 @@ fun_name(T::AffineAdd{L, D, S}) where {L, D, S} = "$(fun_name(T.A))" * (S ? "+" 
 
 # `get_normal_op` keeps the displacement, so `powerit` iterates `x -> A'Ax + A'd` and the linear
 # part alone does not bound it. Use `remove_displacement` to ask for that instead.
-opnorm_bound(L::AffineAdd) = all(displacement(L) .== 0) ? opnorm_bound(L.A) : Inf
+opnorm_bound(L::AffineAdd) = all(iszero, displacement(L)) ? opnorm_bound(L.A) : Inf
 
 diag(L::AffineAdd) = diag(L.A)
 diag_AcA(L::AffineAdd) = diag_AcA(L.A)

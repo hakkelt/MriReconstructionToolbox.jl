@@ -471,7 +471,9 @@ norm.
 | `Scale`       | `abs(coeff)` times the bound        | exact              |
 | `AffineAdd`   | the linear part, if `d == 0`        | see its method     |
 
-A leaf with `has_fast_opnorm` contributes its exact norm.
+A leaf with `has_fast_opnorm` contributes its exact norm. The result is always `Float64`,
+whatever the operator's element type: the bound is one scalar, so the wider type is free, and a
+method returning `Inf` beside one returning a `Float32` would make the recursion type-unstable.
 
 ## References
 
@@ -481,7 +483,7 @@ A leaf with `has_fast_opnorm` contributes its exact norm.
 
 See also: `estimate_opnorm`, `has_fast_opnorm`, `powerit`.
 """
-opnorm_bound(A::AbstractOperator) = has_fast_opnorm(A) ? float(LinearAlgebra.opnorm(A)) : Inf
+opnorm_bound(A::AbstractOperator) = has_fast_opnorm(A) ? Float64(LinearAlgebra.opnorm(A)) : Inf
 
 """
 	estimate_opnorm(A::AbstractOperator)
@@ -512,7 +514,7 @@ The operator norm is defined as: `‖A‖ = sup_{x != 0} ‖A*x‖ / ‖x‖`.
 | `has_fast_opnorm(A)` | `opnorm(A)` | exact, no iteration |
 | `side = :upper`, `U` finite | `U` | `U ≥ ‖A‖`, certified |
 | `side = :upper`, `U = Inf` | `sqrt(θ + ‖r‖)` | heuristic, see below |
-| `side = :accurate` | `min(L, U)` | `≤ ‖A‖` |
+| `side = :accurate` | `L` | `≤ ‖A‖` |
 
 `rel_margin` is a promise about the value returned, and it is kept in every row. A certificate is
 never known to be within the margin on its own — `U ≤ L (1 + rel_margin)` is the only computable
@@ -552,14 +554,17 @@ function estimate_opnorm(
         throw(ArgumentError("`side` must be `:upper` or `:accurate`, got $(repr(side))"))
     has_fast_opnorm(A) && return opnorm(A)
 
+    # `:accurate` wants the closest value, and that is the power iteration's own lower bound: it
+    # falls short of `‖A‖` by the square of the iterate's angle error, whereas `opnorm_bound` is a
+    # structural over-estimate that no amount of iteration improves. Since the bound can never
+    # come out below the iterate, it has nothing to contribute here and is not even computed.
+    side === :accurate && return first(_powerit(A; maxit, rel_margin, rng, upper = Inf))
+
     upper = opnorm_bound(A)
     # `rel_margin` is a promise about the value returned, so it is checked against the value
     # returned. A certificate is only known to be within the margin once the iteration has
     # climbed to meet it, which is what `_powerit` is asked to do when `upper` is finite.
-    lower, θ, resid = _powerit(A; maxit, rel_margin, rng, upper = side === :upper ? upper : Inf)
-    # `:accurate` wants the closest value, and a certificate the iterate happens to exceed is
-    # still an upper bound on the truth.
-    side === :accurate && return isfinite(upper) ? min(lower, oftype(lower, upper)) : lower
+    lower, θ, resid = _powerit(A; maxit, rel_margin, rng, upper)
 
     if isfinite(upper)
         if upper > lower * (1 + rel_margin) && lower > 0

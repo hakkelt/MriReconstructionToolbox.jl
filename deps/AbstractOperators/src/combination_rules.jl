@@ -274,6 +274,8 @@ unequal blocks, and no single matrix represents it. Folding it anyway silently p
 different operator — `M * d` as an ordinary matrix product — which agreed with the composition on
 nothing.
 """
+# Only a diagonal can be matrix-valued; for anything else the question does not arise.
+_has_matrix_diagonal(::AbstractOperator) = false
 _has_matrix_diagonal(L::DiagOp) = !(L.d isa AbstractVector)
 _has_matrix_diagonal(L::AdjointOperator{<:DiagOp}) = _has_matrix_diagonal(L.A)
 
@@ -282,28 +284,13 @@ function _matrix_diag_combinable(T1, T2)
         !_has_matrix_diagonal(T1) &&
         !_has_matrix_diagonal(T2)
 end
-_has_matrix_diagonal(::MatrixOp) = false
-_has_matrix_diagonal(::AdjointOperator{<:MatrixOp}) = false
 
-can_be_combined(T1::DiagOp, T2::MatrixOp) = _matrix_diag_combinable(T1, T2)
-can_be_combined(T1::MatrixOp, T2::DiagOp) = _matrix_diag_combinable(T1, T2)
-function can_be_combined(T1::AdjointOperator{<:DiagOp}, T2::MatrixOp)
-    return _matrix_diag_combinable(T1, T2)
-end
-function can_be_combined(T1::DiagOp, T2::AdjointOperator{<:MatrixOp})
-    return _matrix_diag_combinable(T1, T2)
-end
-function can_be_combined(T1::MatrixOp, T2::AdjointOperator{<:DiagOp})
-    return _matrix_diag_combinable(T1, T2)
-end
-function can_be_combined(T1::AdjointOperator{<:MatrixOp}, T2::DiagOp)
-    return _matrix_diag_combinable(T1, T2)
-end
-function can_be_combined(T1::AdjointOperator{<:DiagOp}, T2::AdjointOperator{<:MatrixOp})
-    return _matrix_diag_combinable(T1, T2)
-end
-function can_be_combined(T1::AdjointOperator{<:MatrixOp}, T2::AdjointOperator{<:DiagOp})
-    return _matrix_diag_combinable(T1, T2)
+# Either order, either factor adjointed: the pair folds under the same condition every time.
+for (S1, S2) in Iterators.product(
+        (:DiagOp, :(AdjointOperator{<:DiagOp})), (:MatrixOp, :(AdjointOperator{<:MatrixOp}))
+    )
+    @eval can_be_combined(T1::$S1, T2::$S2) = _matrix_diag_combinable(T1, T2)
+    @eval can_be_combined(T1::$S2, T2::$S1) = _matrix_diag_combinable(T1, T2)
 end
 # Only a vector diagonal turns into a matrix factor. The `(AbstractMatrix, AbstractMatrix)`
 # method that used to sit here existed solely to serve a matrix-valued diagonal, which
@@ -368,7 +355,10 @@ _slice_operator(::AbstractOperator, ::NTuple{N, Bool}) where {N} = nothing
 # A scaling is separable exactly when what it scales is.
 function _slice_operator(L::Scale, mask::NTuple{N, Bool}) where {N}
     inner = _slice_operator(L.A, mask)
-    return inner === nothing ? nothing : Scale(L.coeff, L.coeff_conj, inner)
+    # `_rethread_scale` carries the threading flag over, as every other rule that rebuilds a
+    # `Scale` does. The constructor's default is `threaded = true`, which is the wrong answer
+    # inside a batch loop that is itself the parallel layer.
+    return inner === nothing ? nothing : _rethread_scale(L, L.coeff, L.coeff_conj, inner)
 end
 
 # Taking the adjoint acts within a slice, so it preserves separability.

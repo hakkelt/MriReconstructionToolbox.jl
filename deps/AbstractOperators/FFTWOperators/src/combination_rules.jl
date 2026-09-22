@@ -231,25 +231,22 @@ function _slice_operator(
     ) where {T, N, M, Th, S}
     sliced = _sliced_dims_and_dirs(L.dim_in, L.dirs, batch_dim_mask)
     sliced === nothing && return nothing
+    slice_dim_in, slice_dirs = sliced
     return SignAlternation(
-        T, sliced[1], sliced[2]; threaded = is_threaded(L), array_type = S
+        T, slice_dim_in, slice_dirs; threaded = is_threaded(L), array_type = S
     )
 end
 
-function _slice_operator(
-        L::FFTShift{T, N, M, S}, batch_dim_mask::NTuple{N, Bool}
-    ) where {T, N, M, S}
-    sliced = _sliced_dims_and_dirs(L.dim_in, L.dirs, batch_dim_mask)
-    sliced === nothing && return nothing
-    return FFTShift(T, sliced[1], sliced[2]; array_type = S)
-end
-
-function _slice_operator(
-        L::IFFTShift{T, N, M, S}, batch_dim_mask::NTuple{N, Bool}
-    ) where {T, N, M, S}
-    sliced = _sliced_dims_and_dirs(L.dim_in, L.dirs, batch_dim_mask)
-    sliced === nothing && return nothing
-    return IFFTShift(T, sliced[1], sliced[2]; array_type = S)
+# The two shifts differ only in which direction they rotate, which the slice inherits unchanged.
+for Op in (:FFTShift, :IFFTShift)
+    @eval function _slice_operator(
+            L::$Op{T, N, M, S}, batch_dim_mask::NTuple{N, Bool}
+        ) where {T, N, M, S}
+        sliced = _sliced_dims_and_dirs(L.dim_in, L.dirs, batch_dim_mask)
+        sliced === nothing && return nothing
+        slice_dim_in, slice_dirs = sliced
+        return $Op(T, slice_dim_in, slice_dirs; array_type = S)
+    end
 end
 
 # SignAlternation ∘ (any square diagonal) ∘ SignAlternation
