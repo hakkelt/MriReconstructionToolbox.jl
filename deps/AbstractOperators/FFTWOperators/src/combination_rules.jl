@@ -227,3 +227,72 @@ function can_be_combined(L::SignAlternation, M::AbstractOperator, R::SignAlterna
         is_linear(M) && is_diagonal(M) && size(M, 1) == size(M, 2)
 end
 combine(::SignAlternation, M::AbstractOperator, ::SignAlternation) = M
+
+# SignAlternation through a batch operator
+#
+# When none of the alternation's `dirs` is a batch dimension, its ±1 factor is constant along
+# the batch loop, so `± ∘ ⟳A == ⟳(±ₛ ∘ A)` exactly, with `±ₛ` the same alternation renumbered
+# to one slice. Pushing it inside puts it next to the operator the batch wraps — in MRT's
+# encoding operator that is the sensitivity-map `DiagOp` — where the `SignAlternation ∘ DiagOp`
+# rule above folds the signs into the maps once, at construction time, and the pass disappears
+# from every application.
+#
+# The rewrite is taken only when that fold actually happens: `±ₛ * inner` runs the same
+# combination machinery, and if it comes back a `Compose` nothing was absorbed. Pushing then
+# would only move the same work inside the batch loop (where it is also harder to thread), so
+# the rule declines and the alternation stays where it is.
+function _sign_alternation_slice(
+        L::SignAlternation, mask::NTuple{K, Bool}, full_size::NTuple{K, Int}, inner::AbstractOperator, side::Int
+    ) where {K}
+    length(L.dirs) == 0 && return nothing
+    any(d -> mask[d], L.dirs) && return nothing
+    slice_size = Tuple(full_size[d] for d in 1:K if !mask[d])
+    size(inner, side) == slice_size || return nothing
+    # A non-batch dimension `d` of the batched operator is the `count(!, mask[1:d])`-th
+    # dimension of the slice the wrapped operator sees.
+    slice_dirs = map(d -> count(k -> !mask[k], 1:d), L.dirs)
+    T = side == 1 ? codomain_type(inner) : domain_type(inner)
+    A = side == 1 ? codomain_array_type(inner) : domain_array_type(inner)
+    # Threading is decided per batch item by the batch loop, so the slice-level alternation
+    # never brings its own: `create_BatchOp` would switch it off for nesting safety anyway.
+    return SignAlternation(T, slice_size, slice_dirs; threaded = false, array_type = A)
+end
+
+function _push_sign_into_batch(L::SignAlternation, B::AbstractOperators.SimpleBatchOp)
+    inner = AbstractOperators._wrapped_operator(B)
+    mask = AbstractOperators.get_codomain_batch_dim_mask(typeof(B))
+    slice = _sign_alternation_slice(L, mask, B.codomain_size, inner, 1)
+    slice === nothing && return nothing
+    fused = slice * inner
+    fused isa Compose && return nothing
+    return AbstractOperators.create_BatchOp(
+        fused,
+        B.domain_size, AbstractOperators.get_domain_batch_dim_mask(typeof(B)),
+        B.codomain_size, mask;
+        threaded = is_threaded(B),
+    )
+end
+
+function _push_sign_into_batch(B::AbstractOperators.SimpleBatchOp, L::SignAlternation)
+    inner = AbstractOperators._wrapped_operator(B)
+    mask = AbstractOperators.get_domain_batch_dim_mask(typeof(B))
+    slice = _sign_alternation_slice(L, mask, B.domain_size, inner, 2)
+    slice === nothing && return nothing
+    fused = inner * slice
+    fused isa Compose && return nothing
+    return AbstractOperators.create_BatchOp(
+        fused,
+        B.domain_size, mask,
+        B.codomain_size, AbstractOperators.get_codomain_batch_dim_mask(typeof(B));
+        threaded = is_threaded(B),
+    )
+end
+
+function can_be_combined(L::SignAlternation, B::AbstractOperators.SimpleBatchOp)
+    return _push_sign_into_batch(L, B) !== nothing
+end
+function can_be_combined(B::AbstractOperators.SimpleBatchOp, L::SignAlternation)
+    return _push_sign_into_batch(B, L) !== nothing
+end
+combine(L::SignAlternation, B::AbstractOperators.SimpleBatchOp) = _push_sign_into_batch(L, B)
+combine(B::AbstractOperators.SimpleBatchOp, L::SignAlternation) = _push_sign_into_batch(B, L)
