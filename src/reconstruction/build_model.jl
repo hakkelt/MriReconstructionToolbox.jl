@@ -156,7 +156,9 @@ the margin is met on iteration zero and costs nothing either way.
 opnorm_rel_margin(
     ::ProximalAlgorithms.IterativeAlgorithm{<:ProximalAlgorithms.POGMIteration}
 ) = 1.0e-3
-opnorm_rel_margin(algorithms::Tuple) = minimum(opnorm_rel_margin, algorithms)
+# `init` so an empty candidate list falls back to the default margin rather than throwing from
+# inside `minimum`; the error a caller needs then is about having no algorithm, not about a margin.
+opnorm_rel_margin(algorithms::Tuple) = minimum(opnorm_rel_margin, algorithms; init = 0.01)
 opnorm_rel_margin(::Any) = 0.01
 
 function build_model(
