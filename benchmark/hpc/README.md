@@ -42,7 +42,7 @@ multi-coil Cartesian, USC_SPEECH for spiral, **OCMR `us_*`** as the open GRAPPA-
 alternative to the Synapse-gated CMRxRecon-300).
 
 Opt in with an environment variable; `recon_bench.jl` / `benchmark/benchmarks.jl` /
-`benchmark/comparison/scripts/run_benchmarks.jl` then append a **Real Data** block plus a **Real Data 1ch**
+`benchmark/comparison/scripts/run_real.jl` then append a **Real Data** block plus a **Real Data 1ch**
 block, each with CG-SENSE + undersampled TV / L1-wavelet:
 
 ```sh
@@ -81,7 +81,8 @@ sbatch          --dependency=afterany:$o benchmark/hpc/scripts/slurm_full_matrix
 
 ## Baseline for `benchmark/comparison/`
 
-`benchmark/comparison/scripts/run_benchmarks.jl` reads `benchmark/hpc/results/mrt_<backend>_<n>threads.json`
-when it exists (`time_mrt`) and takes those times straight as the MRT column instead of
-re-timing (the reconstruction still runs once, untimed, for the cross-framework NRMSE checks).
-Regenerate the baseline here first, then run the comparison suite.
+`benchmark/comparison/scripts/_setup.jl` (`time_mrt`, shared by `run_all.jl`'s per-section
+scripts) reads `benchmark/hpc/results/mrt_<backend>_<n>threads.json` when it exists and takes
+those times straight as the MRT column instead of re-timing (the reconstruction still runs once,
+untimed, for the cross-framework NRMSE checks). Regenerate the baseline here first, then run the
+comparison suite.
