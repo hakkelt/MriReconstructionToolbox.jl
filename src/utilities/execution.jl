@@ -424,6 +424,45 @@ end
 @inline _with_blas_threading(f::F, op, x) where {F} =
     _with_blas_threading(f, permits_threading(op))
 
+# ---------------------------------------------------------------- dense factorizations
+#
+# A dense `svd!`/`eigen!` is the other side of the same coin. A caller that runs a whole
+# solve at serial BLAS by default (`NestedThreading.with_thread_default`), because its
+# vector updates are too small to thread, would otherwise run its factorizations serial
+# too -- and those are the one BLAS/LAPACK call in a proximal iteration that threading
+# speeds up by integer factors.
+
+"""
+    FACTORIZATION_THREAD_WORK
+
+The work, `m·n·min(m, n)` for an `m×n` matrix, from which [`NuclearNorm`](@ref),
+[`IndStiefel`](@ref) and [`IndPSD`](@ref) ask for BLAS's threads back for their `svd!` or
+`eigen!` when a caller has lowered them with a soft default. A `Ref{Int}`; set it to
+`typemax(Int)` to never ask.
+
+The request is a `NestedThreading.with_thread_grant`: it overrides a soft default, never a
+hard limit, so a factorization inside a block-parallel `SeparableSum` still runs serial.
+
+PROVENANCE: an `svd!` sweep on znver2, 8 BLAS threads against 1, 2026-09: no gain
+at 4096×8 (work 2.6e5), 1.2–1.65x at 4096×32 (4.2e6), 2.2–3.6x from 256 columns up. The
+default, 2^22, sits at the first size that gains.
+"""
+const FACTORIZATION_THREAD_WORK = Ref(2^22)
+
+factorization_work(X::AbstractMatrix) = size(X, 1) * size(X, 2) * minimum(size(X))
+
+"""
+    with_factorization_threads(f, X::AbstractMatrix)
+
+Run `f()`, a dense factorization of `X`, under a BLAS grant when
+`factorization_work(X)` reaches [`FACTORIZATION_THREAD_WORK`](@ref); run it as is otherwise.
+The size is checked before any scope opens, so a small factorization pays nothing.
+"""
+@inline function with_factorization_threads(f::F, X::AbstractMatrix) where {F}
+    factorization_work(X) < FACTORIZATION_THREAD_WORK[] && return f()
+    return NestedThreading.with_thread_grant(f, typemax(Int); only = (:blas, :mkl))
+end
+
 # ------------------------------------------------------------------------------- display
 #
 # Adding `Th` makes the default `show` actively unhelpful -- `NormL1{Float64, Nothing,

@@ -60,7 +60,7 @@ end
 
 function (::IndPSD)(X::Union{Symmetric, Hermitian})
     R = real(eltype(X))
-    F = eigen(X)
+    F = with_factorization_threads(() -> eigen(X), X)
     for i in eachindex(F.values)
         # Do we allow for some tolerance here?
         if F.values[i] <= -100 * eps(R)
@@ -84,7 +84,7 @@ function prox!(Y::Union{Symmetric, Hermitian}, f::IndPSD, X::Union{Symmetric, He
     b = get_buffers(f, X)
     copyto!(b.data, parent(X))
     Xc = X isa Symmetric ? Symmetric(b.data, sym_uplo(X.uplo)) : Hermitian(b.data, sym_uplo(X.uplo))
-    F = eigen!(Xc)
+    F = with_factorization_threads(() -> eigen!(Xc), X)
     for i in eachindex(F.values)
         F.values[i] = max.(R(0), F.values[i])
     end
