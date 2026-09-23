@@ -6,6 +6,7 @@ using ProximalCore
 using ProximalCore: Zero, IndZero, convex_conjugate, prox, prox!, is_smooth, is_locally_smooth, is_convex, is_strongly_convex, is_proximable
 using OperatorCore: is_linear
 using LinearAlgebra
+using NestedThreading: NestedThreading
 using Base.Iterators
 using Printf
 
