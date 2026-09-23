@@ -138,7 +138,9 @@ function _prox_block!(yr, xr, f::BlockNuclearNorm, k::Int, nblocks::Int, thresho
     idx = _block_indices(f, ranges)
     M = _block_matrix(f, eltype(xr), ranges)
     _gather_block!(M, xr, idx, batch)
-    F = svd!(M)
+    # Grants BLAS's threads for a large block, up to the budget `@budgeted_threads` gave this
+    # task; see `with_serial_blas`.
+    F = ProximalOperators.with_factorization_threads(() -> svd!(M), M)
     σ = max.(R(0), F.S .- threshold)
     lmul!(Diagonal(σ), F.Vt)
     mul!(M, F.U, F.Vt)
@@ -260,6 +262,3 @@ function materialize(reg::LocallyLowRank, x::Variable{T}; threaded::Bool) where 
     repr = @sprintf "%g ⋅ ∑_b ‖𝓧_b(%s)‖_*" real(T)(reg.λ) get_name(x)
     return StructuredOptimization.Term(1, f, op * x, repr)
 end
-
-# Prox takes a per-block SVD: level-3 BLAS, worth threading. See `uses_blas3`.
-uses_blas3(::LocallyLowRank) = true

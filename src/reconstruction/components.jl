@@ -168,9 +168,3 @@ function Base.show(io::IO, ::MIME"text/plain", img::DecomposedImage)
     print(io, "DecomposedImage{", eltype(img), "} of size ", size(img), " with components ")
     return print(io, join(keys(getfield(img, :components)), ", "))
 end
-
-# A component is a named bundle of regularizations, so it inherits the trait from them.
-# Without this method the component reconstruction path hits a `MethodError` in
-# `_iterative_reconstruct_core`, since `method.regularization` is a tuple of `Component`s
-# there rather than of `Regularization`s.
-uses_blas3(c::Component) = uses_blas3(c.regularizations)

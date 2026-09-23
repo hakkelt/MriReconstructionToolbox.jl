@@ -210,9 +210,25 @@ or go back to the old high-accuracy default with `m = 5, sigma = 2.0`.
   `MriReconstructionToolbox.set_serial_blas_threshold_bytes!` or the
   `MRT_SERIAL_BLAS_THRESHOLD_BYTES` environment variable if you know your backend and hardware.
 - `NestedThreading`'s `exclude` keyword honours counted pools since 0.1.1, and `only` gives the
-  allowlist form; `with_serial_blas` is `with_thread_budget(f, 1; only = (:blas, :mkl))`. Before
-  that release `exclude` affected Polyester alone and naming `:blas`/`:mkl`/`:fftw`/`:nfft` did
-  nothing silently, which is why the BLAS budget used to be narrowed from the inside instead.
+  allowlist form. Before that release `exclude` affected Polyester alone and naming
+  `:blas`/`:mkl`/`:fftw`/`:nfft` did nothing silently, which is why the BLAS budget used to be
+  narrowed from the inside instead.
+- Every iterative solve runs inside `with_serial_blas`, which is
+  `with_thread_default(f, 1; only = (:blas, :mkl))`: serial BLAS *by default*, since almost every
+  BLAS call in a solve is a level-1 update too small to thread. The calls that are large enough
+  take BLAS's threads back with `NestedThreading.with_thread_grant`, each behind its own size gate:
+
+  | call | knob (a `Ref`) | default |
+  |------|----------------|---------|
+  | dense `svd!`/`eigen!` in a low-rank prox | `ProximalOperators.FACTORIZATION_THREAD_WORK` | `m·n·min(m,n)` ≥ 2^22 |
+  | `MatrixOp`/`LMatrixOp` `gemm` | `AbstractOperators.BLAS3_THREAD_WORK` | `m·n·k` ≥ 2^25 |
+  | a CG step's `dot`/`axpy!` | `ProximalAlgorithms.CG_BLAS_THREAD_BYTES` | 8 MiB on MKL, 16 MiB on OpenBLAS |
+
+  A grant never goes past a hard limit, so inside a slice loop that already occupies every
+  thread nothing changes. Set a knob to `typemax(Int)` to keep that kind of call serial. On
+  OpenBLAS, closing a grant also shuts the BLAS worker threads down
+  (`NestedThreading.park_openblas`), which would otherwise spin for about 0.1 s on the cores the
+  next FFT needs; this costs about 1 ms per grant, which is what the gates are sized against.
 - Restricting BLAS is not the same as restricting the process: `with_restricted_threads` also
   narrows FFTW and NFFT and switches Polyester off, so `BLAS.get_num_threads() == 1` is never
   evidence that entering the scope would be a no-op.
@@ -230,5 +246,4 @@ MriReconstructionToolbox.with_serial_blas
 MriReconstructionToolbox.serial_blas_threshold_bytes
 MriReconstructionToolbox.set_serial_blas_threshold_bytes!
 MriReconstructionToolbox.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
-MriReconstructionToolbox.uses_blas3
 ```

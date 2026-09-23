@@ -110,7 +110,7 @@ function _hlrp_prox_slab!(yr, xr, f::HankelLowRankProx, b::Int, threshold, ::Val
     xb = selectdim(xr, ndims(xr), b)
     buffer = _hlrp_lift(f.w, xb)
     M = f.H * buffer
-    F = svd!(M)
+    F = ProximalOperators.with_factorization_threads(() -> svd!(M), M)
     if RANK
         r = min(f.max_rank, length(F.S))
         @inbounds for i in (r + 1):length(F.S)
@@ -456,6 +456,3 @@ function _materialize_loraks(reg::StructuredLowRank{T0, N}, x::Variable{T}; thre
     op = get_operator(reg, ~x; threaded)
     return StructuredOptimization.Term(1, f, op * x, repr)
 end
-
-# Prox is one economy SVD per batch slab: level-3 BLAS, worth threading. See `uses_blas3`.
-uses_blas3(::StructuredLowRank) = true

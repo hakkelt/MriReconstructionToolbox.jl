@@ -125,6 +125,3 @@ function materialize(reg::MultiScaleLowRank, x::Variable{T}; threaded::Bool) whe
     repr = @sprintf "avg_{(λ,b) ∈ {%s}} ∑ λ ⋅ ‖𝓧_b(%s)‖_*" scale_repr get_name(x)
     return StructuredOptimization.Term(1, f, op * x, repr)
 end
-
-# Prox takes a per-scale, per-block SVD: level-3 BLAS, worth threading. See `uses_blas3`.
-uses_blas3(::MultiScaleLowRank) = true

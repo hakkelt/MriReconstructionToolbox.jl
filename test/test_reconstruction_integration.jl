@@ -726,6 +726,52 @@ end
     @test_throws Exception MRT.set_serial_blas_threshold_bytes!(-1)
 end
 
+@testitem "Serial BLAS is a soft default that large calls override" tags = [:reconstruction] begin
+    using MriReconstructionToolbox, LinearAlgebra, ProximalCore
+    const MRT = MriReconstructionToolbox
+    const PO = MRT.ProximalOperators
+    const SO = MRT.StructuredOptimization
+    const NestedThreading = PO.NestedThreading
+
+    blas = BLAS.get_num_threads()
+    MRT.with_serial_blas() do
+        @test BLAS.get_num_threads() == 1
+        # A grant, which the operator stack opens around a large factorization, gemm or CG
+        # step, takes BLAS back...
+        NestedThreading.with_thread_grant(typemax(Int); only = (:blas,)) do
+            @test BLAS.get_num_threads() == blas
+        end
+        # ...but never past a hard limit, such as a saturated slice loop opens.
+        NestedThreading.with_thread_budget(1) do
+            NestedThreading.with_thread_grant(typemax(Int); only = (:blas,)) do
+                @test BLAS.get_num_threads() == 1
+            end
+        end
+    end
+    @test BLAS.get_num_threads() == blas
+
+    # A locally-low-rank prox gives the same result whether its block SVDs are granted threads
+    # or not.
+    x = randn(ComplexF32, 16, 16, 6)
+    reg = LocallyLowRank(0.1; block_size = 8, time_dim = 3)
+    f = SO.weighted_function(MRT.materialize(reg, SO.Variable(x); threaded = true))
+    old = PO.FACTORIZATION_THREAD_WORK[]
+    results = map((typemax(Int), 1)) do gate
+        PO.FACTORIZATION_THREAD_WORK[] = gate
+        try
+            MRT.with_serial_blas() do
+                y = similar(x)
+                (y, ProximalCore.prox!(y, f, x, 0.7))
+            end
+        finally
+            PO.FACTORIZATION_THREAD_WORK[] = old
+        end
+    end
+    @test results[1][1] ≈ results[2][1]
+    @test results[1][2] ≈ results[2][2]
+    @test BLAS.get_num_threads() == blas
+end
+
 @testitem "Per-frame subsampling: one ky mask per frame" tags = [:reconstruction, :integration] begin
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator
