@@ -35,10 +35,14 @@ const FW = "MRT ($(USE_MKL ? "MKL" : "OpenBLAS"))"
 const BART_FW = "BART ($(USE_MKL ? "MKL" : "OpenBLAS"))"
 
 using ThreadPinning
+# Threads go only to allowed CPUs that are not SMT siblings: a sibling shares its core with another
+# thread of the same run, which halves that core for both.
 let mask = getaffinity()
     allowed = findall(==(1), mask) .- 1
     isempty(allowed) && (allowed = collect(0:(Threads.nthreads() - 1)))
-    global const PINNED_CPUS = allowed[1:min(length(allowed), Threads.nthreads())]
+    physical = filter(!ThreadPinning.ishyperthread, allowed)
+    length(physical) >= Threads.nthreads() || error("only $(length(physical)) physical cores among the allowed CPUs $allowed, $(Threads.nthreads()) threads requested")
+    global const PINNED_CPUS = physical[1:Threads.nthreads()]
 end
 pinthreads(PINNED_CPUS)
 USE_MKL && try
