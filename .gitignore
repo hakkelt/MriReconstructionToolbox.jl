@@ -16,9 +16,14 @@ docs/notebooks/tmp.gif
 # with `python3 -m jupytext --to ipynb docs/notebooks/src/*.jl` rather than committing it.
 docs/notebooks/*.ipynb
 
-# per-section/per-group benchmark fragments (merged into benchmark_<backend>_<n>threads.json)
+# per-section/per-group benchmark fragments (legacy; superseded by results/runs/, kept ignored for
+# any leftover files from before the switch)
 benchmark/comparison/results/*__*.json
 benchmark/hpc/results/*__*.json
+
+# results/runs/: one immutable file per benchmark run (see ResultsStore.jl); local working data,
+# not the same thing as a committed comparison snapshot
+benchmark/comparison/results/runs/
 
 # agent scaffolding and worktrees
 .claude/

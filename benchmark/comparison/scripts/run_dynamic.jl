@@ -106,6 +106,7 @@ specs = (
 )
 
 for (key, meth, mrtreg, bartcmd, mrm, λdef) in specs
+    should_run("Dynamic", meth) || continue
     println("--> $meth")
     tm, _, xm = time_reconstruction(() -> mrt_run(acq_dyn, mrtreg(load_lambda(key, "MRT", λdef)); maxit = IT))
     addrow(meth, FW, tm * 1000, xm, nothing)
@@ -147,6 +148,7 @@ for (key, meth, mrtreg, bartcmd, mrm, λdef) in specs
             @warn "MIRT $meth failed" exception = (e, catch_backtrace())
         end
     end
+    flush_results!("dynamic")
 end
 
 write_section("dynamic")

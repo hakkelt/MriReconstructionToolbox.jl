@@ -69,6 +69,7 @@ specs = (
 )
 
 for (key, meth, mrtreg, mrtkind, spm, mrm, bartcmd, λdef) in specs
+    should_run("Sparsity", meth) || continue
     println("--> $meth")
     xm = let
         tm, _, x = time_reconstruction(() -> mrt_run(acq_us, mrtreg(load_lambda(key, "MRT", λdef)); maxit = IT, kind = mrtkind))
@@ -98,6 +99,7 @@ for (key, meth, mrtreg, mrtkind, spm, mrm, bartcmd, λdef) in specs
             @warn "MRIReco $meth failed" exception = (e, catch_backtrace())
         end
     end
+    flush_results!("sparsity")
 end
 
 write_section("sparsity")

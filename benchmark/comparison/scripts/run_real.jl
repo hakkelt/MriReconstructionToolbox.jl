@@ -29,6 +29,10 @@ using NamedDims: unname
 
 # One 2D case = (ksp3 (nx,ny,coil), smaps3, ref (nx,ny)); build the CG-SENSE + undersampled
 # TV / wavelet rows for MRT / SigPy / BART / MRIReco.
+"""Whether any of `methods` for `category` would run -- used to skip loading/preprocessing a real
+dataset entirely when every case that would use it has been filtered out."""
+any_should_run(category, methods...) = any(m -> should_run(category, m), methods)
+
 function real_case_rows!(category, ksp3_raw, smaps3, ref; cgsense = true)
     ksp3 = norm_ksp(CMP_CTYPE.(ksp3_raw))               # unit-RMS so calibrated λ transfers here
     nx, ny, nc = size(ksp3)
@@ -78,7 +82,7 @@ function real_case_rows!(category, ksp3_raw, smaps3, ref; cgsense = true)
     #
     # `reltol = 0.0`, as in `run_cgsense.jl`: the other three toolkits are given `CMP_TOL_INNER = 0`
     # and run their full 10 iterations, so MRT must not be allowed to exit early here either.
-    if cgsense
+    if cgsense && should_run(category, "CG-SENSE (10 it)")
         mcg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0); maxit = 10, reltol = 0.0)
         tm, _, xm = time_reconstruction(() -> reconstruct(acqu, mcg; verbosity = Silent()))
         add("CG-SENSE (10 it)", FW, tm * 1000, xm, nothing)
@@ -102,6 +106,7 @@ function real_case_rows!(category, ksp3_raw, smaps3, ref; cgsense = true)
                 @warn "$fw CG-SENSE ($category) failed" exception = (e, catch_backtrace())
             end
         end
+        flush_results!("real")
     end
 
     # Real data has no ground truth, so λ is taken from the synthetic calibration — valid because
@@ -117,6 +122,7 @@ function real_case_rows!(category, ksp3_raw, smaps3, ref; cgsense = true)
                 λ -> "pics -S -w 1 -e -i $IT -R W:3:0:$λ",
             ),
         )
+        should_run(category, meth) || continue
         λdef = key === :tv ? 0.01 : 0.005
         tm, _, xm = time_reconstruction(() -> mrt_run(acqu, mrtbuild(load_lambda(key, "MRT", λdef)); maxit = IT, kind = mrtkind))
         add(meth, FW, tm * 1000, xm, nothing)
@@ -140,6 +146,7 @@ function real_case_rows!(category, ksp3_raw, smaps3, ref; cgsense = true)
                 @warn "$fw $meth ($category) failed" exception = (e, catch_backtrace())
             end
         end
+        flush_results!("real")
     end
     return
 end
@@ -149,6 +156,7 @@ end
 # least-squares solution is an affine set rather than a point — each toolkit lands on a different
 # member of it depending on its warm start, and comparing them measures the warm starts.
 for (category, combine, cg) in (("Real Data", false, true), ("Real Data 1ch", true, false))
+    any_should_run(category, "CG-SENSE (10 it)", "Total Variation ($CMP_OUTER it)", "L1-Wavelet ($CMP_OUTER it)") || continue
     try
         rc = load_real_case(; combine_coils = combine)
         real_case_rows!(category, unname(rc.kspace), unname(rc.smaps), rc.reference; cgsense = cg)
@@ -158,6 +166,7 @@ for (category, combine, cg) in (("Real Data", false, true), ("Real Data 1ch", tr
 end
 
 # 3D knee — one central slice for the cross-toolkit CG-SENSE / sparsity row.
+if any_should_run("Real 3D (1 slice)", "CG-SENSE (10 it)", "Total Variation ($CMP_OUTER it)", "L1-Wavelet ($CMP_OUTER it)")
 try
     rc = load_real_case_3d(; nslices = 1)
     ks = unname(rc.kspace)[:, :, :, 1]
@@ -165,6 +174,7 @@ try
     real_case_rows!("Real 3D (1 slice)", ks, ss, rc.reference[:, :, 1])
 catch e
     @warn "Real 3D section failed" exception = (e, catch_backtrace())
+end
 end
 
 # The same knee as a **volume**, which is the only row here that asks a toolkit to use more than
@@ -188,6 +198,7 @@ end
 # `length(plan) > nthreads()` to the sequential executor and scale 1.06x; see the table in that
 # function's docstring.
 const REAL3D_NSLICES = parse(Int, get(ENV, "CMP_REAL3D_NSLICES", "8"))
+if any_should_run("Real 3D ($REAL3D_NSLICES slices)", "CG-SENSE (10 it)", "Total Variation ($CMP_OUTER it)")
 try
     rc = load_real_case_3d(; nslices = REAL3D_NSLICES)
     ksv = CMP_CTYPE.(unname(rc.kspace))                       # (kx, ky, coil, z)
@@ -250,6 +261,7 @@ try
     )
 
     # --- CG-SENSE over the volume ---
+    if should_run(category, "CG-SENSE (10 it)")
     mcgv = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0); maxit = 10, reltol = 0.0)
     tmv, _, xmv = time_reconstruction(() -> reconstruct(acqv, mcgv; verbosity = Silent()))
     addv("CG-SENSE (10 it)", FW, tmv * 1000, xmv, nothing)
@@ -288,8 +300,11 @@ try
             @warn "$fw volume CG-SENSE failed" exception = (e, catch_backtrace())
         end
     end
+    flush_results!("real")
+    end
 
     # --- Total Variation over the volume ---
+    if should_run(category, "Total Variation ($CMP_OUTER it)")
     λtv = load_lambda(:tv, "MRT", 0.01)
     tmv, _, xmv = time_reconstruction(() -> mrt_run(acqv, TotalVariation2D(λtv); maxit = CMP_OUTER, kind = :admm))
     addv("Total Variation ($CMP_OUTER it)", FW, tmv * 1000, xmv, nothing)
@@ -330,11 +345,15 @@ try
             @warn "$fw volume TV failed" exception = (e, catch_backtrace())
         end
     end
+    flush_results!("real")
+    end
 catch e
     @warn "Real 3D volume section failed" exception = (e, catch_backtrace())
 end
+end
 
 # OCMR cine — one frame, CG-SENSE / sparsity.
+if any_should_run("Real Dynamic (1 frame)", "CG-SENSE (10 it)", "Total Variation ($CMP_OUTER it)", "L1-Wavelet ($CMP_OUTER it)")
 try
     rc = load_real_dynamic()
     ks = unname(rc.kspace)[:, :, :, 1]                        # already 2×-undersampled (compacted)
@@ -345,6 +364,7 @@ try
     real_case_rows!("Real Dynamic (1 frame)", ks_full, unname(rc.smaps), rc.reference[:, :, 1])
 catch e
     @warn "Real Dynamic section failed" exception = (e, catch_backtrace())
+end
 end
 
 write_section("real")
