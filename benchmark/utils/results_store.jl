@@ -60,6 +60,8 @@ function record_run(section::AbstractString, backend::AbstractString, threads::I
             "category" => r.category, "method" => r.method, "framework" => r.framework,
             "threads" => r.threads, "time_ms" => _json_num(r.time_ms),
             "nrmse_gt" => _json_num(r.nrmse_gt), "nrmse_mrt" => _json_num(r.nrmse_mrt),
+            "case_id" => hasproperty(r, :case_id) ? r.case_id : "",
+            "data_source" => hasproperty(r, :data_source) ? r.data_source : "",
         ) for r in rows
     ]
     return record_run_rows(section, backend, threads, benchmarks; kwargs...)
@@ -151,31 +153,34 @@ struct Row
     nrmse_mrt::Float64
     source::String
     ts::String
+    case_id::String
+    data_source::String
+    schema_version::Int
 end
 
 """
-    load_rows() -> Vector{Row}
+    load_rows(root = RESULTS_DIR; schema_version = SCHEMA_VERSION) -> Vector{Row}
 
-Every row from every recorded run file, flattened.
+Every comparison row from every run file of the store at `root`, flattened. Rows from an older
+schema (measured on other inputs than the catalog's cases) are left out unless `schema_version`
+is lowered.
 """
-function load_rows()
+function load_rows(root::AbstractString = RESULTS_DIR; schema_version::Integer = SCHEMA_VERSION)
     rows = Row[]
-    for f in run_files()
-        d = try
-            JSON.parsefile(f)
-        catch e
-            @warn "unreadable run file, skipping" f exception = e
-            continue
-        end
+    for d in load_run_files(root)
+        v = get(d, "schema_version", 1)
+        v < schema_version && continue
         backend = get(d, "backend", "")
         threads = get(d, "threads", 0)
         source = get(d, "source", "unknown")
         ts = get(d, "ts", "")
         for b in get(d, "benchmarks", [])
+            haskey(b, "category") || continue
             push!(
                 rows, Row(
                     backend, threads, b["category"], b["method"], b["framework"],
                     Float64(b["time_ms"]), Float64(b["nrmse_gt"]), Float64(b["nrmse_mrt"]), source, ts,
+                    get(b, "case_id", ""), get(b, "data_source", ""), v,
                 )
             )
         end
@@ -186,15 +191,15 @@ end
 """
     latest_per_case(rows; prefer_source = nothing) -> Vector{Row}
 
-One row per (backend, threads, category, method, framework): the most recent (`ts`), among rows
-matching `prefer_source` if given, else preferring `"slurm"` over anything else and falling back to
-whatever exists when no `"slurm"` row is present for that case.
+One row per (backend, threads, case, category, method, framework): the most recent (`ts`), among
+rows matching `prefer_source` if given, else preferring `"slurm"` over anything else and falling
+back to whatever exists when no `"slurm"` row is present for that case.
 """
 function latest_per_case(rows::Vector{Row}; prefer_source::Union{Nothing, AbstractString} = nothing)
-    best = Dict{NTuple{5, Any}, Row}()
+    best = Dict{NTuple{6, Any}, Row}()
     for r in rows
         prefer_source !== nothing && r.source != prefer_source && continue
-        key = (r.backend, r.threads, r.category, r.method, r.framework)
+        key = (r.backend, r.threads, r.case_id, r.category, r.method, r.framework)
         cur = get(best, key, nothing)
         if cur === nothing
             best[key] = r

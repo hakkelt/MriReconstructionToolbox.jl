@@ -118,3 +118,17 @@ every competitor's layout converter assume.
 """
 centred_fft(x, dims) = fftshift(fft(ifftshift(x, dims), dims), dims)
 centred_ifft(x, dims) = fftshift(ifft(ifftshift(x, dims), dims), dims)
+
+"""
+    multicoil_phantom(n, ncoils) -> (image, kspace, maps)
+
+A noiseless, fully sampled `n²` Shepp-Logan acquisition with `coil_maps_2d` maps: the image
+`(n, n)`, its centred k-space `(n, n, ncoils)` and the maps `(n, n, ncoils)`. For the auxiliary
+comparisons (preprocessing, structured low rank) that start from full k-space rather than from a
+catalog case.
+"""
+function multicoil_phantom(n::Int, ncoils::Int)
+    img = shepp_logan_2d(n)
+    maps = coil_maps_2d(n, n, ncoils)
+    return img, ComplexF32.(centred_fft(img .* maps, (1, 2))), maps
+end
