@@ -14,11 +14,26 @@ Container for non-Cartesian MRI acquisition settings.
 The trajectory stores coordinate axes in its first dimension. Its remaining
 dimensions must match the non-coil k-space sample layout.
 
+# Per-frame trajectories
+
+A trajectory may also carry trailing *frame* axes, one trajectory per frame: a golden-angle
+radial series whose spokes rotate from frame to frame is `(:coord, :sample, :spoke, :time)` for
+k-space `(:sample, :spoke, :coil, :time)`. A trajectory axis after the sample axes is a frame axis
+when it matches the trailing k-space axes — by name for a `NamedDimsArray`, by size otherwise —
+and each frame is then encoded with its own NFFT (see [`get_fourier_operator`](@ref)). A
+trajectory without frame axes is shared by every batch element, as before.
+
+For plain arrays the match is by size alone, so a trajectory whose trailing size also matches the
+axis right after the samples (a coil count equal to the frame count, or data without a coil axis)
+is read as sharing one trajectory over more sample axes, which is what such a trajectory always
+meant. Name the axes to make a per-frame trajectory unambiguous there.
+
 `dcf` is forwarded to `NFFTOp` unchanged and follows its contract: `nothing` (the default)
 applies **no** density compensation, so the encoding operator's adjoint is the true adjoint; an
-array matching the trajectory sample dimensions makes that adjoint a density-compensated
-approximate inverse — the gridding reconstruction — instead. Compute one with
-[`density_compensation`](@ref), which returns a copy of the acquisition carrying it.
+array matching the trajectory sample dimensions (and its frame dimensions, for a per-frame
+trajectory) makes that adjoint a density-compensated approximate inverse — the gridding
+reconstruction — instead. Compute one with [`density_compensation`](@ref), which returns a copy of
+the acquisition carrying it.
 """
 struct NonCartesianAcquisitionInfo{K, T, D, S, I, SD, ID} <: AcquisitionInfo
     kspace_data::K
@@ -47,11 +62,15 @@ struct NonCartesianAcquisitionInfo{K, T, D, S, I, SD, ID} <: AcquisitionInfo
         @argcheck length(img_size) == (is3D ? 3 : 2) "image_size length must match trajectory dimensionality"
 
         if !isnothing(ksp)
-            fourier_dims = ndims(traj) - 1
-            @argcheck size(ksp)[1:fourier_dims] == size(traj)[2:end] "k-space data dimensions must match trajectory sample dimensions"
             if ksp isa NamedDimsArray
                 @argcheck traj isa NamedDimsArray "trajectory must be a NamedDimsArray when k-space data is a NamedDimsArray"
-                @argcheck dimnames(ksp)[1:fourier_dims] == dimnames(traj)[2:end] "k-space data dimension names must match trajectory sample dimension names"
+            end
+            nframe = _trajectory_frame_dims_count(traj, ksp)
+            fourier_dims = ndims(traj) - 1 - nframe
+            @argcheck ndims(ksp) >= fourier_dims && size(ksp)[1:fourier_dims] == size(traj)[2:(fourier_dims + 1)] "k-space data dimensions must match trajectory sample dimensions"
+            if ksp isa NamedDimsArray
+                @argcheck dimnames(ksp)[1:fourier_dims] == dimnames(traj)[2:(fourier_dims + 1)] "k-space data dimension names must match trajectory sample dimension names"
+                @argcheck :coil ∉ dimnames(traj) "a trajectory frame axis cannot be the :coil axis"
                 if !isnothing(smaps)
                     @argcheck :coil ∈ dimnames(ksp) "k-space must have :coil dimension when sensitivity maps are provided"
                 end
@@ -110,6 +129,45 @@ NonCartesianAcquisitionInfo(;
     shifted_image_dims::Union{Tuple, Integer, Symbol} = (),
 ) = NonCartesianAcquisitionInfo(kspace_data, trajectory, dcf, sensitivity_maps, image_size, shifted_kspace_dims, shifted_image_dims)
 
+"""
+    _trajectory_frame_dims_count(trajectory, kspace) -> Int
+
+How many trailing trajectory axes are *frame* axes, one trajectory per frame (see
+[`NonCartesianAcquisitionInfo`](@ref)): `0` for a trajectory shared by every batch element, which
+is also the answer when there is no k-space to compare against. Axes are compared by name when both
+arrays are `NamedDimsArray`s and by size otherwise.
+"""
+function _trajectory_frame_dims_count(traj, ksp)
+    isnothing(ksp) && return 0
+    if traj isa NamedDimsArray && ksp isa NamedDimsArray
+        return _frame_dims_count(dimnames(traj)[2:end], dimnames(ksp))
+    end
+    return _frame_dims_count(size(traj)[2:end], size(ksp))
+end
+
+# `s` describes the trajectory's non-coordinate axes and `k` the k-space's, as names or sizes. The
+# shared reading — every trajectory axis is a sample axis — wins whenever it fits, so a trajectory
+# that meant that before per-frame trajectories existed still means it. Otherwise the trajectory is
+# `(samples..., frames...)` with the samples leading the k-space and the frames ending it; `0` when
+# neither fits, leaving the constructor's shape check to report the mismatch.
+function _frame_dims_count(s::Tuple, k::Tuple)
+    n = length(s)
+    (length(k) >= n && k[1:n] == s) && return 0
+    for f in 1:(n - 1)
+        nsample = n - f
+        length(k) - f >= nsample || continue
+        (k[1:nsample] == s[1:nsample] && k[(end - f + 1):end] == s[(nsample + 1):end]) && return f
+    end
+    return 0
+end
+
+"""
+    _trajectory_sample_dims_count(trajectory, kspace) -> Int
+
+Number of trajectory axes that index samples within one frame: every non-coordinate axis of a
+shared trajectory, all but the frame axes of a per-frame one.
+"""
+_trajectory_sample_dims_count(traj, ksp) = ndims(traj) - 1 - _trajectory_frame_dims_count(traj, ksp)
 
 function _get_acq_info_meta(info::NonCartesianAcquisitionInfo)
     meta = String[]

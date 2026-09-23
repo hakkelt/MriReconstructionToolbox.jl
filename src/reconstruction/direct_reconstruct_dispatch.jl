@@ -201,8 +201,10 @@ function _direct_coil_dim(acq::NonCartesianAcquisitionInfo)
     if _has_dimnames(acq.kspace_data)
         :coil ∈ dimnames(acq.kspace_data) || return 0
     else
-        sample_dims = ndims(acq.trajectory) - 1
-        ndims(acq.kspace_data) > sample_dims || return 0
+        # A per-frame trajectory's frame axes end the k-space, so only a k-space with more axes than
+        # samples and frames together has a coil axis.
+        nframe = _trajectory_frame_dims_count(acq.trajectory, acq.kspace_data)
+        ndims(acq.kspace_data) > _get_sample_dims_count(acq) + nframe || return 0
     end
     return length(acq.image_size) + 1
 end
