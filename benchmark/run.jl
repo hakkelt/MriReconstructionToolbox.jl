@@ -93,12 +93,17 @@ end
 const NT_REF = isempty(NT_DIR) ? (commit = "", branch = "", dirty = false) : git_ref(NT_DIR)
 const DEPS_HASH = tree_hash(MRT_DIR, "deps")
 const SRC_HASH = tree_hash(MRT_DIR, "src")
+const EXT_HASH = tree_hash(MRT_DIR, "ext")
+const PROJECT_HASH = tree_hash(MRT_DIR, "Project.toml")
 const NT_HASH = isempty(NT_DIR) ? "" : tree_hash(NT_DIR)
 const REF_NAME = something(_arg("ref-name"), MRT_REF.branch, "unknown")
-const CLEAN = !MRT_REF.dirty && !NT_REF.dirty && !startswith(DEPS_HASH, "dirty") && !startswith(NT_HASH, "dirty")
-# Two runs with equal code keys ran the same MRT, the same vendored dependencies and the same
-# NestedThreading. A dirty checkout has no key: it is always measured, and never reused.
-const CODE_KEY = CLEAN ? string(MRT_REF.commit, ":", DEPS_HASH, ":", NT_HASH) : ""
+# Two runs with equal code keys ran the same MRT package code (src/, ext/, Project.toml), the same
+# vendored dependencies (deps/) and the same NestedThreading, whatever else differs between their
+# commits -- a commit touching only benchmark/ keeps its baseline. Uncommitted changes to any of
+# them leave no key: such a run is always measured, and never reused.
+const CODE_PARTS = (SRC_HASH, EXT_HASH, PROJECT_HASH, DEPS_HASH, NT_HASH)
+const CLEAN = all(h -> !isempty(h) && !startswith(h, "dirty"), CODE_PARTS[1:4]) && !startswith(NT_HASH, "dirty")
+const CODE_KEY = CLEAN ? join(CODE_PARTS, ":") : ""
 const NODE = node_class()
 const ENV_VARIANT = something(_arg("env-variant"), "")
 
@@ -121,7 +126,7 @@ end
 
 const RUN_META = (;
     ref_name = REF_NAME, git_commit = MRT_REF.commit, git_branch = MRT_REF.branch, git_dirty = MRT_REF.dirty,
-    deps_hash = DEPS_HASH, src_hash = SRC_HASH, mrt_dir = MRT_DIR,
+    deps_hash = DEPS_HASH, src_hash = SRC_HASH, ext_hash = EXT_HASH, project_hash = PROJECT_HASH, mrt_dir = MRT_DIR,
     nested_threading_dir = NT_DIR, nested_threading_commit = NT_REF.commit,
     nested_threading_branch = NT_REF.branch, nested_threading_hash = NT_HASH,
     code_key = CODE_KEY, node_class = NODE, hostname = gethostname(), pinned_cpus = join(PINNED_CPUS, ","),
