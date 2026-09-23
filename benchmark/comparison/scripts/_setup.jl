@@ -41,11 +41,7 @@ let mask = getaffinity()
     global const PINNED_CPUS = allowed[1:min(length(allowed), Threads.nthreads())]
 end
 pinthreads(PINNED_CPUS)
-USE_MKL && try
-    ThreadPinning.MKL.mkl_set_dynamic(0)
-catch e
-    @warn "mkl_set_dynamic failed" e
-end
+# No `mkl_set_dynamic(0)`: timed with and without it, MKL's own dynamic adjustment measured the same.
 const CPU_STR = join(PINNED_CPUS, ",")
 @info "Julia threads pinned" CPU_STR
 

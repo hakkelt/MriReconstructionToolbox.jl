@@ -107,14 +107,16 @@ function _iterative_reconstruct_core(
             # nothing. `threaded = false` for the same case is 285.8 ms, so building the operators
             # threaded and pinning BLAS beats turning threading off wholesale.
             #
-            # A low-rank prox is the exception and keeps the threaded budget: its level-3 SVDs
-            # measure 3.2x-3.9x threaded, where level 1 gains at most 10%. See `uses_blas3`.
-            if uses_blas3(method.regularization)
+            # The narrowing is a soft default, not a hard limit, so the calls that are worth
+            # threading take BLAS back for themselves: a large factorization
+            # (`ProximalOperators.with_factorization_threads`, and the per-block SVDs of the
+            # low-rank family through it), a large `gemm` (`AbstractOperators.BLAS3_THREAD_WORK`)
+            # and a large CG step (`ProximalAlgorithms.CG_BLAS_THREAD_BYTES`). A low-rank solve
+            # used to skip the narrowing altogether for its SVDs, leaving every level-1 call
+            # threaded as well: OpenBLAS, 8 threads, locally-low-rank cine, 533 ms against 294 ms
+            # with the narrowing on.
+            with_serial_blas() do
                 solve(model, algorithm; solver_kwargs...)
-            else
-                with_serial_blas() do
-                    solve(model, algorithm; solver_kwargs...)
-                end
             end
         catch e
             if e isa ErrorException && occursin("cannot parse this problem for solver", e.msg)

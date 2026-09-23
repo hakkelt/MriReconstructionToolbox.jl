@@ -18,7 +18,7 @@ using MriReconstructionToolbox: Regularization, ReconstructionMethod, IterativeM
 # Internals whose docstrings are rendered on the low-level pages, or that other docstrings link to
 # with `@ref`. Cross-references resolve in the page's module, so these have to be in scope too.
 using MriReconstructionToolbox: with_serial_blas, serial_blas_threshold_bytes,
-    set_serial_blas_threshold_bytes!, uses_blas3,
+    set_serial_blas_threshold_bytes!,
     model_encoding_operator, StackedNSCTOp, BlockNuclearNorm, DenoiserProx
 
 makedocs(;

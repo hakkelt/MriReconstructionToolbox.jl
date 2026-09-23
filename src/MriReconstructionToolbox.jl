@@ -28,7 +28,8 @@ using .AbstractOperators: Sum  # resolve ambiguity with ProximalOperators.Sum
 using .StructuredOptimization
 using .NFFTOperators: NFFTOp, NFFT
 
-using NestedThreading: @budgeted_threads, capacity, with_full_threads, with_restricted_threads, with_thread_budget
+using NestedThreading: @budgeted_threads, capacity, with_full_threads, with_restricted_threads, with_thread_budget,
+    with_thread_default
 using .WaveletOperators: WaveletOp, WT, wavelet
 using .ContourletOperators: ContourletOp, NSCTOp, ContourletParams, parabolic_levels
 using .FFTWOperators: FFTWOperators, DFT, fftshift_op, ifftshift_op, alternate_sign!

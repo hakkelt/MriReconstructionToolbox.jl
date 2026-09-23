@@ -9,8 +9,8 @@ that is `with_full_threads`' documented behaviour, and is the reason
 `AbstractOperators._with_blas_threading` refuses to open a full-throttle scope of its own. Before
 NestedThreading 0.1.1, `exclude` could not narrow a counted pool at all (only the guarded
 `:polyester` pool), so the iterative solve had to narrow BLAS from inside its own scope instead —
-see [`with_serial_blas`](@ref), which now does exactly that via `with_thread_budget(f, 1; only =
-(:blas, :mkl))`, NestedThreading 0.1.1's allowlist.
+see [`with_serial_blas`](@ref), which now does exactly that via `with_thread_default(f, 1; only =
+(:blas, :mkl))`: NestedThreading 0.1.1's allowlist, and 0.1.2's soft default.
 """
 macro conditionally_enable_threading(threaded, expr)
     return quote
@@ -107,8 +107,24 @@ end
 """
     with_serial_blas(f)
 
-Run `f()` with BLAS pinned to a single thread, restoring the previous budget afterwards (also
-on exception). Returns `f()`'s value, and skips the save/restore when BLAS is already serial.
+Run `f()` with BLAS at a single thread *by default*, restoring the previous count afterwards
+(also on exception). Returns `f()`'s value, and opens no scope when BLAS is already serial.
+
+This is a soft default (`NestedThreading.with_thread_default`), not a hard limit: a call inside
+`f` that is known to be worth threading takes BLAS back for itself with
+`NestedThreading.with_thread_grant`, up to whatever hard limit is open around it. The operator
+stack does that for three kinds of call, each behind a size gate checked before any scope opens:
+
+| call                                   | gate                                             | default         |
+|----------------------------------------|--------------------------------------------------|-----------------|
+| dense `svd!` / `eigen!` (low-rank prox)| `ProximalOperators.FACTORIZATION_THREAD_WORK`    | `m·n·min(m,n)` ≥ 2^22 |
+| `MatrixOp` / `LMatrixOp` `gemm`        | `AbstractOperators.BLAS3_THREAD_WORK`            | `m·n·k` ≥ 2^25  |
+| a CG step's `dot` / `axpy!`            | `ProximalAlgorithms.CG_BLAS_THREAD_BYTES`        | 8 MiB MKL, 16 MiB OpenBLAS |
+
+Each is a `Ref`; set it to `typemax(Int)` to keep that kind of call serial. When a grant closes on
+OpenBLAS, NestedThreading shuts the pool's workers down (`NestedThreading.park_openblas`), since
+otherwise they spin for `OPENBLAS_THREAD_TIMEOUT` on the cores the next FFT or `@threads` region
+needs.
 
 Only `:blas` and `:mkl` are narrowed. FFTW, NFFT and Polyester are left alone deliberately: each
 kernel that uses them decides for itself whether its own input is big enough to thread
@@ -122,10 +138,20 @@ is that the reconstruction path narrows BLAS for a single work item at a time, w
 BLAS loses at every size measured. Real data, 256x256 single-coil, TV-ADMM 20 iterations, 8
 threads: 584.0 ms with BLAS open against 233.3 ms pinned.
 
-What the gate cannot see at all is BLAS *level*, and level 3 responds to threading in the opposite
-direction and by a larger margin. Callers must therefore still skip this scope entirely for
-level-3-dominated work — see [`uses_blas3`](@ref), which `_iterative_reconstruct_core` consults
-before reaching here.
+What that gate could not see at all is BLAS *level*, and level 3 responds to threading in the
+opposite direction and by a larger margin. Measured on `x1001c4s3b0n1` under SLURM, MKL, a single
+work item, serial → threaded:
+
+| allocation | `-t` | level-1, 16 MiB item | level-3, 4096×1024 SVD |
+|------------|------|----------------------|------------------------|
+| 8          |  8   | 13.14 s → 12.64 s    | 8.14 s → 2.55 s        |
+| 16         |  8   | 13.25 s → 12.62 s    | 8.55 s → 2.38 s        |
+| 16         | 16   | 13.80 s → 12.58 s    | 8.46 s → 2.36 s        |
+| 32         |  8   | 12.97 s → 13.05 s    | 8.49 s → 2.19 s        |
+
+That is why the level-3 calls are granted per call rather than the whole solve being left
+threaded, as a low-rank solve used to be: a solve-wide exemption also threads every level-1 call
+around the SVDs (OpenBLAS, 8 threads, locally-low-rank cine: 533 ms threaded, 294 ms serial).
 
 # Why
 
@@ -192,8 +218,8 @@ while `Sys.CPU_THREADS` reported 64 throughout. So the budget tracks the allocat
 Note that a bare `taskset` window on the login node gives a different answer again (8 CPUs
 allowed → a default of 4), so do not assume the two environments agree.
 
-An operator that genuinely wants a threaded `gemm` (a large `MatrixOp`) is unaffected: it
-resolves its own `threaded` flag through `AbstractOperators._blas_threaded`, outside this scope.
+An operator that genuinely wants a threaded `gemm` (a large `MatrixOp`) is unaffected: it grants
+itself BLAS's threads back, see the gate table above.
 
 ## Why the gate keys on the work item and not on batch width
 
@@ -209,7 +235,7 @@ plumbed through.
 """
 function with_serial_blas(f::F) where {F}
     LinearAlgebra.BLAS.get_num_threads() == 1 && return f()
-    return with_thread_budget(f, 1; only = (:blas, :mkl))
+    return with_thread_default(f, 1; only = (:blas, :mkl))
 end
 
 """
@@ -229,4 +255,3 @@ decide it per operator, per input.
 """
 _should_thread_work_item(config, bytes) =
     config.threaded && bytes >= serial_blas_threshold_bytes()
-
