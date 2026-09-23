@@ -446,6 +446,52 @@ full-throttle scope does that a plain call does not.
 _with_blas_threading(f::F, threaded::Bool) where {F} = threaded ? f() : with_restricted_threads(f)
 
 """
+    BLAS3_THREAD_WORK
+
+The multiply-add count (`m·n·k`, a complex multiply-add counting as four) from which a
+BLAS-backed operator with `threaded = true` asks for BLAS's threads *back* when a caller has
+lowered them with a soft default (`NestedThreading.with_thread_default`). A `Ref{Int}`;
+set it to `typemax(Int)` to never ask.
+
+A caller such as an iterative solver may run a whole computation at serial BLAS by default,
+because most of its BLAS calls are level-1 vector updates too small to thread. A large
+`gemm` inside it is not: it is a grant (`NestedThreading.with_thread_grant`) that restores
+the unrestricted count for that one call, though never past a hard limit open around it, so
+a `MatrixOp` inside a saturated batch loop still runs serial.
+
+The default, 2^25 (a 320³ real `gemm`, about 4 ms on one core), is set by what a grant costs
+on OpenBLAS rather than by where threading starts to pay: closing a grant shuts OpenBLAS's
+workers down (0.35 ms) and the next threaded call starts them again (0.5–1 ms), so a grant
+must save several milliseconds to be worth opening. Below the threshold no scope opens at
+all, so small `gemv`s pay nothing.
+"""
+const BLAS3_THREAD_WORK = Ref(2^25)
+
+"""
+    _with_blas_threading(f, threaded::Bool, work::Integer)
+
+As `_with_blas_threading(f, threaded)`, and additionally run `f()` under a BLAS grant when
+`threaded` and `work` reaches [`BLAS3_THREAD_WORK`](@ref). `work` is the call's
+multiply-add count, from [`_matmul_work`](@ref).
+"""
+function _with_blas_threading(f::F, threaded::Bool, work::Integer) where {F}
+    threaded || return with_restricted_threads(f)
+    work < BLAS3_THREAD_WORK[] && return f()
+    return with_thread_grant(f, typemax(Int); only = (:blas, :mkl))
+end
+
+"""
+    _matmul_work(A, B) -> Int
+
+Multiply-add count of `A * B` for a matrix `A` whose column count is `B`'s leading
+dimension: `size(A, 1) · length(B)`, times four when either operand is complex.
+"""
+function _matmul_work(A::AbstractArray, B::AbstractArray)
+    weight = (eltype(A) <: Complex || eltype(B) <: Complex) ? 4 : 1
+    return weight * size(A, 1) * length(B)
+end
+
+"""
 	_blas_threaded(threaded, ::Type{S}) -> Bool
 
 Resolve a BLAS-backed operator's `threaded` keyword: `false` vetoes, `true` permits, and the
