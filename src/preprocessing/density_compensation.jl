@@ -41,7 +41,9 @@ end
     density_compensation(acq::AcquisitionInfo; method::DensityCompensation = PipeMenonDCF())
 
 Compute the sample density compensation factors (DCF) for a non-Cartesian acquisition and return
-a new `NonCartesianAcquisitionInfo` with the computed `dcf`.
+a new `NonCartesianAcquisitionInfo` with the computed `dcf`. A per-frame trajectory (see
+[`NonCartesianAcquisitionInfo`](@ref)) gets one set of weights per frame, each computed from that
+frame's samples alone.
 
 Throws an `ArgumentError` if called on Cartesian acquisition data, as Cartesian data does not use
 a density compensation factor.
@@ -61,7 +63,12 @@ function density_compensation(
         acq::NonCartesianAcquisitionInfo;
         method::DensityCompensation = PipeMenonDCF(),
     )
-    dcf = compute_dcf(acq.trajectory, acq.image_size, method)
+    nframe = _trajectory_frame_dims_count(acq.trajectory, acq.kspace_data)
+    dcf = if nframe == 0
+        compute_dcf(acq.trajectory, acq.image_size, method)
+    else
+        _per_frame_dcf(acq.trajectory, acq.image_size, method, nframe)
+    end
     return NonCartesianAcquisitionInfo(
         acq.kspace_data;
         trajectory = acq.trajectory,
@@ -71,6 +78,19 @@ function density_compensation(
         shifted_kspace_dims = acq.shifted_kspace_dims,
         shifted_image_dims = acq.shifted_image_dims,
     )
+end
+
+# A per-frame trajectory's frames are separate acquisitions, each with its own sample density: the
+# weights are computed frame by frame, never over the samples of every frame pooled together.
+function _per_frame_dcf(trajectory, image_size, method, nframe::Int)
+    traj = unname(trajectory)
+    nsample = ndims(traj) - 1 - nframe
+    sample_axes = ntuple(_ -> Colon(), nsample)
+    dcf = similar(traj, size(traj)[2:end])
+    for I in CartesianIndices(size(traj)[(nsample + 2):end])
+        dcf[sample_axes..., Tuple(I)...] = compute_dcf(traj[:, sample_axes..., Tuple(I)...], image_size, method)
+    end
+    return trajectory isa NamedDimsArray ? NamedDimsArray{dimnames(trajectory)[2:end]}(dcf) : dcf
 end
 
 """
