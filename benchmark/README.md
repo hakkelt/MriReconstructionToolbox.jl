@@ -145,7 +145,7 @@ unless given `--production`, which occupies a node for hours and needs agreement
 
 | script | what it runs |
 |---|---|
-| `matrix.sh` | one exclusive node; each configuration pinned to its own NUMA domain with `numactl`, several at a time. `--suite=harness` runs `run.jl`, `--suite=comparison` runs `comparison/scripts/run_all.jl`. Matrix dimensions: `--matrix-threads=`, `--matrix-backends=`, `--matrix-refs=name:path,...` (harness), `--matrix-env=A=1+B=2,...` (recorded per row). Every other flag is passed through. |
+| `matrix.sh` | one exclusive node; each configuration pinned to its own NUMA domain with `numactl`, several at a time, one CPU per physical core (never an SMT sibling; `run.jl` and the comparison suite pin their threads only to physical cores of the allowed set, and fail when it has too few). Refs and environment variants of one (threads, backend) pair start together. `--suite=harness` runs `run.jl`, `--suite=comparison` runs `comparison/scripts/run_all.jl`. Matrix dimensions: `--matrix-threads=`, `--matrix-backends=`, `--matrix-refs=name:path,...` (harness), `--matrix-env=A=1+B=2,...` (recorded per row). Every other flag is passed through. |
 | `calibrate.sh` | λ calibration (`comparison/scripts/calibrate_lambda.jl`), one case per array task |
 | `report_efficiency.sh <jobid>` | CPU efficiency of a finished matrix job |
 
