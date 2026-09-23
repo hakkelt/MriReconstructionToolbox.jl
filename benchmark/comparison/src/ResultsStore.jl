@@ -94,4 +94,77 @@ Every recorded run file, oldest first (filename timestamp order).
 """
 run_files() = sort(filter(f -> endswith(f, ".json"), readdir(RUNS_DIR; join = true)))
 
+"""
+    Row
+
+One benchmark row, flattened with its run's metadata (backend, threads, source, ts). Shared by
+`query_results.jl` and `export_snapshot.jl` so both read `results/runs/` the same way.
+"""
+struct Row
+    backend::String
+    threads::Int
+    category::String
+    method::String
+    framework::String
+    time_ms::Float64
+    nrmse_gt::Float64
+    nrmse_mrt::Float64
+    source::String
+    ts::String
+end
+
+"""
+    load_rows() -> Vector{Row}
+
+Every row from every recorded run file, flattened.
+"""
+function load_rows()
+    rows = Row[]
+    for f in run_files()
+        d = try
+            JSON.parsefile(f)
+        catch e
+            @warn "unreadable run file, skipping" f exception = e
+            continue
+        end
+        backend = get(d, "backend", "")
+        threads = get(d, "threads", 0)
+        source = get(d, "source", "unknown")
+        ts = get(d, "ts", "")
+        for b in get(d, "benchmarks", [])
+            push!(
+                rows, Row(
+                    backend, threads, b["category"], b["method"], b["framework"],
+                    Float64(b["time_ms"]), Float64(b["nrmse_gt"]), Float64(b["nrmse_mrt"]), source, ts,
+                )
+            )
+        end
+    end
+    return rows
+end
+
+"""
+    latest_per_case(rows; prefer_source = nothing) -> Vector{Row}
+
+One row per (backend, threads, category, method, framework): the most recent (`ts`), among rows
+matching `prefer_source` if given, else preferring `"slurm"` over anything else and falling back to
+whatever exists when no `"slurm"` row is present for that case.
+"""
+function latest_per_case(rows::Vector{Row}; prefer_source::Union{Nothing, AbstractString} = nothing)
+    best = Dict{NTuple{5, Any}, Row}()
+    for r in rows
+        prefer_source !== nothing && r.source != prefer_source && continue
+        key = (r.backend, r.threads, r.category, r.method, r.framework)
+        cur = get(best, key, nothing)
+        if cur === nothing
+            best[key] = r
+        else
+            better = prefer_source !== nothing ? r.ts > cur.ts :
+                (r.source == "slurm", r.ts) > (cur.source == "slurm", cur.ts)
+            better && (best[key] = r)
+        end
+    end
+    return collect(values(best))
+end
+
 end
