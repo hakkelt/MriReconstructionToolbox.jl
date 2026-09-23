@@ -14,8 +14,8 @@ with thread count, where intra-operator threading starts to pay, what the BLAS c
 | `scripts/probe.jl` | what the process sees of its own core budget (`Cpus_allowed_list`, `jl_effective_threads`, the `LinearAlgebra` default, SLURM env). `benchmark/comparison/scripts/_setup.jl`'s `check_environment()` runs the same checks automatically and fails the job on a mismatch instead of just printing one; run this by hand for the interactive/diagnostic version. |
 
 MRT-only end-to-end timings are no longer produced here — `recon_bench.jl` was removed;
-`benchmark/comparison/scripts/run_all.jl` now always times MRT inline (see "Baseline for
-`benchmark/comparison/`" below).
+`benchmark/comparison/scripts/run_all.jl` now always times MRT inline (see
+`benchmark/comparison/README.md`).
 
 ## Running
 
@@ -63,8 +63,9 @@ Each provider's own licence and citation terms apply — see
 ## Results
 
 `results/*.json` is **gitignored** — it is a local measurement, hardware- and load-dependent,
-and regenerated on demand. Only `benchmark/comparison/results/*.json` (MRT *plus* BART / SigPy / MRIReco,
-for the documentation's comparison page) is committed.
+and regenerated on demand. Only `benchmark/comparison/results/benchmark_<backend>_<n>threads.json`
+(MRT *plus* BART / SigPy / MRIReco, for the documentation's comparison page) is committed; see
+`benchmark/comparison/README.md` for how those are produced now.
 
 ## Cluster: full re-verification
 
