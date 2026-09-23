@@ -31,6 +31,8 @@ benchmark/hpc/results/*__*.json
 # results/runs/: one immutable file per benchmark run (see ResultsStore.jl); local working data,
 # not the same thing as a committed comparison snapshot
 benchmark/comparison/results/runs/
+# λ calibrated on the MRT_BENCH_SMALL=1 smoke cases; meaningless at full size
+/benchmark/comparison/results/lambda_small/
 
 # agent scaffolding and worktrees
 .claude/
