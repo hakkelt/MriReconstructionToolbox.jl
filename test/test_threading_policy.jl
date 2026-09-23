@@ -282,3 +282,49 @@ end
     adapted3 = adapt_operator(op3; storage_type = Array{Float64})
     @test adapted3 !== op3
 end
+
+@testitem "threading policy: a large BLAS call grants itself threads past a soft default" tags = [
+    :misc, :Threading,
+] setup = [TestUtils] begin
+    using AbstractOperators, LinearAlgebra, Random
+    import NestedThreading
+    const AO = AbstractOperators
+    Random.seed!(0)
+
+    blas = BLAS.get_num_threads()
+    counted(threaded, work) = AO._with_blas_threading(BLAS.get_num_threads, threaded, work)
+    big = AO.BLAS3_THREAD_WORK[]
+
+    NestedThreading.with_thread_default(1; only = (:blas,)) do
+        @test counted(true, big - 1) == 1           # below the gate: the default stands
+        @test counted(true, big) == blas            # at the gate: BLAS's own count back
+        @test counted(false, big) == 1              # `threaded = false` still vetoes
+        NestedThreading.with_thread_budget(1) do    # a hard limit is never granted past
+            @test counted(true, big) == 1
+        end
+        @test BLAS.get_num_threads() == 1
+    end
+    @test BLAS.get_num_threads() == blas
+
+    # Work counts: m·k·n multiply-adds, four per complex one.
+    @test AO._matmul_work(zeros(3, 4), zeros(4, 5)) == 60
+    @test AO._matmul_work(zeros(ComplexF32, 3, 4), zeros(Float32, 4)) == 48
+    @test AO._matmul_work(zeros(3, 4)', zeros(3, 2)) == 4 * 3 * 2
+
+    # The gate sits in the operators' `mul!`, which keep computing the same thing.
+    A = randn(64, 48)
+    x = randn(48, 16)
+    op = MatrixOp(A, 16)
+    old = AO.BLAS3_THREAD_WORK[]
+    try
+        AO.BLAS3_THREAD_WORK[] = 1
+        NestedThreading.with_thread_default(1; only = (:blas,)) do
+            @test op * x ≈ A * x
+            @test op' * (A * x) ≈ A' * (A * x)
+            @test LMatrixOp(x, 64) * A ≈ A * x
+        end
+    finally
+        AO.BLAS3_THREAD_WORK[] = old
+    end
+    @test BLAS.get_num_threads() == blas
+end

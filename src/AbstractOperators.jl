@@ -2,7 +2,8 @@ module AbstractOperators
 
 using LinearAlgebra, Random
 using Base.Cartesian: @ncall, @ntuple, @nloops, @nref
-using NestedThreading: @budgeted_threads, with_restricted_threads, quiesce_foreign_pools
+using NestedThreading: @budgeted_threads, with_restricted_threads, quiesce_foreign_pools,
+    with_thread_grant
 using Polyester: @batch
 using FastBroadcast: FastBroadcast, @..
 using RecursiveArrayTools: ArrayPartition
