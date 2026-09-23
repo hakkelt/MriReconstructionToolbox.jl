@@ -200,6 +200,14 @@ end
 
 function _compose_with_sensitivity(ℱ, info::AcquisitionInfo; threaded::Bool)
     smaps = info.sensitivity_maps
+    # A named acquisition builds a named Fourier operator, and a plain sensitivity operator cannot
+    # be composed with it. Plain maps are given the standard names instead — the layout the
+    # positional branch below assumes anyway. (A Cartesian acquisition already rejects this
+    # combination; a non-Cartesian one, e.g. one `simulate_acquisition` gave named k-space, did
+    # not, and failed here with a storage-type `DomainError`.)
+    if !isnothing(smaps) && !(smaps isa NamedDimsArray) && _has_dimnames(info.kspace_data)
+        smaps = NamedDimsArray{_standard_smaps_dimnames(ndims(smaps), info.is3D)}(smaps)
+    end
     return if isnothing(smaps)
         ℱ
     elseif smaps isa NamedDimsArray && _has_dimnames(info.kspace_data)
@@ -225,6 +233,15 @@ function _compose_with_sensitivity(ℱ, info::AcquisitionInfo; threaded::Bool)
         𝒮 = get_sensitivity_map_operator(plain_smaps, info.is3D; batch_dims, threaded)
         ℱ * 𝒮
     end
+end
+
+# The dimension names sensitivity maps carry by convention: `(:x, :y, :z, :coil)` in 3D,
+# `(:x, :y, :coil)` for one 2D slice and `(:x, :y, :coil, :z)` for a 2D multislice stack.
+function _standard_smaps_dimnames(nd::Int, is3D::Bool)
+    is3D && return (:x, :y, :z, :coil)
+    nd == 3 && return (:x, :y, :coil)
+    nd == 4 && return (:x, :y, :coil, :z)
+    throw(ArgumentError("sensitivity maps of a 2D acquisition have 3 or 4 dimensions, got $nd"))
 end
 
 function get_encoding_operator(

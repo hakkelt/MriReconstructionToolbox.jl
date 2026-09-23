@@ -691,6 +691,27 @@ end
         result = simulate_acquisition(real.(x), acq)
         @test eltype(result.kspace_data) == ComplexF32
     end
+
+    @testset "named image and trajectory with plain maps" begin
+        # The simulated k-space is named, and plain maps used to fail to compose with the named
+        # Fourier operator (a storage-type `DomainError`); they take the standard names instead.
+        named_traj = NamedDimsArray{(:coord, :sample, :spoke)}(traj)
+        plain = simulate_acquisition(
+            NamedDimsArray{(:x, :y)}(x),
+            NonCartesianAcquisitionInfo(nothing; trajectory = named_traj, image_size = (nx, ny), sensitivity_maps = smaps),
+        )
+        named = simulate_acquisition(
+            NamedDimsArray{(:x, :y)}(x),
+            NonCartesianAcquisitionInfo(
+                nothing; trajectory = named_traj, image_size = (nx, ny),
+                sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps),
+            ),
+        )
+        @test dimnames(plain.kspace_data) == (:sample, :spoke, :coil)
+        @test parent(plain.kspace_data) ≈ parent(named.kspace_data)
+        x_back = reconstruct(plain, DirectReconstruction(); verbosity = Silent())
+        @test dimnames(x_back) == (:x, :y)
+    end
 end
 
 @testitem "Fourier operator helpers match raw FFT (even and odd sizes)" tags = [:reconstruction, :encoding] begin
