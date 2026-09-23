@@ -433,6 +433,16 @@ end
         displayable = to_displayable_mask(pattern, (8, 8))
         @test size(displayable) == (8, 8)
         @test eltype(displayable) == Bool
+
+        # Every per-axis form `CartesianAcquisitionInfo` accepts: an index vector or range selects
+        # the same phase encodes as the Bool vector it stands for, on any axis.
+        keep = BitVector([1, 0, 1, 1, 0, 0, 1, 0])
+        @test to_displayable_mask((:, findall(keep)), (8, 8)) == to_displayable_mask((:, keep), (8, 8))
+        @test to_displayable_mask((:, 2:2:8), (8, 8)) == repeat(reshape(iseven.(1:8), 1, :), 8, 1)
+        rows = BitVector([1, 1, 0, 0, 1, 1, 0, 0])
+        @test to_displayable_mask((rows, keep), (8, 8)) == rows .& reshape(keep, 1, :)
+        @test to_displayable_mask((:, [2, 5], :), (4, 6, 3)) == [j in (2, 5) for i in 1:4, j in 1:6, k in 1:3]
+        @test_throws ArgumentError to_displayable_mask((:, [1, 2]), (4, 4, 4))
     end
 
     @testset "Anisotropic dims and large center fractions" begin
@@ -575,4 +585,20 @@ end
         NamedDimsArray{(:kx, :ky, :coil)}(rand(ComplexF32, nx, ny, nc)); is3D = true,
         image_size = (nx, ny, nz), sensitivity_maps = NamedDimsArray{(:x, :y, :z, :coil)}(smaps),
     )
+end
+
+@testitem "GRAPPA on a phase-encode index vector" tags = [:acquisition, :reconstruction] begin
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using NamedDims
+
+    # GRAPPA reads the pattern through `to_displayable_mask`, which used to reject an index vector
+    # with "Unsupported pattern format" although the acquisition accepts one.
+    n, nc = 32, 4
+    lines = sort(unique([1:2:n; 13:20]))
+    ksp = NamedDimsArray{(:kx, :ky, :coil)}(rand(ComplexF32, n, length(lines), nc))
+    method = GRAPPA(kernel_size = (4, 3), calib_size = (8, 8), coil_combination = RootSumSquares())
+    by_index = CartesianAcquisitionInfo(ksp; is3D = false, image_size = (n, n), subsampling = (:, lines))
+    by_mask = CartesianAcquisitionInfo(ksp; is3D = false, image_size = (n, n), subsampling = (:, in(lines).(1:n)))
+    @test parent(reconstruct(by_index, method; verbosity = Silent())) ≈ parent(reconstruct(by_mask, method; verbosity = Silent()))
 end
