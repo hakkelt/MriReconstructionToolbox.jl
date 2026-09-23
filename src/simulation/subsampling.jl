@@ -329,12 +329,26 @@ function to_displayable_mask(pattern, dims::NTuple{N, Int}) where {N}
     end
 end
 
-# A function barrier: every branch of `to_displayable_mask` is compiled for every pattern type, and
-# inlined here the view's type is only known as a union, making the fill a runtime dispatch.
-@noinline function _per_axis_mask(pattern::Tuple, dims::Tuple)
+# A function barrier: every branch of `to_displayable_mask` is compiled for every pattern type. Each
+# selector becomes a Bool vector over its axis, and the mask is their outer AND — written without a
+# logically indexed view, whose `fill!`/broadcast JET reports as a runtime dispatch.
+@noinline function _per_axis_mask(pattern::Tuple, dims::NTuple{N, Int}) where {N}
+    keep = ntuple(d -> _axis_keep(pattern[d], dims[d]), Val(N))
     mask = falses(dims)
-    fill!(view(mask, pattern...), true)
+    for I in CartesianIndices(dims)
+        mask[I] = all(d -> keep[d][I[d]], 1:N)
+    end
     return mask
+end
+
+_axis_keep(::Colon, n::Int) = trues(n)
+_axis_keep(selector::AbstractVector{Bool}, ::Int) = BitVector(selector)
+function _axis_keep(selector::AbstractVector, n::Int)
+    keep = falses(n)
+    for i in selector
+        keep[i] = true
+    end
+    return keep
 end
 
 construct_weights(::UniformRandomSampling, dims) = ones(Float64, dims)
