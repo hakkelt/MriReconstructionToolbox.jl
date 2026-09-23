@@ -1,0 +1,951 @@
+{
+    "backend": "mkl",
+    "benchmarks": [
+        {
+            "category": "Accuracy race",
+            "framework": "MRIReco",
+            "method": "Global Low-Rank (NRMSE≤0.09, 12 it)",
+            "nrmse_gt": 0.0891850704156535,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 154.436366
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRT (MKL)",
+            "method": "Global Low-Rank (NRMSE≤0.09, 12 it)",
+            "nrmse_gt": 0.08914908225546041,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 162.537335
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "BART (MKL)",
+            "method": "Global Low-Rank (NRMSE≤0.09, 150 it)",
+            "nrmse_gt": 0.08771859239055597,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 1040.76900875
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "SigPy",
+            "method": "L1-Wavelet (NRMSE≤0.01, 12 it)",
+            "nrmse_gt": 0.008856119279596128,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 231.765548
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "BART (MKL)",
+            "method": "L1-Wavelet (NRMSE≤0.01, 20 it)",
+            "nrmse_gt": 0.008465799503028393,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 545.43726925
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRIReco",
+            "method": "L1-Wavelet (NRMSE≤0.01, 30 it)",
+            "nrmse_gt": 0.009867426653070136,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 104.447201
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRT (MKL)",
+            "method": "L1-Wavelet (NRMSE≤0.01, 30 it)",
+            "nrmse_gt": 0.008163392543792725,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 101.724993
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "BART (MKL)",
+            "method": "Locally Low-Rank (NRMSE≤0.055, 150 it)",
+            "nrmse_gt": 0.051589429933573246,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 1113.339746
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRIReco",
+            "method": "Locally Low-Rank (NRMSE≤0.055, 20 it)",
+            "nrmse_gt": 0.04967960549218634,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 246.68709
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRT (MKL)",
+            "method": "Locally Low-Rank (NRMSE≤0.055, 20 it)",
+            "nrmse_gt": 0.0473000351414245,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 267.634118
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRT (MKL)",
+            "method": "TGV (NRMSE≤0.005, 20 it)",
+            "nrmse_gt": 0.004789699800312519,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 331.83316099999996
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "BART (MKL)",
+            "method": "TGV (NRMSE≤0.005, 80 it)",
+            "nrmse_gt": 0.004910125397145748,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 934.775154
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRT (MKL)",
+            "method": "Temporal TV (NRMSE≤0.09, 3 it)",
+            "nrmse_gt": 0.0876873854765179,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 52.320434
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "BART (MKL)",
+            "method": "Temporal TV (NRMSE≤0.09, 80 it)",
+            "nrmse_gt": 0.088228804243466,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 628.5389875000001
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRT (MKL)",
+            "method": "Total Variation (NRMSE≤0.005, 12 it)",
+            "nrmse_gt": 0.004487990401685238,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 81.046966
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "BART (MKL)",
+            "method": "Total Variation (NRMSE≤0.005, 40 it)",
+            "nrmse_gt": 0.004508007783442736,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 234.512365
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRIReco",
+            "method": "Total Variation (NRMSE≤0.005, 8 it)",
+            "nrmse_gt": 0.00483419199857044,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 168.28889
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "SigPy",
+            "method": "Total Variation (NRMSE≤0.005, 8 it)",
+            "nrmse_gt": 0.004305897035070021,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 569.380804
+        },
+        {
+            "category": "Base 1C",
+            "framework": "BART (MKL)",
+            "method": "1-Coil Adjoint",
+            "nrmse_gt": 1.5658692120723572e-7,
+            "nrmse_mrt": 1.632820385566447e-7,
+            "threads": 8,
+            "time_ms": -1.0
+        },
+        {
+            "category": "Base 1C",
+            "framework": "MRT (MKL)",
+            "method": "1-Coil Adjoint",
+            "nrmse_gt": 1.6452996476346016e-7,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 0.291527
+        },
+        {
+            "category": "Base 1C",
+            "framework": "SigPy",
+            "method": "1-Coil Adjoint",
+            "nrmse_gt": 1.1620239348530959e-7,
+            "nrmse_mrt": 1.4432423256494076e-7,
+            "threads": 8,
+            "time_ms": 0.475193
+        },
+        {
+            "category": "Base MC",
+            "framework": "BART (MKL)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 1.3965771472612687e-7,
+            "nrmse_mrt": 1.7291962706167396e-7,
+            "threads": 8,
+            "time_ms": 53.009857999999994
+        },
+        {
+            "category": "Base MC",
+            "framework": "MIRT",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 1.0238880535691741e-7,
+            "nrmse_mrt": 1.450403290745241e-7,
+            "threads": 8,
+            "time_ms": 93.278402
+        },
+        {
+            "category": "Base MC",
+            "framework": "MRIReco",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 1.3539794414570061e-7,
+            "nrmse_mrt": 1.7083719368002936e-7,
+            "threads": 8,
+            "time_ms": 19.632374000000002
+        },
+        {
+            "category": "Base MC",
+            "framework": "MRT (MKL)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 1.3246665275801206e-7,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 13.261416
+        },
+        {
+            "category": "Base MC",
+            "framework": "SigPy",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 1.1314813544774186e-7,
+            "nrmse_mrt": 1.617221043561161e-7,
+            "threads": 8,
+            "time_ms": 68.03654900000001
+        },
+        {
+            "category": "Base MC",
+            "framework": "BART (MKL)",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 9.450447180370247e-8,
+            "nrmse_mrt": 7.514894662108418e-8,
+            "threads": 8,
+            "time_ms": -1.0
+        },
+        {
+            "category": "Base MC",
+            "framework": "MIRT",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 8.470041859515001e-8,
+            "nrmse_mrt": 7.64620019585345e-8,
+            "threads": 8,
+            "time_ms": 2.327852
+        },
+        {
+            "category": "Base MC",
+            "framework": "MRIReco",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 9.401487233162698e-8,
+            "nrmse_mrt": 6.983736255961048e-8,
+            "threads": 8,
+            "time_ms": 4.966018
+        },
+        {
+            "category": "Base MC",
+            "framework": "MRT (MKL)",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 9.300943304424436e-8,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 0.255336
+        },
+        {
+            "category": "Base MC",
+            "framework": "SigPy",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 6.929313656200975e-8,
+            "nrmse_mrt": 7.932567314128391e-8,
+            "threads": 8,
+            "time_ms": 2.4550599999999996
+        },
+        {
+            "category": "Dynamic",
+            "framework": "BART (MKL)",
+            "method": "Global Low-Rank (20 it)",
+            "nrmse_gt": 0.0855808257975576,
+            "nrmse_mrt": 0.004585925955325365,
+            "threads": 8,
+            "time_ms": 1387.6321915
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MIRT",
+            "method": "Global Low-Rank (20 it)",
+            "nrmse_gt": 0.08253655900146857,
+            "nrmse_mrt": 0.008486255930951082,
+            "threads": 8,
+            "time_ms": 1728.965229
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRIReco",
+            "method": "Global Low-Rank (20 it)",
+            "nrmse_gt": 0.08456524672393882,
+            "nrmse_mrt": 0.0016960752112735865,
+            "threads": 8,
+            "time_ms": 254.507565
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRT (MKL)",
+            "method": "Global Low-Rank (20 it)",
+            "nrmse_gt": 0.08454461201312269,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 267.574763
+        },
+        {
+            "category": "Dynamic",
+            "framework": "SigPy",
+            "method": "Global Low-Rank (20 it)",
+            "nrmse_gt": 0.08457105572446057,
+            "nrmse_mrt": 0.0017914200895584982,
+            "threads": 8,
+            "time_ms": 1932.3595460000001
+        },
+        {
+            "category": "Dynamic",
+            "framework": "BART (MKL)",
+            "method": "Locally Low-Rank (20 it)",
+            "nrmse_gt": 0.048410342544842215,
+            "nrmse_mrt": 0.0028626529965549707,
+            "threads": 8,
+            "time_ms": 1520.13059075
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRIReco",
+            "method": "Locally Low-Rank (20 it)",
+            "nrmse_gt": 0.05040681708941506,
+            "nrmse_mrt": 0.029099069184256515,
+            "threads": 8,
+            "time_ms": 243.108617
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRT (MKL)",
+            "method": "Locally Low-Rank (20 it)",
+            "nrmse_gt": 0.0473000351414245,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 267.378071
+        },
+        {
+            "category": "Dynamic",
+            "framework": "BART (MKL)",
+            "method": "Temporal TV (20 it)",
+            "nrmse_gt": 0.08252842640112021,
+            "nrmse_mrt": 0.024854321032762527,
+            "threads": 8,
+            "time_ms": 1650.78987625
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRT (MKL)",
+            "method": "Temporal TV (20 it)",
+            "nrmse_gt": 0.07544908824538966,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 267.631072
+        },
+        {
+            "category": "K-Space",
+            "framework": "MRT (MKL)",
+            "method": "GRAPPA (RSS)",
+            "nrmse_gt": 0.021225081756711006,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 14.712535
+        },
+        {
+            "category": "K-Space",
+            "framework": "MRT (MKL)",
+            "method": "GRAPPA (Sensitivity)",
+            "nrmse_gt": 0.024357568472623825,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 12.933399
+        },
+        {
+            "category": "Non-Cartesian",
+            "framework": "MIRT",
+            "method": "DCF Adjoint (Gridding)",
+            "nrmse_gt": 0.08516499778282678,
+            "nrmse_mrt": 2.021102217336837e-6,
+            "threads": 8,
+            "time_ms": 63.550463
+        },
+        {
+            "category": "Non-Cartesian",
+            "framework": "MRIReco",
+            "method": "DCF Adjoint (Gridding)",
+            "nrmse_gt": 0.08543767035007477,
+            "nrmse_mrt": 0.037890151143074036,
+            "threads": 8,
+            "time_ms": 28.945197999999998
+        },
+        {
+            "category": "Non-Cartesian",
+            "framework": "MRT (MKL)",
+            "method": "DCF Adjoint (Gridding)",
+            "nrmse_gt": 0.0851651132106781,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 2.207128
+        },
+        {
+            "category": "Non-Cartesian",
+            "framework": "MRT (MKL) (m=3, σ=1.25)",
+            "method": "DCF Adjoint (Gridding)",
+            "nrmse_gt": 0.08516940474510193,
+            "nrmse_mrt": 0.0002074407530017197,
+            "threads": 8,
+            "time_ms": 6.087207
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "BART (MKL)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.4879628207929002,
+            "nrmse_mrt": 0.0002875575446523726,
+            "threads": 8,
+            "time_ms": 133.79339375
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "MRIReco",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.4879628183586889,
+            "nrmse_mrt": 0.00028756205914461883,
+            "threads": 8,
+            "time_ms": 93.038866
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "MRT (MKL)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.4879609882339128,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 88.333954
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "SigPy",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.4879628142262421,
+            "nrmse_mrt": 0.0002875536509653614,
+            "threads": 8,
+            "time_ms": 468.192826
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "BART (MKL)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.48749147772648743,
+            "nrmse_mrt": 0.062279798090457916,
+            "threads": 8,
+            "time_ms": 1286.77892475
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "MRIReco",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.48833442329839716,
+            "nrmse_mrt": 0.057449604972053425,
+            "threads": 8,
+            "time_ms": 494.373362
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "MRT (MKL)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.48621704068754107,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 595.97274
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "SigPy",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.48938823028800393,
+            "nrmse_mrt": 0.0611401159983713,
+            "threads": 8,
+            "time_ms": 1934.124955
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "BART (MKL)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.4885894728631564,
+            "nrmse_mrt": 0.00821935385465622,
+            "threads": 8,
+            "time_ms": 7906.47069475
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "MRIReco",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.4900698973562039,
+            "nrmse_mrt": 0.06832161436696874,
+            "threads": 8,
+            "time_ms": 1505.425001
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "MRT (MKL)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.4888675209869822,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 1133.174453
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "SigPy",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.4882557330226465,
+            "nrmse_mrt": 0.008926689058001504,
+            "threads": 8,
+            "time_ms": 8341.548436000001
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "BART (MKL)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.4910919067402647,
+            "nrmse_mrt": 0.0003444912848828884,
+            "threads": 8,
+            "time_ms": 1057.2701295
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "MRIReco",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.4911049758326789,
+            "nrmse_mrt": 0.0022947509749241327,
+            "threads": 8,
+            "time_ms": 703.371123
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "MRT (MKL)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.4910923788470558,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 1058.907109
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "SigPy",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.49109190661980595,
+            "nrmse_mrt": 0.0003444897817742358,
+            "threads": 8,
+            "time_ms": 3249.905305
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "BART (MKL)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.4915437872622907,
+            "nrmse_mrt": 0.009988520188525593,
+            "threads": 8,
+            "time_ms": 63022.993437
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "MRIReco",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.4918358213123171,
+            "nrmse_mrt": 0.08065674353280593,
+            "threads": 8,
+            "time_ms": 11350.729454
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "MRT (MKL)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.49152906821298137,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 9425.085397
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "SigPy",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.49098637551936186,
+            "nrmse_mrt": 0.010544577624822757,
+            "threads": 8,
+            "time_ms": 68064.18742199999
+        },
+        {
+            "category": "Real Data",
+            "framework": "BART (MKL)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.616580676870943,
+            "nrmse_mrt": 0.0018837284296751022,
+            "threads": 8,
+            "time_ms": 88.19647925
+        },
+        {
+            "category": "Real Data",
+            "framework": "MRIReco",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.6156452298896344,
+            "nrmse_mrt": 0.09830114404264542,
+            "threads": 8,
+            "time_ms": 39.068737999999996
+        },
+        {
+            "category": "Real Data",
+            "framework": "MRT (MKL)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.6163275274120564,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 35.692868000000004
+        },
+        {
+            "category": "Real Data",
+            "framework": "SigPy",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.6165801202090123,
+            "nrmse_mrt": 0.0018833486097026954,
+            "threads": 8,
+            "time_ms": 142.405842
+        },
+        {
+            "category": "Real Data",
+            "framework": "BART (MKL)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.5650872292551589,
+            "nrmse_mrt": 0.15358677506446838,
+            "threads": 8,
+            "time_ms": 969.6735422499999
+        },
+        {
+            "category": "Real Data",
+            "framework": "MRIReco",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.566215121191662,
+            "nrmse_mrt": 0.15250121651886359,
+            "threads": 8,
+            "time_ms": 221.113043
+        },
+        {
+            "category": "Real Data",
+            "framework": "MRT (MKL)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.5435783306687194,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 329.640892
+        },
+        {
+            "category": "Real Data",
+            "framework": "SigPy",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.5434012422420068,
+            "nrmse_mrt": 0.10174088645123762,
+            "threads": 8,
+            "time_ms": 673.815091
+        },
+        {
+            "category": "Real Data",
+            "framework": "BART (MKL)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.6100458447609216,
+            "nrmse_mrt": 0.14748717844486237,
+            "threads": 8,
+            "time_ms": 3096.87776375
+        },
+        {
+            "category": "Real Data",
+            "framework": "MRIReco",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.5488939986945938,
+            "nrmse_mrt": 0.15154941937421304,
+            "threads": 8,
+            "time_ms": 656.873004
+        },
+        {
+            "category": "Real Data",
+            "framework": "MRT (MKL)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.573861812851568,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 396.38622200000003
+        },
+        {
+            "category": "Real Data",
+            "framework": "SigPy",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.5950110415795417,
+            "nrmse_mrt": 0.09753008641154708,
+            "threads": 8,
+            "time_ms": 4435.396926
+        },
+        {
+            "category": "Real Data 1ch",
+            "framework": "BART (MKL)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.24118432605483234,
+            "nrmse_mrt": 0.04820318520069122,
+            "threads": 8,
+            "time_ms": 2424.1918135
+        },
+        {
+            "category": "Real Data 1ch",
+            "framework": "MRIReco",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.2471707400140645,
+            "nrmse_mrt": 0.08533275935975446,
+            "threads": 8,
+            "time_ms": 592.9412699999999
+        },
+        {
+            "category": "Real Data 1ch",
+            "framework": "MRT (MKL)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.23593634118576573,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 569.099047
+        },
+        {
+            "category": "Real Data 1ch",
+            "framework": "SigPy",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.2369888990444261,
+            "nrmse_mrt": 0.057400939815674894,
+            "threads": 8,
+            "time_ms": 1539.046584
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "BART (MKL)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.9398328565640541,
+            "nrmse_mrt": 0.0005413723993115127,
+            "threads": 8,
+            "time_ms": 96.83814250000002
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "MRIReco",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.939832854269178,
+            "nrmse_mrt": 0.0005413722913551773,
+            "threads": 8,
+            "time_ms": 61.333344999999994
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "MRT (MKL)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.9397879388598102,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 38.486044
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "SigPy",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.9398328487899468,
+            "nrmse_mrt": 0.0005413719222081731,
+            "threads": 8,
+            "time_ms": 227.909547
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "BART (MKL)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.9374044300983282,
+            "nrmse_mrt": 0.13122215867042542,
+            "threads": 8,
+            "time_ms": 811.72659525
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "MRIReco",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.9393465207585625,
+            "nrmse_mrt": 0.14167555567770052,
+            "threads": 8,
+            "time_ms": 182.090204
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "MRT (MKL)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.9201384764284599,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 135.77524899999997
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "SigPy",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.9390154644781548,
+            "nrmse_mrt": 0.13838068619918253,
+            "threads": 8,
+            "time_ms": 976.977918
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "BART (MKL)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.9389427749441878,
+            "nrmse_mrt": 0.004003000445663929,
+            "threads": 8,
+            "time_ms": 2898.6031104999997
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "MRIReco",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.9389796346364081,
+            "nrmse_mrt": 0.1248189363173126,
+            "threads": 8,
+            "time_ms": 798.55582
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "MRT (MKL)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.9389547626325218,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 290.155124
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "SigPy",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.9388470491115327,
+            "nrmse_mrt": 0.02724871674398406,
+            "threads": 8,
+            "time_ms": 4546.438238000001
+        },
+        {
+            "category": "Sparsity",
+            "framework": "BART (MKL)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.008465799503028393,
+            "nrmse_mrt": 0.02129582315683365,
+            "threads": 8,
+            "time_ms": 577.2979949999999
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRIReco",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.016693625718081827,
+            "nrmse_mrt": 0.013527373861102763,
+            "threads": 8,
+            "time_ms": 80.077112
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRT (MKL)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.0225086472928524,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 80.265729
+        },
+        {
+            "category": "Sparsity",
+            "framework": "SigPy",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.008837185776114087,
+            "nrmse_mrt": 0.019728600528814852,
+            "threads": 8,
+            "time_ms": 298.40885099999997
+        },
+        {
+            "category": "Sparsity",
+            "framework": "BART (MKL)",
+            "method": "TGV (20 it)",
+            "nrmse_gt": 0.004061426501721144,
+            "nrmse_mrt": 0.0028879966121166945,
+            "threads": 8,
+            "time_ms": 3138.6672352500004
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRT (MKL)",
+            "method": "TGV (20 it)",
+            "nrmse_gt": 0.004789693746715784,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 338.627212
+        },
+        {
+            "category": "Sparsity",
+            "framework": "BART (MKL)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.003621072741225362,
+            "nrmse_mrt": 0.002087809145450592,
+            "threads": 8,
+            "time_ms": 1444.806163
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRIReco",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.003663011777773373,
+            "nrmse_mrt": 0.0009306107630255324,
+            "threads": 8,
+            "time_ms": 395.98724699999997
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRT (MKL)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.003971268888562918,
+            "nrmse_mrt": 0.0,
+            "threads": 8,
+            "time_ms": 133.018483
+        },
+        {
+            "category": "Sparsity",
+            "framework": "SigPy",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.0031432808912046544,
+            "nrmse_mrt": 0.001878608678214639,
+            "threads": 8,
+            "time_ms": 1438.9858259999999
+        }
+    ],
+    "threads": 8
+}
