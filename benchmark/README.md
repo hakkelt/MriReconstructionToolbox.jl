@@ -56,7 +56,7 @@ smoke runs on a login node and for the `Benchmark case catalog smoke test` TestI
 - the acceleration is within 5% of its design;
 - no k-space sample outside the mask is nonzero;
 - a noiseless, fully sampled Cartesian adjoint reproduces the phantom (NRMSE < 1e-5);
-- a noiseless, Nyquist-sampled radial gridding reproduces the disc-limited phantom (NRMSE < 0.25; a transposed or shifted convention scores above 1).
+- a noiseless, Nyquist-sampled radial gridding with a Pipe-Menon DCF reproduces the phantom band-limited to the |k| ≤ ½ disc a radial trajectory covers (NRMSE < 0.15; a transposed or shifted convention scores above 1). The band limit is needed whatever the DCF: the corners outside the disc hold 14% of Shepp-Logan's energy and are never sampled.
 
 It also prints a hash of every k-space, for comparing processes:
 

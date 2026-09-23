@@ -71,23 +71,27 @@ for id in IDS
             check(e < 1.0e-5, "$id: noiseless fully sampled adjoint NRMSE $e")
         else
             # Noiseless, Nyquist-sampled (π/2 · n spokes) radial data through the same simulation,
-            # gridded by MRT with the ramp DCF: validates the trajectory and FFT-shift conventions.
-            # Scored against the phantom low-passed to the |k| ≤ 1/2 disc a radial trajectory covers
-            # (the corners hold 14% of Shepp-Logan's energy at 128²). Ramp-DCF gridding without
-            # deapodisation then scores 0.10 at 128² and 0.15 at 32², while a transposed or
-            # half-FOV-shifted convention scores above 1, so 0.25 separates the two.
+            # gridded by MRT with an iterative (Pipe-Menon) DCF: validates the trajectory and
+            # FFT-shift conventions. Scored against the phantom low-passed to the |k| ≤ 1/2 disc a
+            # radial trajectory covers: the corners outside it hold 14% of Shepp-Logan's energy at
+            # 128², which no DCF can recover (0.15 against the full phantom even with Pipe-Menon).
+            # Against the disc-limited phantom Pipe-Menon gridding scores 0.058 at 128² and 0.12 at
+            # 32² (the case's own ramp DCF: 0.10 and 0.15), while a transposed or half-FOV-shifted
+            # convention scores above 1.09, so 0.15 separates the two.
             traj = BenchUtils.golden_angle_radial(2n, ceil(Int, π / 2 * n))
             k = BenchUtils._nfft_forward(reshape(img .* maps, n, n, :), traj)
             full = BenchUtils.BenchCase(;
                 id, family = fam, trajectory = :noncartesian, reference = img, smaps = c.smaps,
                 kspace = k, traj, dcf = BenchUtils.ramp_dcf(traj), image_size = c.image_size,
             )
-            x = Array(parent(mrt_reconstructor(full, :gridding)())) ./ dropdims(sum(abs2, maps; dims = 3); dims = 3)
+            acq = density_compensation(mrt_acquisition(full))
+            x = Array(parent(reconstruct(acq, DirectReconstruction(); verbosity = Silent())))
+            x ./= dropdims(sum(abs2, maps; dims = 3); dims = 3)
             kr = ((-(n ÷ 2)):(n - n ÷ 2 - 1)) ./ n
             disc = [hypot(a, b) <= 0.5 for a in kr, b in kr]
             e = mag_nrmse(x, BenchUtils.centred_ifft(centred_fft(img, (1, 2)) .* disc, (1, 2)))
             line *= @sprintf("  full gridding %.3f", e)
-            check(e < 0.25, "$id: noiseless Nyquist-sampled gridding NRMSE $e (vs disc-limited phantom)")
+            check(e < 0.15, "$id: noiseless Nyquist-sampled gridding NRMSE $e (vs disc-limited phantom)")
         end
     end
     println(line)
