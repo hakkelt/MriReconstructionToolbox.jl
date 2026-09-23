@@ -67,9 +67,11 @@ struct NonCartesianAcquisitionInfo{K, T, D, S, I, SD, ID} <: AcquisitionInfo
             end
             nframe = _trajectory_frame_dims_count(traj, ksp)
             fourier_dims = ndims(traj) - 1 - nframe
-            @argcheck ndims(ksp) >= fourier_dims && size(ksp)[1:fourier_dims] == size(traj)[2:(fourier_dims + 1)] "k-space data dimensions must match trajectory sample dimensions"
+            # Compared axis by axis: `fourier_dims` is only known at run time, and `==` on tuples of
+            # unknown length infers as `Union{Missing, Bool}`, a runtime dispatch.
+            @argcheck ndims(ksp) >= fourier_dims && all(i -> size(ksp, i) == size(traj, i + 1), 1:fourier_dims) "k-space data dimensions must match trajectory sample dimensions"
             if ksp isa NamedDimsArray
-                @argcheck dimnames(ksp)[1:fourier_dims] == dimnames(traj)[2:(fourier_dims + 1)] "k-space data dimension names must match trajectory sample dimension names"
+                @argcheck all(i -> dimnames(ksp, i) === dimnames(traj, i + 1), 1:fourier_dims) "k-space data dimension names must match trajectory sample dimension names"
                 @argcheck :coil ∉ dimnames(traj) "a trajectory frame axis cannot be the :coil axis"
                 if !isnothing(smaps)
                     @argcheck :coil ∈ dimnames(ksp) "k-space must have :coil dimension when sensitivity maps are provided"
