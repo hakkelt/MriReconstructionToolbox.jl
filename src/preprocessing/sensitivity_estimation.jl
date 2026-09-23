@@ -133,16 +133,25 @@ function estimate_sensitivities(
     nspatial = is3D ? 3 : 2
     spatial_dims = ntuple(identity, nspatial)
 
-    # Averaging is done on the samples rather than on the gridded images: the whole series shares
-    # one trajectory, and gridding is linear, so the two are the same answer — but this way the
-    # NFFT adjoint runs once instead of once per frame.
-    nfourier = ndims(acq.trajectory) - 1
-    averaged_ksp = _average_calibration_dims(acq.kspace_data, average_dims, nfourier, nspatial)
+    # With a shared trajectory, averaging is done on the samples rather than on the gridded images:
+    # gridding is linear, so the two are the same answer — but this way the NFFT adjoint runs once
+    # instead of once per frame. A per-frame trajectory samples different k-space locations in each
+    # frame, so there the frames are gridded one by one and the *images* are averaged.
+    nfourier = _get_sample_dims_count(acq)
+    nframe = _trajectory_frame_dims_count(acq.trajectory, acq.kspace_data)
+    avg_idx = _calibration_average_indices(acq.kspace_data, average_dims, nfourier, nspatial)
 
     # One image per coil (and per remaining batch slab) from the density-compensated gridding
     # adjoint. The NFFT convention puts the image origin at the centre of the matrix, so the
     # k-space this produces below is centred too, and so are the maps that come out of it.
-    averaged = _grid_coil_images(averaged_ksp, acq, dcf, threaded)
+    averaged = if nframe == 0
+        _grid_coil_images(_drop_mean(acq.kspace_data, avg_idx), acq, dcf, threaded)
+    else
+        # k-space position k is image position k - nfourier + nspatial: both layouts end in the
+        # same `(coil, batch...)` tail.
+        gridded = _grid_coil_images(acq.kspace_data, acq, dcf, threaded)
+        _drop_mean(gridded, [i - nfourier + nspatial for i in avg_idx])
+    end
 
     raw_images = unname(averaged)
     ksp_gridded = fftshift(fft(ifftshift(raw_images, spatial_dims), spatial_dims), spatial_dims)
@@ -171,17 +180,17 @@ function _grid_coil_images(ksp::AbstractArray, acq::NonCartesianAcquisitionInfo,
 end
 
 """
-    _average_calibration_dims(kspace, average_dims, nfourier, nspatial)
+    _calibration_average_indices(kspace, average_dims, nfourier, nspatial) -> Vector{Int}
 
-Average non-Cartesian k-space over the batch dimensions named (or indexed) in `average_dims`,
-dropping those dimensions. Names are resolved against the k-space's own dimension names and
+The k-space positions of the batch dimensions named (or indexed) in `average_dims`, over which
+sensitivity estimation averages. Names are resolved against the k-space's own dimension names and
 silently ignored when the array carries none or does not have that dimension — `(:time,)`, the
 default, must be a no-op for the many acquisitions that have no time axis. Integers index the
 *gridded image* array the caller sees (`(:x, :y, :coil, batch...)`), which differs from the
 k-space layout whenever the trajectory's sample axes do not number `nspatial`. Sample axes and
 the coil axis are never averaged.
 """
-function _average_calibration_dims(kspace::AbstractArray, average_dims, nfourier::Int, nspatial::Int)
+function _calibration_average_indices(kspace::AbstractArray, average_dims, nfourier::Int, nspatial::Int)
     dims = average_dims isa Union{Integer, Symbol} ? (average_dims,) : average_dims
     names = kspace isa NamedDimsArray ? dimnames(kspace) : ()
     idx = Int[]
@@ -206,11 +215,15 @@ function _average_calibration_dims(kspace::AbstractArray, average_dims, nfourier
         @argcheck i > nfourier + 1 "average_dims names dimension $d, which is a sample or coil dimension of the k-space, not a batch dimension"
         i in idx || push!(idx, i)
     end
-    isempty(idx) && return kspace
+    return idx
+end
 
-    averaged = dropdims(mean(unname(kspace), dims = Tuple(idx)), dims = Tuple(idx))
-    return if kspace isa NamedDimsArray
-        NamedDimsArray{Tuple(n for (i, n) in enumerate(names) if i ∉ idx)}(averaged)
+# Mean over the dimensions `idx` of `a`, dropping them (and their names).
+function _drop_mean(a::AbstractArray, idx)
+    isempty(idx) && return a
+    averaged = dropdims(mean(unname(a), dims = Tuple(idx)), dims = Tuple(idx))
+    return if a isa NamedDimsArray
+        NamedDimsArray{Tuple(n for (i, n) in enumerate(dimnames(a)) if i ∉ idx)}(averaged)
     else
         averaged
     end

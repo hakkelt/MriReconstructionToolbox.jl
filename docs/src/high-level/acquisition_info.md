@@ -553,6 +553,36 @@ using MriReconstructionToolbox: NonCartesianAcquisitionInfo
 See `docs/src/high-level/simulation.md` for ready-made trajectory generators
 (`radial_trajectory`, `stack_of_stars_trajectory`, `kooshball_trajectory`, `spiral_trajectory`).
 
+### Per-frame trajectories
+
+A dynamic acquisition whose trajectory changes from frame to frame — golden-angle radial spokes
+that keep rotating, spiral arms that interleave across frames — carries one trajectory per frame
+as trailing trajectory axes that match the trailing k-space axes. A trajectory
+`(:coord, :sample, :spoke, :time)` goes with k-space `(:sample, :spoke, :coil, :time)`: frame `t`
+is encoded with `trajectory[:, :, :, t]` alone. A trajectory without the frame axis is shared by
+every frame, as before.
+
+```@example acqinfo
+nframes = 4
+traj_t = NamedDimsArray{(:coord, :sample, :spoke, :time)}(rand(Float32, 2, 64, 32, nframes) .- 0.5f0)
+acq_t = AcquisitionInfo(;
+    trajectory = traj_t, image_size = (64, 64), sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps),
+)
+series = simulate_acquisition(NamedDimsArray{(:x, :y, :time)}(rand(ComplexF32, 64, 64, nframes)), acq_t)
+println(dimnames(series.kspace_data), size(series.kspace_data))
+```
+
+The encoding operator builds one NFFT per frame (see [`get_fourier_operator`](@ref)), so a temporal
+regularizer couples frames that were each sampled differently — the incoherence that dynamic
+compressed sensing relies on. [`density_compensation`](@ref) computes one set of weights per frame,
+[`estimate_sensitivities`](@ref) averages the frames after gridding each with its own trajectory,
+and the gradient-delay estimators pool the spokes of every frame.
+
+A trajectory axis is a frame axis when it matches the end of the k-space, by name for named
+arrays and by size otherwise. With plain arrays, a trajectory whose trailing size also matches the
+axis after the samples (a coil count equal to the frame count, or data without a coil axis) keeps
+its older meaning — one shared trajectory with more sample axes — so name the axes there.
+
 ## Density Compensation (Non-Cartesian)
 
 Non-Cartesian acquisitions (such as radial, spiral, or arbitrary k-space trajectories) need density compensation factors (DCF) to turn the adjoint NFFT into a usable direct (gridding) reconstruction — the adjoint on its own is *not* an inverse for non-uniformly sampled data. `NonCartesianAcquisitionInfo` (`public`, not exported — see above) holds the trajectory and an optional `dcf` array.
