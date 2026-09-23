@@ -534,3 +534,45 @@ end
         @test ndims(acq.sensitivity_maps) == 4
     end
 end
+
+@testitem "3D k-space subsampled over ky–kz with sensitivity maps" tags = [:acquisition] begin
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using NamedDims
+    using Random
+
+    # A ky–kz mask joins the two phase-encode axes into one `:kyz` axis, so the k-space has no
+    # `:kz` of its own; the maps check must accept that, and the named acquisition must
+    # reconstruct exactly what the plain-array one does.
+    rng = MersenneTwister(3)
+    nx, ny, nz, nc = 8, 6, 4, 2
+    mask = rand(rng, Bool, ny, nz)
+    mask[1, 1] = true
+    ksp = rand(rng, ComplexF32, nx, count(mask), nc)
+    smaps = rand(rng, ComplexF32, nx, ny, nz, nc)
+    plain = CartesianAcquisitionInfo(
+        ksp; is3D = true, image_size = (nx, ny, nz), sensitivity_maps = smaps, subsampling = (:, mask),
+    )
+    named = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :kyz, :coil)}(ksp); is3D = true, image_size = (nx, ny, nz),
+        sensitivity_maps = NamedDimsArray{(:x, :y, :z, :coil)}(smaps), subsampling = (:, mask),
+    )
+    x_plain = reconstruct(plain, DirectReconstruction(); verbosity = Silent())
+    x_named = reconstruct(named, DirectReconstruction(); verbosity = Silent())
+    @test dimnames(x_named) == (:x, :y, :z)
+    @test parent(x_named) ≈ x_plain
+
+    # Without maps the coil axis of the per-coil images sits at image position 4, not at its
+    # k-space position 3.
+    for ksp_in in (ksp, NamedDimsArray{(:kx, :kyz, :coil)}(ksp))
+        acq = CartesianAcquisitionInfo(ksp_in; is3D = true, image_size = (nx, ny, nz), subsampling = (:, mask))
+        @test size(reconstruct(acq, DirectReconstruction(RootSumSquares()); verbosity = Silent())) == (nx, ny, nz)
+        @test size(reconstruct(acq, DirectReconstruction(); verbosity = Silent())) == (nx, ny, nz, nc)
+    end
+
+    # A 3D k-space with no kz-carrying axis at all is still rejected.
+    @test_throws ArgumentError CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky, :coil)}(rand(ComplexF32, nx, ny, nc)); is3D = true,
+        image_size = (nx, ny, nz), sensitivity_maps = NamedDimsArray{(:x, :y, :z, :coil)}(smaps),
+    )
+end
