@@ -12,12 +12,14 @@ default, because `"1"` forces `FFTW_MEASURE` on every fresh `bart` process and t
 never persisted, a measured ~6x penalty on short recons). Pass `wisdom = true` only for recons
 whose own compute is long enough (measured > 5 s) that the one-off `FFTW_MEASURE` planning pays
 for itself; `run_bart` then flips the variable on for that call and restores it afterwards.
-`TOOLBOX_PATH` is only set if the caller has not already pinned it to a specific BART build.
+`TOOLBOX_PATH` must name the BART build; `_setup.jl` sets it from `MRT_BENCH_BART_MKL` /
+`MRT_BENCH_BART_OPENBLAS`.
 """
 function run_bart(num_outputs::Int, cmd::String, inputs...; wisdom::Bool = false)
-    if !haskey(ENV, "TOOLBOX_PATH")
-        ENV["TOOLBOX_PATH"] = get(ENV, "MRT_BENCH_BART_MKL", "/project/c_mrrecon/bart_mkl")
-    end
+    haskey(ENV, "TOOLBOX_PATH") || error(
+        "TOOLBOX_PATH is not set: configure MRT_BENCH_BART_MKL / MRT_BENCH_BART_OPENBLAS in " *
+            "benchmark/slurm/site.env"
+    )
     if wisdom
         saved = get(ENV, "BART_USE_FFTW_WISDOM", "0")
         ENV["BART_USE_FFTW_WISDOM"] = "1"

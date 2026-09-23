@@ -1,15 +1,15 @@
-# Write the committed doc snapshot: `results/benchmark_<backend>_<n>threads.json`, one per
-# (backend, threads) pair found in `results/runs/`, each holding the latest `source = "slurm"` row
-# per (category, method, framework) -- the documentation's comparison page reads these, not
-# `results/runs/` directly. This replaces `merge_benchmarks.jl`'s old role; there is still no merge
-# of raw fragments, only a query (`ResultsStore.latest_per_case`) written out to a stable filename.
+# Write the committed snapshot: `results/benchmark_<backend>_<n>threads.json`, one per (backend,
+# threads) pair found in `results/runs/`, each holding the latest `source = "slurm"` row per (case,
+# category, method, framework). The snapshot is the reviewable, versioned record of a full cluster
+# run; `results/runs/` itself is local working data. There is no merge of raw fragments, only a
+# query (`ResultsStore.latest_per_case`) written out to a stable filename.
 #
 #   julia --project=benchmark/comparison benchmark/comparison/scripts/export_snapshot.jl
 #   julia --project=benchmark/comparison benchmark/comparison/scripts/export_snapshot.jl --backend=mkl --threads=16
 using JSON
 
-include(joinpath(@__DIR__, "..", "src", "ResultsStore.jl"))
-using .ResultsStore: load_rows, latest_per_case, RESULTS_DIR
+include(joinpath(@__DIR__, "..", "..", "utils", "results_store.jl"))
+using .ResultsStore: load_rows, latest_per_case, RESULTS_DIR, SCHEMA_VERSION
 
 const ARG = Dict(
     m.captures[1] => m.captures[2] for m in (match(r"^--(\w+)=(.*)$", a) for a in ARGS) if m !== nothing
@@ -33,13 +33,14 @@ for backend in sort(unique(r.backend for r in latest))
             JSON.print(
                 io,
                 Dict(
-                    "backend" => backend, "threads" => threads,
+                    "backend" => backend, "threads" => threads, "schema_version" => SCHEMA_VERSION,
                     "benchmarks" => [
                         Dict(
+                            "case_id" => r.case_id, "data_source" => r.data_source,
                             "category" => r.category, "method" => r.method, "framework" => r.framework,
                             "threads" => r.threads, "time_ms" => r.time_ms,
                             "nrmse_gt" => r.nrmse_gt, "nrmse_mrt" => r.nrmse_mrt,
-                        ) for r in sort(section_rows; by = r -> (r.category, r.method, r.framework))
+                        ) for r in sort(section_rows; by = r -> (r.case_id, r.category, r.method, r.framework))
                     ],
                 ),
                 4,

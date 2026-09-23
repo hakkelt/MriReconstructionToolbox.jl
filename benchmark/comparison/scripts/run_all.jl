@@ -1,19 +1,19 @@
-# Back-compat driver: run every comparison section as its own subprocess (each section
-# `include`s `_setup.jl` and defines `const`s, so they must not share a process). Each section
-# records its own rows to `results/runs/` (see `ResultsStore.jl`) as it finishes -- there is no
-# merge step: every run is an immutable file, and `query_results.jl` reads the whole directory at
-# query time.
+# Driver: run every comparison section as its own subprocess (each section `include`s `_setup.jl`
+# and defines `const`s, so they must not share a process). Each section records its own rows to
+# `results/runs/` (see `benchmark/utils/results_store.jl`) as it finishes -- there is no merge step:
+# every run is an immutable file, and `query_results.jl` reads the whole directory at query time.
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_all.jl --threads=N [--use-mkl]
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_all.jl --threads=N --sections=sparsity,dynamic
-#   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_all.jl --threads=N --cases="Sparsity|Total Variation (20 it)"
-# --sections restricts which of ALL_SECTIONS to run; --cases restricts further, to specific
-# (category, method) pairs within whichever sections run (see `_setup.jl`'s `should_run`). Both
-# exist to re-verify a suspect result without paying for the full matrix.
+#   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_all.jl --threads=N --data=all --cases=shepp_logan_2d,cine
+# --sections restricts which of ALL_SECTIONS to run; every other flag (--data, --cases,
+# --frameworks, ...) is passed through to each section (see `_setup.jl`). Real data is not a
+# section of its own: `--data=real` or `--data=all` folds the real-data analogues of the catalog
+# cases into every section.
 # For real parallelism submit the sections as separate SLURM jobs instead (see the SLURM array
 # script) -- concurrent writers are safe by construction, so no merge coordination is needed either
 # way.
 
-const ALL_SECTIONS = ("base", "noncart", "cgsense", "sparsity", "dynamic", "kspace", "real", "accuracy_race")
+const ALL_SECTIONS = ("base", "noncart", "cgsense", "sparsity", "dynamic", "kspace", "accuracy_race")
 let i = findfirst(a -> startswith(a, "--sections="), ARGS)
     global const SECTIONS = i === nothing ? ALL_SECTIONS : Tuple(split(split(ARGS[i], "=")[2], ","))
 end

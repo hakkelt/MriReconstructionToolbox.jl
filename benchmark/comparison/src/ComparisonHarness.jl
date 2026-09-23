@@ -26,12 +26,6 @@ catch err
     @warn "MATLAB is unavailable; the optional MATLAB reference cross-checks are disabled" err
     false
 end
-# Phantom generators live in benchmark/hpc/ (single source of truth: the MRT baseline the
-# comparison suite diffs against is measured there on exactly these phantoms).
-include(joinpath(@__DIR__, "..", "..", "hpc", "src", "Phantoms.jl"))
-# Real scanner k-space via MRITestData.jl — shared with benchmark/hpc/ (single source of truth).
-include(joinpath(@__DIR__, "..", "..", "hpc", "src", "RealData.jl"))
-
 using .BARTBridge
 using .SigPyBridge
 using .MIRTBridge
@@ -44,15 +38,11 @@ else
             "(`module load matlab/...`) and rerun `Pkg.build(\"MATLAB\")` if they are needed."
     )
 end
-using .Phantoms
-using .RealData
 
 export run_bart
 export sigpy, np, sigpy_mri_app
 export setup_matlab_paths
 export MIRT
-export generate_multicoil_brain, generate_dynamic_multicoil_brain
-export load_real_case, real_data_available, real_data_source
 export nrmse, check_nrmse
 
 """
