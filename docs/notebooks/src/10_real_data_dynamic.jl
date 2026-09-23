@@ -777,11 +777,12 @@ animate_slices(
 # The three arms are the same three in every frame, which is what keeps one trajectory for the
 # whole series. A real 3-arm real-time scan would instead let the arms rotate — consecutive blocks
 # of three out of the thirteen — so that each frame samples k-space differently, exactly the
-# incoherence the interleaved Cartesian pattern of section 5 was built for. That cannot be written
-# as one dense acquisition here: a `NonCartesianAcquisitionInfo` carries **one** trajectory, whose
-# sample dimensions are the leading dimensions of the k-space array, so a per-frame trajectory
-# would need the encoding operator to hold one trajectory per frame — the natural extension of the
-# `Vector`-of-specs path the Cartesian side already has, and not something this notebook can fake.
+# incoherence the interleaved Cartesian pattern of section 5 was built for. A
+# `NonCartesianAcquisitionInfo` can express that — a trajectory with a trailing `:time` axis gives
+# every frame its own arms (see "Per-frame trajectories" in the acquisition docs) — but this dataset
+# cannot supply it: USC_SPEECH stores 13 arms per 13-arm period, and binning rotating blocks of
+# three into frames would re-slice the timing of the recorded series. The three fixed arms keep the
+# comparison below on the scan as it was acquired.
 #
 # Each method gets the same three-point λ sweep as section 6, reported at its own best dynamic
 # error. The dynamic mask is built the same way too, from the temporal standard deviation — on this

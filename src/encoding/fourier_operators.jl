@@ -168,10 +168,10 @@ function get_fourier_operator(
         sigma::Union{Nothing, Real} = nothing,
         precompute = nothing,
     )
-    fourier_dims = ndims(trajectory) - 1
+    fourier_dims = _trajectory_sample_dims_count(trajectory, ksp)
     ksp_dimnames = dimnames(ksp)
     traj_dimnames = dimnames(trajectory)
-    @argcheck ksp_dimnames[1:fourier_dims] == traj_dimnames[2:end] "k-space dimension names must match trajectory sample dimension names"
+    @argcheck ksp_dimnames[1:fourier_dims] == traj_dimnames[2:(fourier_dims + 1)] "k-space dimension names must match trajectory sample dimension names"
 
     image_dimnames = if length(image_size) == 3
         (:x, :y, :z, ksp_dimnames[(fourier_dims + 1):end]...)
@@ -179,8 +179,11 @@ function get_fourier_operator(
         (:x, :y, ksp_dimnames[(fourier_dims + 1):end]...)
     end
     raw_dcf = dcf isa NamedDimsArray ? parent(dcf) : dcf
-    𝒩 = get_fourier_operator(
-        parent(ksp), image_size, parent(trajectory); dcf = raw_dcf, threaded, m, sigma, precompute
+    # The frame axes were resolved by name above; the plain arrays are handed the answer rather than
+    # left to guess it from sizes, which can be ambiguous (a coil count equal to the frame count).
+    nframe = ndims(trajectory) - 1 - fourier_dims
+    𝒩 = _nfft_operator(
+        parent(ksp), image_size, parent(trajectory), nframe; dcf = raw_dcf, threaded, m, sigma, precompute
     )
     return NamedDimsOp{image_dimnames, ksp_dimnames}(𝒩)
 end
@@ -207,6 +210,12 @@ explicit array make `op'` a density-compensated approximate inverse instead of t
 useful for a quick direct (gridding) reconstruction, wrong as the adjoint fed to an
 adjoint-assuming algorithm. See `NFFTOp`'s docstring (`deps/AbstractOperators/NFFTOperators`) for
 the full contract.
+
+A trajectory with trailing frame axes (one trajectory per frame, see
+[`NonCartesianAcquisitionInfo`](@ref)) builds one `NFFTOp` per frame, each from its own slice of
+`trajectory` and of an array `dcf`, and applies them with a spreading `BatchOp`: frame `t` of the
+image goes through frame `t`'s NFFT, repeated over the axes between the samples and the frames
+(coils, slabs). The frames are then the parallel layer when `threaded`.
 """
 function get_fourier_operator(
         ksp::AbstractArray,
@@ -218,10 +227,20 @@ function get_fourier_operator(
         sigma::Union{Nothing, Real} = nothing,
         precompute = nothing,
     )
-    fourier_dims = ndims(trajectory) - 1
+    nframe = _trajectory_frame_dims_count(trajectory, ksp)
+    return _nfft_operator(ksp, image_size, trajectory, nframe; dcf, threaded, m, sigma, precompute)
+end
+
+# The NFFT operator of `trajectory` over the batch axes of `ksp`, whose last `nframe` axes are the
+# trajectory's frame axes (`0` for a shared trajectory).
+function _nfft_operator(ksp, image_size, trajectory, nframe::Int; dcf, threaded, m, sigma, precompute)
+    fourier_dims = ndims(trajectory) - 1 - nframe
+    nfft_kwargs = _nfft_operating_point_kwargs(m, sigma, precompute)
+    if nframe > 0
+        return _per_frame_nfft_operator(ksp, image_size, trajectory, nframe, fourier_dims; dcf, threaded, nfft_kwargs)
+    end
     batch_dims = size(ksp)[(fourier_dims + 1):end]
     inner_threaded = threaded && isempty(batch_dims)
-    nfft_kwargs = _nfft_operating_point_kwargs(m, sigma, precompute)
     # `dcf` is forwarded to `NFFTOp` as-is: `nothing` (the default) means no density
     # compensation (the true adjoint), `:auto` requests NFFTOperators' own estimator, and an
     # array is used as given. See `NFFTOp`'s docstring for the full contract.
@@ -230,6 +249,22 @@ function get_fourier_operator(
         return 𝒩
     end
     return BatchOp(𝒩, batch_dims; threaded)
+end
+
+# One `NFFTOp` per frame, applied by a spreading `BatchOp`: the frame axes (the trailing k-space and
+# image axes) select the operator, and the axes between the samples and the frames (coils, slabs)
+# repeat it. The frames are the parallel layer when threaded, so each NFFT runs single-threaded.
+function _per_frame_nfft_operator(ksp, image_size, trajectory, nframe, fourier_dims; dcf, threaded, nfft_kwargs)
+    frame_size = size(trajectory)[(end - nframe + 1):end]
+    middle = size(ksp)[(fourier_dims + 1):(ndims(ksp) - nframe)]
+    sample_axes = ntuple(_ -> Colon(), fourier_dims)
+    ops = map(CartesianIndices(frame_size)) do I
+        traj_frame = trajectory[:, sample_axes..., Tuple(I)...]
+        dcf_frame = dcf isa AbstractArray ? dcf[sample_axes..., Tuple(I)...] : dcf
+        NFFTOp(image_size, traj_frame, dcf_frame; threaded = false, nfft_kwargs...)
+    end
+    op_mask(n) = (ntuple(_ -> :_, n)..., ntuple(_ -> :b, length(middle))..., ntuple(_ -> :s, nframe)...)
+    return BatchOp(ops, middle, op_mask(length(image_size)) => op_mask(fourier_dims); threaded)
 end
 
 """

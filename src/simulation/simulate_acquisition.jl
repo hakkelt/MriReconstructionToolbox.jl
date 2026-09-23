@@ -86,14 +86,22 @@ function simulate_acquisition(image, acq_info::NonCartesianAcquisitionInfo)
         @argcheck size(image)[1:spatial_dims] == size(acq_info.sensitivity_maps)[1:spatial_dims] "image spatial dimensions must match sensitivity maps spatial dimensions"
     end
 
-    sample_dims = size(acq_info.trajectory)[2:end]
+    # The simulated k-space is `(samples..., coil, batch...)`, the batch axes being the image's
+    # axes after the spatial ones. A per-frame trajectory's trailing frame axes are the last of
+    # those batch axes.
+    traj = acq_info.trajectory
+    nspatial = acq_info.is3D ? 3 : 2
+    nsample = ndims(traj) - 1 - _simulation_frame_dims_count(traj, image, nspatial)
+    sample_dims = size(traj)[2:(nsample + 1)]
+    batch_dims = size(image)[(nspatial + 1):end]
     ncoil = isnothing(acq_info.sensitivity_maps) ? () : (size(acq_info.sensitivity_maps)[end],)
-    ksp_size = (sample_dims..., ncoil...)
-    ksp = similar(image, Complex{eltype(acq_info.trajectory)}, ksp_size)
-    if image isa NamedDimsArray && acq_info.trajectory isa NamedDimsArray
-        sample_dimnames = dimnames(acq_info.trajectory)[2:end]
+    ksp_size = (sample_dims..., ncoil..., batch_dims...)
+    ksp = similar(image, Complex{eltype(traj)}, ksp_size)
+    if image isa NamedDimsArray && traj isa NamedDimsArray
+        sample_dimnames = dimnames(traj)[2:(nsample + 1)]
         coil_dimnames = isnothing(acq_info.sensitivity_maps) ? () : (:coil,)
-        ksp = NamedDimsArray{(sample_dimnames..., coil_dimnames...)}(NamedDims.unname(ksp))
+        batch_dimnames = dimnames(image)[(nspatial + 1):end]
+        ksp = NamedDimsArray{(sample_dimnames..., coil_dimnames..., batch_dimnames...)}(NamedDims.unname(ksp))
     end
 
     acq_info = NonCartesianAcquisitionInfo(acq_info; kspace_data = ksp)
@@ -103,6 +111,19 @@ function simulate_acquisition(image, acq_info::NonCartesianAcquisitionInfo)
     end
     mul!(ksp, E, image)
     return acq_info
+end
+
+# The frame axes of a trajectory being simulated are its trailing axes that match the image's
+# trailing batch axes (by name when both are named, by size otherwise); there is no k-space yet to
+# compare against. Any sample axis must remain.
+function _simulation_frame_dims_count(traj, image, nspatial::Int)
+    named = traj isa NamedDimsArray && image isa NamedDimsArray
+    s = named ? dimnames(traj)[2:end] : size(traj)[2:end]
+    b = named ? dimnames(image)[(nspatial + 1):end] : size(image)[(nspatial + 1):end]
+    for f in min(length(b), length(s) - 1):-1:1
+        s[(end - f + 1):end] == b[(end - f + 1):end] && return f
+    end
+    return 0
 end
 
 """

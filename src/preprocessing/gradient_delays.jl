@@ -33,7 +33,12 @@ function correct_gradient_delays(
         method::GradientDelay = OpposingSpokes(),
     )
     delays = estimate_gradient_delays(acq; method)
-    traj_corr = _apply_gradient_delays(acq.trajectory, delays)
+    # Every frame of a per-frame trajectory is corrected alike: the spokes are corrected one by one
+    # whichever frame they belong to.
+    traj = acq.trajectory
+    raw = unname(traj)
+    corr = reshape(_apply_gradient_delays(reshape(raw, size(raw, 1), size(raw, 2), :), delays), size(raw))
+    traj_corr = traj isa NamedDimsArray ? NamedDimsArray{dimnames(traj)}(corr) : corr
     return NonCartesianAcquisitionInfo(acq; trajectory = traj_corr)
 end
 
@@ -51,10 +56,24 @@ function estimate_gradient_delays(
         acq::NonCartesianAcquisitionInfo;
         method::GradientDelay = OpposingSpokes(),
     )
-    traj = unname(acq.trajectory)
-    ksp = unname(acq.kspace_data)
+    traj, ksp = _pooled_spokes(acq.trajectory, acq.kspace_data)
     @argcheck size(traj, 1) >= 2 "Trajectory must have at least 2 spatial dimensions (got $(size(traj, 1)))"
     return _estimate_delays_core(traj, ksp, method)
+end
+
+# Gradient delays are a property of the readout hardware, the same in every frame, so the spokes
+# of a per-frame trajectory are pooled across frames into one `(coord, sample, spoke)` trajectory
+# and a matching `(sample, spoke, rest...)` k-space. A shared trajectory is returned as it is.
+function _pooled_spokes(trajectory, kspace)
+    nframe = _trajectory_frame_dims_count(trajectory, kspace)
+    traj = unname(trajectory)
+    ksp = unname(kspace)
+    nframe == 0 && return traj, ksp
+    @argcheck ndims(traj) - 1 - nframe == 2 "gradient delay estimation needs a (coord, sample, spoke) trajectory per frame"
+    frames = (ndims(ksp) - nframe + 1):ndims(ksp)
+    middle = 3:(ndims(ksp) - nframe)
+    pooled = permutedims(ksp, (1, 2, frames..., middle...))
+    return reshape(traj, size(traj, 1), size(traj, 2), :), reshape(pooled, size(ksp, 1), :, size(ksp)[middle]...)
 end
 
 """
