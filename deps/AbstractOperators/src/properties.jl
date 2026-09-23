@@ -569,9 +569,13 @@ function estimate_opnorm(
     if isfinite(upper)
         if upper > lower * (1 + rel_margin) && lower > 0
             @warn "estimate_opnorm: the closed-form bound is looser than the requested margin" achieved =
-                upper / lower - 1 rel_margin maxit
+                upper / lower - 1 rel_margin maxit maxlog = 1
         end
-        return oftype(lower, upper)
+        # Never return less than the power iteration already certified: `oftype` rounds to
+        # nearest, so narrowing the `Float64` bound to a `Float32` iterate can land just below
+        # it, and a bound that is only structurally justified is no proof against a `lower` that
+        # came out above it. `:upper` promises a value at or above `‖A‖`; this keeps it.
+        return max(oftype(lower, upper), lower)
     end
     # No certificate available: the residual heuristic, which at least errs upwards.
     return sqrt(θ + resid)
@@ -615,8 +619,11 @@ One power iteration on `B = AᴴA`, reporting what its callers need rather than 
 - `lower = sqrt(‖Bx‖)` for the final unit iterate `x`, a certified lower bound on `‖A‖`. `‖Bx‖`
   beats the Rayleigh quotient here because `θ ≤ ‖Bx‖ ≤ λmax` for positive semidefinite `B`.
 - `θ = xᴴBx`, the Rayleigh quotient.
-- `resid = ‖Bx - θx‖`, as `sqrt(‖Bx‖² - θ²)`: the residual is orthogonal to `x` [1, §4.3], so it
-  costs no extra application, vector or pass.
+- `resid = ‖Bx - θx‖`, formed as the vector it is rather than as `sqrt(‖Bx‖² - θ²)`. The residual
+  is orthogonal to `x` [1, §4.3], so the two agree in exact arithmetic, but the subtraction is a
+  difference of nearly equal squares and loses half the significant digits: in `Float32` it cannot
+  resolve a residual below about `3e-4 ‖Bx‖`, and near convergence it goes negative and reads as
+  exact convergence. One extra vector and one extra pass buy those digits back.
 
 The loop stops on `resid / (2θ) ≤ rel_margin` — the factor 2 is the square root between `λ` and
 `‖A‖`, and dropping it makes the test twice as strict as asked — or, with a finite `upper`, as
@@ -634,6 +641,7 @@ function _powerit(A::AbstractOperator; maxit, rel_margin, rng, upper)
     AHA = A' * A
     x = allocate_in_domain(A)
     y = similar(x)
+    r = similar(x)
     Random.randn!(rng, x)
     normalize!(x)
     R = real(eltype(x))
@@ -647,7 +655,8 @@ function _powerit(A::AbstractOperator; maxit, rel_margin, rng, upper)
         # A null operator: every bound is zero and dividing by `nrm` below would not be defined.
         nrm == 0 && return (zero(R), zero(R), zero(R))
         θ = real(dot(x, y))
-        resid = sqrt(max(zero(R), nrm^2 - θ^2))
+        @.. thread = true r = y - θ * x
+        resid = norm(r)
         θ > 0 && resid / (2θ) <= rel_margin && break
         isfinite(upper) && upper <= sqrt(nrm) * (1 + rel_margin) && break
         @.. thread = true x = y / nrm
