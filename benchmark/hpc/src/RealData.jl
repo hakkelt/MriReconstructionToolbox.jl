@@ -56,7 +56,14 @@ by every project on the machine, so this costs nothing where the data is already
 keeps the benchmark independent of whoever last set the preference by hand.
 """
 function _ensure_download_path()
-    MRITestData.get_download_path() === nothing && MRITestData.set_download_path!(:cache)
+    dir = get(ENV, "MRT_BENCH_DATA_DIR", "")
+    if !isempty(dir)
+        current = MRITestData.get_download_path()
+        (current === nothing || normpath(current) != normpath(abspath(dir))) &&
+            MRITestData.set_download_path!(dir)
+    elseif MRITestData.get_download_path() === nothing
+        MRITestData.set_download_path!(:cache)
+    end
     return nothing
 end
 
