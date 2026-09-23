@@ -1,13 +1,17 @@
 # Back-compat driver: run every comparison section as its own subprocess (each section
-# `include`s `_setup.jl` and defines `const`s, so they must not share a process), then merge.
+# `include`s `_setup.jl` and defines `const`s, so they must not share a process). Each section
+# records its own rows to `results/runs/` (see `ResultsStore.jl`) as it finishes -- there is no
+# merge step: every run is an immutable file, and `query_results.jl` reads the whole directory at
+# query time.
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_all.jl --threads=N [--use-mkl]
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_all.jl --threads=N --sections=sparsity,dynamic
-# --sections restricts which of ALL_SECTIONS to run (e.g. to re-verify a suspect result without
-# paying for the full matrix); default is all of them. merge_benchmarks.jl still merges every
-# fragment found on disk, so a partial run's merged JSON keeps whatever was already there for the
-# sections skipped this time.
+#   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_all.jl --threads=N --cases="Sparsity|Total Variation (20 it)"
+# --sections restricts which of ALL_SECTIONS to run; --cases restricts further, to specific
+# (category, method) pairs within whichever sections run (see `_setup.jl`'s `should_run`). Both
+# exist to re-verify a suspect result without paying for the full matrix.
 # For real parallelism submit the sections as separate SLURM jobs instead (see the SLURM array
-# script), then run merge_benchmarks.jl.
+# script) -- concurrent writers are safe by construction, so no merge coordination is needed either
+# way.
 
 const ALL_SECTIONS = ("base", "noncart", "cgsense", "sparsity", "dynamic", "kspace", "real", "accuracy_race")
 let i = findfirst(a -> startswith(a, "--sections="), ARGS)
@@ -28,5 +32,3 @@ for s in SECTIONS
         @warn "section $s failed (exit $(e))"
     end
 end
-
-run(`$jl --project=$proj $(joinpath(@__DIR__, "merge_benchmarks.jl"))`)

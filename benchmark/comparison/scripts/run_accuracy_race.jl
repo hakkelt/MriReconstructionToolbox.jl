@@ -107,6 +107,7 @@ for (key, meth, target, mrtreg, mrtkind, spm, mrm, bartcmd, bartladder, λdef) i
             LADDER_BART_ADMM, 0.003,
         ),
     )
+    should_run("Accuracy race", meth) || continue
     println("--> $meth  (target NRMSE ≤ $target)")
 
     addrow(
@@ -144,6 +145,7 @@ for (key, meth, target, mrtreg, mrtkind, spm, mrm, bartcmd, bartladder, λdef) i
             end
         )
     )
+    flush_results!("accuracy_race")
 end
 
 # --- dynamic (2D+t): global low-rank / locally low-rank / temporal TV ---------------------------
@@ -206,6 +208,7 @@ for (key, meth, target, mrtreg, bartcmd, mrm, λdef) in (
             nothing, 0.01,
         ),
     )
+    should_run("Accuracy race", meth) || continue
     println("--> $meth  (target NRMSE ≤ $target)")
 
     addrow(
@@ -234,6 +237,7 @@ for (key, meth, target, mrtreg, bartcmd, mrm, λdef) in (
             end
         )
     )
+    flush_results!("accuracy_race")
 end
 
 write_section("accuracy_race")

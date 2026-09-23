@@ -20,34 +20,37 @@ acq_mc = CartesianAcquisitionInfo(NamedDimsArray(kspace_mc, (:kx, :ky, :coil)); 
 
 addrow(fw, t, x, xmrt) = push!(results, BenchResult("Base MC", "CG-SENSE (10 it)", fw, NUM_THREADS, t, mag_nrmse(x, img_mc), xmrt === nothing ? 0.0 : mag_nrmse(xmrt, x)))
 
-println("--> CG-SENSE (10 it)")
-method_cg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0); maxit = 10, reltol = 0.0)
-tm, _, xm = time_reconstruction(() -> reconstruct(acq_mc, method_cg; verbosity = Silent()))
-addrow(FW, tm * 1000, xm, nothing)
+if should_run("Base MC", "CG-SENSE (10 it)")
+    println("--> CG-SENSE (10 it)")
+    method_cg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0); maxit = 10, reltol = 0.0)
+    tm, _, xm = time_reconstruction(() -> reconstruct(acq_mc, method_cg; verbosity = Silent()))
+    addrow(FW, tm * 1000, xm, nothing)
 
-try
-    ts, xs = sigpy_recon(:cgsense, kspace_mc, cmap; iterations = 10)
-    addrow("SigPy", ts, xs, xm)
-catch e
-    @warn "SigPy CG-SENSE failed" exception = (e, catch_backtrace())
-end
-try
-    tb, _, rb = time_bart("pics -S -w 1 -i 10", ComplexF32.(reshape(kspace_mc, N, N, 1, Nc)), ComplexF32.(reshape(cmap, N, N, 1, Nc)))
-    addrow(BART_FW, tb * 1000, rb[:, :, 1], xm)
-catch e
-    @warn "BART CG-SENSE failed" exception = (e, catch_backtrace())
-end
-try
-    tr, xr = mrireco(:cgsense, kspace_mc, cmap, (N, N); iterations = 10)
-    addrow("MRIReco", tr, xr, xm)
-catch e
-    @warn "MRIReco CG-SENSE failed" exception = (e, catch_backtrace())
-end
-try
-    ti, xi = mirt_recon(:cgsense, kspace_mc, cmap; iterations = 10)
-    addrow("MIRT", ti, xi, xm)
-catch e
-    @warn "MIRT CG-SENSE failed" exception = (e, catch_backtrace())
+    try
+        ts, xs = sigpy_recon(:cgsense, kspace_mc, cmap; iterations = 10)
+        addrow("SigPy", ts, xs, xm)
+    catch e
+        @warn "SigPy CG-SENSE failed" exception = (e, catch_backtrace())
+    end
+    try
+        tb, _, rb = time_bart("pics -S -w 1 -i 10", ComplexF32.(reshape(kspace_mc, N, N, 1, Nc)), ComplexF32.(reshape(cmap, N, N, 1, Nc)))
+        addrow(BART_FW, tb * 1000, rb[:, :, 1], xm)
+    catch e
+        @warn "BART CG-SENSE failed" exception = (e, catch_backtrace())
+    end
+    try
+        tr, xr = mrireco(:cgsense, kspace_mc, cmap, (N, N); iterations = 10)
+        addrow("MRIReco", tr, xr, xm)
+    catch e
+        @warn "MRIReco CG-SENSE failed" exception = (e, catch_backtrace())
+    end
+    try
+        ti, xi = mirt_recon(:cgsense, kspace_mc, cmap; iterations = 10)
+        addrow("MIRT", ti, xi, xm)
+    catch e
+        @warn "MIRT CG-SENSE failed" exception = (e, catch_backtrace())
+    end
+    flush_results!("cgsense")
 end
 
 write_section("cgsense")

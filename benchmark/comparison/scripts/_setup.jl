@@ -4,9 +4,9 @@
 # helpers and `BenchResult`, and builds the shared multi-coil brain phantom.
 #
 # Each section script then appends to `results::Vector{BenchResult}` and calls
-# `write_section("<name>")`, which writes
-#   benchmark/comparison/results/benchmark_<backend>_<n>threads__<name>.json
-# `merge_benchmarks.jl` stitches those into benchmark_<backend>_<n>threads.json.
+# `write_section("<name>")`, which records one immutable run file under
+# `results/runs/` via `ResultsStore.jl`. `query_results.jl` reads that directory back for
+# analysis -- there is no merge step (see `ResultsStore.jl`'s module docstring for why).
 
 using Printf
 using JSON
@@ -264,43 +264,68 @@ end
 
 results = BenchResult[]
 
+"""
+    CASE_FILTER
+
+Parsed from `--cases=Category|Method,Category2|Method2`, or `nothing` when not passed (run
+everything). Every section checks [`should_run`](@ref) before paying for a solve, so a rerun of
+one suspect case does not have to pay for the whole section. `|` and `,` are safe separators: no
+category or method string in this suite contains either.
+"""
+const CASE_FILTER = let i = findfirst(a -> startswith(a, "--cases="), ARGS)
+    i === nothing ? nothing :
+        Set(Tuple(split(c, "|"; limit = 2)) for c in split(ARGS[i][(length("--cases=") + 1):end], ","))
+end
+
+"""
+    should_run(category, method) -> Bool
+
+True unless [`CASE_FILTER`](@ref) is set and `(category, method)` is not in it. `run_accuracy_race.jl`
+must call this with the loop's un-suffixed label (e.g. `"Total Variation"`), not the stored result's
+`"Total Variation (NRMSE≤0.005, 20 it)"` -- that suffix depends on the race's outcome and does not
+exist until after it runs.
+"""
+should_run(category, method) = CASE_FILTER === nothing || (category, method) in CASE_FILTER
+
 """Replace NaN / Inf with -1.0 so a single bad toolkit row does not sink the section's JSON."""
 _json_num(x::Real) = isfinite(x) ? Float64(x) : -1.0
 
-function write_section(name::AbstractString)
-    dir = normpath(joinpath(@__DIR__, "..", "results"))
-    mkpath(dir)
-    path = joinpath(dir, "benchmark_$(USE_MKL ? "mkl" : "openblas")_$(NUM_THREADS)threads__$(name).json")
-    open(path, "w") do io
-        JSON.print(
-            io,
-            Dict(
-                "hostname" => gethostname(), "julia_version" => string(VERSION),
-                "julia_threads" => Threads.nthreads(),
-                "blas_vendor" => BLAS.get_config().loaded_libs[1].libname,
-                "use_mkl" => USE_MKL, "bart_binary" => BART_BINARY,
-                "pinned_cpus" => CPU_STR, "section" => name,
-                "bart_spawn_ms" => BART_SPAWN * 1000,
-                "benchmarks" => [
-                    Dict(
-                        "category" => r.category, "method" => r.method, "framework" => r.framework,
-                        "threads" => r.threads, "time_ms" => _json_num(r.time_ms),
-                        "nrmse_gt" => _json_num(r.nrmse_gt), "nrmse_mrt" => _json_num(r.nrmse_mrt),
-                    ) for r in results
-                ],
-            ),
-            4,
-        )
-    end
+include(joinpath(@__DIR__, "..", "src", "ResultsStore.jl"))
+using .ResultsStore: record_run
+
+"""
+    flush_results!(name) -> path or nothing
+
+Write and clear whatever is currently in `results`, as its own immutable run file, right now.
+Every section calls this after each case (see `should_run`'s guarded blocks in the `run_<section>.jl`
+scripts) rather than only once at the end, so a crash partway through a long section -- a slow
+real-data solve, a hung toolkit subprocess -- does not lose the cases that already finished. Returns
+`nothing` when there is nothing to flush (already flushed, or the case was skipped).
+"""
+function flush_results!(name::AbstractString)
+    isempty(results) && return nothing
+    path = record_run(
+        name, USE_MKL ? "mkl" : "openblas", NUM_THREADS, results;
+        hostname = gethostname(), julia_version = string(VERSION),
+        julia_threads = Threads.nthreads(), blas_vendor = BLAS.get_config().loaded_libs[1].libname,
+        use_mkl = USE_MKL, bart_binary = BART_BINARY, pinned_cpus = CPU_STR,
+        bart_spawn_ms = BART_SPAWN * 1000,
+        cases_filter = CASE_FILTER === nothing ? nothing : [join(c, "|") for c in CASE_FILTER],
+    )
     for r in results
         @printf(
             "%-14s | %-26s | %-22s | %7d | %10.2f ms | %10.2e | %10.2e\n",
             r.category, r.method, r.framework, r.threads, r.time_ms, r.nrmse_gt, r.nrmse_mrt
         )
     end
-    @info "wrote section" path n = length(results)
+    @info "flushed run" path n = length(results) source = ResultsStore.source_tag()
+    empty!(results)
     return path
 end
+
+"""Final catch-all flush at the end of a section script -- a no-op if every case already flushed
+itself via [`flush_results!`](@ref)."""
+write_section(name::AbstractString) = flush_results!(name)
 
 """
     CMP_CTYPE / CMP_RTYPE
