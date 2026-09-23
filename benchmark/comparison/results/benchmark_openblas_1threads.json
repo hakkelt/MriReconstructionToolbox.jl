@@ -1,0 +1,951 @@
+{
+    "backend": "openblas",
+    "benchmarks": [
+        {
+            "category": "Accuracy race",
+            "framework": "MRIReco",
+            "method": "Global Low-Rank (NRMSE≤0.09, 12 it)",
+            "nrmse_gt": 0.0891851456948679,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 206.186022
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Global Low-Rank (NRMSE≤0.09, 12 it)",
+            "nrmse_gt": 0.08914907847397503,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 208.385591
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "BART (OpenBLAS)",
+            "method": "Global Low-Rank (NRMSE≤0.09, 150 it)",
+            "nrmse_gt": 0.08771865764939839,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 1640.71630325
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRT (OpenBLAS)",
+            "method": "L1-Wavelet (NRMSE≤0.01, 12 it)",
+            "nrmse_gt": 0.009930606000125408,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 90.369381
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "SigPy",
+            "method": "L1-Wavelet (NRMSE≤0.01, 12 it)",
+            "nrmse_gt": 0.008857517058083061,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 262.053386
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "BART (OpenBLAS)",
+            "method": "L1-Wavelet (NRMSE≤0.01, 20 it)",
+            "nrmse_gt": 0.008465799503028393,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 348.55016025000003
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRIReco",
+            "method": "L1-Wavelet (NRMSE≤0.01, 30 it)",
+            "nrmse_gt": 0.009867983399353582,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 158.796822
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "BART (OpenBLAS)",
+            "method": "Locally Low-Rank (NRMSE≤0.055, 150 it)",
+            "nrmse_gt": 0.05158932025480089,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 1684.87491475
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRIReco",
+            "method": "Locally Low-Rank (NRMSE≤0.055, 20 it)",
+            "nrmse_gt": 0.05092527327923903,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 360.339009
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Locally Low-Rank (NRMSE≤0.055, 20 it)",
+            "nrmse_gt": 0.04729999536485373,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 324.002123
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRT (OpenBLAS)",
+            "method": "TGV (NRMSE≤0.005, 20 it)",
+            "nrmse_gt": 0.004789693746715784,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 531.895436
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "BART (OpenBLAS)",
+            "method": "TGV (NRMSE≤0.005, 80 it)",
+            "nrmse_gt": 0.0049101258628070354,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 1234.3258847500001
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Temporal TV (NRMSE≤0.09, 3 it)",
+            "nrmse_gt": 0.0876873891469275,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 61.420388
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "BART (OpenBLAS)",
+            "method": "Temporal TV (NRMSE≤0.09, 80 it)",
+            "nrmse_gt": 0.08822880020320807,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 908.1865660000001
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Total Variation (NRMSE≤0.005, 12 it)",
+            "nrmse_gt": 0.004487982951104641,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 186.30875899999998
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "BART (OpenBLAS)",
+            "method": "Total Variation (NRMSE≤0.005, 40 it)",
+            "nrmse_gt": 0.004508007783442736,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 441.37129124999996
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "MRIReco",
+            "method": "Total Variation (NRMSE≤0.005, 8 it)",
+            "nrmse_gt": 0.004834187889606395,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 174.220911
+        },
+        {
+            "category": "Accuracy race",
+            "framework": "SigPy",
+            "method": "Total Variation (NRMSE≤0.005, 8 it)",
+            "nrmse_gt": 0.004305891767285516,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 603.035565
+        },
+        {
+            "category": "Base 1C",
+            "framework": "BART (OpenBLAS)",
+            "method": "1-Coil Adjoint",
+            "nrmse_gt": 1.626778782792826e-7,
+            "nrmse_mrt": 1.2608327892849047e-7,
+            "threads": 1,
+            "time_ms": -1.0
+        },
+        {
+            "category": "Base 1C",
+            "framework": "MRT (OpenBLAS)",
+            "method": "1-Coil Adjoint",
+            "nrmse_gt": 1.6983030093342677e-7,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 0.072201
+        },
+        {
+            "category": "Base 1C",
+            "framework": "SigPy",
+            "method": "1-Coil Adjoint",
+            "nrmse_gt": 1.1620239348530959e-7,
+            "nrmse_mrt": 1.5112044593479368e-7,
+            "threads": 1,
+            "time_ms": 0.541153
+        },
+        {
+            "category": "Base MC",
+            "framework": "BART (OpenBLAS)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 1.3965771472612687e-7,
+            "nrmse_mrt": 1.7363640836265404e-7,
+            "threads": 1,
+            "time_ms": 75.96697400000001
+        },
+        {
+            "category": "Base MC",
+            "framework": "MIRT",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 1.0216429759038459e-7,
+            "nrmse_mrt": 1.4499944953989263e-7,
+            "threads": 1,
+            "time_ms": 67.48984700000001
+        },
+        {
+            "category": "Base MC",
+            "framework": "MRIReco",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 1.3834103931678467e-7,
+            "nrmse_mrt": 1.7239649687979703e-7,
+            "threads": 1,
+            "time_ms": 29.784589
+        },
+        {
+            "category": "Base MC",
+            "framework": "MRT (OpenBLAS)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 1.3326639702881948e-7,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 36.747275
+        },
+        {
+            "category": "Base MC",
+            "framework": "SigPy",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 1.1273902279508771e-7,
+            "nrmse_mrt": 1.6290418989442522e-7,
+            "threads": 1,
+            "time_ms": 71.655031
+        },
+        {
+            "category": "Base MC",
+            "framework": "BART (OpenBLAS)",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 9.450447180370247e-8,
+            "nrmse_mrt": 7.835138404743702e-8,
+            "threads": 1,
+            "time_ms": -1.0
+        },
+        {
+            "category": "Base MC",
+            "framework": "MIRT",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 8.470041864487897e-8,
+            "nrmse_mrt": 3.9982923180803524e-8,
+            "threads": 1,
+            "time_ms": 0.92539
+        },
+        {
+            "category": "Base MC",
+            "framework": "MRIReco",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 9.401487233162698e-8,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 2.820077
+        },
+        {
+            "category": "Base MC",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 9.401487233162698e-8,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 0.641779
+        },
+        {
+            "category": "Base MC",
+            "framework": "SigPy",
+            "method": "Cartesian Adjoint",
+            "nrmse_gt": 6.929313656200975e-8,
+            "nrmse_mrt": 8.003686247093356e-8,
+            "threads": 1,
+            "time_ms": 2.804356
+        },
+        {
+            "category": "Dynamic",
+            "framework": "BART (OpenBLAS)",
+            "method": "Global Low-Rank (20 it)",
+            "nrmse_gt": 0.08558090150106248,
+            "nrmse_mrt": 0.004586064722388983,
+            "threads": 1,
+            "time_ms": 2543.9515115
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MIRT",
+            "method": "Global Low-Rank (20 it)",
+            "nrmse_gt": 0.08245839007142118,
+            "nrmse_mrt": 0.00855942204312953,
+            "threads": 1,
+            "time_ms": 1765.674334
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRIReco",
+            "method": "Global Low-Rank (20 it)",
+            "nrmse_gt": 0.08456527363084441,
+            "nrmse_mrt": 0.001695927960256641,
+            "threads": 1,
+            "time_ms": 402.03501200000005
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Global Low-Rank (20 it)",
+            "nrmse_gt": 0.0845446195923513,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 342.477428
+        },
+        {
+            "category": "Dynamic",
+            "framework": "SigPy",
+            "method": "Global Low-Rank (20 it)",
+            "nrmse_gt": 0.08457105572446065,
+            "nrmse_mrt": 0.0017914365911132117,
+            "threads": 1,
+            "time_ms": 1416.449368
+        },
+        {
+            "category": "Dynamic",
+            "framework": "BART (OpenBLAS)",
+            "method": "Locally Low-Rank (20 it)",
+            "nrmse_gt": 0.04841025696110302,
+            "nrmse_mrt": 0.0028626234270632267,
+            "threads": 1,
+            "time_ms": 2633.3265355000003
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRIReco",
+            "method": "Locally Low-Rank (20 it)",
+            "nrmse_gt": 0.05008897110897968,
+            "nrmse_mrt": 0.030555636081302996,
+            "threads": 1,
+            "time_ms": 420.029382
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Locally Low-Rank (20 it)",
+            "nrmse_gt": 0.04729999853621689,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 370.804821
+        },
+        {
+            "category": "Dynamic",
+            "framework": "BART (OpenBLAS)",
+            "method": "Temporal TV (20 it)",
+            "nrmse_gt": 0.08252842640112032,
+            "nrmse_mrt": 0.024854332208633423,
+            "threads": 1,
+            "time_ms": 2818.6046032500003
+        },
+        {
+            "category": "Dynamic",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Temporal TV (20 it)",
+            "nrmse_gt": 0.07544888905463469,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 374.813831
+        },
+        {
+            "category": "K-Space",
+            "framework": "MRT (OpenBLAS)",
+            "method": "GRAPPA (RSS)",
+            "nrmse_gt": 0.021225081756711006,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 15.918109999999999
+        },
+        {
+            "category": "K-Space",
+            "framework": "MRT (OpenBLAS)",
+            "method": "GRAPPA (Sensitivity)",
+            "nrmse_gt": 0.024357570335268974,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 15.608348
+        },
+        {
+            "category": "Non-Cartesian",
+            "framework": "MIRT",
+            "method": "DCF Adjoint (Gridding)",
+            "nrmse_gt": 0.08516499441830702,
+            "nrmse_mrt": 1.949635487464748e-6,
+            "threads": 1,
+            "time_ms": 27.914209999999997
+        },
+        {
+            "category": "Non-Cartesian",
+            "framework": "MRIReco",
+            "method": "DCF Adjoint (Gridding)",
+            "nrmse_gt": 0.08543767035007477,
+            "nrmse_mrt": 0.037890154868364334,
+            "threads": 1,
+            "time_ms": 30.871794
+        },
+        {
+            "category": "Non-Cartesian",
+            "framework": "MRT (OpenBLAS)",
+            "method": "DCF Adjoint (Gridding)",
+            "nrmse_gt": 0.0851651057600975,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 13.082112
+        },
+        {
+            "category": "Non-Cartesian",
+            "framework": "MRT (OpenBLAS) (m=3, σ=1.25)",
+            "method": "DCF Adjoint (Gridding)",
+            "nrmse_gt": 0.08516941219568253,
+            "nrmse_mrt": 0.0002074424846796319,
+            "threads": 1,
+            "time_ms": 6.834307000000001
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "BART (OpenBLAS)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.48796282068132035,
+            "nrmse_mrt": 0.00028752716025337577,
+            "threads": 1,
+            "time_ms": 550.3567325
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "MRIReco",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.487962815012083,
+            "nrmse_mrt": 0.0002875279155885131,
+            "threads": 1,
+            "time_ms": 185.613306
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "MRT (OpenBLAS)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.487960991941639,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 220.218724
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "SigPy",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.48796281362709926,
+            "nrmse_mrt": 0.000287521719178301,
+            "threads": 1,
+            "time_ms": 430.368688
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "BART (OpenBLAS)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.4874914785638761,
+            "nrmse_mrt": 0.03169691935181618,
+            "threads": 1,
+            "time_ms": 2635.62973
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "MRIReco",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.48833438593620554,
+            "nrmse_mrt": 0.009157042494010701,
+            "threads": 1,
+            "time_ms": 833.3560920000001
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "MRT (OpenBLAS)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.4885627606007562,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 704.898769
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "SigPy",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.4893882261353455,
+            "nrmse_mrt": 0.04084752249524856,
+            "threads": 1,
+            "time_ms": 1932.840039
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "BART (OpenBLAS)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.48858947276856024,
+            "nrmse_mrt": 0.008219354785978794,
+            "threads": 1,
+            "time_ms": 17581.4252875
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "MRIReco",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.4900698972166675,
+            "nrmse_mrt": 0.06832161329182952,
+            "threads": 1,
+            "time_ms": 3581.30396
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.48886752165426317,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 2348.199776
+        },
+        {
+            "category": "Real 3D (1 slice)",
+            "framework": "SigPy",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.4882557329804109,
+            "nrmse_mrt": 0.008926690011250552,
+            "threads": 1,
+            "time_ms": 9128.23993
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "BART (OpenBLAS)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.4910919067142398,
+            "nrmse_mrt": 0.00034444920796352415,
+            "threads": 1,
+            "time_ms": 4445.7313585
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "MRIReco",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.49110497786364565,
+            "nrmse_mrt": 0.002294719879630264,
+            "threads": 1,
+            "time_ms": 1481.843497
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "MRT (OpenBLAS)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.49109239300829843,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 2013.471975
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "SigPy",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.4910919047911657,
+            "nrmse_mrt": 0.0003444412602692417,
+            "threads": 1,
+            "time_ms": 3435.687462
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "BART (OpenBLAS)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.49154378738383153,
+            "nrmse_mrt": 0.009988520389798557,
+            "threads": 1,
+            "time_ms": 138841.9358235
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "MRIReco",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.4918358204801555,
+            "nrmse_mrt": 0.08065674349060031,
+            "threads": 1,
+            "time_ms": 28977.608033999997
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.4915290760257542,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 19681.169831
+        },
+        {
+            "category": "Real 3D (8 slices)",
+            "framework": "SigPy",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.49098637538661927,
+            "nrmse_mrt": 0.010544577802181498,
+            "threads": 1,
+            "time_ms": 72547.583153
+        },
+        {
+            "category": "Real Data",
+            "framework": "BART (OpenBLAS)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.6165806768709429,
+            "nrmse_mrt": 0.001883237506262958,
+            "threads": 1,
+            "time_ms": 298.923287
+        },
+        {
+            "category": "Real Data",
+            "framework": "MRIReco",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.6156451929834799,
+            "nrmse_mrt": 0.09830123316795121,
+            "threads": 1,
+            "time_ms": 52.363848
+        },
+        {
+            "category": "Real Data",
+            "framework": "MRT (OpenBLAS)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.616327827102491,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 65.42935800000001
+        },
+        {
+            "category": "Real Data",
+            "framework": "SigPy",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.6165801896108719,
+            "nrmse_mrt": 0.0018828630325210128,
+            "threads": 1,
+            "time_ms": 165.22534
+        },
+        {
+            "category": "Real Data",
+            "framework": "BART (OpenBLAS)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.5650872292551589,
+            "nrmse_mrt": 0.1289162039756775,
+            "threads": 1,
+            "time_ms": 1324.2602655
+        },
+        {
+            "category": "Real Data",
+            "framework": "MRIReco",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.566215972490069,
+            "nrmse_mrt": 0.11930244176491879,
+            "threads": 1,
+            "time_ms": 307.949852
+        },
+        {
+            "category": "Real Data",
+            "framework": "MRT (OpenBLAS)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.5517372487415694,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 315.861315
+        },
+        {
+            "category": "Real Data",
+            "framework": "SigPy",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.5434015543827178,
+            "nrmse_mrt": 0.08939412478013903,
+            "threads": 1,
+            "time_ms": 774.559679
+        },
+        {
+            "category": "Real Data",
+            "framework": "BART (OpenBLAS)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.6100460264277521,
+            "nrmse_mrt": 0.147487610578537,
+            "threads": 1,
+            "time_ms": 5362.22124975
+        },
+        {
+            "category": "Real Data",
+            "framework": "MRIReco",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.5488940005364948,
+            "nrmse_mrt": 0.15154943244892224,
+            "threads": 1,
+            "time_ms": 1021.5297800000001
+        },
+        {
+            "category": "Real Data",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.5738618143484843,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 702.503518
+        },
+        {
+            "category": "Real Data",
+            "framework": "SigPy",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.5950110510084109,
+            "nrmse_mrt": 0.09753008845295517,
+            "threads": 1,
+            "time_ms": 3455.372771
+        },
+        {
+            "category": "Real Data 1ch",
+            "framework": "BART (OpenBLAS)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.24118431844844448,
+            "nrmse_mrt": 0.0482030026614666,
+            "threads": 1,
+            "time_ms": 3789.0321900000004
+        },
+        {
+            "category": "Real Data 1ch",
+            "framework": "MRIReco",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.24717077090794726,
+            "nrmse_mrt": 0.08533297440422576,
+            "threads": 1,
+            "time_ms": 381.050926
+        },
+        {
+            "category": "Real Data 1ch",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.2359363067429177,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 288.73586
+        },
+        {
+            "category": "Real Data 1ch",
+            "framework": "SigPy",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.23698892489068382,
+            "nrmse_mrt": 0.05740091792405145,
+            "threads": 1,
+            "time_ms": 1584.7105640000002
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "BART (OpenBLAS)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.939832856564054,
+            "nrmse_mrt": 0.0005413382896222174,
+            "threads": 1,
+            "time_ms": 286.33864975
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "MRIReco",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.9398328552489725,
+            "nrmse_mrt": 0.0005413422208365898,
+            "threads": 1,
+            "time_ms": 102.433703
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "MRT (OpenBLAS)",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.9397880168468578,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 122.696206
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "SigPy",
+            "method": "CG-SENSE (10 it)",
+            "nrmse_gt": 0.9398328497497435,
+            "nrmse_mrt": 0.0005413322454380539,
+            "threads": 1,
+            "time_ms": 243.48981899999998
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "BART (OpenBLAS)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.937404430098328,
+            "nrmse_mrt": 0.03303520753979683,
+            "threads": 1,
+            "time_ms": 1243.2442319999998
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "MRIReco",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.939346349126517,
+            "nrmse_mrt": 0.02397007763440021,
+            "threads": 1,
+            "time_ms": 345.380917
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "MRT (OpenBLAS)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.9388804415744193,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 266.59886
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "SigPy",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.9390154114007455,
+            "nrmse_mrt": 0.11114062520455989,
+            "threads": 1,
+            "time_ms": 1073.845615
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "BART (OpenBLAS)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.938942778238917,
+            "nrmse_mrt": 0.004002995323389769,
+            "threads": 1,
+            "time_ms": 8095.077891999999
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "MRIReco",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.9389796350959977,
+            "nrmse_mrt": 0.12481893303086686,
+            "threads": 1,
+            "time_ms": 1832.544706
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.9389547644574218,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 1193.23658
+        },
+        {
+            "category": "Real Dynamic (1 frame)",
+            "framework": "SigPy",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.9388470503611958,
+            "nrmse_mrt": 0.027248713731324935,
+            "threads": 1,
+            "time_ms": 4974.601404999999
+        },
+        {
+            "category": "Sparsity",
+            "framework": "BART (OpenBLAS)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.008465799503028393,
+            "nrmse_mrt": 0.008773504756391048,
+            "threads": 1,
+            "time_ms": 352.15932499999997
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRIReco",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.01668549821182145,
+            "nrmse_mrt": 0.015135144556537495,
+            "threads": 1,
+            "time_ms": 147.012655
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRT (OpenBLAS)",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.007130978628993034,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 113.145544
+        },
+        {
+            "category": "Sparsity",
+            "framework": "SigPy",
+            "method": "L1-Wavelet (20 it)",
+            "nrmse_gt": 0.008837126436696326,
+            "nrmse_mrt": 0.005694431146006264,
+            "threads": 1,
+            "time_ms": 323.144855
+        },
+        {
+            "category": "Sparsity",
+            "framework": "BART (OpenBLAS)",
+            "method": "TGV (20 it)",
+            "nrmse_gt": 0.004061426501721144,
+            "nrmse_mrt": 0.002887996379286051,
+            "threads": 1,
+            "time_ms": 3747.8411972500003
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRT (OpenBLAS)",
+            "method": "TGV (20 it)",
+            "nrmse_gt": 0.004789693746715784,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 533.065563
+        },
+        {
+            "category": "Sparsity",
+            "framework": "BART (OpenBLAS)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.003621072741225362,
+            "nrmse_mrt": 0.002087809145450592,
+            "threads": 1,
+            "time_ms": 2807.49496875
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRIReco",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.0036630092194885862,
+            "nrmse_mrt": 0.0009306123807505696,
+            "threads": 1,
+            "time_ms": 438.684666
+        },
+        {
+            "category": "Sparsity",
+            "framework": "MRT (OpenBLAS)",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.003971268888562918,
+            "nrmse_mrt": 0.0,
+            "threads": 1,
+            "time_ms": 302.029032
+        },
+        {
+            "category": "Sparsity",
+            "framework": "SigPy",
+            "method": "Total Variation (20 it)",
+            "nrmse_gt": 0.003143282305395665,
+            "nrmse_mrt": 0.0018786035300512132,
+            "threads": 1,
+            "time_ms": 1512.903718
+        }
+    ],
+    "threads": 1
+}
