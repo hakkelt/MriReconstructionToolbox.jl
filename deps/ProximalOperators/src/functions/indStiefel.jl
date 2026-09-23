@@ -27,7 +27,7 @@ preallocate(f::IndStiefel, X::AbstractMatrix) = IndStiefel(
 
 function (::IndStiefel)(X)
     R = real(eltype(X))
-    F = svd(X)
+    F = with_factorization_threads(() -> svd(X), X)
     if all(F.S .≈ R(1))
         return R(0)
     end
@@ -44,7 +44,7 @@ function prox!(Y, f::IndStiefel, X, gamma)
     n, p = size(X)
     b = get_buffers(f, X)
     b.X_copy .= X
-    F = svd!(b.X_copy)
+    F = with_factorization_threads(() -> svd!(b.X_copy), X)
     U_sliced = view(F.U, :, 1:p)
     mul!(Y, U_sliced, F.Vt)
     return R(0)

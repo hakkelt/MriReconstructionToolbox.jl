@@ -41,7 +41,7 @@ end
 
 function (f::NuclearNorm)(X)
     runs_natively(svd!, X) || return host_call(f, X)
-    F = svd(X)
+    F = with_factorization_threads(() -> svd(X), X)
     return f.lambda * sum(F.S)
 end
 
@@ -54,7 +54,7 @@ function prox!(Y, f::NuclearNorm, X, gamma)
     R = real(eltype(X))
     b = get_buffers(f, X)
     b.X_copy .= X
-    F = svd!(b.X_copy)
+    F = with_factorization_threads(() -> svd!(b.X_copy), X)
     S_thresh = b.S_thresh
     S_thresh .= max.(R(0), F.S .- f.lambda*gamma)
     rankY = findfirst(iszero, S_thresh)
