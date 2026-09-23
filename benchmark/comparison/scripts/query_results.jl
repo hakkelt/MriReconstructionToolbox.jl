@@ -8,7 +8,7 @@
 #   julia --project=benchmark/comparison benchmark/comparison/scripts/query_results.jl --backend=mkl --threads=16
 using Printf
 
-include(joinpath(@__DIR__, "..", "src", "ResultsStore.jl"))
+include(joinpath(@__DIR__, "..", "..", "utils", "results_store.jl"))
 using .ResultsStore: load_rows, latest_per_case
 
 const ARG = Dict(

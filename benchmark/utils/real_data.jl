@@ -1,417 +1,479 @@
-module RealData
-
-# Real scanner k-space for the benchmark / comparison suites, via MRITestData.jl
-# (https://github.com/hakkelt/MRITestData.jl — not yet registered, pulled in as a `[sources]`
-# url by benchmark/ci/, benchmark/hpc/ and benchmark/comparison/).
+# Real scanner data for the benchmark case catalog, via MRITestData.jl.
 #
-# `load_real_case` downloads (cached, on first use) one fully-sampled Cartesian dataset,
-# assembles its middle slice into `(:kx, :ky, :coil)` k-space, estimates ESPIRiT sensitivity
-# maps and a root-sum-of-squares reference image — the same shape the synthetic
-# `generate_multicoil_brain` produces, so it drops straight into the existing cases.
-# `combine_coils = true` folds that multi-coil k-space down to one virtual channel (see below).
+# Each real case mirrors one synthetic case (`REAL_CASES` in `cases.jl`) and comes out as the same
+# `BenchCase` layout: fully sampled data undersampled retrospectively with the synthetic case's own
+# pattern generator, so `reference` (the fully sampled reconstruction) is a genuine ground truth for
+# the Cartesian cases. Real k-space is unit-RMS normalised but gets no added noise.
 #
-# ── Catalog survey (offline `list_datasets` over every source, 2026-09-01) ────────────────────
-# `MRITestData.list_sources()` == M4RAW, MRIDATA, OCMR, CMRXRECON2024, CMRXRECON300, USC_SPEECH.
-# There is **no fastMRI source** in the package (an earlier draft here referenced a non-existent
-# `MRITestData.FASTMRI`). fastMRI's own `singlecoil_*` knee files are real single-channel data
-# but the dataset is behind a name/email registration wall (emailed download links, not a
-# click-through), so it is not an *open* alternative and is not wired in.
+# ## Which dataset
 #
-# By data type, with the open pick first:
+# Every case lists candidates in order of preference. The open dataset is preferred when it is as
+# good as the gated (registration-only) one for the purpose; the gated one comes first where the
+# open one is less suitable:
 #
-#   multi-channel Cartesian, fully sampled
-#     M4RAW  multicoil_train/2022062402_T203    4ch  0.3 T brain, 256², 11.7 MB   — PINNED, open (Zenodo CC-BY)
-#     MRIDATA <uuid>                         8–15ch  1.5/3 T knee & brain, ISMRMRD, ~1–1.5 GB   — open (mridata.org per-dataset terms)
-#     OCMR   fs_0001_1_5T                     multi  1.5 T cardiac cine, ~200 MB                — open (OCMR data-use terms + citation)
+# | case | first choice | fallback |
+# |---|---|---|
+# | 2D, 1 channel | gated fastMRI knee `singlecoil_val/file1000107` (native single channel) | open M4RAW, SENSE-combined to one channel |
+# | 2D, multichannel | open M4RAW `multicoil_train/2022062402_T203`, middle slice | |
+# | 2D, radial | gated fastMRI breast `fastMRI_breast_IDS_001_010/fastMRI_breast_006_2`, central partition of the golden-angle stack of stars | |
+# | multislice | open M4RAW, the central 12 of its 18 slices | gated fastMRI brain `multicoil_val/file_brain_AXFLAIR_203_6000923` |
+# | 3D | open MRIDATA knee `52c2fd53-d233-4444-8bfd-7c454240d314`, central 128³ of k-space | |
+# | cine, Cartesian | open OCMR `fs_0001_1_5T` | |
+# | cine, non-Cartesian | open USC speech spiral `sub001/2drt/09_northwind1_r1`, 3 of 13 arms per frame | |
 #
-#   multi-channel non-Cartesian
-#     USC_SPEECH sub029/2drt/04_bvt_r2          8ch  1.5 T spiral vocal tract, 60 MB            — open (figshare CC-BY)
+# The breast DCE series would be the better radial cine (golden-angle radial, spokes binned into
+# frames), but binned golden-angle spokes give every frame its own trajectory, which MRT cannot
+# represent yet; the spiral series repeats its arms every frame, so it shares one trajectory.
 #
-#   GRAPPA-style undersampled (regular / pseudo-random) with an autocalibration region
-#     OCMR   us_0001_3T                        multi  3 T cardiac sax, pseudo-random R≈4 with a
-#                                                     dense k-space centre (VISTA-like ACS), ~90 MB   — open, replaces the gated pick
-#     CMRXRECON300 DemoData/P001/cine_sax      multi  R≈3 + explicit fully-sampled `calib` file   — needs a free Synapse token
+# A gated source counts as available when its file is already cached or signed download URLs are
+# registered and unexpired (`MRITestData.set_fastmri_urls!`). `MRT_BENCH_REAL_PREFER=open|gated`
+# moves that kind to the front of every list. The source actually used is recorded in
+# `BenchCase.source`.
 #
-#   single-channel (Cartesian or non-Cartesian)
-#     No source in the catalog ships true single-channel k-space — the smallest real array is
-#     MRIDATA's two 3-channel spin-echo sets, then M4RAW at 4. `load_real_case(combine_coils=true)`
-#     synthesizes one: SENSE-optimal combine of a real multi-coil member (∑ conj(sᵢ)·xᵢ / ∑|sᵢ|²)
-#     to a single complex image, FFT back to a 1-channel k-space, sensitivity ≡ 1. Real anatomy
-#     and noise, one channel — a compressed-sensing (no parallel imaging) benchmark point.
-
-using NamedDims: NamedDimsArray, unname
-using FFTW: fft, ifft, fftshift, ifftshift
-using MRITestData: MRITestData, list_datasets, dataset, load_raw
-using MriReconstructionToolbox: estimate_sensitivities, ESPIRiT
+# ## Caching
+#
+# Preparing a case is expensive (the breast file alone takes 80 s to load; ESPIRiT on a 3D volume
+# takes minutes) and its maps come from MRT's own estimator, which could differ between two MRT
+# checkouts under comparison. So every prepared case is serialised once, keyed by case id and
+# dataset, under `MRT_BENCH_WORK_DIR` (default `<download path>/mrt_benchmark`), and every later run
+# -- of any checkout -- loads those exact arrays.
 
 """
-    _ensure_download_path()
+    RealSource(kind, source, id; combine = false)
 
-Point `MRITestData` at its own Scratch cache when nothing has chosen a location yet.
-
-The package refuses to touch the disk until one is configured, which made the "Real 3D" group
-die with `No download path is configured` in any environment without a `LocalPreferences.toml`
-of its own -- `benchmark/hpc/` has none, only `benchmark/comparison/` does. The cache is shared
-by every project on the machine, so this costs nothing where the data is already there and it
-keeps the benchmark independent of whoever last set the preference by hand.
+One candidate dataset: `kind` is `:open` or `:gated`, `source` the MRITestData source name, `id` the
+dataset id. `combine = true` reduces a multichannel dataset to one channel.
 """
-function _ensure_download_path()
-    dir = get(ENV, "MRT_BENCH_DATA_DIR", "")
-    if !isempty(dir)
-        current = MRITestData.get_download_path()
-        (current === nothing || normpath(current) != normpath(abspath(dir))) &&
-            MRITestData.set_download_path!(dir)
-    elseif MRITestData.get_download_path() === nothing
-        MRITestData.set_download_path!(:cache)
-    end
-    return nothing
+struct RealSource
+    kind::Symbol
+    source::String
+    id::String
+    combine::Bool
+end
+RealSource(kind, source, id; combine::Bool = false) = RealSource(kind, source, id, combine)
+
+const REAL_SOURCES = Dict(
+    "real_2d_1ch_cartesian" => [
+        RealSource(:gated, "FASTMRI", "singlecoil_val/file1000107"),
+        RealSource(:open, "M4RAW", "multicoil_train/2022062402_T203"; combine = true),
+    ],
+    "real_2d_multichannel_cartesian" => [RealSource(:open, "M4RAW", "multicoil_train/2022062402_T203")],
+    "real_2d_multichannel_radial" => [RealSource(:gated, "FASTMRI", "fastMRI_breast_IDS_001_010/fastMRI_breast_006_2")],
+    "real_multislice_multichannel_cartesian" => [
+        RealSource(:open, "M4RAW", "multicoil_train/2022062402_T203"),
+        RealSource(:gated, "FASTMRI", "multicoil_val/file_brain_AXFLAIR_203_6000923"),
+    ],
+    "real_3d_multichannel_cartesian" => [RealSource(:open, "MRIDATA", "52c2fd53-d233-4444-8bfd-7c454240d314")],
+    "real_cine_multichannel_cartesian" => [RealSource(:open, "OCMR", "fs_0001_1_5T")],
+    "real_cine_multichannel_radial" => [RealSource(:open, "USC_SPEECH", "sub001/2drt/09_northwind1_r1")],
+)
+
+# Bumped whenever the preparation below changes, so stale cached cases are not reused.
+const REAL_CACHE_VERSION = 1
+
+function _mritestdata()
+    return Base.require(Base.PkgId(Base.UUID("b3f1a2c4-5d6e-4a7b-9c8d-0e1f2a3b4c5d"), "MRITestData"))
 end
 
-# The dataset `load_real_case` uses by default: `(source_name, id)`. Real scanner k-space,
-# hard-wired for a reproducible benchmark rather than "whatever is smallest". Override at
-# runtime with `MRT_BENCH_REAL_SOURCE` + `MRT_BENCH_REAL_ID`, or fall back to the
-# smallest-matching search by setting `MRT_BENCH_REAL_ID=auto`.
-const PINNED_DATASET = ("M4RAW", "multicoil_train/2022062402_T203")
+function _source(name::AbstractString)
+    M = _mritestdata()
+    name == "M4RAW" && return M.M4RAW
+    name == "MRIDATA" && return M.MRIDATA
+    name == "OCMR" && return M.OCMR_SOURCE
+    name == "FASTMRI" && return M.FASTMRI
+    name == "USC_SPEECH" && return M.USC_SPEECH
+    throw(ArgumentError("unknown MRITestData source $name"))
+end
 
-# Larger cases (downloaded once, cached; ~1.5 GB / ~0.2 GB). See `load_real_case_3d` /
-# `load_real_dynamic`.
-#   3D knee   — Stanford fully-sampled 3D FSE knee, subject 1: 320×320 kx/ky, 256 kz partitions,
-#               8-channel, 3 T. Reconstructed as a stack of 2D slices (IFFT along kz) so the
-#               the task is split over the slice batch dim — the case where 8 threads should
-#               beat 1.
-#   dynamic   — OCMR fully-sampled cine fs_0001_1_5T: 15-channel, 19 cardiac phases, 208 PE,
-#               1.5 T. Retrospectively 2×-undersampled for the low-rank / temporal-TV rows.
-const PINNED_3D = ("MRIDATA", "52c2fd53-d233-4444-8bfd-7c454240d314")
-const PINNED_DYNAMIC = ("OCMR", "fs_0001_1_5T")
+function _handle(s::RealSource)
+    M = _mritestdata()
+    return Base.invokelatest(M.dataset, _source(s.source), s.id; offline = true)
+end
 
-export load_real_case, load_real_case_3d, load_real_dynamic
-export real_data_available, real_data_source
+"""
+    real_source_available(s::RealSource) -> Bool
 
-# Match a filter needle against an entry id, ignoring separators and case.
-_norm(s) = lowercase(replace(String(s), r"[\s\-_/]" => ""))
+Open sources are always available (MRITestData downloads them on demand). Gated ones only when the
+file is cached or unexpired signed URLs are registered.
+"""
+function real_source_available(s::RealSource)
+    s.kind === :open && return true
+    M = _mritestdata()
+    try
+        Base.invokelatest(M.is_cached, _handle(s)) && return true
+    catch
+    end
+    exp = Base.invokelatest(M.fastmri_url_expires)
+    return exp !== nothing && exp > Dates.now(Dates.UTC)
+end
 
-# Assemble one fully-sampled 2D Cartesian slice from a RawAcquisitionData into a dense
-# (nkx, nky, ncoil) k-space array. Picks the middle slice of the first contrast / repetition /
-# average and places each profile by its `kspace_encode_step_1` (phase-encode) counter.
-function _assemble_cartesian_slice(raw)
-    idx(p) = p.head.idx
-    slices = sort(unique(Int(idx(p).slice) for p in raw.profiles))
-    sl = slices[cld(length(slices), 2)]
+"""
+    real_candidates(real_id) -> Vector{RealSource}
+
+The candidate datasets of `real_id`, in the order they are tried (see `MRT_BENCH_REAL_PREFER`).
+"""
+function real_candidates(real_id::AbstractString)
+    cands = copy(REAL_SOURCES[real_id])
+    pref = lowercase(get(ENV, "MRT_BENCH_REAL_PREFER", ""))
+    if pref in ("open", "gated")
+        sort!(cands; by = s -> string(s.kind) != pref, alg = Base.Sort.DEFAULT_STABLE)
+    end
+    return cands
+end
+
+work_dir() = get(ENV, "MRT_BENCH_WORK_DIR") do
+    ensure_download_path!()
+    joinpath(string(Base.invokelatest(_mritestdata().get_download_path)), "mrt_benchmark")
+end
+
+"""
+    load_real_case(real_id, analogue) -> BenchCase
+
+The first available candidate of `real_id`, prepared (or loaded from the case cache).
+"""
+function load_real_case(real_id::AbstractString, analogue::AbstractString)
+    ensure_download_path!()
+    errors = String[]
+    for s in real_candidates(real_id)
+        if !real_source_available(s)
+            push!(errors, "$(s.source):$(s.id) is gated and neither cached nor registered")
+            continue
+        end
+        path = joinpath(work_dir(), string(real_id, "__", replace(s.source * "_" * s.id, r"[^A-Za-z0-9_.-]" => "_"), "__v", REAL_CACHE_VERSION, ".jls"))
+        if isfile(path)
+            c = deserialize(path)
+            c isa BenchCase && return c
+        end
+        c = try
+            _prepare_real(real_id, analogue, s)
+        catch err
+            push!(errors, "$(s.source):$(s.id): " * first(sprint(showerror, err), 400))
+            @warn "real case $real_id: $(s.source):$(s.id) failed, trying the next candidate" exception = (err, catch_backtrace())
+            continue
+        end
+        mkpath(dirname(path))
+        tmp = path * ".tmp$(getpid())"
+        serialize(tmp, c)
+        mv(tmp, path; force = true)
+        return c
+    end
+    error("no dataset available for $real_id:\n  " * join(errors, "\n  "))
+end
+
+function _prepare_real(real_id, analogue, s::RealSource)
+    label = string(s.source, ":", s.id)
+    seed = _case_seed(real_id)
+    rng = MersenneTwister(seed)
+    raw = Base.invokelatest(_mritestdata().load_raw, _handle(s))
+    if real_id == "real_2d_1ch_cartesian" || real_id == "real_2d_multichannel_cartesian"
+        k = _remove_readout_oversampling(_assemble_cartesian_slices(raw; nslices = 1)[:, :, :, 1], raw)
+        nx, ny, nc = size(k)
+        single = real_id == "real_2d_1ch_cartesian"
+        maps = nc == 1 ? nothing : _espirit_2d(k)
+        if single && nc > 1
+            k, maps = _combine_to_one_channel(k, maps), nothing
+            label *= " (SENSE-combined to 1 channel)"
+        end
+        ref = maps === nothing ? centred_ifft(k[:, :, 1], (1, 2)) : _sense_combine(centred_ifft(k, (1, 2)), maps)
+        sampled = vec(any(!iszero, k; dims = (1, 3)))
+        R = single ? 2.5 : 4.0
+        lines = vd_lines(rng, ny, round(Int, ny / R); acs = _scaled_acs(ny))
+        mask = line_mask(nx, intersect(lines, findall(sampled)), ny)
+        return _real_cartesian(real_id, analogue, :single_slice, ref, maps, k, mask, label, seed)
+    elseif real_id == "real_multislice_multichannel_cartesian"
+        k4 = _assemble_cartesian_slices(raw; nslices = 12)                       # (kx, ky, coil, slice)
+        k4 = stack(_remove_readout_oversampling(k4[:, :, :, z], raw) for z in axes(k4, 4))
+        nx, ny, nc, nz = size(k4)
+        maps = stack(_espirit_2d(k4[:, :, :, z]) for z in 1:nz)                  # (x, y, coil, slice)
+        ref = stack(_sense_combine(centred_ifft(k4[:, :, :, z], (1, 2)), maps[:, :, :, z]) for z in 1:nz)
+        sampled = vec(any(!iszero, k4; dims = (1, 3, 4)))
+        lines = vd_lines(rng, ny, ny ÷ 4; acs = _scaled_acs(ny))
+        mask = line_mask(nx, intersect(lines, findall(sampled)), ny)
+        return _real_cartesian(real_id, analogue, :multislice, ref, maps, k4, mask, label, seed)
+    elseif real_id == "real_3d_multichannel_cartesian"
+        k = _assemble_cartesian_3d_centre(raw, (128, 128, 128))                  # (kx, ky, kz, coil)
+        nx, ny, nz, nc = size(k)
+        maps = _espirit_3d(k)
+        ref = _sense_combine(centred_ifft(k, (1, 2, 3)), maps)
+        calib = 24
+        yz = vd_mask_2d(rng, ny, nz; R = 6, calib)
+        mask = BitArray(repeat(reshape(yz, 1, ny, nz), nx, 1, 1))
+        return _real_cartesian(real_id, analogue, :volume, ref, maps, k, mask, label, seed; heavy = true)
+    elseif real_id == "real_cine_multichannel_cartesian"
+        k = _assemble_cartesian_dynamic(raw)                                      # (kx, ky, coil, time)
+        size(k, 1) > 144 && (k = _center_readout(k, 144))
+        nx, ny, nc, nt = size(k)
+        # Calibrated from one frame: cardiac motion smears a time-averaged calibration region.
+        maps = _espirit_2d(k[:, :, :, 1])
+        ref = stack(_sense_combine(centred_ifft(k[:, :, :, t], (1, 2)), maps) for t in 1:nt)
+        sampled = vec(any(!iszero, k; dims = (1, 3, 4)))
+        acs = max(4, round(Int, 8 * ny / 128))
+        lines = per_frame_lines(rng, ny, nt; centre = acs, random = max(1, ny ÷ 4 - acs))
+        mask = falses(nx, ny, nt)
+        for t in 1:nt
+            mask[:, intersect(lines[t], findall(sampled)), t] .= true
+        end
+        return _real_cartesian(real_id, analogue, :cine, ref, maps, k, mask, label, seed; heavy = true)
+    elseif real_id == "real_2d_multichannel_radial"
+        return _prepare_breast_radial(real_id, analogue, raw, label, seed)
+    elseif real_id == "real_cine_multichannel_radial"
+        return _prepare_speech_spiral(real_id, analogue, raw, label, seed)
+    end
+    throw(ArgumentError("no preparation for real case $real_id"))
+end
+
+function _real_cartesian(real_id, analogue, family, ref, maps, kfull, mask, label, seed; heavy = false)
+    k = norm_ksp(ComplexF32.(kfull))
+    k .*= _broadcast_mask(mask, family, size(k))
+    image_size = family === :volume ? size(ref) : size(ref)[1:2]
+    return BenchCase(;
+        id = real_id, family, trajectory = :cartesian, reference = ComplexF32.(ref),
+        smaps = maps === nothing ? nothing : ComplexF32.(maps), kspace = k, mask = BitArray(mask),
+        image_size, heavy, real = true, source = label, analogue, seed,
+    )
+end
+
+# ACS width scaled with the phase-encode count, 16 lines at 128 like the synthetic cases.
+_scaled_acs(ny) = max(8, round(Int, 16 * ny / 128))
+
+# ---------------------------------------------------------------- Cartesian assembly
+
+_idx(p) = p.head.idx
+_readout_range(p) = (Int(p.head.discard_pre) + 1):(size(p.data, 1) - Int(p.head.discard_post))
+
+"""
+    _assemble_cartesian_slices(raw; nslices) -> Array{ComplexF64, 4}
+
+`(kx, ky, coil, slice)` k-space of the `nslices` central slices (first contrast, repetition and
+average), each profile placed by its `kspace_encode_step_1` counter.
+"""
+function _assemble_cartesian_slices(raw; nslices::Int)
     prof = [
         p for p in raw.profiles if
-            Int(idx(p).slice) == sl && Int(idx(p).contrast) == 0 &&
-            Int(idx(p).repetition) == 0 && Int(idx(p).average) == 0
+            Int(_idx(p).contrast) == 0 && Int(_idx(p).repetition) == 0 && Int(_idx(p).average) == 0
     ]
-    isempty(prof) && error("no imaging profiles for the selected slice")
-    nsamp, ncoil = size(prof[1].data)
-    pre = Int(prof[1].head.discard_pre)
-    post = Int(prof[1].head.discard_post)
-    nkx = nsamp - pre - post
-    nky = maximum(Int(idx(p).kspace_encode_step_1) for p in prof) + 1
-    ksp = zeros(ComplexF64, nkx, nky, ncoil)
+    slices = sort(unique(Int(_idx(p).slice) for p in prof))
+    nslices <= length(slices) || error("the data has $(length(slices)) slices, $nslices requested")
+    lo = (length(slices) - nslices) ÷ 2 + 1
+    sel = slices[lo:(lo + nslices - 1)]
+    rr = _readout_range(prof[1])
+    ncoil = size(prof[1].data, 2)
+    nky = maximum(Int(_idx(p).kspace_encode_step_1) for p in prof) + 1
+    k = zeros(ComplexF64, length(rr), nky, ncoil, nslices)
     for p in prof
-        row = Int(idx(p).kspace_encode_step_1) + 1
-        ksp[:, row, :] .= ComplexF64.(@view p.data[(pre + 1):(pre + nkx), :])
+        z = findfirst(==(Int(_idx(p).slice)), sel)
+        z === nothing && continue
+        k[:, Int(_idx(p).kspace_encode_step_1) + 1, :, z] .= @view p.data[rr, :]
     end
-    return ksp
+    return k
 end
 
-_img_from_ksp(ksp) = fftshift(ifft(ifftshift(ksp, (1, 2)), (1, 2)), (1, 2))
-_ksp_from_img(img) = fftshift(fft(ifftshift(img, (1, 2)), (1, 2)), (1, 2))
-
-_readout_range(p) = begin
-    pre = Int(p.head.discard_pre)
-    post = Int(p.head.discard_post)
-    n = size(p.data, 1) - pre - post
-    (pre + 1):(pre + n)
+# Keep the central half of the image along x when the readout is twice oversampled (encoded size
+# twice the reconstruction size), as fastMRI's and most vendors' raw data are.
+function _remove_readout_oversampling(k::AbstractArray{<:Complex, 3}, raw)
+    enc = get(raw.params, "encodedSize", nothing)
+    rec = get(raw.params, "reconSize", nothing)
+    (enc === nothing || rec === nothing || enc[1] < 2 * rec[1] || size(k, 1) != enc[1]) && return k
+    n = size(k, 1)
+    img = centred_ifft(k, (1,))
+    keep = (n ÷ 4 + 1):(n ÷ 4 + n ÷ 2)
+    return centred_fft(img[keep, :, :], (1,))
 end
 
-# Crop dimension 1 of a k-space array to `target` samples centred on the **actual** DC (the
-# readout energy peak), not the array midpoint — asymmetric-echo / partial-Fourier acquisitions
-# put DC well off centre (e.g. OCMR: sample 147 of 404). Zero-pads if the window runs past an
-# edge. Returns the array unchanged when `target ≥ size(ksp, 1)` and DC is already centred.
+# Crop dimension 1 to `target` samples centred on the actual DC (the readout energy peak), not the
+# array midpoint: asymmetric-echo acquisitions put DC well off centre (OCMR: sample 147 of 404).
 function _center_readout(ksp, target)
     n = size(ksp, 1)
-    prof = sum(abs2, reshape(ksp, n, :); dims = 2)[:, 1]
+    prof = vec(sum(abs2, reshape(ksp, n, :); dims = 2))
     dc = argmax(prof)
-    half = target ÷ 2
-    lo, hi = dc - half + 1, dc + half
+    lo = dc - target ÷ 2 + 1
     out = zeros(eltype(ksp), target, size(ksp)[2:end]...)
-    src_lo, src_hi = max(1, lo), min(n, hi)
-    dst_lo = src_lo - lo + 1
-    out[dst_lo:(dst_lo + src_hi - src_lo), (Colon() for _ in 2:ndims(ksp))...] .=
-        ksp[src_lo:src_hi, (Colon() for _ in 2:ndims(ksp))...]
+    src_lo, src_hi = max(1, lo), min(n, lo + target - 1)
+    rest = ntuple(_ -> Colon(), ndims(ksp) - 1)
+    out[(src_lo - lo + 1):(src_hi - lo + 1), rest...] .= ksp[src_lo:src_hi, rest...]
     return out
 end
 
-# Assemble a full 3D Cartesian k-space (nkx, nky, nkz, ncoil) from a RawAcquisitionData, keying
-# each profile by `idx.slice` (partition / kz) and `idx.kspace_encode_step_1` (ky), first
-# contrast / repetition / average only.
-function _assemble_cartesian_3d(raw)
-    idx(p) = p.head.idx
+"""
+    _assemble_cartesian_3d_centre(raw, target) -> Array{ComplexF64, 4}
+
+`(kx, ky, kz, coil)` k-space of the central `target` window of a 3D Cartesian encode (partitions
+in `idx.slice` or `kspace_encode_step_2`), so a large volume is never materialised in full: the
+image keeps the full field of view at a lower resolution.
+"""
+function _assemble_cartesian_3d_centre(raw, target::NTuple{3, Int})
     prof = [
         p for p in raw.profiles if
-            Int(idx(p).contrast) == 0 && Int(idx(p).repetition) == 0 && Int(idx(p).average) == 0
+            Int(_idx(p).contrast) == 0 && Int(_idx(p).repetition) == 0 && Int(_idx(p).average) == 0
     ]
-    isempty(prof) && error("no imaging profiles")
+    use_step2 = maximum(Int(_idx(p).kspace_encode_step_2) for p in prof) > 0
+    kz_of(p) = use_step2 ? Int(_idx(p).kspace_encode_step_2) : Int(_idx(p).slice)
+    nky = maximum(Int(_idx(p).kspace_encode_step_1) for p in prof) + 1
+    nkz = maximum(kz_of(p) for p in prof) + 1
     rr = _readout_range(prof[1])
-    nkx = length(rr)
-    _, ncoil = size(prof[1].data)
-    nky = maximum(Int(idx(p).kspace_encode_step_1) for p in prof) + 1
-    nkz = maximum(Int(idx(p).slice) for p in prof) + 1
-    ksp = zeros(ComplexF64, nkx, nky, nkz, ncoil)
+    ncoil = size(prof[1].data, 2)
+    ylo, zlo = nky ÷ 2 + 1 - target[2] ÷ 2, nkz ÷ 2 + 1 - target[3] ÷ 2
+    # DC along the readout from the centre profile's energy.
+    centre = argmax(p -> (Int(_idx(p).kspace_encode_step_1) == nky ÷ 2) * (kz_of(p) == nkz ÷ 2) * 1.0, prof)
+    dc = argmax(vec(sum(abs2, centre.data[rr, :]; dims = 2)))
+    xlo = dc - target[1] ÷ 2
+    k = zeros(ComplexF64, target..., ncoil)
     for p in prof
-        ky = Int(idx(p).kspace_encode_step_1) + 1
-        kz = Int(idx(p).slice) + 1
-        ksp[:, ky, kz, :] .= ComplexF64.(@view p.data[rr, :])
+        y = Int(_idx(p).kspace_encode_step_1) + 1 - ylo + 1
+        z = kz_of(p) + 1 - zlo + 1
+        (1 <= y <= target[2] && 1 <= z <= target[3]) || continue
+        for x in 1:target[1]
+            s = xlo + x - 1
+            1 <= s <= length(rr) && (k[x, y, z, :] .= @view p.data[rr[s], :])
+        end
     end
-    return ksp
+    return k
 end
 
-# Assemble a dynamic 2D Cartesian k-space (nkx, nky, ncoil, nframes), keying each profile by
-# `idx.kspace_encode_step_1` (ky) and `idx.phase` (cardiac frame), middle slice only.
+# (kx, ky, coil, time) of the middle slice, frames in `idx.phase`.
 function _assemble_cartesian_dynamic(raw)
-    idx(p) = p.head.idx
-    slices = sort(unique(Int(idx(p).slice) for p in raw.profiles))
+    slices = sort(unique(Int(_idx(p).slice) for p in raw.profiles))
     sl = slices[cld(length(slices), 2)]
     prof = [
         p for p in raw.profiles if
-            Int(idx(p).slice) == sl && Int(idx(p).contrast) == 0 &&
-            Int(idx(p).repetition) == 0 && Int(idx(p).average) == 0
+            Int(_idx(p).slice) == sl && Int(_idx(p).contrast) == 0 &&
+            Int(_idx(p).repetition) == 0 && Int(_idx(p).average) == 0
     ]
-    isempty(prof) && error("no imaging profiles for the selected slice")
     rr = _readout_range(prof[1])
-    nkx = length(rr)
-    _, ncoil = size(prof[1].data)
-    nky = maximum(Int(idx(p).kspace_encode_step_1) for p in prof) + 1
-    nfr = maximum(Int(idx(p).phase) for p in prof) + 1
-    ksp = zeros(ComplexF64, nkx, nky, ncoil, nfr)
+    ncoil = size(prof[1].data, 2)
+    nky = maximum(Int(_idx(p).kspace_encode_step_1) for p in prof) + 1
+    nfr = maximum(Int(_idx(p).phase) for p in prof) + 1
+    k = zeros(ComplexF64, length(rr), nky, ncoil, nfr)
     for p in prof
-        ky = Int(idx(p).kspace_encode_step_1) + 1
-        fr = Int(idx(p).phase) + 1
-        ksp[:, ky, :, fr] .= ComplexF64.(@view p.data[rr, :])
+        k[:, Int(_idx(p).kspace_encode_step_1) + 1, :, Int(_idx(p).phase) + 1] .= @view p.data[rr, :]
     end
-    return ksp
+    return k
 end
 
-_espirit(kslice; calib_size, kernel_size) = estimate_sensitivities(
-    NamedDimsArray{(:kx, :ky, :coil)}(kslice);
-    method = ESPIRiT(; calib_size = min(calib_size, size(kslice, 1), size(kslice, 2)), kernel_size),
-)
+# ---------------------------------------------------------------- maps and coil combination
 
-"""
-    load_real_case_3d(; nslices = 24, source = PINNED_3D, id = <pinned>,
-                        calib_size = 24, kernel_size = 6)
-
-Download (cached) the pinned Stanford 3D FSE knee, IFFT along the kz partition axis, take
-`nslices` central slices, and return
-
-    (; kspace, smaps, reference, image_size, label)
-
-with `kspace :: NamedDimsArray{(:kx, :ky, :coil, :z)}`,
-`smaps :: NamedDimsArray{(:x, :y, :coil, :z)}` (per-slice ESPIRiT),
-`reference :: Array{Float64,3}` (per-slice RSS), `image_size == (nkx, nky, nslices)`.
-
-Each slice is an independent 2D problem; `reconstruct` splits the task over `:z`.
-"""
-function load_real_case_3d(;
-        nslices = 24,
-        source = MRITestData.MRIDATA,
-        id = get(ENV, "MRT_BENCH_REAL3D_ID", PINNED_3D[2]),
-        calib_size = 24,
-        kernel_size = 6,
+# ESPIRiT through the acquisition method, so the maps come back in the centred image convention of
+# an acquisition with `shifted_image_dims`. The raw-array method returns the plain-DFT convention,
+# which multiplied into a centred image rolls the maps by half the field of view.
+function _espirit_2d(k::AbstractArray{<:Complex, 3}; calib = 24, kernel = 6)
+    nx, ny, _ = size(k)
+    acq = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky, :coil)}(ComplexF32.(k)); is3D = false, shifted_image_dims = (:x, :y),
     )
-    _ensure_download_path()
-    raw = load_raw(dataset(source, id; offline = true))
-    ksp = _assemble_cartesian_3d(raw)                     # (nkx, nky, nkz, ncoil)
-    nkx, nky, nkz, ncoil = size(ksp)
-    # kz -> image slice
-    img_z = fftshift(ifft(ifftshift(ksp, 3), 3), 3)       # still k-space in kx, ky
-    lo = max(1, (nkz - nslices) ÷ 2 + 1)
-    sel = lo:(lo + min(nslices, nkz) - 1)
-    slab = permutedims(img_z[:, :, sel, :], (1, 2, 4, 3)) # (kx, ky, coil, z)
-    nz = length(sel)
+    method = MriReconstructionToolbox.ESPIRiT(; calib_size = min(calib, nx, ny), kernel_size = kernel)
+    return Array(unname(MriReconstructionToolbox.estimate_sensitivities(acq; method).sensitivity_maps))
+end
 
-    smaps = Array{ComplexF64}(undef, nkx, nky, ncoil, nz)
-    reference = Array{Float64}(undef, nkx, nky, nz)
-    for k in 1:nz
-        ks = slab[:, :, :, k]
-        smaps[:, :, :, k] = unname(_espirit(ks; calib_size, kernel_size))
-        reference[:, :, k] = sqrt.(sum(abs2, _img_from_ksp(ks); dims = 3))[:, :, 1]
+function _espirit_3d(k::AbstractArray{<:Complex, 4}; calib = 24, kernel = 6)
+    acq = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky, :kz, :coil)}(ComplexF32.(k)); is3D = true, shifted_image_dims = (:x, :y, :z),
+    )
+    method = MriReconstructionToolbox.ESPIRiT(; calib_size = min(calib, size(k)[1:3]...), kernel_size = kernel)
+    return Array(unname(MriReconstructionToolbox.estimate_sensitivities(acq; method).sensitivity_maps))
+end
+
+# SENSE-optimal coil combination Σ conj(S) x / Σ |S|², coil axis last of the maps' spatial axes.
+function _sense_combine(coil_images, maps)
+    cdim = ndims(maps)
+    return dropdims(sum(conj.(maps) .* coil_images; dims = cdim) ./ (sum(abs2, maps; dims = cdim) .+ eps(Float32)); dims = cdim)
+end
+
+function _combine_to_one_channel(k, maps)
+    img = _sense_combine(centred_ifft(k, (1, 2)), maps)
+    return reshape(centred_fft(img, (1, 2)), size(img)..., 1)
+end
+
+# ---------------------------------------------------------------- non-Cartesian
+
+# fastMRI breast: a golden-angle radial stack of stars (640 samples × 288 spokes × 83 partitions,
+# 16 coils, readout twice oversampled). The central partition after the kz transform is the plain
+# sum over partitions; the readout is cropped to its central 256 samples and rescaled onto a 256²
+# grid (the full field of view at half the resolution). The first 128 spokes are the undersampled
+# acquisition; maps and the reference come from all 288, the reference being a 30-iteration
+# CG-SENSE. It is a DCE series, so the all-spoke reference averages the contrast change: read the
+# NRMSE as agreement with that average, not as accuracy.
+function _prepare_breast_radial(real_id, analogue, raw, label, seed; nkeep = 256, nspokes = 128)
+    prof = raw.profiles
+    nsamp, ncoil = size(prof[1].data)
+    spokes = sort(unique(Int(_idx(p).kspace_encode_step_1) for p in prof))
+    k = zeros(ComplexF32, nsamp, length(spokes), ncoil)
+    traj = zeros(Float32, 2, nsamp, length(spokes))
+    for p in prof
+        j = Int(_idx(p).kspace_encode_step_1) + 1
+        k[:, j, :] .+= p.data
+        Int(_idx(p).slice) == 0 && (traj[:, :, j] .= p.traj[1:2, :])
     end
-    label = string(MRITestData.source_name(source), ":", id, " (3D, $nz slices)")
-    return (;
-        kspace = NamedDimsArray{(:kx, :ky, :coil, :z)}(ComplexF64.(slab)),
-        smaps = NamedDimsArray{(:x, :y, :coil, :z)}(smaps),
-        reference,
-        image_size = (nkx, nky, nz),
-        label,
+    c = Int(prof[1].head.center_sample) + 1
+    keep = (c - nkeep ÷ 2):(c + nkeep ÷ 2 - 1)
+    scale = Float32(nsamp / nkeep)
+    k = k[keep, :, :]
+    traj = clamp.(traj[:, keep, :] .* scale, -0.5f0, prevfloat(0.5f0))
+    n = nkeep
+    k = norm_ksp(k)
+    full = _noncartesian_acq(k, traj, ramp_dcf(traj), (n, n))
+    maps = Array(unname(MriReconstructionToolbox.estimate_sensitivities(full; method = MriReconstructionToolbox.ESPIRiT(; calib_size = 24, kernel_size = 6)).sensitivity_maps))
+    ref = _cgsense_reference(k, traj, maps, (n, n))
+    sel = 1:min(nspokes, size(k, 2))
+    ksel, tsel = k[:, sel, :], traj[:, :, sel]
+    return BenchCase(;
+        id = real_id, family = :single_slice, trajectory = :noncartesian, reference = ComplexF32.(ref),
+        smaps = ComplexF32.(maps), kspace = ksel, traj = tsel, dcf = ramp_dcf(tsel), image_size = (n, n),
+        real = true, source = label * " (central partition, $(length(sel)) of $(size(k, 2)) spokes)", analogue, seed,
     )
 end
 
-"""
-    load_real_dynamic(; source = PINNED_DYNAMIC, id = <pinned>, R = 2, acs = 12,
-                        calib_size = 24, kernel_size = 6)
-
-Download (cached) the pinned OCMR fully-sampled cine, assemble `(kx, ky, coil, time)`,
-retrospectively undersample phase-encode by `R` (keeping `2·acs+1` central lines), and return
-
-    (; kspace, smaps, reference, subsampling, image_size, label)
-
-`kspace :: NamedDimsArray{(:kx, :ky, :coil, :time)}` (only the sampled lines are non-zero),
-`smaps` from the time-averaged k-space, `reference :: Array{Float64,3}` the per-frame RSS of the
-*fully-sampled* data, `subsampling == (:, mask)`, `image_size == (nkx, nky, nframes)`.
-"""
-function load_real_dynamic(;
-        source = MRITestData.OCMR_SOURCE,
-        id = get(ENV, "MRT_BENCH_REALDYN_ID", PINNED_DYNAMIC[2]),
-        R = 2, acs = 12, readout = 144, calib_size = 24, kernel_size = 6,
-    )
-    _ensure_download_path()
-    raw = load_raw(dataset(source, id; offline = true))
-    ksp = _assemble_cartesian_dynamic(raw)               # (nkx, nky, ncoil, nframes)
-    # Crop the (often 2× oversampled / asymmetric-echo) readout to `readout` samples about the
-    # true DC — a lower-resolution but much cheaper *and* correctly-centred problem.
-    readout !== nothing && size(ksp, 1) > readout && (ksp = _center_readout(ksp, readout))
-    nkx, nky, ncoil, nfr = size(ksp)
-
-    reference = Array{Float64}(undef, nkx, nky, nfr)
-    for f in 1:nfr
-        reference[:, :, f] = sqrt.(sum(abs2, _img_from_ksp(ksp[:, :, :, f]); dims = 3))[:, :, 1]
-    end
-    # Calibrate from a single frame, not the time average: cardiac motion across a full cine
-    # smears a temporally-averaged calibration region and corrupts ESPIRiT (measured: a fully
-    # sampled, unregularized CG-SENSE recon against averaged-calibration maps was NRMSE 0.63
-    # from the coil-independent RSS reference; frame-1 calibration is the fix).
-    smaps = _espirit(ksp[:, :, :, 1]; calib_size, kernel_size)
-
-    mask = falses(nky)
-    mask[1:R:nky] .= true
-    mask[max(1, nky ÷ 2 - acs):min(nky, nky ÷ 2 + acs)] .= true
-    # MRT wants the k-space compacted to the sampled phase-encode lines, with `subsampling`
-    # recording which lines those were (matches the synthetic `Dynamic` group).
-    ksp_us = ksp[:, mask, :, :]
-
-    label = string(MRITestData.source_name(source), ":", id, " (cine, $nfr frames, R=$R)")
-    return (;
-        kspace = NamedDimsArray{(:kx, :ky, :coil, :time)}(ComplexF64.(ksp_us)),
-        smaps,
-        reference,
-        subsampling = (:, mask),
-        image_size = (nkx, nky, nfr),
-        label,
-    )
-end
-
-"""
-    real_data_source()
-
-The `MRITestData` source used by [`load_real_case`], from `ENV["MRT_BENCH_REAL_SOURCE"]`
-(`"M4RAW"` / `"MRIDATA"` / `"OCMR"`), defaulting to [`PINNED_DATASET`](@ref)'s source.
-"""
-function real_data_source()
-    s = uppercase(get(ENV, "MRT_BENCH_REAL_SOURCE", PINNED_DATASET[1]))
-    s == "M4RAW" && return MRITestData.M4RAW
-    s == "MRIDATA" && return MRITestData.MRIDATA
-    s == "OCMR" && return MRITestData.OCMR_SOURCE
-    error("Unknown MRT_BENCH_REAL_SOURCE=$s (expected M4RAW, MRIDATA or OCMR)")
-end
-
-"""
-    real_data_available(; source = real_data_source()) -> Bool
-
-Whether the offline catalog lists at least one fully-sampled Cartesian entry for `source`.
-"""
-function real_data_available(; source = real_data_source())
-    try
-        return !isempty(_candidates(source))
-    catch
-        return false
-    end
-end
-
-function _candidates(source)
-    _ensure_download_path()
-    entries = list_datasets(source; offline = true, fully_sampled = true)
-    return [e for e in entries if e.trajectory === :cartesian || e.trajectory === nothing]
-end
-
-"""
-    load_real_case(; source = real_data_source(), id = <pinned>, filter = nothing,
-                     combine_coils = false, calib_size = 24, kernel_size = 6)
-
-Download (cached) one fully-sampled Cartesian dataset, assemble its middle slice, and return
-
-    (; kspace, smaps, reference, image_size, label)
-
-with `kspace :: NamedDimsArray{(:kx, :ky, :coil)}` (ComplexF64),
-`smaps :: NamedDimsArray{(:x, :y, :coil)}` from ESPIRiT, `reference` the RSS magnitude image,
-`image_size == (nkx, nky)` and `label` a `"SOURCE:id"` string.
-
-By default `id` is [`PINNED_DATASET`](@ref)'s id (`ENV["MRT_BENCH_REAL_ID"]` overrides it).
-Set `id = "auto"` (or `ENV["MRT_BENCH_REAL_ID"] = "auto"`) to instead take the smallest
-matching entry, optionally narrowed by `filter` — an id substring, separators / case ignored,
-e.g. `filter = "T2"` or `filter = "knee"`.
-
-`combine_coils = true` collapses the multi-coil member to one virtual channel: a SENSE-optimal
-combine (`∑ conj(sᵢ)·xᵢ / ∑|sᵢ|²`) to a single complex image, FFT back to a 1-channel k-space,
-`smaps ≡ 1`, `reference` the combined magnitude. The catalog has no native single-channel data
-(see the survey above), so this is the way to a real-anatomy single-coil benchmark point.
-"""
-function load_real_case(;
-        source = real_data_source(),
-        id = get(ENV, "MRT_BENCH_REAL_ID", PINNED_DATASET[2]),
-        filter = get(ENV, "MRT_BENCH_REAL_FILTER", nothing),
-        combine_coils = false,
-        calib_size = 24,
-        kernel_size = 6,
-    )
-    _ensure_download_path()
-    entry = if id == "auto"
-        entries = _candidates(source)
-        isempty(entries) && error(
-            "No offline fully-sampled Cartesian entries for $source. Populate its map or set ",
-            "MRT_BENCH_REAL_SOURCE — see https://hakkelt.github.io/MRITestData.jl/dev/.",
-        )
-        if filter !== nothing
-            needle = _norm(filter)
-            entries = [e for e in entries if occursin(needle, _norm(string(e.id)))]
-            isempty(entries) && error("filter=$(repr(filter)) matched no $source entry")
+# USC speech: a real-time spiral stream, 13 interleaves per fully sampled frame, the same 13 in
+# every frame (sorted by interleaf counter), with vendor density compensation in `traj[3, :]`. The
+# reference is the 13-arm gridding reconstruction per frame; the undersampled acquisition keeps 3 of
+# the 13 arms (1, 6, 11) in every frame, which is what lets the series share one trajectory.
+function _prepare_speech_spiral(real_id, analogue, raw, label, seed; narms = 13, arms = [1, 6, 11], frame0 = 104)
+    nt = cine_frames()
+    nsamp = Int(raw.profiles[1].head.number_of_samples)
+    ncoil = size(raw.profiles[1].data, 2)
+    nx, ny = Int.(raw.params["encodedSize"])[1:2]
+    k = Array{ComplexF32}(undef, nsamp, narms, ncoil, nt)
+    traj = Array{Float32}(undef, 2, nsamp, narms)
+    dcf = Array{Float32}(undef, nsamp, narms)
+    for f in 1:nt
+        g = f + frame0
+        ps = raw.profiles[((g - 1) * narms + 1):(g * narms)]
+        ps = ps[sortperm([Int(_idx(p).kspace_encode_step_1) for p in ps])]
+        for (a, p) in enumerate(ps)
+            k[:, a, :, f] .= p.data
+            if f == 1
+                traj[:, :, a] .= p.traj[1:2, :]
+                dcf[:, a] .= p.traj[3, :]
+            end
         end
-        sort!(entries; by = e -> something(e.approx_size_bytes, typemax(Int)))
-        first(entries)
-    else
-        dataset(source, id; offline = true)
     end
-    # `dataset` hands back a `DatasetHandle` (wrapping `.entry`); `list_datasets` a bare
-    # `DatasetEntry`. Normalise for the label; `load_raw` takes either.
-    meta = entry isa MRITestData.DatasetHandle ? entry.entry : entry
-
-    raw = load_raw(entry)
-    ksp = _assemble_cartesian_slice(raw)                  # (nkx, nky, ncoil) ComplexF64
-    nkx, nky, _ = size(ksp)
-
-    smaps_full = estimate_sensitivities(
-        NamedDimsArray{(:kx, :ky, :coil)}(ksp);
-        method = ESPIRiT(; calib_size = min(calib_size, nkx, nky), kernel_size),
+    k = norm_ksp(k)
+    full = _noncartesian_acq(k, traj, dcf, (nx, ny))
+    est = MriReconstructionToolbox.estimate_sensitivities(full; method = MriReconstructionToolbox.ESPIRiT(; calib_size = 24, kernel_size = 6))
+    maps = Array(unname(est.sensitivity_maps))
+    ref = Array(unname(reconstruct(est, DirectReconstruction(); verbosity = Silent())))
+    ksel, tsel = k[:, arms, :, :], traj[:, :, arms]
+    return BenchCase(;
+        id = real_id, family = :cine, trajectory = :noncartesian, reference = ComplexF32.(ref),
+        smaps = ComplexF32.(maps), kspace = ksel, traj = tsel, dcf = dcf[:, arms], image_size = (nx, ny),
+        heavy = true, real = true, source = label * " ($(length(arms)) of $narms arms, $nt frames)", analogue, seed,
     )
-    label = string(MRITestData.source_name(meta.source), ":", meta.id)
-
-    if combine_coils
-        s = unname(smaps_full)
-        coil_imgs = _img_from_ksp(ksp)
-        comb = sum(conj(s) .* coil_imgs; dims = 3) ./ (sum(abs2, s; dims = 3) .+ eps())
-        ksp1 = _ksp_from_img(comb)                        # (nkx, nky, 1)
-        kspace = NamedDimsArray{(:kx, :ky, :coil)}(ComplexF64.(ksp1))
-        smaps = NamedDimsArray{(:x, :y, :coil)}(ones(ComplexF64, nkx, nky, 1))
-        reference = abs.(comb)[:, :, 1]
-        return (; kspace, smaps, reference, image_size = (nkx, nky), label = label * " (1ch)")
-    end
-
-    kspace = NamedDimsArray{(:kx, :ky, :coil)}(ksp)
-    coil_imgs = _img_from_ksp(ksp)
-    reference = sqrt.(sum(abs2, coil_imgs; dims = 3))[:, :, 1]
-    return (; kspace, smaps = smaps_full, reference, image_size = (nkx, nky), label)
 end
 
+function _noncartesian_acq(k, traj, dcf, image_size)
+    names = ndims(k) == 4 ? (:sample, :spoke, :coil, :time) : (:sample, :spoke, :coil)
+    return NonCartesianAcquisitionInfo(
+        NamedDimsArray{names}(k);
+        trajectory = NamedDimsArray{(:coord, :sample, :spoke)}(traj),
+        dcf = NamedDimsArray{(:sample, :spoke)}(dcf), image_size,
+    )
+end
+
+function _cgsense_reference(k, traj, maps, image_size; maxit = 30)
+    acq = NonCartesianAcquisitionInfo(
+        NamedDimsArray{(:sample, :spoke, :coil)}(k);
+        trajectory = NamedDimsArray{(:coord, :sample, :spoke)}(traj), image_size,
+        sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(ComplexF32.(maps)),
+    )
+    m = IterativeReconstruction(; regularization = (), algorithm = MriReconstructionToolbox.CGNR(; maxit, tol = 0.0), maxit, reltol = 0.0)
+    return Array(unname(reconstruct(acq, m; verbosity = Silent())))
 end

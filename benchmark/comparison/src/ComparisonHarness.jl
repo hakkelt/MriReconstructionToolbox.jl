@@ -26,9 +26,10 @@ catch err
     @warn "MATLAB is unavailable; the optional MATLAB reference cross-checks are disabled" err
     false
 end
-# Phantom generators and real-data loaders live in benchmark/utils/, shared with the MRT harness.
-include(joinpath(@__DIR__, "..", "..", "utils", "phantoms.jl"))
-include(joinpath(@__DIR__, "..", "..", "utils", "real_data.jl"))
+# The sections' own phantoms and real-data loaders, until they move onto the case catalog in
+# benchmark/utils/.
+include("legacy_phantoms.jl")
+include("legacy_real_data.jl")
 
 using .BARTBridge
 using .SigPyBridge
