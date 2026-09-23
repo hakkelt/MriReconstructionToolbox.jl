@@ -40,16 +40,18 @@ end
 
 Integer position of the coil axis in `acq.kspace_data`, or `0` when there is none. Resolved from
 dimension names when the k-space is a `NamedDimsArray`, else assumed to immediately follow the
-spatial dimensions (`3` for 2D, `4` for 3D) -- unlike `_pf_coil_dim`, which hardcodes `3` and is
-only ever used by the 2D-only partial-Fourier methods.
+sampled k-space dimensions (`3` for a fully sampled 2D grid, `4` for 3D, one fewer for each pair of
+axes a subsampling mask joins) -- unlike `_pf_coil_dim`, which hardcodes `3` and is only ever used by
+the 2D-only partial-Fourier methods. [`_direct_image_coil_dim`](@ref) translates it to a position
+among the image dimensions.
 """
 function _direct_coil_dim(acq::CartesianAcquisitionInfo)
     if _has_dimnames(acq.kspace_data)
         idx = findfirst(==(:coil), dimnames(acq.kspace_data))
         return isnothing(idx) ? 0 : Int(idx)
     end
-    spatial_dims = acq.is3D ? 3 : 2
-    return ndims(acq.kspace_data) > spatial_dims ? spatial_dims + 1 : 0
+    sample_dims = _get_sample_dims_count(acq)
+    return ndims(acq.kspace_data) > sample_dims ? sample_dims + 1 : 0
 end
 
 """
@@ -163,11 +165,13 @@ function _direct_reconstruct_coil_combined(acq_data::CartesianAcquisitionInfo, m
         # is the bare adjoint.
         return 𝒜' * _measurement(acq_data.kspace_data)
     end
-    c_dim = _direct_coil_dim(acq_data)
-    if c_dim == 0
+    if _direct_coil_dim(acq_data) == 0
         # No coil axis at all: nothing for any combination choice to do.
         return 𝒜' * _measurement(acq_data.kspace_data)
     end
+    # The coil images below are image-shaped, so the coil axis is addressed by its image position:
+    # a subsampled k-space (`(:kx, :kyz, :coil)`) has fewer axes in front of it than the image.
+    c_dim = _direct_image_coil_dim(acq_data)
 
     # `𝒜` always bakes sensitivity composition in when `smaps` is present
     # (`_compose_with_sensitivity`); rebuild the bare (sensitivity-free) encoding operator so

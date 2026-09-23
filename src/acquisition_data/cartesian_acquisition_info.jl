@@ -141,7 +141,9 @@ function _check_smaps(smaps, ksp, subs, is3D, img_size)
         @argcheck :coil ∈ dimnames(ksp) ":coil dimension required in k-space when sensitivity maps are provided"
         if is3D
             @argcheck :z ∉ dimnames(ksp) "3D k-space must not have :z dimension"
-            @argcheck :kz ∈ dimnames(ksp) "3D k-space must have :kz dimension"
+            # kz is its own axis unless the subsampling joined it with ky (`:kyz`) or with kx and ky
+            # (`:kxyz`); see `_get_subsampled_dimnames`.
+            @argcheck any(∈((:kz, :kyz, :kxyz)), dimnames(ksp)) "3D k-space must have a :kz, :kyz or :kxyz dimension"
             @argcheck dimnames(smaps) == (:x, :y, :z, :coil) "sensitivity maps dimnames must be (:x, :y, :z, :coil) for 3D acquisition"
         elseif ndims(smaps) == 4
             @argcheck dimnames(smaps) == (:x, :y, :coil, :z) "sensitivity maps dimnames must be (:x, :y, :coil, :z) for 2D acquisition"
