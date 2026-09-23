@@ -2,8 +2,15 @@ docs/build
 *.cov
 Manifest.toml
 .serena/
-*slurm*
+# SLURM job output. The benchmark SLURM scripts themselves are tracked (benchmark/slurm/); the
+# notebook export/precompile scripts are not, for now.
+/benchmark/**/slurm_*.txt
+docs/notebooks/**/*slurm*
 benchmark/hpc/results/*.json
+# Site configuration of the benchmark SLURM scripts: paths of one machine (copy site.env.example).
+/benchmark/slurm/site.env
+# Harness results, SLURM logs and job output (local working data).
+/benchmark/results/
 
 # Jupyter/notebook build artifacts
 .ipynb_checkpoints/
@@ -48,6 +55,8 @@ benchmark/comparison/results/runs/
 /benchmark/comparison/original_implementations/LORAKS2/
 
 # Written by the test environment when MRITestData caches a download; per-machine state.
-# (The tracked docs/notebooks/ and benchmark/comparison/ LocalPreferences.toml are deliberate.)
+# (The tracked docs/notebooks/ LocalPreferences.toml is deliberate.) The benchmark environments'
+# download path comes from MRT_BENCH_DATA_DIR and must not be committed.
 /test/LocalPreferences.toml
-/benchmark/hpc/LocalPreferences.toml
+/benchmark/**/LocalPreferences.toml
+/benchmark/LocalPreferences.toml

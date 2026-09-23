@@ -16,15 +16,20 @@ let i = findfirst(a -> startswith(a, "--threads="), ARGS)
     global const NUM_THREADS = i === nothing ? Threads.nthreads() : parse(Int, split(ARGS[i], "=")[2])
 end
 
-# Which BART build to time against. Two builds because the comparison is per BLAS backend; the
-# paths are where they live on this cluster, overridable for any other machine.
+# Machine paths (BART builds, SigPy's interpreter, the data cache) come from the environment, filled
+# from the untracked `benchmark/slurm/site.env` for anything not already set.
+include(joinpath(@__DIR__, "..", "..", "utils", "config.jl"))
+load_site_env!()
+
+# Which BART build to time against. Two builds because the comparison is per BLAS backend. With no
+# build configured for this backend, BART is left out of every section (see `should_run_framework`).
 if USE_MKL
     @info "Enabling Intel MKL backend via MKL.jl"
     using MKL
-    const BART_BINARY = get(ENV, "MRT_BENCH_BART_MKL", "/project/c_mrrecon/bart_mkl")
-else
-    const BART_BINARY = get(ENV, "MRT_BENCH_BART_OPENBLAS", "/project/c_mrrecon/bart_openblas")
 end
+const BART_BINARY = get(ENV, USE_MKL ? "MRT_BENCH_BART_MKL" : "MRT_BENCH_BART_OPENBLAS", "")
+const BART_AVAILABLE = !isempty(BART_BINARY) && isfile(BART_BINARY)
+BART_AVAILABLE || @warn "No BART build configured for this backend, so BART rows are skipped" key = USE_MKL ? "MRT_BENCH_BART_MKL" : "MRT_BENCH_BART_OPENBLAS" value = BART_BINARY
 const FW = "MRT ($(USE_MKL ? "MKL" : "OpenBLAS"))"
 const BART_FW = "BART ($(USE_MKL ? "MKL" : "OpenBLAS"))"
 
@@ -43,7 +48,7 @@ end
 const CPU_STR = join(PINNED_CPUS, ",")
 @info "Julia threads pinned" CPU_STR
 
-ENV["TOOLBOX_PATH"] = BART_BINARY
+BART_AVAILABLE && (ENV["TOOLBOX_PATH"] = BART_BINARY)
 # BART_USE_FFTW_WISDOM=1 was measured to *hurt* (6x): it forces FFTW_MEASURE on every fresh
 # `bart` process and the wisdom file is never persisted, so MEASURE planning is never amortised.
 ENV["BART_USE_FFTW_WISDOM"] = "0"
@@ -163,15 +168,15 @@ const sp_app = pyimport("sigpy.mri.app")
 @info "comparison setup" host = gethostname() julia = VERSION threads = Threads.nthreads() blas = BLAS.get_config().loaded_libs[1].libname mkl = USE_MKL bart = BART_BINARY
 
 # Bare process spawn cost (`bart version` does no file I/O) — the floor for an input-less call.
-const BART_SPAWN = let times = Float64[]
-    for _ in 1:10
-        t0 = time_ns()
-        read(pipeline(ignorestatus(`$BART_BINARY version`)), String)
-        push!(times, (time_ns() - t0) / 1.0e9)
+const BART_SPAWN = BART_AVAILABLE ? let times = Float64[]
+        for _ in 1:10
+            t0 = time_ns()
+            read(pipeline(ignorestatus(`$BART_BINARY version`)), String)
+            push!(times, (time_ns() - t0) / 1.0e9)
     end
-    minimum(times)
-end
-@info @sprintf("BART spawn cost: %.1f ms", BART_SPAWN * 1000)
+        minimum(times)
+end : NaN
+BART_AVAILABLE && @info @sprintf("BART spawn cost: %.1f ms", BART_SPAWN * 1000)
 
 """
     bart_overhead(inputs...; reps = 5) -> seconds
@@ -308,9 +313,13 @@ end
     should_run_framework(framework) -> Bool
 
 True unless [`FRAMEWORK_FILTER`](@ref) is set and no pattern in it is a substring of `framework`
-(case-insensitive). See [`FRAMEWORK_FILTER`](@ref) -- never call this for MRT's own row.
+(case-insensitive), or `framework` is BART and no BART build is configured for this backend. See
+[`FRAMEWORK_FILTER`](@ref) -- never call this for MRT's own row.
 """
-should_run_framework(framework) = FRAMEWORK_FILTER === nothing || any(p -> occursin(p, lowercase(framework)), FRAMEWORK_FILTER)
+function should_run_framework(framework)
+    occursin("bart", lowercase(framework)) && !BART_AVAILABLE && return false
+    return FRAMEWORK_FILTER === nothing || any(p -> occursin(p, lowercase(framework)), FRAMEWORK_FILTER)
+end
 
 """Replace NaN / Inf with -1.0 so a single bad toolkit row does not sink the section's JSON."""
 _json_num(x::Real) = isfinite(x) ? Float64(x) : -1.0
