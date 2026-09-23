@@ -201,6 +201,14 @@ branch = "perf/threads-native-kernels"
 parent = "unified-threading"
 pr = "hakkelt/AbstractOperators.jl#27"
 
+# A large `MatrixOp`/`LMatrixOp` `gemm` grants itself BLAS's threads past a caller's soft
+# default. Needs NestedThreading's `perf/thread-grants` (0.1.2). Stacked on `unified-threading`,
+# which owns `threading_policy.jl` and is frozen.
+[[AbstractOperators.stack]]
+branch = "perf/blas-flop-grant"
+parent = "unified-threading"
+pr = ""
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
@@ -265,6 +273,13 @@ branch = "feat/ind-real-box"
 parent = "threaded-kernels"
 pr = "hakkelt/ProximalOperators.jl#15"
 
+# Dense factorizations grant themselves BLAS's threads past a caller's soft default. Needs
+# NestedThreading's `perf/thread-grants` (0.1.2).
+[[ProximalOperators.stack]]
+branch = "perf/factorization-thread-grant"
+parent = "threaded-kernels"
+pr = ""
+
 # `recursive-array-tools-ext` (#164) and `precomposed-sliced-separable-sum` (#157) have merged
 # upstream and are intentionally absent: that code now arrives through `base`.
 
@@ -309,6 +324,13 @@ pr = "hakkelt/ProximalAlgorithms.jl#3"
 branch = "feat/iteration-hook"
 parent = "master"
 pr = "hakkelt/ProximalAlgorithms.jl#4"
+
+# A large CG step's vector updates grant themselves BLAS's threads past a caller's soft
+# default. Adds the NestedThreading dependency (0.1.2, `perf/thread-grants`).
+[[ProximalAlgorithms.stack]]
+branch = "perf/cg-blas-grant"
+parent = "master"
+pr = ""
 
 # `pogm-algorithm` is deliberately absent: it added POGM as a `pogm::Bool` variant of
 # `FastForwardBackward`, and `master` (#100) supersedes it with a `src/algorithms/pogm.jl` of its
