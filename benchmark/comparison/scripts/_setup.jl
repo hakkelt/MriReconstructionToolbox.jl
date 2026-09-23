@@ -103,10 +103,9 @@ FFTW.set_num_threads(NUM_THREADS)
     check_environment()
 
 Fail loudly instead of silently benchmarking under an environment that does not match what was
-requested. `scripts/probe.jl` (`benchmark/hpc/`) prints this same information for interactive
-debugging; here it is an assertion, run automatically by every section, because a mismatch
-silently invalidates the numbers rather than crashing anything -- exactly the kind of thing this
-suite exists to catch in a toolkit, not commit on its own.
+requested. It is an assertion, run automatically by every section, because a mismatch silently
+invalidates the numbers rather than crashing anything -- exactly the kind of thing this suite
+exists to catch in a toolkit, not commit on its own.
 """
 function check_environment()
     cpus_allowed = let line = ""

@@ -26,11 +26,6 @@ catch err
     @warn "MATLAB is unavailable; the optional MATLAB reference cross-checks are disabled" err
     false
 end
-# The sections' own phantoms and real-data loaders, until they move onto the case catalog in
-# benchmark/utils/.
-include("legacy_phantoms.jl")
-include("legacy_real_data.jl")
-
 using .BARTBridge
 using .SigPyBridge
 using .MIRTBridge
@@ -43,15 +38,11 @@ else
             "(`module load matlab/...`) and rerun `Pkg.build(\"MATLAB\")` if they are needed."
     )
 end
-using .Phantoms
-using .RealData
 
 export run_bart
 export sigpy, np, sigpy_mri_app
 export setup_matlab_paths
 export MIRT
-export generate_multicoil_brain, generate_dynamic_multicoil_brain
-export load_real_case, real_data_available, real_data_source
 export nrmse, check_nrmse
 
 """
