@@ -106,11 +106,15 @@ end
     @test AbstractOperators.has_fast_opnorm(B1) == AbstractOperators.has_fast_opnorm(E1)
     A_op = MatrixOp(randn(3, 2))
     B_op = BroadCast(A_op, (3, 4); threaded = false)
-    @test opnorm(B_op) ≈ opnorm(A_op)
+    # Replicating the inner operator's output 4 times multiplies every output vector's 2-norm
+    # by exactly `sqrt(4)`, so the broadcast is not norm-preserving. Checked against the dense
+    # matrix of `B_op` and against `powerit`, which agree on `2 * opnorm(A_op)`.
+    @test opnorm(B_op) ≈ 2 * opnorm(A_op)
+    @test opnorm(B_op) ≈ AbstractOperators.powerit(B_op; maxit = 2000, rel_margin = 1.0e-13)
 
     if Threads.nthreads() > 1
         B_op_t = BroadCast(A_op, (3, 4); threaded = true)
-        @test opnorm(B_op_t) ≈ opnorm(A_op)
+        @test opnorm(B_op_t) ≈ 2 * opnorm(A_op)
     end
 
     A = DiagOp(rand(4, 3, 2))

@@ -35,6 +35,45 @@ export is_threaded, adapt_operator, supports_threading
 #
 # The sweep also settled the kernel choice per class, and it did not match the starting
 # hypothesis everywhere -- see `THRESHOLD_MEMORY_BOUND`.
+#
+# ─── What a size threshold cannot see ────────────────────────────────────────
+#
+# Every threshold here answers "is this loop big enough to thread?". Two things it cannot
+# answer have each cost more than the thresholds themselves are worth.
+#
+# 1. IS ANOTHER LIBRARY STILL HOLDING THE THREADS?
+#
+# This package runs two schedulers. Element kernels reach `Polyester.@batch`, directly or
+# through FastBroadcast's `thread = true`; block and batch loops cannot, because their body is
+# a call out to a child `mul!` and Polyester does not resolve such a body statically inside a
+# precompiled package (see `FFTWOperators`' `SignAlternation`), so they use `Threads.@threads`
+# via `@budgeted_threads`. A composed operator therefore alternates between them -- and
+# Polyester's workers are Julia tasks that keep spinning for about 2^20 `pause()` iterations
+# after a `@batch` region ends, so a `Threads.@threads` region opened in that window waits for
+# those threads rather than running on them.
+#
+# Measured on an AMD EPYC 7352, 8 Julia threads, Julia 1.13.0, 2026-09-21, empty loop bodies:
+#
+#   Threads.@threads, in a process that has never run a `@batch`      5.7 us
+#   Threads.@threads, after one `@batch` has run                    219.9 us
+#   Threads.@threads, after `@batch` + `quiesce_foreign_pools()`     18.6 us
+#   the quiesce call itself                                           0.1 us
+#   Polyester.@batch, either way                                      0.5 us
+#
+# A 38x penalty on every block and batch loop in a mixed chain, removed for a tenth of a
+# microsecond. `NestedThreading.quiesce_foreign_pools` parks Polyester's workers, and
+# `@budgeted_threads` calls it before opening its region, so every loop in this package that
+# goes through that macro is covered; a hand-written `Threads.@threads` (the `BroadCast`
+# kernels) calls it itself. See <https://github.com/JuliaSIMD/Polyester.jl/issues/82>.
+#
+# 2. IS THE LIBRARY EVEN ENABLED AT THE CALL SITE?
+#
+# A `@batch` kernel is silently serial inside any scope that has narrowed the thread budget,
+# because switching Polyester off is how a `GuardedPool` implements a restriction. A caller
+# that wraps a whole solve in one -- MRT does -- therefore never runs the threaded path these
+# thresholds were swept for, whatever they say. That is how `BroadCast`'s threshold came to be
+# 2^18 for a kernel that never ran; it is now `Threads.@threads`, and its sweep was re-run.
+# The same question is open for every other `@batch`/`@..` kernel here.
 
 """
 Transcendental elementwise kernels (`Sin`, `Cos`, `Exp`, `Atan`, `Tanh`, `Sech`, `Sigmoid`,
@@ -101,13 +140,27 @@ Batch operators differ from the block-parallel calculus operators in that the nu
 items is typically large and known only at call time, so the gate is on the work of a single
 wrapped `mul!`.
 
-PROVENANCE: provisional. Set deliberately low relative to the block thresholds because a
-batch loop usually has far more items than a DCAT has blocks, so the per-item overhead is
-amortised much better -- but this specific value has not been swept. Its purpose is to
-guarantee a size component exists at all, so that batches of four-element operators are not
-threaded.
+PROVENANCE: measured, `benchmark/batch_op_threshold.jl`, AMD EPYC 7352, 8 Julia threads,
+OPENBLAS_NUM_THREADS=1, batch = 8 (matches a `SimpleBatchOp` over coils or time frames), one
+forward+adjoint `mul!` pair per sample against a 2D `DFT` per item -- the dominant cost in
+the `GetIndex . DFT . DiagOp` per-frame/per-coil operator this constant actually gates.
+Losing at 2^10 (1024 elements/item, 0.56x) and 2^11 (implied by the N=32 -> N=64 jump), first
+winning and staying ahead from 2^12 (4096, N=64x64, 2.07x) through the largest swept size
+(2^16, 1.65x). The previous value (2^10) was never measured; it was a guess this sweep
+disproves -- a batch of 1024-element items was *slower* threaded, not merely under-amortised.
+
+This constant is necessary but not sufficient: it is blind to how many times the batch
+`mul!` will be called. Called once, threading a 4096-element-per-item batch is a clear win;
+called hundreds of times from inside a solver's inner loop (CG inside ADMM inside an outer
+loop), the fixed per-call cost this proxy kernel pays once -- `Task` allocation, the
+`with_thread_budget` scope guard, the join -- accumulates, and the isolated crossover
+measured here does not by itself prove the threaded path wins in that setting. See
+`_fftw_num_threads`'s "What n cannot express" for the same caller-side gap in the FFTW gate;
+it applies here for the same reason and is left to the same remedy, `threaded = false` at
+the call site, since the crossover is a property of the caller's call frequency, not of the
+per-item size this constant can see.
 """
-const MIN_BATCH_WORK_FOR_PARALLEL = 2^10
+const MIN_BATCH_WORK_FOR_PARALLEL = 2^12
 
 # ─── Storage classification ───────────────────────────────────────────────────
 

@@ -360,6 +360,34 @@ end
     @test is_full_column_rank(op) == false
 end
 
+@testitem "plan-time thread count follows the size policy" tags = [:fftw, :threading] begin
+    using FFTWOperators
+    using FFTWOperators: _fftw_num_threads, fftw_threading_threshold
+
+    # Checked on the policy function rather than on constructed operators: one operator per
+    # cell at these sizes would cost far more than a contract test is worth.
+    nt = Threads.nthreads()
+    # The two real transforms share a threshold, and it is an octave below `:c2c`'s successor,
+    # not two: 2^15 was measured against `FFTW.MEASURE` plans, these operators plan with
+    # `FFTW.ESTIMATE`. A regression here means the provenance table was edited without the
+    # constant, or the reverse.
+    @test fftw_threading_threshold(:c2c) == 2^13
+    @test fftw_threading_threshold(:r2r) == fftw_threading_threshold(:r2c) == 2^14
+
+    for kind in (:c2c, :r2r, :r2c)
+        t0 = fftw_threading_threshold(kind)
+        # Below the threshold nothing is threaded, whatever `threaded` says.
+        @test _fftw_num_threads(kind, nothing, true, t0 - 1) == 1
+        # At and above it the whole pool is used -- no intermediate step (see the docstring
+        # for the measurements that rejected one).
+        @test _fftw_num_threads(kind, nothing, true, t0) == nt
+        @test _fftw_num_threads(kind, nothing, true, 64 * t0) == nt
+        # `threaded = false` still vetoes, and an explicit `num_threads` still wins over both.
+        @test _fftw_num_threads(kind, nothing, false, 4 * t0) == 1
+        @test _fftw_num_threads(kind, 3, false, t0 - 1) == 3
+    end
+end
+
 @testitem "DCT/IDCT (GPU)" tags = [:gpu, :fftw, :DCT, :IDCT] setup = [TestUtils, GpuEnvSetup] begin
     using AbstractOperators, FFTW, FFTWOperators, GPUEnv, Random
     has_accelerated_dcts = Base.find_package("AcceleratedDCTs") !== nothing

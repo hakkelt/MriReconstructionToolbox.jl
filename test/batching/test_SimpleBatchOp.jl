@@ -145,7 +145,7 @@
     # correctness check only (no timing), so it runs everywhere `Threads.nthreads() > 1`,
     # CI included.
     function test_real_multithreaded_construction()
-        n = 1200  # > MIN_BATCH_WORK_FOR_PARALLEL (2^10 = 1024)
+        n = 5000  # > MIN_BATCH_WORK_FOR_PARALLEL (2^12 = 4096)
         op = DiagOp(randn(n))
         batch_op = BatchOp(op, (3,), (:_, :b); threaded = true)
         @test batch_op isa AbstractOperators.SimpleBatchOpMultiThreaded

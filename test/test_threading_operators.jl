@@ -511,7 +511,7 @@ end
     # FFTW threads these transform kinds -- measured at n = 2^22 with 8 threads:
     # r2c (RDFT) 3.08x, r2r forward (DCT) 2.25x, r2r inverse (IDCT) 1.91x. That is why they
     # carry a plan-time thread count rather than being declared unthreaded.
-    # Above every FFTW crossover measured for these kinds (c2c 2^13, r2r 2^15, r2c 2^15),
+    # Above every FFTW crossover measured for these kinds (c2c 2^13, r2r 2^14, r2c 2^14),
     # so `threaded = true` is a permission the policy grants.
     n = 1 << 16
     x = randn(n)

@@ -385,6 +385,9 @@ is_full_row_rank(L::HCAT) = any(is_full_row_rank.(L.A))
 # kernel), so the safe answer is `false` unless proven otherwise upstream.
 is_full_column_rank(L::HCAT) = false
 
+# `‖Ax + By‖ ≤ ‖A‖‖x‖ + ‖B‖‖y‖ ≤ sqrt(‖A‖² + ‖B‖²)·sqrt(‖x‖² + ‖y‖²)`, by Cauchy–Schwarz.
+opnorm_bound(L::HCAT) = sqrt(sum(abs2, opnorm_bound.(L.A)))
+
 # HCAT(A, A, ..., A) with the *same* operator repeated (the shared-encoding-
 # operator multi-component reconstruction case, e.g. HCAT(𝒜, 𝒜) for
 # 𝒜*(x+y)) has AᴴA = Bᴴ * get_normal_op(A) * B, where B = HCAT(Eye,...,Eye)
