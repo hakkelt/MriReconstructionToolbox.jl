@@ -52,7 +52,7 @@ using Random: MersenneTwister
 using MriReconstructionToolbox
 using MriReconstructionToolbox: CartesianAcquisitionInfo
 const MRT = MriReconstructionToolbox
-include(joinpath(@__DIR__, "..", "src", "Phantoms.jl"))
+include(joinpath(@__DIR__, "..", "..", "utils", "phantoms.jl"))
 using .Phantoms
 
 @info "serial_blas_threshold_sweep" BACKEND julia_threads = Threads.nthreads() blas = BLAS.get_num_threads() threshold = MRT.SERIAL_BLAS_THRESHOLD_BYTES

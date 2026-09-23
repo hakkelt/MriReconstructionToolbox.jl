@@ -26,11 +26,9 @@ catch err
     @warn "MATLAB is unavailable; the optional MATLAB reference cross-checks are disabled" err
     false
 end
-# Phantom generators live in benchmark/hpc/ (single source of truth: the MRT baseline the
-# comparison suite diffs against is measured there on exactly these phantoms).
-include(joinpath(@__DIR__, "..", "..", "hpc", "src", "Phantoms.jl"))
-# Real scanner k-space via MRITestData.jl — shared with benchmark/hpc/ (single source of truth).
-include(joinpath(@__DIR__, "..", "..", "hpc", "src", "RealData.jl"))
+# Phantom generators and real-data loaders live in benchmark/utils/, shared with the MRT harness.
+include(joinpath(@__DIR__, "..", "..", "utils", "phantoms.jl"))
+include(joinpath(@__DIR__, "..", "..", "utils", "real_data.jl"))
 
 using .BARTBridge
 using .SigPyBridge
