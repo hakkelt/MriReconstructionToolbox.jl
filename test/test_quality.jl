@@ -141,18 +141,30 @@ end
     @test_call target_modules = (MRT,) NoScaling()
 end
 
-@testitem "Benchmark suite smoke test" tags = [:quality] begin
-    using BenchmarkTools
+@testitem "Benchmark case catalog smoke test" tags = [:quality] begin
     using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator, calculate
 
-    benchmark_file = joinpath(pkgdir(MriReconstructionToolbox), "benchmark", "ci", "benchmarks.jl")
-    @test isfile(benchmark_file)
-    include(benchmark_file)
-    # The suite building without error and exposing its groups is what this test guards against
-    # (a broken benchmark script) -- actually running it duplicates BenchmarkTools' own testing of
-    # `run` for the cost of every benchmarked operation, so it's not exercised here.
-    @test haskey(SUITE, "operator")
-    @test haskey(SUITE, "reconstruct")
-    @test haskey(SUITE, "prox")
+    # The case catalog and MRT's reconstruction of each method, at the reduced size, one method per
+    # case family: this guards against the harness (benchmark/run.jl) and the comparison suite
+    # breaking on an API change, without paying for a benchmark run.
+    include(joinpath(pkgdir(MriReconstructionToolbox), "benchmark", "utils", "bench_utils.jl"))
+    const BU = BenchUtils
+    withenv("MRT_BENCH_SMALL" => "1", "MRT_BENCH_REAL_DATA" => "0") do
+        for (id, method) in (
+                ("shepp_logan_2d_1ch_cartesian", :tv),
+                ("shepp_logan_2d_8ch_cartesian", :cgsense),
+                ("shepp_logan_2d_8ch_radial", :gridding),
+                ("shepp_logan_multislice_8ch_cartesian", :adjoint),
+                ("shepp_logan_3d_8ch_cartesian", :adjoint),
+                ("torso_cine_8ch_cartesian", :lowrank),
+                ("torso_cine_8ch_radial", :gridding),
+            )
+            c = BU.get_case(id)
+            @test method in BU.applicable_methods(c)
+            tmin, tmed, x = BU.time_run(BU.mrt_reconstructor(c, method; maxit = 2); warmup = 0, runs = 1)
+            @test tmin > 0
+            @test size(parent(x)) == size(c.reference)
+            @test isfinite(BU.mag_nrmse(Array(parent(x)), c.reference))
+        end
+    end
 end

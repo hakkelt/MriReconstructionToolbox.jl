@@ -324,7 +324,7 @@ end
 """Replace NaN / Inf with -1.0 so a single bad toolkit row does not sink the section's JSON."""
 _json_num(x::Real) = isfinite(x) ? Float64(x) : -1.0
 
-include(joinpath(@__DIR__, "..", "src", "ResultsStore.jl"))
+include(joinpath(@__DIR__, "..", "..", "utils", "results_store.jl"))
 using .ResultsStore: record_run
 
 """

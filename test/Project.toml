@@ -1,10 +1,10 @@
 [deps]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
-BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 Contourlets = "4d443f37-8914-48d3-9d0d-9e555eaf7273"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 GeometricMedicalPhantoms = "c297bd51-60f5-42e7-80e4-f985777cb71a"
 JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MRIBase = "f7771a9a-6e57-4e71-863b-6e4b6a2f17df"
 MRITestData = "b3f1a2c4-5d6e-4a7b-9c8d-0e1f2a3b4c5d"
@@ -19,10 +19,10 @@ Wavelets = "29a6e085-ba6d-5f35-a997-948ac2efa89a"
 
 [compat]
 Aqua = "0.8"
-BenchmarkTools = "1"
 Contourlets = "0.1"
 GeometricMedicalPhantoms = "1"
 JET = "0.8, 0.9, 0.10, 0.11"
+JSON = "0.21, 1"
 MRIBase = "0.4"
 MRITestData = "0.1"
 Random = "1"

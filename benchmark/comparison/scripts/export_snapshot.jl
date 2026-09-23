@@ -8,7 +8,7 @@
 #   julia --project=benchmark/comparison benchmark/comparison/scripts/export_snapshot.jl --backend=mkl --threads=16
 using JSON
 
-include(joinpath(@__DIR__, "..", "src", "ResultsStore.jl"))
+include(joinpath(@__DIR__, "..", "..", "utils", "results_store.jl"))
 using .ResultsStore: load_rows, latest_per_case, RESULTS_DIR
 
 const ARG = Dict(

@@ -9,12 +9,28 @@
 # Querying is a read-time concern, not a write-time one: `query_results.jl` globs `results/runs/`
 # and filters/sorts the rows in plain Julia -- no database involved at all, so there is nothing to
 # keep in sync with the flat files, which stay the only source of truth.
+#
+# Two stores use this layout: the comparison suite's (`benchmark/comparison/results/runs/`, rows of
+# `category`/`method`/`framework`) and the MRT harness's (`benchmark/results/runs/`, rows keyed by
+# catalog case and method, with the git provenance of the checkout measured). Every function takes
+# the store's `root`; the default is the comparison suite's, which is what its scripts expect.
 module ResultsStore
 
 using JSON, Dates
 
-const RESULTS_DIR = normpath(joinpath(@__DIR__, "..", "results"))
+"""
+    SCHEMA_VERSION
+
+Written into every run file. 1 (or absent): rows from before the case catalog, whose inputs are
+not the catalog's cases; 2: rows measured on catalog cases.
+"""
+const SCHEMA_VERSION = 2
+
+const COMPARISON_RESULTS_DIR = normpath(joinpath(@__DIR__, "..", "comparison", "results"))
+const HARNESS_RESULTS_DIR = normpath(joinpath(@__DIR__, "..", "results"))
+const RESULTS_DIR = COMPARISON_RESULTS_DIR
 const RUNS_DIR = joinpath(RESULTS_DIR, "runs")
+runs_dir(root::AbstractString) = joinpath(root, "runs")
 
 """
     source_tag(hostname = gethostname()) -> "slurm" | "other"
@@ -56,18 +72,20 @@ Same as [`record_run`](@ref) but `benchmarks` is already JSON-shaped (one `Dict`
 `category`/`method`/`framework`/`threads`/`time_ms`/`nrmse_gt`/`nrmse_mrt`). Used directly by
 [`record_run`](@ref) and by `migrate_to_store.jl`, which passes rows parsed back out of the old
 per-section JSON files and overrides `ts`/`source` to preserve when/where they actually ran instead
-of stamping them as recorded now.
+of stamping them as recorded now. `root` is the store (see the module header).
 """
 function record_run_rows(
         section::AbstractString, backend::AbstractString, threads::Integer, benchmarks::AbstractVector;
         ts::AbstractString = Dates.format(now(), dateformat"yyyymmdd-HHMMSS-sss"),
-        source::AbstractString = source_tag(), kwargs...,
+        source::AbstractString = source_tag(), root::AbstractString = RESULTS_DIR, kwargs...,
     )
-    mkpath(RUNS_DIR)
+    dir = runs_dir(root)
+    mkpath(dir)
     run_id = "$(ts)_$(backend)_$(threads)threads_$(section)_$(source)_pid$(getpid())"
-    path = joinpath(RUNS_DIR, "$run_id.json")
-    ispath(path) && (path = joinpath(RUNS_DIR, "$(run_id)_$(rand(UInt32)).json"))
+    path = joinpath(dir, "$run_id.json")
+    ispath(path) && (path = joinpath(dir, "$(run_id)_$(rand(UInt32)).json"))
     meta = Dict{String, Any}(string(k) => v for (k, v) in kwargs)
+    haskey(meta, "schema_version") || (meta["schema_version"] = SCHEMA_VERSION)
     open(path, "w") do io
         JSON.print(
             io,
@@ -88,11 +106,33 @@ _json_num(x::Real) = isfinite(x) ? Float64(x) : -1.0
 _json_num(x) = x  # already JSON-safe (e.g. read back from a migrated file)
 
 """
-    run_files() -> Vector{String}
+    run_files(root = RESULTS_DIR) -> Vector{String}
 
-Every recorded run file, oldest first (filename timestamp order).
+Every recorded run file of the store at `root`, oldest first (filename timestamp order).
 """
-run_files() = sort(filter(f -> endswith(f, ".json"), readdir(RUNS_DIR; join = true)))
+function run_files(root::AbstractString = RESULTS_DIR)
+    dir = runs_dir(root)
+    isdir(dir) || return String[]
+    return sort(filter(f -> endswith(f, ".json"), readdir(dir; join = true)))
+end
+
+"""
+    load_run_files(root) -> Vector{Dict{String, Any}}
+
+Every readable run file of the store at `root`, parsed, oldest first. Unreadable files (a run
+killed mid-write) are skipped with a warning.
+"""
+function load_run_files(root::AbstractString)
+    out = Dict{String, Any}[]
+    for f in run_files(root)
+        try
+            push!(out, JSON.parsefile(f))
+        catch e
+            @warn "unreadable run file, skipping" f exception = e
+        end
+    end
+    return out
+end
 
 """
     Row
