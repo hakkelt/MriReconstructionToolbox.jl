@@ -6,7 +6,6 @@ Manifest.toml
 # notebook export/precompile scripts are not, for now.
 /benchmark/**/slurm_*.txt
 docs/notebooks/**/*slurm*
-benchmark/hpc/results/*.json
 # Site configuration of the benchmark SLURM scripts: paths of one machine (copy site.env.example).
 /benchmark/slurm/site.env
 # Harness results, SLURM logs and job output (local working data).
@@ -26,9 +25,8 @@ docs/notebooks/*.ipynb
 # per-section/per-group benchmark fragments (legacy; superseded by results/runs/, kept ignored for
 # any leftover files from before the switch)
 benchmark/comparison/results/*__*.json
-benchmark/hpc/results/*__*.json
 
-# results/runs/: one immutable file per benchmark run (see ResultsStore.jl); local working data,
+# results/runs/: one immutable file per benchmark run (see benchmark/utils/results_store.jl); local working data,
 # not the same thing as a committed comparison snapshot
 benchmark/comparison/results/runs/
 # λ calibrated on the MRT_BENCH_SMALL=1 smoke cases; meaningless at full size
