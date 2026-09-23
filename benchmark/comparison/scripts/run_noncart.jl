@@ -78,33 +78,37 @@ if should_run("Non-Cartesian", "DCF Adjoint (Gridding)")
         push!(results, BenchResult("Non-Cartesian", "DCF Adjoint (Gridding)", "$FW (m=3, σ=1.25)", NUM_THREADS, tmm * 1000, nrmse(x, img_mc), nrmse(xm, x)))
     end
 
-    try
-        kdata_mr = reshape(kdata_nc, 16384, Nc, 1, 1)
-        acq_mr = AcquisitionData(t, fill(kdata_mr[:, :, 1, 1], 1, 1, 1))
-        smap_mr = reshape(ComplexF32.(cmap), N, N, 1, Nc)
-        rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => (N, N), :senseMaps => smap_mr)
-        # The coil combination is inside the timed closure: MRT's row includes the sensitivity adjoint,
-        # and MRIReco's `direct` reco returns per-coil images, so combining outside would undercount it.
-        tr, _, xr_raw = time_reconstruction() do
-            imr = with_mrireco_blas(() -> MRIReco.reconstruction(acq_mr, rp)[:, :, 1, 1, :])
-            return sum(imr .* conj.(reshape(ComplexF32.(cmap), N, N, Nc)), dims = 3)[:, :, 1]
+    if should_run_framework("MRIReco")
+        try
+            kdata_mr = reshape(kdata_nc, 16384, Nc, 1, 1)
+            acq_mr = AcquisitionData(t, fill(kdata_mr[:, :, 1, 1], 1, 1, 1))
+            smap_mr = reshape(ComplexF32.(cmap), N, N, 1, Nc)
+            rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => (N, N), :senseMaps => smap_mr)
+            # The coil combination is inside the timed closure: MRT's row includes the sensitivity adjoint,
+            # and MRIReco's `direct` reco returns per-coil images, so combining outside would undercount it.
+            tr, _, xr_raw = time_reconstruction() do
+                imr = with_mrireco_blas(() -> MRIReco.reconstruction(acq_mr, rp)[:, :, 1, 1, :])
+                return sum(imr .* conj.(reshape(ComplexF32.(cmap), N, N, Nc)), dims = 3)[:, :, 1]
+            end
+            xr = xr_raw .* (norm(abs.(img_mc)) / norm(abs.(xr_raw)))
+            push!(results, BenchResult("Non-Cartesian", "DCF Adjoint (Gridding)", "MRIReco", NUM_THREADS, tr * 1000, nrmse(xr, img_mc), nrmse(xm, xr)))
+        catch e
+            @warn "MRIReco non-Cartesian failed" exception = (e, catch_backtrace())
         end
-        xr = xr_raw .* (norm(abs.(img_mc)) / norm(abs.(xr_raw)))
-        push!(results, BenchResult("Non-Cartesian", "DCF Adjoint (Gridding)", "MRIReco", NUM_THREADS, tr * 1000, nrmse(xr, img_mc), nrmse(xm, xr)))
-    catch e
-        @warn "MRIReco non-Cartesian failed" exception = (e, catch_backtrace())
     end
 
     # MIRT grids with the same Pipe-Menon weights MRT uses, taken off the operator MRT already built,
     # so the two rows differ only in the NUFFT and the coil loop.
-    try
-        nfft_inner = E_dcf.L.A[3].operator
-        nfft_op0 = nfft_inner isa Tuple ? first(nfft_inner) : nfft_inner
-        ti, xi_raw = mirt_gridding(parent(kdata_nc), parent(traj_named), nfft_op0.dcf, ComplexF32.(cmap), (N, N))
-        xi = xi_raw .* (norm(abs.(img_mc)) / norm(abs.(xi_raw)))
-        push!(results, BenchResult("Non-Cartesian", "DCF Adjoint (Gridding)", "MIRT", NUM_THREADS, ti, nrmse(xi, img_mc), nrmse(xm, xi)))
-    catch e
-        @warn "MIRT non-Cartesian failed" exception = (e, catch_backtrace())
+    if should_run_framework("MIRT")
+        try
+            nfft_inner = E_dcf.L.A[3].operator
+            nfft_op0 = nfft_inner isa Tuple ? first(nfft_inner) : nfft_inner
+            ti, xi_raw = mirt_gridding(parent(kdata_nc), parent(traj_named), nfft_op0.dcf, ComplexF32.(cmap), (N, N))
+            xi = xi_raw .* (norm(abs.(img_mc)) / norm(abs.(xi_raw)))
+            push!(results, BenchResult("Non-Cartesian", "DCF Adjoint (Gridding)", "MIRT", NUM_THREADS, ti, nrmse(xi, img_mc), nrmse(xm, xi)))
+        catch e
+            @warn "MIRT non-Cartesian failed" exception = (e, catch_backtrace())
+        end
     end
     flush_results!("noncart")
 end

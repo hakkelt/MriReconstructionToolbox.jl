@@ -111,13 +111,15 @@ for (key, meth, mrtreg, bartcmd, mrm, λdef) in specs
     tm, _, xm = time_reconstruction(() -> mrt_run(acq_dyn, mrtreg(load_lambda(key, "MRT", λdef)); maxit = IT))
     addrow(meth, FW, tm * 1000, xm, nothing)
 
-    try
-        tb, _, rb = time_bart(bartcmd(load_lambda(key, "BART", λdef)), kbart, sbart)
-        addrow(meth, BART_FW, tb * 1000, dropdims(rb, dims = (3, 4, 5)), xm)
-    catch e
-        @warn "BART $meth failed" exception = (e, catch_backtrace())
+    if should_run_framework("BART")
+        try
+            tb, _, rb = time_bart(bartcmd(load_lambda(key, "BART", λdef)), kbart, sbart)
+            addrow(meth, BART_FW, tb * 1000, dropdims(rb, dims = (3, 4, 5)), xm)
+        catch e
+            @warn "BART $meth failed" exception = (e, catch_backtrace())
+        end
     end
-    if mrm !== nothing
+    if mrm !== nothing && should_run_framework("MRIReco")
         try
             tr, xr = mrireco_dynamic(
                 mrm, ksp_z, cmap_dyn, (Nd, Nd);
@@ -132,20 +134,24 @@ for (key, meth, mrtreg, bartcmd, mrm, λdef) in specs
     # low-rank case — a nuclear norm on the whole Casorati matrix — is expressible in each with
     # its own operator and solver. LLR and temporal TV are not; see `sigpy_lowrank`.
     if key === :lowrank
-        try
-            ts, xs = sigpy_lowrank(ksp_z, cmap_dyn, (Nd, Nd); λ = load_lambda(key, "SigPy", λdef), iterations = IT)
-            addrow(meth, "SigPy", ts, xs, xm)
-        catch e
-            @warn "SigPy $meth failed" exception = (e, catch_backtrace())
+        if should_run_framework("SigPy")
+            try
+                ts, xs = sigpy_lowrank(ksp_z, cmap_dyn, (Nd, Nd); λ = load_lambda(key, "SigPy", λdef), iterations = IT)
+                addrow(meth, "SigPy", ts, xs, xm)
+            catch e
+                @warn "SigPy $meth failed" exception = (e, catch_backtrace())
+            end
         end
-        try
-            # `proxgrad_budget(IT)`, not `IT`: POGM spends one normal-operator application per
-            # iteration where the ADMM rows spend `CMP_CG_ITERS + 1`. Matched work, not matched
-            # iteration count — the same correction `BART_BUDGET` makes for BART.
-            ti, xi = mirt_lowrank(ksp_z, cmap_dyn; λ = load_lambda(key, "MIRT", λdef), iterations = proxgrad_budget(IT))
-            addrow(meth, "MIRT", ti, xi, xm)
-        catch e
-            @warn "MIRT $meth failed" exception = (e, catch_backtrace())
+        if should_run_framework("MIRT")
+            try
+                # `proxgrad_budget(IT)`, not `IT`: POGM spends one normal-operator application per
+                # iteration where the ADMM rows spend `CMP_CG_ITERS + 1`. Matched work, not matched
+                # iteration count — the same correction `BART_BUDGET` makes for BART.
+                ti, xi = mirt_lowrank(ksp_z, cmap_dyn; λ = load_lambda(key, "MIRT", λdef), iterations = proxgrad_budget(IT))
+                addrow(meth, "MIRT", ti, xi, xm)
+            catch e
+                @warn "MIRT $meth failed" exception = (e, catch_backtrace())
+            end
         end
     end
     flush_results!("dynamic")

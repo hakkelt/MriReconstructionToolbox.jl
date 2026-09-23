@@ -29,15 +29,19 @@ if should_run("Base 1C", "1-Coil Adjoint")
     mrt_1c = mrt_raw .* (norm(abs.(img_mc)) / norm(abs.(mrt_raw)))
     push!(results, BenchResult("Base 1C", "1-Coil Adjoint", FW, NUM_THREADS, t_mrt * 1000, nrmse(mrt_1c, img_mc), 0.0))
 
-    kdata_sp_1c = parent(permutedims(kspace_1c, (2, 1)))
-    F_sp_1c = sp_mri.linop.Sense(ones(CMP_CTYPE, 1, N, N), ishape = (N, N))
-    t_sp, _, sp_raw = time_reconstruction(() -> F_sp_1c.H(reshape(kdata_sp_1c, 1, N, N)))
-    sp_1c = permutedims(sp_raw, (2, 1)); sp_1c = sp_1c .* (norm(abs.(img_mc)) / norm(abs.(sp_1c)))
-    push!(results, BenchResult("Base 1C", "1-Coil Adjoint", "SigPy", NUM_THREADS, t_sp * 1000, nrmse(sp_1c, img_mc), nrmse(mrt_1c, sp_1c)))
+    if should_run_framework("SigPy")
+        kdata_sp_1c = parent(permutedims(kspace_1c, (2, 1)))
+        F_sp_1c = sp_mri.linop.Sense(ones(CMP_CTYPE, 1, N, N), ishape = (N, N))
+        t_sp, _, sp_raw = time_reconstruction(() -> F_sp_1c.H(reshape(kdata_sp_1c, 1, N, N)))
+        sp_1c = permutedims(sp_raw, (2, 1)); sp_1c = sp_1c .* (norm(abs.(img_mc)) / norm(abs.(sp_1c)))
+        push!(results, BenchResult("Base 1C", "1-Coil Adjoint", "SigPy", NUM_THREADS, t_sp * 1000, nrmse(sp_1c, img_mc), nrmse(mrt_1c, sp_1c)))
+    end
 
-    _, _, b_raw = time_bart("fft -i 3", ComplexF32.(reshape(kspace_1c, N, N, 1, 1)))
-    b_1c = b_raw[:, :, 1, 1]; b_1c = b_1c .* (norm(abs.(img_mc)) / norm(abs.(b_1c)))
-    push!(results, BenchResult("Base 1C", "1-Coil Adjoint", BART_FW, NUM_THREADS, NaN, nrmse(b_1c, img_mc), nrmse(mrt_1c, b_1c)))
+    if should_run_framework("BART")
+        _, _, b_raw = time_bart("fft -i 3", ComplexF32.(reshape(kspace_1c, N, N, 1, 1)))
+        b_1c = b_raw[:, :, 1, 1]; b_1c = b_1c .* (norm(abs.(img_mc)) / norm(abs.(b_1c)))
+        push!(results, BenchResult("Base 1C", "1-Coil Adjoint", BART_FW, NUM_THREADS, NaN, nrmse(b_1c, img_mc), nrmse(mrt_1c, b_1c)))
+    end
     flush_results!("base")
 end
 
@@ -51,38 +55,46 @@ if should_run("Base MC", "Cartesian Adjoint")
     recon = mrt_adj ./ sum(abs2.(smaps_mc), dims = 3)[:, :, 1]
     push!(results, BenchResult("Base MC", "Cartesian Adjoint", FW, NUM_THREADS, t_mrt * 1000, mag_nrmse(recon, img_mc), 0.0))
 
-    kdata_sp_mc = parent(permutedims(kspace_mc, (3, 2, 1)))
-    smaps_sp_mc = parent(permutedims(cmap, (3, 2, 1)))
-    S_sp = sp_mri.linop.Sense(smaps_sp_mc, ishape = (N, N))
-    t_sp, _, sp_raw = time_reconstruction(() -> S_sp.H(kdata_sp_mc))
-    sp_adj = permutedims(sp_raw, (2, 1)) ./ sum(abs2.(cmap), dims = 3)[:, :, 1]
-    push!(results, BenchResult("Base MC", "Cartesian Adjoint", "SigPy", NUM_THREADS, t_sp * 1000, mag_nrmse(sp_adj, img_mc), mag_nrmse(recon, sp_adj)))
+    if should_run_framework("SigPy")
+        kdata_sp_mc = parent(permutedims(kspace_mc, (3, 2, 1)))
+        smaps_sp_mc = parent(permutedims(cmap, (3, 2, 1)))
+        S_sp = sp_mri.linop.Sense(smaps_sp_mc, ishape = (N, N))
+        t_sp, _, sp_raw = time_reconstruction(() -> S_sp.H(kdata_sp_mc))
+        sp_adj = permutedims(sp_raw, (2, 1)) ./ sum(abs2.(cmap), dims = 3)[:, :, 1]
+        push!(results, BenchResult("Base MC", "Cartesian Adjoint", "SigPy", NUM_THREADS, t_sp * 1000, mag_nrmse(sp_adj, img_mc), mag_nrmse(recon, sp_adj)))
+    end
 
-    kdata_bart_cart = reshape(kspace_mc, N, N, 1, Nc)
-    _, _, b_ifft = time_bart("fft -i 3", ComplexF32.(kdata_bart_cart))
-    b_adj = sum(b_ifft[:, :, 1, :] .* conj.(reshape(ComplexF32.(cmap), N, N, Nc)), dims = 3)[:, :, 1] ./ sum(abs2.(ComplexF32.(cmap)), dims = 3)[:, :, 1]
-    push!(results, BenchResult("Base MC", "Cartesian Adjoint", BART_FW, NUM_THREADS, NaN, mag_nrmse(b_adj, img_mc), mag_nrmse(recon, b_adj)))
+    if should_run_framework("BART")
+        kdata_bart_cart = reshape(kspace_mc, N, N, 1, Nc)
+        _, _, b_ifft = time_bart("fft -i 3", ComplexF32.(kdata_bart_cart))
+        b_adj = sum(b_ifft[:, :, 1, :] .* conj.(reshape(ComplexF32.(cmap), N, N, Nc)), dims = 3)[:, :, 1] ./ sum(abs2.(ComplexF32.(cmap)), dims = 3)[:, :, 1]
+        push!(results, BenchResult("Base MC", "Cartesian Adjoint", BART_FW, NUM_THREADS, NaN, mag_nrmse(b_adj, img_mc), mag_nrmse(recon, b_adj)))
+    end
 
     # MRIReco multi-coil adjoint (Cartesian direct): AcquisitionData accepts a dense
     # (x, y, z, channel, echo, rep) k-space array directly (`enc2D` for a 2D encode).
-    try
-        acq_mr = AcquisitionData(reshape(CMP_CTYPE.(kspace_mc), N, N, 1, Nc, 1, 1); enc2D = true)
-        rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => (N, N), :senseMaps => reshape(CMP_CTYPE.(cmap), N, N, 1, Nc))
-        t_mr, _, mr_img = time_reconstruction(() -> with_mrireco_blas(() -> MRIReco.reconstruction(acq_mr, rp)[:, :, 1, 1, :]))
-        mr = sum(mr_img .* conj.(reshape(CMP_CTYPE.(cmap), N, N, Nc)), dims = 3)[:, :, 1] ./ sum(abs2.(cmap), dims = 3)[:, :, 1]
-        push!(results, BenchResult("Base MC", "Cartesian Adjoint", "MRIReco", NUM_THREADS, t_mr * 1000, mag_nrmse(mr, img_mc), mag_nrmse(recon, mr)))
-    catch e
-        @warn "MRIReco Cartesian adjoint failed" exception = (e, catch_backtrace())
+    if should_run_framework("MRIReco")
+        try
+            acq_mr = AcquisitionData(reshape(CMP_CTYPE.(kspace_mc), N, N, 1, Nc, 1, 1); enc2D = true)
+            rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => (N, N), :senseMaps => reshape(CMP_CTYPE.(cmap), N, N, 1, Nc))
+            t_mr, _, mr_img = time_reconstruction(() -> with_mrireco_blas(() -> MRIReco.reconstruction(acq_mr, rp)[:, :, 1, 1, :]))
+            mr = sum(mr_img .* conj.(reshape(CMP_CTYPE.(cmap), N, N, Nc)), dims = 3)[:, :, 1] ./ sum(abs2.(cmap), dims = 3)[:, :, 1]
+            push!(results, BenchResult("Base MC", "Cartesian Adjoint", "MRIReco", NUM_THREADS, t_mr * 1000, mag_nrmse(mr, img_mc), mag_nrmse(recon, mr)))
+        catch e
+            @warn "MRIReco Cartesian adjoint failed" exception = (e, catch_backtrace())
+        end
     end
 
     # MIRT's `Asense'` already folds in the conjugate sensitivities, so only the `sum(abs2, smaps)`
     # division is left to match the other rows.
-    try
-        t_mi, mi_adj = mirt_recon(:adjoint, kspace_mc, cmap)
-        mi = mi_adj ./ sum(abs2.(cmap), dims = 3)[:, :, 1]
-        push!(results, BenchResult("Base MC", "Cartesian Adjoint", "MIRT", NUM_THREADS, t_mi, mag_nrmse(mi, img_mc), mag_nrmse(recon, mi)))
-    catch e
-        @warn "MIRT Cartesian adjoint failed" exception = (e, catch_backtrace())
+    if should_run_framework("MIRT")
+        try
+            t_mi, mi_adj = mirt_recon(:adjoint, kspace_mc, cmap)
+            mi = mi_adj ./ sum(abs2.(cmap), dims = 3)[:, :, 1]
+            push!(results, BenchResult("Base MC", "Cartesian Adjoint", "MIRT", NUM_THREADS, t_mi, mag_nrmse(mi, img_mc), mag_nrmse(recon, mi)))
+        catch e
+            @warn "MIRT Cartesian adjoint failed" exception = (e, catch_backtrace())
+        end
     end
     flush_results!("base")
 end

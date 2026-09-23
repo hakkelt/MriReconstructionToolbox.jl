@@ -26,29 +26,37 @@ if should_run("Base MC", "CG-SENSE (10 it)")
     tm, _, xm = time_reconstruction(() -> reconstruct(acq_mc, method_cg; verbosity = Silent()))
     addrow(FW, tm * 1000, xm, nothing)
 
-    try
-        ts, xs = sigpy_recon(:cgsense, kspace_mc, cmap; iterations = 10)
-        addrow("SigPy", ts, xs, xm)
-    catch e
-        @warn "SigPy CG-SENSE failed" exception = (e, catch_backtrace())
+    if should_run_framework("SigPy")
+        try
+            ts, xs = sigpy_recon(:cgsense, kspace_mc, cmap; iterations = 10)
+            addrow("SigPy", ts, xs, xm)
+        catch e
+            @warn "SigPy CG-SENSE failed" exception = (e, catch_backtrace())
+        end
     end
-    try
-        tb, _, rb = time_bart("pics -S -w 1 -i 10", ComplexF32.(reshape(kspace_mc, N, N, 1, Nc)), ComplexF32.(reshape(cmap, N, N, 1, Nc)))
-        addrow(BART_FW, tb * 1000, rb[:, :, 1], xm)
-    catch e
-        @warn "BART CG-SENSE failed" exception = (e, catch_backtrace())
+    if should_run_framework("BART")
+        try
+            tb, _, rb = time_bart("pics -S -w 1 -i 10", ComplexF32.(reshape(kspace_mc, N, N, 1, Nc)), ComplexF32.(reshape(cmap, N, N, 1, Nc)))
+            addrow(BART_FW, tb * 1000, rb[:, :, 1], xm)
+        catch e
+            @warn "BART CG-SENSE failed" exception = (e, catch_backtrace())
+        end
     end
-    try
-        tr, xr = mrireco(:cgsense, kspace_mc, cmap, (N, N); iterations = 10)
-        addrow("MRIReco", tr, xr, xm)
-    catch e
-        @warn "MRIReco CG-SENSE failed" exception = (e, catch_backtrace())
+    if should_run_framework("MRIReco")
+        try
+            tr, xr = mrireco(:cgsense, kspace_mc, cmap, (N, N); iterations = 10)
+            addrow("MRIReco", tr, xr, xm)
+        catch e
+            @warn "MRIReco CG-SENSE failed" exception = (e, catch_backtrace())
+        end
     end
-    try
-        ti, xi = mirt_recon(:cgsense, kspace_mc, cmap; iterations = 10)
-        addrow("MIRT", ti, xi, xm)
-    catch e
-        @warn "MIRT CG-SENSE failed" exception = (e, catch_backtrace())
+    if should_run_framework("MIRT")
+        try
+            ti, xi = mirt_recon(:cgsense, kspace_mc, cmap; iterations = 10)
+            addrow("MIRT", ti, xi, xm)
+        catch e
+            @warn "MIRT CG-SENSE failed" exception = (e, catch_backtrace())
+        end
     end
     flush_results!("cgsense")
 end

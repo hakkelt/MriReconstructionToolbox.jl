@@ -119,7 +119,7 @@ for (key, meth, target, mrtreg, mrtkind, spm, mrm, bartcmd, bartladder, λdef) i
         )
     )
 
-    addrow(
+    should_run_framework("BART") && addrow(
         meth, target, BART_FW, race(
             "BART $meth", bartladder, target, it -> begin
                 t, _, r = time_bart(bartcmd(load_lambda(key, "BART", λdef), it), ComplexF32.(kbart), ComplexF32.(sbart))
@@ -128,7 +128,7 @@ for (key, meth, target, mrtreg, mrtkind, spm, mrm, bartcmd, bartladder, λdef) i
         )
     )
 
-    spm === nothing || addrow(
+    spm === nothing || !should_run_framework("SigPy") || addrow(
         meth, target, "SigPy", race(
             "SigPy $meth", LADDER, target, it -> begin
                 ms, x = sigpy_recon(spm, ksp_z, cmap; λ = load_lambda(key, "SigPy", λdef), iterations = it)
@@ -137,7 +137,7 @@ for (key, meth, target, mrtreg, mrtkind, spm, mrm, bartcmd, bartladder, λdef) i
         )
     )
 
-    mrm === nothing || addrow(
+    mrm === nothing || !should_run_framework("MRIReco") || addrow(
         meth, target, "MRIReco", race(
             "MRIReco $meth", LADDER, target, it -> begin
                 ms, x = mrireco(mrm, ksp_z, cmap, (N, N); λ = load_lambda(key, "MRIReco", λdef), iterations = it)
@@ -220,7 +220,7 @@ for (key, meth, target, mrtreg, bartcmd, mrm, λdef) in (
         )
     )
 
-    addrow(
+    should_run_framework("BART") && addrow(
         meth, target, BART_FW, race_dyn(
             "BART $meth", LADDER_BART_ADMM, target, it -> begin
                 t, _, r = time_bart(bartcmd(load_lambda(key, "BART", λdef), it), kbart_dyn, sbart_dyn)
@@ -229,7 +229,7 @@ for (key, meth, target, mrtreg, bartcmd, mrm, λdef) in (
         )
     )
 
-    mrm === nothing || addrow(
+    mrm === nothing || !should_run_framework("MRIReco") || addrow(
         meth, target, "MRIReco", race_dyn(
             "MRIReco $meth", LADDER, target, it -> begin
                 ms, x = mrireco_dynamic(mrm, ksp_dyn_z, cmap_dyn, (Nd, Nd); λ = load_lambda(key, "MRIReco", λdef), iterations = it)
