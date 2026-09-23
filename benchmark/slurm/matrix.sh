@@ -80,10 +80,12 @@ touch "$START_MARKER"
 
 ### ---- 2. NUMA topology discovery (ThreadPinning.jl, never hardcoded) ---------------------------
 
+# Only one CPU thread per physical core is listed: a task is never given an SMT sibling, whose core
+# it would share with another of its own threads.
 mapfile -t NUMA_CORES < <("$JULIA_BIN" --project="$PROJECT_DIR" -e '
     using ThreadPinning
     for i in 1:ThreadPinning.nnuma()
-        println(join(ThreadPinning.numa(i), " "))
+        println(join(filter(!ThreadPinning.ishyperthread, ThreadPinning.numa(i)), " "))
     end')
 N_DOMAINS=${#NUMA_CORES[@]}
 if [ "$N_DOMAINS" -lt 1 ]; then
@@ -98,13 +100,16 @@ for d in "${!NUMA_CORES[@]}"; do
         exit 1
     fi
 done
-echo "### discovered $N_DOMAINS NUMA domains, $(wc -w <<<"${NUMA_CORES[0]}") cores each"
+echo "### discovered $N_DOMAINS NUMA domains, $(wc -w <<<"${NUMA_CORES[0]}") physical cores each"
 
+# Refs and environment variants vary fastest, so the variants of one (threads, backend) pair start
+# together on neighbouring domains and see the same node state: a comparison between them is not
+# confounded by drift over the hours the job runs.
 QUEUE=()
-for r in "${!MATRIX_REFS[@]}"; do
-    for e in "${!MATRIX_ENV[@]}"; do
-        for t in "${MATRIX_THREADS[@]}"; do
-            for b in "${MATRIX_BACKENDS[@]}"; do
+for t in "${MATRIX_THREADS[@]}"; do
+    for b in "${MATRIX_BACKENDS[@]}"; do
+        for e in "${!MATRIX_ENV[@]}"; do
+            for r in "${!MATRIX_REFS[@]}"; do
                 QUEUE+=("$t:$b:$r:$e")
             done
         done
