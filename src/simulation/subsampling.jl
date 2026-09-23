@@ -295,13 +295,15 @@ end
 """
     to_displayable_mask(pattern, dims)
 
-Convert a sampling pattern returned by [`create_sampling_pattern`](@ref) into a `Bool` mask of
-size `dims` suitable for display. Accepts either a plain `Bool` mask (returned as is) or the
-`(:, mask)` form used when the frequency-encoding dimension is fully sampled; the latter describes
-a 2D acquisition, so `dims` must be two-dimensional for it.
+Convert a sampling pattern into a `Bool` mask of size `dims` suitable for display. Accepts every
+form a [`CartesianAcquisitionInfo`](@ref)'s `subsampling` takes: a plain `Bool` mask (returned as
+is), the `(:, mask)` form [`create_sampling_pattern`](@ref) returns when the frequency-encoding
+dimension is fully sampled (a 2D acquisition, so `dims` must be two-dimensional for it), and a
+per-axis tuple with one selector per dimension of `dims` — `:`, a `Bool` vector, or an index vector
+or range, e.g. `(:, [1, 3, 5])`.
 """
 function to_displayable_mask(pattern, dims::NTuple{N, Int}) where {N}
-    if pattern isa Tuple && length(pattern) == 2 && pattern[2] isa AbstractVector{Bool}
+    if pattern isa Tuple && length(pattern) == 2 && first(pattern) isa Colon && pattern[2] isa AbstractVector{Bool}
         # `(:, keep)` says "every readout sample, the phase encodes `keep` selects", which is a
         # statement about a 2D array.
         N == 2 || throw(ArgumentError("the `(:, mask)` pattern form describes a 2D acquisition, got dims $dims"))
@@ -311,14 +313,21 @@ function to_displayable_mask(pattern, dims::NTuple{N, Int}) where {N}
         # two-element tuple is the selector's own type, and `_phase_encode_mask` is then a
         # function barrier specialized on it.
         return _phase_encode_mask(last(pattern), dims[1])
-    elseif pattern isa Tuple && length(pattern) == 2 && pattern[2] isa AbstractArray{Bool}
+    elseif pattern isa Tuple && length(pattern) == 2 && first(pattern) isa Colon && pattern[2] isa AbstractArray{Bool}
+        # `(:, mask)` with a ky–kz mask: every readout sample of the phase encodes it selects.
         return pattern[2]
     elseif pattern isa Tuple && length(pattern) == 1 && first(pattern) isa AbstractArray{Bool}
         return first(pattern)
     elseif pattern isa AbstractArray{Bool}
         return pattern
+    elseif pattern isa Tuple && all(p -> p isa Union{Colon, AbstractVector}, pattern)
+        # One selector per axis, as the subsampling operator indexes the full k-space with it.
+        length(pattern) == N || throw(ArgumentError("a per-axis pattern needs one selector per dimension of $dims, got $(length(pattern))"))
+        mask = falses(dims)
+        mask[pattern...] .= true
+        return mask
     else
-        error("Unsupported pattern format")
+        throw(ArgumentError("Unsupported pattern format: $(typeof(pattern))"))
     end
 end
 
