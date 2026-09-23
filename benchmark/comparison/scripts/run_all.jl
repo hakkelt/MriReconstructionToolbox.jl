@@ -20,4 +20,4 @@ for s in SECTIONS
     end
 end
 
-run(`$jl --project=$proj $(joinpath(@__DIR__, "merge_benchmarks.jl")) $pass`)
+run(`$jl --project=$proj $(joinpath(@__DIR__, "merge_benchmarks.jl"))`)
