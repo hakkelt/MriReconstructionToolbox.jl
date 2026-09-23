@@ -267,25 +267,50 @@ results = BenchResult[]
 """
     CASE_FILTER
 
-Parsed from `--cases=Category|Method,Category2|Method2`, or `nothing` when not passed (run
-everything). Every section checks [`should_run`](@ref) before paying for a solve, so a rerun of
-one suspect case does not have to pay for the whole section. `|` and `,` are safe separators: no
-category or method string in this suite contains either.
+Parsed from `--cases=pat1,pat2,...`, or `nothing` when not passed (run everything). Each `pat` is a
+case-insensitive substring matched against `category` OR `method` independently, so `--cases=sparsity`
+runs a whole section, `--cases=low-rank` runs every low-rank case across `Dynamic` and
+`Accuracy race` regardless of the exact suffix on its method string, and
+`--cases="Sparsity|Total Variation"` (the `|` has no special meaning, it just narrows to one string
+neither category alone nor method alone would match on its own) runs one specific case. Every
+section checks [`should_run`](@ref) before paying for a solve, so a rerun of one suspect case does
+not have to pay for the whole section.
 """
 const CASE_FILTER = let i = findfirst(a -> startswith(a, "--cases="), ARGS)
-    i === nothing ? nothing :
-        Set(Tuple(split(c, "|"; limit = 2)) for c in split(ARGS[i][(length("--cases=") + 1):end], ","))
+    i === nothing ? nothing : [lowercase(s) for s in split(ARGS[i][(length("--cases=") + 1):end], ",")]
 end
 
 """
     should_run(category, method) -> Bool
 
-True unless [`CASE_FILTER`](@ref) is set and `(category, method)` is not in it. `run_accuracy_race.jl`
-must call this with the loop's un-suffixed label (e.g. `"Total Variation"`), not the stored result's
-`"Total Variation (NRMSE≤0.005, 20 it)"` -- that suffix depends on the race's outcome and does not
-exist until after it runs.
+True unless [`CASE_FILTER`](@ref) is set and no pattern in it is a substring of `category` or of
+`method` (case-insensitive). `run_accuracy_race.jl` must call this with the loop's un-suffixed label
+(e.g. `"Total Variation"`), not the stored result's `"Total Variation (NRMSE≤0.005, 20 it)"` -- that
+suffix depends on the race's outcome and does not exist until after it runs.
 """
-should_run(category, method) = CASE_FILTER === nothing || (category, method) in CASE_FILTER
+should_run(category, method) = CASE_FILTER === nothing ||
+    any(p -> occursin(p, lowercase(category)) || occursin(p, lowercase(method)), CASE_FILTER)
+
+"""
+    FRAMEWORK_FILTER
+
+Parsed from `--frameworks=pat1,pat2,...`, or `nothing`. Each `pat` is a case-insensitive substring
+matched against a framework label (`"BART"` matches `"BART (MKL)"` and `"BART (OpenBLAS)"` alike).
+Gates only the *competitor* toolkits (SigPy/BART/MRIReco/MIRT) in each case, never MRT itself: MRT's
+own solve is the reference every other framework's `nrmse_mrt` is computed against, so it always
+runs regardless of this filter, and stays cheap next to whichever toolkit is under suspicion.
+"""
+const FRAMEWORK_FILTER = let i = findfirst(a -> startswith(a, "--frameworks="), ARGS)
+    i === nothing ? nothing : [lowercase(s) for s in split(ARGS[i][(length("--frameworks=") + 1):end], ",")]
+end
+
+"""
+    should_run_framework(framework) -> Bool
+
+True unless [`FRAMEWORK_FILTER`](@ref) is set and no pattern in it is a substring of `framework`
+(case-insensitive). See [`FRAMEWORK_FILTER`](@ref) -- never call this for MRT's own row.
+"""
+should_run_framework(framework) = FRAMEWORK_FILTER === nothing || any(p -> occursin(p, lowercase(framework)), FRAMEWORK_FILTER)
 
 """Replace NaN / Inf with -1.0 so a single bad toolkit row does not sink the section's JSON."""
 _json_num(x::Real) = isfinite(x) ? Float64(x) : -1.0
@@ -310,7 +335,7 @@ function flush_results!(name::AbstractString)
         julia_threads = Threads.nthreads(), blas_vendor = BLAS.get_config().loaded_libs[1].libname,
         use_mkl = USE_MKL, bart_binary = BART_BINARY, pinned_cpus = CPU_STR,
         bart_spawn_ms = BART_SPAWN * 1000,
-        cases_filter = CASE_FILTER === nothing ? nothing : [join(c, "|") for c in CASE_FILTER],
+        cases_filter = CASE_FILTER, frameworks_filter = FRAMEWORK_FILTER,
     )
     for r in results
         @printf(

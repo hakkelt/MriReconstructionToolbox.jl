@@ -99,6 +99,7 @@ function real_case_rows!(category, ksp3_raw, smaps3, ref; cgsense = true)
                 ),
                 ("MRIReco", () -> mrireco(:cgsense, ksp_z, smaps3, (nx, ny); iterations = 10)),
             )
+            should_run_framework(fw) || continue
             try
                 t, x = f()
                 add("CG-SENSE (10 it)", fw, t, x, xm)
@@ -139,6 +140,7 @@ function real_case_rows!(category, ksp3_raw, smaps3, ref; cgsense = true)
                 ),
                 ("MRIReco", () -> mrireco(mrm, ksp_z, smaps3, (nx, ny); λ = load_lambda(key, "MRIReco", λdef), iterations = IT)),
             )
+            should_run_framework(fw) || continue
             try
                 t, x = f()
                 add(meth, fw, t, x, xm)
@@ -293,6 +295,7 @@ try
                 end,
             ),
         )
+        should_run_framework(fw) || continue
         try
             t, x = f()
             addv("CG-SENSE (10 it)", fw, t, x, xmv)
@@ -338,6 +341,7 @@ try
                 end,
             ),
         )
+        should_run_framework(fw) || continue
         try
             t, x = f()
             addv("Total Variation ($CMP_OUTER it)", fw, t, x, xmv)

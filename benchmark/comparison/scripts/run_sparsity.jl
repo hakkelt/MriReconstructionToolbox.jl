@@ -77,13 +77,15 @@ for (key, meth, mrtreg, mrtkind, spm, mrm, bartcmd, λdef) in specs
         x
     end
 
-    try
-        tb, _, rb = time_bart(bartcmd(load_lambda(key, "BART", λdef)), ComplexF32.(kbart), ComplexF32.(sbart))
-        addrow("Sparsity", meth, BART_FW, tb * 1000, rb[:, :, 1], xm)
-    catch e
-        @warn "BART $meth failed" exception = (e, catch_backtrace())
+    if should_run_framework("BART")
+        try
+            tb, _, rb = time_bart(bartcmd(load_lambda(key, "BART", λdef)), ComplexF32.(kbart), ComplexF32.(sbart))
+            addrow("Sparsity", meth, BART_FW, tb * 1000, rb[:, :, 1], xm)
+        catch e
+            @warn "BART $meth failed" exception = (e, catch_backtrace())
+        end
     end
-    if spm !== nothing
+    if spm !== nothing && should_run_framework("SigPy")
         try
             ts, xs = sigpy_recon(spm, ksp_z, cmap; λ = load_lambda(key, "SigPy", λdef), iterations = IT)
             addrow("Sparsity", meth, "SigPy", ts, xs, xm)
@@ -91,7 +93,7 @@ for (key, meth, mrtreg, mrtkind, spm, mrm, bartcmd, λdef) in specs
             @warn "SigPy $meth failed" exception = (e, catch_backtrace())
         end
     end
-    if mrm !== nothing
+    if mrm !== nothing && should_run_framework("MRIReco")
         try
             tr, xr = mrireco(mrm, ksp_z, cmap, (N, N); λ = load_lambda(key, "MRIReco", λdef), iterations = IT)
             addrow("Sparsity", meth, "MRIReco", tr, xr, xm)
