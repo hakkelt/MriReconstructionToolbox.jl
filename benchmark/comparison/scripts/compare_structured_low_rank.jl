@@ -27,7 +27,7 @@ rss(x) = sqrt.(dropdims(sum(abs2, unname(x); dims = 3); dims = 3))
 
 @testset "Structured Low-Rank (calibrationless)" begin
     N, Nc = 96, 8
-    img_mc, kspace_mc, cmap = generate_multicoil_brain(N = N, num_coils = Nc)
+    img_mc, kspace_mc, cmap = multicoil_phantom(N, Nc)
     # Magnitude ground truth: root-sum-of-squares of the coil images.
     truth = rss(reshape(cmap, N, N, Nc) .* reshape(img_mc, N, N, 1))
 
@@ -36,7 +36,7 @@ rss(x) = sqrt.(dropdims(sum(abs2, unname(x); dims = 3); dims = 3))
     mask_pe = rand(MersenneTwister(7), Bool, N)
     kspc = kspace_mc[:, mask_pe, :]
 
-    # `shifted_image_dims` is not optional here: `generate_multicoil_brain` returns the phantom
+    # `shifted_image_dims` is not optional here: `multicoil_phantom` returns the phantom
     # centred in the image and its k-space centred in the array, so without it every
     # reconstruction comes back fftshifted against `truth` and scores NRMSE ≈ √2 — the value two
     # uncorrelated images of equal norm give. That is what made the zero-filled baseline read

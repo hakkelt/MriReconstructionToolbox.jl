@@ -1,7 +1,8 @@
 # Shared prelude for the decomposed comparison suite. Every `run_<section>.jl` does
 # `include(joinpath(@__DIR__, "_setup.jl"))` first: it parses the CLI, pins threads, configures
-# the BART / OpenMP / MKL environment, loads MRT + BART + SigPy + MRIReco, defines the timing
-# helpers and `BenchResult`, and builds the shared multi-coil brain phantom.
+# the BART / OpenMP / MKL environment, loads MRT + BART + SigPy + MRIReco and the case catalog
+# (benchmark/utils/), and defines the timing helpers and `BenchResult`. Sections take their data
+# from the catalog only.
 #
 # Each section script then appends to `results::Vector{BenchResult}` and calls
 # `write_section("<name>")`, which records one immutable run file under
@@ -158,8 +159,12 @@ function with_mrireco_blas(f)
 end
 
 include(joinpath(@__DIR__, "..", "src", "ComparisonHarness.jl"))
-using .ComparisonHarness: check_nrmse, nrmse, run_bart, generate_multicoil_brain,
-    generate_dynamic_multicoil_brain, load_real_case, load_real_case_3d, load_real_dynamic
+using .ComparisonHarness: check_nrmse, run_bart
+
+# The case catalog, MRT's reconstruction of each method, `time_run` and the result store, shared
+# with the MRT harness (benchmark/run.jl). No section prepares data of its own.
+include(joinpath(@__DIR__, "..", "..", "utils", "bench_utils.jl"))
+using .BenchUtils
 
 const sigpy = pyimport("sigpy")
 const sp_mri = pyimport("sigpy.mri")
@@ -214,7 +219,13 @@ subtracted. `BART_USE_FFTW_WISDOM` is enabled for this recon only if the warm-up
 exceeds `heavy_threshold` seconds — i.e. only when the one-off `FFTW_MEASURE` planning is small
 against the recon's own compute (per the user's ">5 s" rule).
 """
-function time_bart(cmd::AbstractString, inputs...; nout::Int = 1, num_runs::Int = 3, heavy_threshold::Real = 5.0)
+function time_bart(cmd::AbstractString, inputs...; nout::Int = 1, num_runs::Int = RUNS[], heavy_threshold::Real = 5.0)
+    if WARMUP[] == 0         # images only (calibration): one untimed-for-the-record run
+        t0 = time_ns()
+        res = run_bart(nout, cmd, inputs...)
+        t = (time_ns() - t0) / 1.0e9
+        return t, t, res
+    end
     ovh = bart_overhead(inputs...)
     t0 = time_ns()
     res = run_bart(nout, cmd, inputs...)
@@ -232,31 +243,35 @@ function time_bart(cmd::AbstractString, inputs...; nout::Int = 1, num_runs::Int 
 end
 
 """
-    time_reconstruction(f; num_runs = 3) -> (t_min_s, t_med_s, result)
+    RUNS
 
-Warm up `f` once, then time `num_runs` more (in-process toolkits: MRT, SigPy, MRIReco).
-BART goes through [`time_bart`](@ref) instead.
+Timed runs of the current case: 3, or 1 for a heavy case (`timed_runs`). `toolkit_run` sets it, and
+[`time_reconstruction`](@ref) and [`time_bart`](@ref) default to it.
 """
-function time_reconstruction(f; num_runs = 3, is_bart = false)
-    is_bart && error("route BART through time_bart(cmd, inputs...) so I/O overhead and the FFTW-wisdom rule are handled")
-    res = f()
-    times = Float64[]
-    for _ in 1:num_runs
-        t0 = time_ns()
-        res = f()
-        push!(times, (time_ns() - t0) / 1.0e9)
-    end
-    return minimum(times), median(times), res
-end
+const RUNS = Ref(3)
 
-# MRT is always timed inline; no cached baseline mechanism (removed with recon_bench.jl).
-function time_mrt(category, method, f)
-    return time_reconstruction(f)
-end
+"""
+    WARMUP
 
-# magnitude, scale-aligned — real recons carry a receive phase the magnitude reference lacks.
-mag_nrmse(est, ref) = (a = abs.(est); r = abs.(ref); nrmse(a .* (norm(r) / norm(a)), r))
+Untimed warm-up runs before the timed ones: 1, or 0 in `calibrate_lambda.jl`, which only needs
+the images.
+"""
+const WARMUP = Ref(1)
 
+"""
+    time_reconstruction(f; num_runs = RUNS[]) -> (t_min_s, t_med_s, result)
+
+`time_run` (`WARMUP[]` warm-ups, then the minimum and median of `num_runs`) for the in-process
+toolkits, MRT's timing function in the harness too. BART goes through [`time_bart`](@ref) instead.
+"""
+time_reconstruction(f; num_runs::Int = RUNS[]) = time_run(f; warmup = WARMUP[], runs = num_runs)
+
+"""
+    BenchResult
+
+One row: `category` is the section, `method` the method label, `case_id` the catalog case and
+`data_source` where its data came from (`"synthetic"` or the real dataset).
+"""
 struct BenchResult
     category::String
     method::String
@@ -265,6 +280,8 @@ struct BenchResult
     time_ms::Float64
     nrmse_gt::Float64
     nrmse_mrt::Float64
+    case_id::String
+    data_source::String
 end
 
 results = BenchResult[]
@@ -273,28 +290,48 @@ results = BenchResult[]
     CASE_FILTER
 
 Parsed from `--cases=pat1,pat2,...`, or `nothing` when not passed (run everything). Each `pat` is a
-case-insensitive substring matched against `category` OR `method` independently, so `--cases=sparsity`
-runs a whole section, `--cases=low-rank` runs every low-rank case across `Dynamic` and
-`Accuracy race` regardless of the exact suffix on its method string, and
-`--cases="Sparsity|Total Variation"` (the `|` has no special meaning, it just narrows to one string
-neither category alone nor method alone would match on its own) runs one specific case. Every
-section checks [`should_run`](@ref) before paying for a solve, so a rerun of one suspect case does
-not have to pay for the whole section.
+case-insensitive substring matched against a catalog case id (`--cases=shepp_logan_2d` runs the
+three 2D Shepp-Logan cases, `--cases=cine` both cine cases), a section, or a method label
+(`--cases=low-rank` runs every low-rank row). Every section checks [`should_run_case`](@ref) and
+[`should_run`](@ref) before paying for a solve, so a rerun of one suspect case does not have to pay
+for the whole section.
 """
 const CASE_FILTER = let i = findfirst(a -> startswith(a, "--cases="), ARGS)
     i === nothing ? nothing : [lowercase(s) for s in split(ARGS[i][(length("--cases=") + 1):end], ",")]
 end
 
 """
-    should_run(category, method) -> Bool
+    DATA
 
-True unless [`CASE_FILTER`](@ref) is set and no pattern in it is a substring of `category` or of
-`method` (case-insensitive). `run_accuracy_race.jl` must call this with the loop's un-suffixed label
-(e.g. `"Total Variation"`), not the stored result's `"Total Variation (NRMSE≤0.005, 20 it)"` -- that
-suffix depends on the race's outcome and does not exist until after it runs.
+`--data=synthetic` (default), `real` or `all`: which catalog cases the sections iterate. Real data
+are the real-data analogues of the synthetic cases (benchmark/utils/real_data.jl).
+"""
+const DATA = let i = findfirst(a -> startswith(a, "--data="), ARGS)
+    d = i === nothing ? "synthetic" : ARGS[i][(length("--data=") + 1):end]
+    d in ("synthetic", "real", "all") || error("--data=$d: expected synthetic, real or all")
+    d
+end
+
+"""
+    should_run(label, method) -> Bool
+
+True unless [`CASE_FILTER`](@ref) is set and no pattern in it is a substring of `label` (a case id
+or a section) or of `method` (case-insensitive).
 """
 should_run(category, method) = CASE_FILTER === nothing ||
     any(p -> occursin(p, lowercase(category)) || occursin(p, lowercase(method)), CASE_FILTER)
+
+"""
+    should_run_case(id) -> Bool
+
+Whether any row of case `id` can pass [`CASE_FILTER`](@ref): true when no filter is set, or when a
+pattern does not name a case at all (then it filters by section or method instead).
+"""
+function should_run_case(id)
+    CASE_FILTER === nothing && return true
+    all_ids = lowercase.(case_ids(; real = true))
+    return any(p -> occursin(p, lowercase(id)) || !any(i -> occursin(p, i), all_ids), CASE_FILTER)
+end
 
 """
     FRAMEWORK_FILTER
@@ -324,8 +361,7 @@ end
 """Replace NaN / Inf with -1.0 so a single bad toolkit row does not sink the section's JSON."""
 _json_num(x::Real) = isfinite(x) ? Float64(x) : -1.0
 
-include(joinpath(@__DIR__, "..", "..", "utils", "results_store.jl"))
-using .ResultsStore: record_run
+using .BenchUtils.ResultsStore: record_run
 
 """
     flush_results!(name) -> path or nothing
@@ -344,12 +380,13 @@ function flush_results!(name::AbstractString)
         julia_threads = Threads.nthreads(), blas_vendor = BLAS.get_config().loaded_libs[1].libname,
         use_mkl = USE_MKL, bart_binary = BART_BINARY, pinned_cpus = CPU_STR,
         bart_spawn_ms = BART_SPAWN * 1000,
-        cases_filter = CASE_FILTER, frameworks_filter = FRAMEWORK_FILTER,
+        cases_filter = CASE_FILTER, frameworks_filter = FRAMEWORK_FILTER, data = DATA,
+        small = small_mode(), cine_frames = cine_frames(),
     )
     for r in results
         @printf(
-            "%-14s | %-26s | %-22s | %7d | %10.2f ms | %10.2e | %10.2e\n",
-            r.category, r.method, r.framework, r.threads, r.time_ms, r.nrmse_gt, r.nrmse_mrt
+            "%-38s | %-26s | %-22s | %3d | %10.2f ms | %10.2e | %10.2e\n",
+            r.case_id, r.method, r.framework, r.threads, r.time_ms, r.nrmse_gt, r.nrmse_mrt
         )
     end
     @info "flushed run" path n = length(results) source = ResultsStore.source_tag()
@@ -379,34 +416,7 @@ const CMP_CTYPE = get(ENV, "CMP_PRECISION", "single") == "double" ? ComplexF64 :
 const CMP_RTYPE = real(CMP_CTYPE)
 @info "comparison precision" ctype = CMP_CTYPE
 
-# Shared 2D multi-coil brain phantom (most sections).
-#
-# The sensitivity maps are handed to every toolkit exactly as the generator produces them.
-# `normalize_sensitivity_maps` is deliberately not called: it would give MRT a known operator norm
-# and so a free step size, while MRIReco's `SensitivityOp` and BART's `pics` normalize nothing, and
-# the comparison is supposed to measure the solvers rather than one side's preprocessing. Leave the
-# omission in place.
-const N = 128
-const Nc = 8
-const IMG_MC, KSPACE_MC, CMAP = let (i, k, c) = generate_multicoil_brain(N = N, num_coils = Nc)
-    (i, CMP_CTYPE.(k), CMP_CTYPE.(c))
-end
-
-"""
-	generate_dynamic_brain(; N, num_coils, num_frames) -> (img, kspace, cmap)
-
-`generate_dynamic_multicoil_brain` with its k-space and sensitivity maps put in `CMP_CTYPE`, the
-way the shared 2D phantom above already is.
-
-The conversion is the point of the wrapper. The generator returns `ComplexF64`, and the three
-scripts that used it directly handed that straight to MRT while building every competitor's input
-as `CMP_CTYPE` (`kbart = zeros(ComplexF32, …)`, `ksp_z = zeros(CMP_CTYPE, …)`), so the dynamic
-section was timing MRT in double precision against everyone else in single. Measured on the
-64²×4-coil×8-frame case, 1 thread, 2026-09-21: global low-rank 642.3 ms at `ComplexF64` against
-444.1 ms at `ComplexF32`, locally low-rank 692.9 against 481.0 — about 1.45x, which was most of
-that section's reported gap.
-"""
-function generate_dynamic_brain(; N::Int, num_coils::Int, num_frames::Int)
-    img, ksp, cmap = generate_dynamic_multicoil_brain(; N, num_coils, num_frames)
-    return img, CMP_CTYPE.(ksp), CMP_CTYPE.(cmap)
-end
+# Every section's data comes from the case catalog (`get_case`), in `ComplexF32`. The sensitivity
+# maps are handed to every toolkit exactly as the catalog produces them: `normalize_sensitivity_maps`
+# is deliberately not called, since it would give MRT a known operator norm and so a free step size,
+# while MRIReco's `SensitivityOp` and BART's `pics` normalize nothing.

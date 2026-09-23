@@ -165,9 +165,10 @@ const _CASE_CACHE = Dict{String, BenchCase}()
 Build (or return the memoised) case `id`, synthetic or real. Memoised per process and per
 `small_mode()`, since the heavy cases take seconds to generate and every method of a case reuses it.
 """
-function get_case(id::AbstractString)
-    key = string(id, small_mode() ? "#small" : "", "#", cine_frames(), "#", snr_db())
+function get_case(id::AbstractString; pattern::Symbol = :catalog)
+    key = string(id, small_mode() ? "#small" : "", "#", cine_frames(), "#", snr_db(), "#", pattern)
     return get!(_CASE_CACHE, key) do
+        pattern === :catalog || return _build_synthetic(String(id); pattern)
         id in SYNTHETIC_CASES && return _build_synthetic(String(id))
         for (rid, analogue) in REAL_CASES
             rid == id && return load_real_case(rid, analogue)
@@ -180,11 +181,33 @@ end
 # of the order they are built in.
 _case_seed(id) = Int(sum(Int(c) * 31^(i % 7) for (i, c) in enumerate(id)) % 100_000)
 
-function _build_synthetic(id::String)
+"""
+    regular_lines(n; R = 2, acs) -> Vector{Int}
+
+Every `R`-th phase encode plus a contiguous block of `acs` central lines: the regular pattern
+GRAPPA needs (one kernel per missing-line offset cannot be fitted to a random pattern).
+"""
+function regular_lines(n::Int; R::Int = 2, acs::Int)
+    c = n ÷ 2 + 1
+    return sort!(union(1:R:n, (c - acs ÷ 2):(c - acs ÷ 2 + acs - 1)))
+end
+
+function _build_synthetic(id::String; pattern::Symbol = :catalog)
     d = _dims()
     n = d.n
     seed = _case_seed(id)
     rng = MersenneTwister(seed)
+    if pattern === :regular
+        # The same phantom, maps and noise as the catalog case, sampled every other phase encode
+        # plus a 24-line (small: 12) calibration block, for GRAPPA.
+        id in ("shepp_logan_2d_8ch_cartesian", "shepp_logan_multislice_8ch_cartesian") ||
+            throw(ArgumentError("no regular-pattern variant of $id"))
+        c = _build_synthetic(id)
+        lines = regular_lines(n; R = 2, acs = small_mode() ? 12 : 24)
+        ref, maps = c.reference, c.smaps
+        kfull = c.family === :multislice ? centred_fft(reshape(ref, n, n, 1, :) .* maps, (1, 2)) : centred_fft(ref .* maps, (1, 2))
+        return _finish_cartesian(id * "__regular", c.family, ref, maps, kfull, line_mask(n, lines, n); seed)
+    end
     if id == "shepp_logan_2d_1ch_cartesian"
         img = shepp_logan_2d(n)
         kfull = reshape(centred_fft(img, (1, 2)), n, n, 1)
@@ -300,13 +323,16 @@ with its trajectory, and `dcf = true` attaching the ramp DCF for a gridding reco
 
 The volume case is built from plain arrays with integer `shifted_image_dims`: a `NamedDimsArray`
 3D k-space subsampled on ky-kz (`(:kx, :kyz, :coil)`) is rejected when sensitivity maps are given,
-because the map check demands a `:kz` axis.
+because the map check demands a `:kz` axis (fixed on `fix/3d-subsampled-kspace-dimnames`; the
+plain arrays stay until every measured ref carries the fix).
 """
 function mrt_acquisition(c::BenchCase; dcf::Bool = false)
     c.trajectory === :noncartesian && return _mrt_noncartesian(c; dcf)
     nx, ny = size(c.kspace, 1), size(c.kspace, 2)
+    # Phase encodes are given as a Bool vector, the form `create_sampling_pattern` returns: GRAPPA's
+    # pattern check (`to_displayable_mask`) does not accept an index vector.
     if c.family === :single_slice
-        lines = findall(view(c.mask, 1, :))
+        lines = c.mask[1, :]
         k = c.kspace[:, lines, :]
         if c.smaps === nothing
             return CartesianAcquisitionInfo(
@@ -320,7 +346,7 @@ function mrt_acquisition(c::BenchCase; dcf::Bool = false)
             sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(c.smaps),
         )
     elseif c.family === :multislice
-        lines = findall(view(c.mask, 1, :))
+        lines = c.mask[1, :]
         return CartesianAcquisitionInfo(
             NamedDimsArray{(:kx, :ky, :coil, :z)}(c.kspace[:, lines, :, :]);
             is3D = false, image_size = (nx, ny), subsampling = (:, lines), shifted_image_dims = (:x, :y),
@@ -336,7 +362,7 @@ function mrt_acquisition(c::BenchCase; dcf::Bool = false)
         )
     elseif c.family === :cine
         nt = size(c.kspace, 4)
-        lines = [findall(view(c.mask, 1, :, t)) for t in 1:nt]
+        lines = [c.mask[1, :, t] for t in 1:nt]
         k = stack(c.kspace[:, lines[t], :, t] for t in 1:nt)                   # (kx, ky, coil, time)
         return CartesianAcquisitionInfo(
             NamedDimsArray{(:kx, :ky, :coil, :time)}(k);

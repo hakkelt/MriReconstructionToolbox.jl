@@ -22,13 +22,14 @@ const RLS = MRIReco.RegularizedLeastSquares
 #     its converged NRMSE from 0.0083 to 0.0062, and putting MRT on full depth moved it from
 #     0.0059 to 0.0061 — after which MRT / MRIReco / SigPy agree to 1.5%.
 #   * **TV splitting** — see `mrireco`.
-const CMP_WAVELET_LEVELS = parse(Int, get(ENV, "CMP_WAVELET_LEVELS", "3"))
+const CMP_WAVELET_LEVELS = BenchUtils.WAVELET_LEVELS
 const CMP_WAVELET_NAME = get(ENV, "CMP_WAVELET_NAME", "db2")
-mrt_wavelet(λ) = L1Wavelet2D(λ; wavelet = MriReconstructionToolbox.WT.db2, levels = CMP_WAVELET_LEVELS)
 
 # --- shared knobs ---------------------------------------------------------------------------
-# Fixed ADMM penalty used by every toolkit's ADMM path, so ρ is not a hidden degree of freedom.
-const CMP_RHO = 5.0e-2
+# The effort knobs are BenchUtils' (benchmark/utils/mrt_methods.jl), so MRT's rows here and the MRT
+# harness run the same solve. Fixed ADMM penalty used by every toolkit's ADMM path, so ρ is not a
+# hidden degree of freedom.
+const CMP_RHO = ADMM_RHO
 # Outer iterations are capped at CMP_OUTER (20 is plenty for these 2D problems); inner CG at
 # CMP_CG_ITERS (10). MRT, MRIReco and SigPy all run the full budget — `tol = 0` genuinely means
 # "no early stop" in each (verified: MRT `cg.jl:349` `sqrt(r²) <= tol`, MRIReco `cg.jl:140`
@@ -36,8 +37,8 @@ const CMP_RHO = 5.0e-2
 # exactly `CMP_OUTER × (CMP_CG_ITERS + 1)` normal-operator applications. BART cannot be held to
 # the same shape — its inner-CG tolerance is hardcoded and not CLI-settable — so it gets an
 # equivalent *budget* instead; see `BART_BUDGET`.
-const CMP_OUTER = parse(Int, get(ENV, "CMP_OUTER", "20"))
-const CMP_CG_ITERS = parse(Int, get(ENV, "CMP_CG_ITERS", "10"))
+const CMP_OUTER = OUTER_ITERATIONS
+const CMP_CG_ITERS = CG_ITERATIONS
 const CMP_TOL_INNER = 0.0    # inner CG runs its full CMP_CG_ITERS budget, no early stop
 
 """
@@ -142,90 +143,9 @@ large survives 20 iterations and diverges over 220 — so the two fixes only mak
 """
 proxgrad_budget(outer::Int) = outer * (CMP_CG_ITERS + 1)
 
-"""
-    norm_ksp(k) -> k scaled to unit RMS (‖k‖ = √length)
-
-Every toolkit's λ is defined relative to the data-term scale, so a λ calibrated on the synthetic
-phantom only transfers to real scanner data if both k-spaces are put on the same scale first.
-Applied to every dataset before reconstruction; `mag_nrmse` is scale-invariant so references are
-unaffected.
-"""
-# `eltype(k)` on the scalar, so a `ComplexF32` k-space is not promoted back to `ComplexF64` by a
-# `Float64` factor — the precision under test has to survive the preprocessing.
-norm_ksp(k) = k .* eltype(k)(sqrt(length(k)) / LinearAlgebra.norm(k))
-
-"""
-    add_noise(k; snr_db = 30, seed = 1) -> k + complex Gaussian noise
-
-Additive complex white noise at `snr_db` relative to the RMS of `k`. The synthetic phantom is a
-noiseless analytical Shepp–Logan, so without this every toolkit reconstructs it near-perfectly
-and TV / wavelet regularisation only ever hurts — there is no non-trivial optimal λ to calibrate.
-Real scanner data carries noise, so a λ calibrated on a noisy synthetic problem is the one that
-transfers. Fixed `seed` so the calibration and the timing runs see the same realisation.
-"""
-function add_noise(k; snr_db::Real = 30, seed::Integer = 1)
-    rng = Random.MersenneTwister(seed)
-    rms = LinearAlgebra.norm(k) / sqrt(length(k))
-    σ = rms * 10^(-snr_db / 20) / sqrt(2)
-    # Drawn in `ComplexF64` and converted, not drawn in `eltype(k)`: the realisation must be the
-    # same sequence whichever precision is under test, so the two runs differ only in arithmetic.
-    return k .+ eltype(k).(σ .* randn(rng, ComplexF64, size(k)))
-end
-const CMP_SNR_DB = parse(Float64, get(ENV, "CMP_SNR_DB", "30"))
-
-"""
-    load_lambda(method::Symbol, toolbox::AbstractString, default::Real) -> Float64
-
-Per-toolbox regularisation weight from `benchmark/comparison/results/lambda_calibration.json` (written by
-`calibrate_lambda.jl`), falling back to `default` when the file or the entry is missing. The
-calibration picks, per method, a λ for each toolbox that lands on a common NRMSE, so the timing
-comparison is done at matched accuracy rather than matched λ.
-"""
-function load_lambda(method::Symbol, toolbox::AbstractString, default::Real)
-    f = normpath(joinpath(@__DIR__, "..", "results", "lambda_calibration.json"))
-    isfile(f) || return Float64(default)
-    tbl = try
-        JSON.parsefile(f)["lambda"]
-    catch
-        return Float64(default)
-    end
-    m = get(tbl, String(method), nothing)
-    (m === nothing || !haskey(m, toolbox)) && return Float64(default)
-    v = m[toolbox]
-    return (v isa Real && isfinite(v)) ? Float64(v) : Float64(default)
-end
-
-# --- MRT --------------------------------------------------------------------------------------
-"""
-    mrt_admm(reg; rho = CMP_RHO, maxit) -> IterativeReconstruction
-
-MRT reconstruction with a **fixed**-ρ ADMM (default is the adaptive
-`SpectralRadiusApproximationPenalty`), a tight inner CG and no early stop, so it matches the
-fixed-ρ ADMM the other toolkits are forced onto.
-"""
-function _mrt_alg(kind::Symbol, maxit::Int, rho::Real)
-    if kind === :admm
-        return MriReconstructionToolbox.ADMM(;
-            rho = rho, maxit = maxit, tol = 0.0,
-            cg_tol = CMP_TOL_INNER, cg_maxit = CMP_CG_ITERS
-        )
-    elseif kind === :fista
-        return MriReconstructionToolbox.FISTA(; maxit = maxit, tol = 0.0)
-    end
-    error("unknown MRT algorithm $kind")
-end
-
-"""
-    mrt_run(acq, reg; maxit, kind = :admm, rho = CMP_RHO) -> image
-
-`reconstruct` with a fixed-ρ ADMM (`kind = :admm`, for TV / TGV / low-rank) or FISTA
-(`kind = :fista`, for L1-wavelet — forcing wavelet through ADMM with a fixed ρ wrecks it).
-`maxit` and `reltol = 0` are set on `IterativeReconstruction` as well as on the algorithm object: the
-method's own values win over the algorithm's, so both must agree to actually run the full count
-with no early stop.
-"""
-mrt_run(acq, reg; maxit::Int, kind::Symbol = :admm, rho::Real = CMP_RHO) =
-    reconstruct(acq, IterativeReconstruction(regularization = reg, algorithm = _mrt_alg(kind, maxit, rho); maxit = maxit, reltol = 0.0); verbosity = Silent())
+# Data scaling and noise (`norm_ksp`, `add_noise`) are applied once, when the catalog builds a case
+# (benchmark/utils/noise.jl); λ comes from `load_lambda` in `_methods.jl`; MRT's own solve is
+# `mrt_reconstructor` (benchmark/utils/mrt_methods.jl), the call the MRT harness times.
 
 # --- MRIReco (Julia) ------------------------------------------------------------------------
 # `MRIBase` accepts a 6D `(x, y, z, channel, echo, rep)` k-space array directly (`enc2D` for a
@@ -374,22 +294,29 @@ function mrireco_dynamic(
 end
 
 # --- SigPy (Python) ------------------------------------------------------------------------
-# SigPy wants k-space `(coil, ky, kx)` and maps `(coil, y, x)`, returns `(y, x)`.
-_sp_k(ksp3) = parent(permutedims(CMP_CTYPE.(ksp3), (3, 2, 1)))
-_sp_s(smaps3) = parent(permutedims(CMP_CTYPE.(smaps3), (3, 2, 1)))
+# SigPy wants k-space `(coil, [kz,] ky, kx)` and maps `(coil, [z,] y, x)`, returns `([z,] y, x)`:
+# every axis reversed against the Julia layout `(kx, ky, [kz,] coil)`.
+_sp_rev(a) = parent(permutedims(CMP_CTYPE.(a), ndims(a):-1:1))
+_sp_k(ksp) = _sp_rev(ksp)
+_sp_s(smaps) = _sp_rev(smaps)
 
 """
-    sigpy_recon(method, ksp3, smaps3; λ, iterations) -> (time_ms, image)
+    sigpy_recon(method, ksp, smaps; λ, iterations) -> (time_ms, image)
 
-`method ∈ (:cgsense, :tv, :wavelet)`. TGV / low-rank unsupported here (throw).
+`ksp` is a zero-filled Cartesian `(kx, ky, coil)` or `(kx, ky, kz, coil)` array and `smaps` the
+matching maps; SigPy's apps are dimension-agnostic, so the 3D volume goes through the same calls.
+`method ∈ (:adjoint, :cgsense, :tv, :wavelet)`. TGV / low-rank unsupported here (throw).
 Only **TV** is forced onto ADMM (`rho = CMP_RHO`, `max_cg_iter = CMP_CG_ITERS`) — matching the
 ADMM the other toolkits use for TV; SigPy would otherwise default to PDHG. **L1-wavelet** keeps
 SigPy's natural proximal-gradient solver (FISTA-like), as MRT / MRIReco / BART also use FISTA for
-wavelet. `tol ≈ 0` so all `iterations` outer steps run.
+wavelet. `tol ≈ 0` so all `iterations` outer steps run. `:adjoint` is `Sense(mps)ᴴ y`.
 """
 function sigpy_recon(method::Symbol, ksp3, smaps3; λ = 0.0, iterations = 10)
     y, mps = _sp_k(ksp3), _sp_s(smaps3)
-    app = if method === :cgsense
+    app = if method === :adjoint
+        S = sp_mri.linop.Sense(mps)
+        () -> S.H(y)
+    elseif method === :cgsense
         () -> sp_app.SenseRecon(y, mps; max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
     elseif method === :tv
         () -> sp_app.TotalVariationRecon(
@@ -402,7 +329,7 @@ function sigpy_recon(method::Symbol, ksp3, smaps3; λ = 0.0, iterations = 10)
         error("SigPy has no $method here")
     end
     t, _, raw = time_reconstruction(app)
-    return t * 1000, Array{ComplexF64}(permutedims(raw, (2, 1)))
+    return t * 1000, Array{ComplexF64}(permutedims(raw, ndims(raw):-1:1))
 end
 
 # --- MIRT.jl (Julia) --------------------------------------------------------------------------
@@ -635,4 +562,292 @@ function mirt_lowrank(ksp4, smaps3; λ = 0.0, iterations = 10)
     )
     t, _, img = time_reconstruction(run)
     return t * 1000, Array{ComplexF64}(img)
+end
+
+# ================================================================= catalog adapters
+# Everything below only rearranges a prepared `BenchCase` into each toolkit's layout and dispatches
+# to the functions above. No data is generated or loaded here.
+
+"""
+    COMPETITORS
+
+The toolkits every section compares MRT against, in row order.
+"""
+const COMPETITORS = (:bart, :sigpy, :mrireco, :mirt)
+
+framework_label(tk::Symbol) = tk === :bart ? BART_FW : tk === :sigpy ? "SigPy" : tk === :mrireco ? "MRIReco" : "MIRT"
+toolkit_key(tk::Symbol) = tk === :bart ? "BART" : tk === :sigpy ? "SigPy" : tk === :mrireco ? "MRIReco" : "MIRT"
+
+"""
+    supports(tk, c::BenchCase, method) -> Bool
+
+Whether toolkit `tk` has a faithful implementation of `method` on case `c` here. A `false` is a
+skip, logged by nothing: it is a property of the toolkit or of this file, not a failure.
+
+| toolkit | Cartesian | non-Cartesian |
+|---|---|---|
+| BART | everything (multislice as a per-slice loop) | gridding, CG-SENSE, TV; cine: low-rank, LLR, temporal TV |
+| SigPy | adjoint, CG-SENSE, TV, L1-wavelet (2D, per slice, 3D); cine: global low-rank | gridding, CG-SENSE, TV (2D) |
+| MRIReco | adjoint, CG-SENSE, TV, L1-wavelet (2D, per slice); cine: global / locally low-rank | gridding, CG-SENSE (2D) |
+| MIRT | adjoint, CG-SENSE (2D multichannel); cine: global low-rank | gridding (2D) |
+"""
+function supports(tk::Symbol, c::BenchCase, m::Symbol)
+    m in applicable_methods(c) || return false
+    cart = c.trajectory === :cartesian
+    fam = c.family
+    if tk === :bart
+        cart && return true
+        return fam === :cine || m in (:gridding, :cgsense, :tv)
+    elseif tk === :sigpy
+        cart && fam === :cine && return m === :lowrank
+        cart && return m in (:adjoint, :cgsense, :tv, :wavelet)
+        return fam === :single_slice && m in (:gridding, :cgsense, :tv)
+    elseif tk === :mrireco
+        cart && fam === :cine && return m in (:lowrank, :llr)
+        cart && fam in (:single_slice, :multislice) && return m in (:adjoint, :cgsense, :tv, :wavelet)
+        return !cart && fam === :single_slice && m in (:gridding, :cgsense)
+    elseif tk === :mirt
+        cart && fam === :cine && return m === :lowrank
+        cart && fam === :single_slice && return ncoils(c) > 1 && m in (:adjoint, :cgsense)
+        return !cart && fam === :single_slice && m === :gridding
+    end
+    return false
+end
+
+"""
+    toolkit_run(tk, c, method; λ, maxit, runs) -> (time_ms, image)
+
+Reconstruct case `c` by `method` with toolkit `tk`, timed over `runs` runs after a warm-up. The
+image comes back in the case's reference layout.
+"""
+function toolkit_run(tk::Symbol, c::BenchCase, m::Symbol; λ::Real, maxit::Int, runs::Int = timed_runs(c))
+    RUNS[] = runs
+    tk === :bart && return bart_run(c, m; λ, maxit)
+    tk === :sigpy && return sigpy_run(c, m; λ, maxit)
+    tk === :mrireco && return mrireco_run(c, m; λ, maxit)
+    tk === :mirt && return mirt_run(c, m; λ, maxit)
+    throw(ArgumentError("unknown toolkit $tk"))
+end
+
+# Sensitivity maps of a single-slice case, ones for a single-channel one.
+cart_maps(c::BenchCase) = c.smaps === nothing ? ones(ComplexF32, c.image_size..., 1) : c.smaps
+
+# A multislice case as a loop of independent 2D problems: `f(ksp3, smaps3) -> (ms, image)`.
+function per_slice(f, c::BenchCase)
+    nz = size(c.kspace, 4)
+    out = Array{ComplexF64}(undef, c.image_size..., nz)
+    total = 0.0
+    for z in 1:nz
+        ms, x = f(c.kspace[:, :, :, z], c.smaps[:, :, :, z])
+        total += ms
+        out[:, :, z] = x
+    end
+    return total, out
+end
+
+# `(nx, ny, time, coil)` zero-filled cine stack, the layout the dynamic helpers above take.
+cine_stack(c::BenchCase) = permutedims(c.kspace, (1, 2, 4, 3))
+
+# ---------------------------------------------------------------- BART
+
+"""
+    bart_cmd(c, method, λ, maxit; budget = maxit * CMP_CG_ITERS) -> String
+
+The `pics` command line for `method` on `c` (see `BART_BUDGET` for why an ADMM `-i` is a budget).
+Regularizer flags cover the spatial axes (3, or 7 for the volume); the cine time axis is BART
+dimension 5 (flag 32). `-b` is the LLR block edge (8) or, for global low rank, the whole image.
+"""
+function bart_cmd(c::BenchCase, m::Symbol, λ::Real, maxit::Int; budget::Int = maxit * CMP_CG_ITERS)
+    sp = c.family === :volume ? 7 : 3
+    admm = "-F -i $budget -u $CMP_RHO -C $CMP_CG_ITERS"
+    m === :cgsense && return "pics -S -w 1 -i $maxit"
+    m === :tv && return "pics -S -w 1 $admm -R T:$sp:0:$λ"
+    m === :wavelet && return "pics -S -w 1 -e -i $maxit -R W:$sp:0:$λ"
+    m === :tgv && return "pics -S -w 1 $admm -R G:3:0:$λ"
+    m === :lowrank && return "pics -S -w 1 -m $admm -n -b $(maximum(c.image_size)) -R L:3:3:$λ"
+    m === :llr && return "pics -S -w 1 -m $admm -n -b 8 -R L:3:3:$λ"
+    m === :ttv && return "pics -S -w 1 $admm -R T:32:0:$λ"
+    throw(ArgumentError("BART has no $m here"))
+end
+
+"""
+    bart_inputs(c) -> (inputs...,)
+
+`c` in BART's layout: `(x, y, z, coil, maps, TE, ...)`, frames of a cine along dimension 5, and for
+a non-Cartesian case the trajectory first, in pixel units (`k · n`, a zero third coordinate).
+"""
+function bart_inputs(c::BenchCase)
+    nx, ny = c.image_size[1:2]
+    nc = ncoils(c)
+    if c.trajectory === :cartesian
+        c.family === :volume && return (c.kspace, c.smaps)
+        s = reshape(cart_maps(c), nx, ny, 1, nc)
+        c.family === :cine && return (reshape(c.kspace, nx, ny, 1, nc, 1, size(c.kspace, 4)), s)
+        return (reshape(c.kspace, nx, ny, 1, nc), s)
+    end
+    ns, nsp = size(c.traj, 2), size(c.traj, 3)
+    traj = cat(c.traj[1:1, :, :] .* nx, c.traj[2:2, :, :] .* ny, zeros(Float32, 1, ns, nsp); dims = 1)
+    s = reshape(c.smaps, nx, ny, 1, nc)
+    c.family === :cine && return (ComplexF32.(traj), reshape(c.kspace, 1, ns, nsp, nc, 1, size(c.kspace, 4)), s)
+    return (ComplexF32.(traj), reshape(c.kspace, 1, ns, nsp, nc), s)
+end
+
+# pics output → the case's image layout.
+function bart_image(c::BenchCase, r)
+    c.family === :volume && return r[:, :, :]
+    c.family === :cine && return reshape(r, c.image_size..., size(c.reference, 3))
+    return r[:, :, 1]
+end
+
+function bart_run(c::BenchCase, m::Symbol; λ, maxit, budget = maxit * CMP_CG_ITERS)
+    nx, ny = c.image_size[1:2]
+    nc = ncoils(c)
+    if c.family === :multislice
+        return per_slice(c) do k, s
+            one = BenchCase(; id = c.id, family = :single_slice, trajectory = :cartesian, reference = c.reference[:, :, 1], smaps = s, kspace = k, image_size = c.image_size)
+            bart_run(one, m; λ, maxit, budget)
+        end
+    end
+    inputs = bart_inputs(c)
+    # A direct reconstruction takes a few ms in-process against ~100 ms of BART process spawn and
+    # file I/O with ±30 ms jitter, so its time is not measurable (see run_base.jl's header): it is
+    # recorded as NaN and only its agreement is scored.
+    # Coil images come back with the coil axis at BART dimension 4 in every layout, and the maps
+    # broadcast over a cine's frames.
+    if m === :adjoint
+        k, s = inputs
+        imgs = run_bart(1, "fft -i $(c.family === :volume ? 7 : 3)", k)
+        return NaN, reshape(sum(imgs .* conj.(s); dims = 4), size(c.reference))
+    elseif m === :gridding
+        traj, k, s = inputs
+        imgs = run_bart(1, "nufft -a -d $nx:$ny:1 -t", traj, k .* reshape(c.dcf, 1, size(c.dcf)...))
+        return NaN, reshape(sum(imgs .* conj.(s); dims = 4), size(c.reference))
+    end
+    cmd = bart_cmd(c, m, λ, maxit; budget)
+    c.trajectory === :noncartesian && (cmd *= " -t")
+    tb, _, r = time_bart(cmd, inputs...; num_runs = RUNS[])
+    return 1000 * tb, bart_image(c, r)
+end
+
+# ---------------------------------------------------------------- SigPy
+
+function sigpy_run(c::BenchCase, m::Symbol; λ, maxit)
+    if c.trajectory === :cartesian
+        c.family === :multislice && return per_slice((k, s) -> sigpy_recon(m, k, s; λ, iterations = maxit), c)
+        c.family === :cine && return sigpy_lowrank(cine_stack(c), c.smaps, c.image_size; λ, iterations = maxit)
+        return sigpy_recon(m, c.kspace, c.family === :volume ? c.smaps : cart_maps(c); λ, iterations = maxit)
+    end
+    return sigpy_noncartesian(m, c; λ, iterations = maxit)
+end
+
+"""
+    sigpy_noncartesian(method, c; λ, iterations) -> (time_ms, image)
+
+SigPy's NUFFT path for a single-slice non-Cartesian case: `coord` is `(spoke, sample, 2)` in pixel
+units with the last axis ordered like SigPy's image axes, `(y, x)`. `:gridding` is
+`Sense(mps, coord)ᴴ (dcf · y)`; `:cgsense` and `:tv` are the SigPy apps given `coord`.
+"""
+function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10)
+    nx, ny = c.image_size
+    ns, nsp = size(c.traj, 2), size(c.traj, 3)
+    coord = Array{Float64}(undef, nsp, ns, 2)
+    for j in 1:nsp, i in 1:ns
+        coord[j, i, 1] = c.traj[2, i, j] * ny
+        coord[j, i, 2] = c.traj[1, i, j] * nx
+    end
+    y = parent(permutedims(CMP_CTYPE.(c.kspace), (3, 2, 1)))                 # (coil, spoke, sample)
+    mps = _sp_s(c.smaps)
+    app = if m === :gridding
+        S = sp_mri.linop.Sense(mps; coord)
+        w = reshape(permutedims(c.dcf, (2, 1)), 1, nsp, ns)
+        yw = y .* w
+        () -> S.H(yw)
+    elseif m === :cgsense
+        () -> sp_app.SenseRecon(y, mps; coord, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
+    elseif m === :tv
+        () -> sp_app.TotalVariationRecon(
+            y, mps, λ; coord, solver = "ADMM", rho = CMP_RHO,
+            max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
+        ).run()
+    else
+        error("SigPy has no non-Cartesian $m here")
+    end
+    t, _, raw = time_reconstruction(app)
+    return t * 1000, Array{ComplexF64}(permutedims(raw, (2, 1)))
+end
+
+# ---------------------------------------------------------------- MRIReco
+
+function mrireco_run(c::BenchCase, m::Symbol; λ, maxit)
+    if c.trajectory === :noncartesian
+        return mrireco_noncartesian(m, c; iterations = maxit)
+    elseif c.family === :cine
+        return mrireco_dynamic(m, cine_stack(c), c.smaps, c.image_size; λ, iterations = maxit)
+    end
+    f = (k, s) -> m === :adjoint ? mrireco_adjoint(k, s) : mrireco(m, k, s, c.image_size; λ, iterations = maxit)
+    c.family === :multislice && return per_slice(f, c)
+    return f(c.kspace, cart_maps(c))
+end
+
+"""
+    mrireco_adjoint(ksp3, smaps3) -> (time_ms, image)
+
+MRIReco's `direct` reconstruction (per-coil images) followed by the conjugate-sensitivity coil
+combination, inside the timed region: MRT's direct row includes the sensitivity adjoint.
+"""
+function mrireco_adjoint(ksp3, smaps3)
+    nx, ny, nc = size(ksp3)
+    acq = _mrireco_acq(ksp3)
+    s = CMP_CTYPE.(smaps3)
+    rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => (nx, ny), :senseMaps => reshape(s, nx, ny, 1, nc))
+    t, _, x = time_reconstruction() do
+        imgs = with_mrireco_blas(() -> MRIReco.reconstruction(acq, rp)[:, :, 1, 1, :])
+        dropdims(sum(imgs .* conj.(s); dims = 3); dims = 3)
+    end
+    return t * 1000, Array{ComplexF64}(x)
+end
+
+"""
+    mrireco_noncartesian(method, c; iterations) -> (time_ms, image)
+
+MRIReco on the case's own trajectory (`MRIBase.Trajectory` from the `(2, sample, spoke)` nodes,
+`circular = true` as for radial). `:gridding` is its `direct` reconstruction, which applies
+MRIReco's own density compensation, followed by the conjugate-sensitivity combination; `:cgsense`
+is `multiCoil` CGNR, which MRIReco weights by its sampling density.
+"""
+function mrireco_noncartesian(m::Symbol, c::BenchCase; iterations = 10)
+    nx, ny = c.image_size
+    ns, nsp = size(c.traj, 2), size(c.traj, 3)
+    nc = ncoils(c)
+    tr = MRIReco.Trajectory(Float32.(reshape(c.traj, 2, :)), nsp, ns; circular = true)
+    acq = AcquisitionData(tr, fill(reshape(CMP_CTYPE.(c.kspace), ns * nsp, nc), 1, 1, 1))
+    s = CMP_CTYPE.(c.smaps)
+    smap = reshape(s, nx, ny, 1, nc)
+    if m === :gridding
+        rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => (nx, ny), :senseMaps => smap)
+        t, _, x = time_reconstruction() do
+            imgs = with_mrireco_blas(() -> MRIReco.reconstruction(acq, rp)[:, :, 1, 1, :])
+            dropdims(sum(imgs .* conj.(s); dims = 3); dims = 3)
+        end
+        return t * 1000, Array{ComplexF64}(x)
+    elseif m === :cgsense
+        rp = Dict{Symbol, Any}(
+            :reco => "multiCoil", :reconSize => (nx, ny), :senseMaps => smap, :solver => MR_CGNR,
+            :reg => L2Regularization(0.0), :iterations => iterations, :absTol => 0.0, :relTol => 0.0,
+        )
+        t, _, x = time_reconstruction(() -> with_mrireco_blas(() -> MRIReco.reconstruction(acq, rp)[:, :, 1, 1, 1]))
+        return t * 1000, Array{ComplexF64}(x)
+    end
+    error("MRIReco has no non-Cartesian $m here")
+end
+
+# ---------------------------------------------------------------- MIRT
+
+function mirt_run(c::BenchCase, m::Symbol; λ, maxit)
+    c.family === :cine && return mirt_lowrank(cine_stack(c), c.smaps; λ, iterations = proxgrad_budget(maxit))
+    if c.trajectory === :noncartesian
+        nc = ncoils(c)
+        return mirt_gridding(reshape(c.kspace, :, nc), reshape(c.traj, 2, :), vec(c.dcf), c.smaps, c.image_size)
+    end
+    return mirt_recon(m, c.kspace, c.smaps; iterations = maxit)
 end
