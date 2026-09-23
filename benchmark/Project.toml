@@ -1,5 +1,8 @@
+name = "benchmark"
+version = "0.1.0"
+
 [deps]
-BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 GeometricMedicalPhantoms = "c297bd51-60f5-42e7-80e4-f985777cb71a"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
@@ -8,10 +11,25 @@ MKL = "33e6dc65-8f57-5167-99aa-e5a354878fb2"
 MRITestData = "b3f1a2c4-5d6e-4a7b-9c8d-0e1f2a3b4c5d"
 MriReconstructionToolbox = "5999b5f3-4ffc-4695-817d-461c6e99e3c0"
 NamedDims = "356022a1-0364-5f58-8944-0da4b18d706f"
+Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
+Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 ThreadPinning = "811555cd-349b-4f26-b7bc-1f208b848042"
 
 [sources]
 MRITestData = {rev = "master", url = "https://github.com/hakkelt/MRITestData.jl"}
-MriReconstructionToolbox = {path = "../.."}
+MriReconstructionToolbox = {path = ".."}
+
+[compat]
+FFTW = "1"
+GeometricMedicalPhantoms = "1"
+JSON = "0.21, 1"
+MKL = "0.6 - 0.9"
+MRITestData = "0.1"
+NamedDims = "1.2"
+ThreadPinning = "1"
+Random = "1"
+julia = "1"

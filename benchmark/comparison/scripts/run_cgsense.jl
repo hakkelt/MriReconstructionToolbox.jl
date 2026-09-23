@@ -1,64 +1,22 @@
-# Section: CG-SENSE (10 it) on 2D multi-coil brain — MRT vs SigPy vs BART vs MRIReco.
-#   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_cgsense.jl --threads=N [--use-mkl]
+# Section: CG-SENSE (10 iterations, no early stop) on every multichannel catalog case — MRT vs
+# SigPy vs BART vs MRIReco vs MIRT.
+#   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_cgsense.jl --threads=N [--use-mkl] [--data=synthetic|real|all]
 #
-# This is a *cost-per-iteration* row, not an accuracy row: the k-space here is fully sampled
-# (`Acc: 1.00`), so the normal equations are trivially conditioned and all four toolkits hit
-# NRMSE 0 (to float precision) by iteration 3 and agree exactly at iteration 1 (0.0157).
+# The cases are undersampled, so the normal equations are not trivially conditioned and every
+# toolkit has ten iterations of real work to do. (On a fully sampled acquisition with normalised
+# maps 𝒜ᴴ𝒜 = I: BART's `pics` hit its own residual tolerance and stopped after one iteration while
+# the others ran all ten, measured as a flat 0.58 ms/it for BART against 4.82 for MRT on the same
+# problem — an early exit, not a faster iteration. BART's inner tolerance is hardcoded, so the only
+# way to hold every toolkit to ten iterations is a problem that needs ten.)
 #
-# `tol = 0.0` rather than a small tolerance: with `tol = 1e-14` MRT's CGNR exits as soon as the
-# residual underflows, so a nominal 30-iteration MRT run measured *faster* than a 10-iteration one
-# while SigPy / MRIReco / BART all ran their full count (they are given `CMP_TOL_INNER = 0`). The
-# early exit is a real MRT capability but it is not the same work, so the section forces the full
-# count on every toolkit. Measured slope, single thread, iterations 10 → 40: MRT 3.38 ms/it,
-# MRIReco 3.32, BART 5.33, SigPy 15.3.
+# `tol = 0.0` everywhere: with a small positive tolerance MRT's CGNR exits as soon as the residual
+# underflows, which is a real capability but not the same work.
 include(joinpath(@__DIR__, "_setup.jl"))
 include(joinpath(@__DIR__, "_toolkits.jl"))
+include(joinpath(@__DIR__, "_methods.jl"))
 
-img_mc, kspace_mc, cmap = IMG_MC, KSPACE_MC, CMAP
-smaps_mc = NamedDimsArray(cmap, (:x, :y, :coil))
-acq_mc = CartesianAcquisitionInfo(NamedDimsArray(kspace_mc, (:kx, :ky, :coil)); is3D = false, sensitivity_maps = smaps_mc, shifted_image_dims = (:x, :y))
-
-addrow(fw, t, x, xmrt) = push!(results, BenchResult("Base MC", "CG-SENSE (10 it)", fw, NUM_THREADS, t, mag_nrmse(x, img_mc), xmrt === nothing ? 0.0 : mag_nrmse(xmrt, x)))
-
-if should_run("Base MC", "CG-SENSE (10 it)")
-    println("--> CG-SENSE (10 it)")
-    method_cg = IterativeReconstruction(regularization = (), algorithm = MriReconstructionToolbox.CGNR(maxit = 10, tol = 0.0); maxit = 10, reltol = 0.0)
-    tm, _, xm = time_reconstruction(() -> reconstruct(acq_mc, method_cg; verbosity = Silent()))
-    addrow(FW, tm * 1000, xm, nothing)
-
-    if should_run_framework("SigPy")
-        try
-            ts, xs = sigpy_recon(:cgsense, kspace_mc, cmap; iterations = 10)
-            addrow("SigPy", ts, xs, xm)
-        catch e
-            @warn "SigPy CG-SENSE failed" exception = (e, catch_backtrace())
-        end
-    end
-    if should_run_framework("BART")
-        try
-            tb, _, rb = time_bart("pics -S -w 1 -i 10", ComplexF32.(reshape(kspace_mc, N, N, 1, Nc)), ComplexF32.(reshape(cmap, N, N, 1, Nc)))
-            addrow(BART_FW, tb * 1000, rb[:, :, 1], xm)
-        catch e
-            @warn "BART CG-SENSE failed" exception = (e, catch_backtrace())
-        end
-    end
-    if should_run_framework("MRIReco")
-        try
-            tr, xr = mrireco(:cgsense, kspace_mc, cmap, (N, N); iterations = 10)
-            addrow("MRIReco", tr, xr, xm)
-        catch e
-            @warn "MRIReco CG-SENSE failed" exception = (e, catch_backtrace())
-        end
-    end
-    if should_run_framework("MIRT")
-        try
-            ti, xi = mirt_recon(:cgsense, kspace_mc, cmap; iterations = 10)
-            addrow("MIRT", ti, xi, xm)
-        catch e
-            @warn "MIRT CG-SENSE failed" exception = (e, catch_backtrace())
-        end
-    end
-    flush_results!("cgsense")
+for c in section_cases(c -> :cgsense in applicable_methods(c))
+    run_method_rows!("CG-SENSE", c, :cgsense)
 end
 
 write_section("cgsense")

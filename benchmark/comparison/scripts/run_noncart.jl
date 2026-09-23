@@ -1,116 +1,37 @@
-# Section: non-Cartesian radial DCF adjoint / gridding — MRT vs MRIReco (vs BART nufft).
-#   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_noncart.jl --threads=N [--use-mkl]
+# Section: non-Cartesian DCF adjoint (gridding) of every non-Cartesian catalog case — MRT vs BART
+# vs SigPy vs MRIReco vs MIRT, all on the case's own ramp DCF except MRIReco, whose `direct`
+# reconstruction applies its own density compensation.
+#   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_noncart.jl --threads=N [--use-mkl] [--data=synthetic|real|all]
 #
-# ## The two toolkits do not grid at the same accuracy by default
+# ## The toolkits do not grid at the same accuracy by default
 #
-# MRT's `NFFTOp` takes NFFT.jl's own defaults — kernel half-width `m = 5`, oversampling `σ = 2.0`,
-# `precompute = POLYNOMIAL`. MRIReco (`LinearOperatorCollection`'s `NFFTOp`) hardcodes `m = 3`,
-# `σ = 1.25`, `precompute = TENSOR`. That is not a small difference: measured on this trajectory,
-# single-coil adjoint, single thread,
-#
-# | m | σ | precompute | adjoint / coil | forward error vs `m=8, σ=2` |
-# |---|---|---|---|---|
-# | 5 | 2.00 | POLYNOMIAL (MRT)     | 4.28 ms | 1.6e-7 |
-# | 4 | 2.00 | POLYNOMIAL           | 3.63 ms | 2.6e-7 |
-# | 3 | 1.25 | TENSOR (MRIReco)     | 1.00 ms | 5.7e-5 |
-#
-# so MRT pays 4.3× per coil for an NFFT that is ~360× more accurate — accuracy this reconstruction
-# never uses, since gridding-adjoint NRMSE against the phantom is 0.085 either way. Whole multi-coil
-# DCF adjoint, one run, single thread: MRT 36.5 ms at its default, **8.35 ms** at MRIReco's operating
-# point, MRIReco 47.1 ms — i.e. MRT wins even while gridding more accurately, and by 5.6× at matched
-# accuracy. (Only compare figures from one run: an earlier login-node run under contention read
-# 115.7 / 16.0 / 37.5 ms for the same three rows.) Both MRT rows are reported: `MRT` at its default
-# and `MRT (m=3, σ=1.25)` matched to MRIReco.
-# MRT's public API does not currently forward NFFT plan options through
-# `NonCartesianAcquisitionInfo` / `get_encoding_operator` (see TODO.md), which is why the matched row
-# builds the operator by hand.
+# MRT's default NFFT operating point is `m = 4, σ = 1.5, POLYNOMIAL` (`DEFAULT_NFFT_M` and friends);
+# MRIReco (`LinearOperatorCollection`'s `NFFTOp`) hardcodes `m = 3, σ = 1.25, TENSOR`, about 360×
+# less accurate on the forward transform and correspondingly cheaper — accuracy a gridding
+# reconstruction does not use, since its NRMSE against the phantom barely moves across that range.
+# So MRT is reported twice: at its default, and as `MRT (m=3, σ=1.25)` at MRIReco's operating point,
+# through `get_encoding_operator`'s `m` / `sigma` / `precompute` keywords.
 include(joinpath(@__DIR__, "_setup.jl"))
 include(joinpath(@__DIR__, "_toolkits.jl"))
-using LinearAlgebra: mul!
+include(joinpath(@__DIR__, "_methods.jl"))
 
-img_mc, cmap = IMG_MC, CMAP
+const NFFT_TENSOR = isdefined(MriReconstructionToolbox, :NFFT) ? MriReconstructionToolbox.NFFT.TENSOR : nothing
 
-t = RadialTrajectory(Float32, N, N; TE = 0.0f0, AQ = 1.0f-3)
-traj_named = NamedDimsArray(t.nodes, (:dim, :k))
-smaps_nc = NamedDimsArray(ComplexF32.(cmap), (:x, :y, :coil))
-
-if should_run("Non-Cartesian", "DCF Adjoint (Gridding)")
-    acq_sim = NonCartesianAcquisitionInfo(
-        NamedDimsArray(zeros(ComplexF32, 16384, Nc), (:k, :coil));
-        trajectory = traj_named, image_size = (N, N), sensitivity_maps = smaps_nc, shifted_image_dims = (:x, :y),
-    )
-    kdata_nc = MriReconstructionToolbox.get_encoding_operator(acq_sim) * NamedDimsArray(ComplexF32.(img_mc), (:x, :y))
-
-    # `NFFTOp` applies no density compensation unless it is given one, so the gridding row has to ask
-    # for it: `density_compensation` returns a copy of the acquisition carrying the Pipe-Menon factors.
-    acq_dcf = MriReconstructionToolbox.density_compensation(
-        NonCartesianAcquisitionInfo(kdata_nc; trajectory = traj_named, image_size = (N, N), sensitivity_maps = smaps_nc, shifted_image_dims = (:x, :y))
-    )
-    E_dcf = MriReconstructionToolbox.get_encoding_operator(acq_dcf)
-    tm, _, xm_raw = time_reconstruction(() -> E_dcf' * kdata_nc)
-    xm = xm_raw .* (norm(abs.(img_mc)) / norm(abs.(xm_raw)))
-    push!(results, BenchResult("Non-Cartesian", "DCF Adjoint (Gridding)", FW, NUM_THREADS, tm * 1000, nrmse(xm, img_mc), 0.0))
-
-    # MRT at MRIReco's NFFT operating point. `NFFTOp` is not exported, and the `precompute` enum lives in
-    # NFFT.jl, which the comparison environment does not depend on directly — both are reached through
-    # the operator MRT already built.
-    let
-        nfft_inner = E_dcf.L.A[3].operator          # Compose(broadcast, dcf-diag, BatchOp(NFFTOp))
-        nfft_op0 = nfft_inner isa Tuple ? first(nfft_inner) : nfft_inner   # threaded: one NFFTOp per thread
-        NFFTmod = parentmodule(typeof(nfft_op0.plan))
-        o = MriReconstructionToolbox.NFFTOp(
-            (N, N), parent(traj_named), nfft_op0.dcf;
-            threaded = false, m = 3, σ = 1.25f0, precompute = NFFTmod.TENSOR,
-        )
-        kdm = collect(parent(kdata_nc))
-        smap = ComplexF32.(cmap)
-        function adj_matched()
-            acc = zeros(ComplexF32, N, N)
-            buf = zeros(ComplexF32, N, N)
-            for c in 1:Nc
-                mul!(buf, o', @view kdm[:, c])
-                @. acc += buf * conj(@view smap[:, :, c])
-            end
-            return acc
-        end
-        tmm, _, x_raw = time_reconstruction(adj_matched)
-        x = x_raw .* (norm(abs.(img_mc)) / norm(abs.(x_raw)))
-        push!(results, BenchResult("Non-Cartesian", "DCF Adjoint (Gridding)", "$FW (m=3, σ=1.25)", NUM_THREADS, tmm * 1000, nrmse(x, img_mc), nrmse(xm, x)))
+for c in section_cases(c -> c.trajectory === :noncartesian)
+    xm = run_method_rows!("Non-Cartesian", c, :gridding)
+    xm === nothing && continue
+    # MRT at MRIReco's NFFT operating point, same acquisition and DCF.
+    try
+        acq = mrt_acquisition(c; dcf = true)
+        E = MriReconstructionToolbox.get_encoding_operator(acq; m = 3, sigma = 1.25, precompute = NFFT_TENSOR)
+        y = acq.kspace_data
+        t, _, x = time_run(() -> E' * y; runs = timed_runs(c))
+        x = _score_image(c, :gridding, parent(x))
+        push!(results, BenchResult("Non-Cartesian", method_label(:gridding, 0), "$FW (m=3, σ=1.25)", NUM_THREADS, t * 1000, mag_nrmse(x, c.reference), mag_nrmse(xm, x), c.id, c.source))
+        flush_results!("non_cartesian")
+    catch err
+        @warn "MRT at MRIReco's NFFT operating point failed on $(c.id)" exception = (err, catch_backtrace())
     end
-
-    if should_run_framework("MRIReco")
-        try
-            kdata_mr = reshape(kdata_nc, 16384, Nc, 1, 1)
-            acq_mr = AcquisitionData(t, fill(kdata_mr[:, :, 1, 1], 1, 1, 1))
-            smap_mr = reshape(ComplexF32.(cmap), N, N, 1, Nc)
-            rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => (N, N), :senseMaps => smap_mr)
-            # The coil combination is inside the timed closure: MRT's row includes the sensitivity adjoint,
-            # and MRIReco's `direct` reco returns per-coil images, so combining outside would undercount it.
-            tr, _, xr_raw = time_reconstruction() do
-                imr = with_mrireco_blas(() -> MRIReco.reconstruction(acq_mr, rp)[:, :, 1, 1, :])
-                return sum(imr .* conj.(reshape(ComplexF32.(cmap), N, N, Nc)), dims = 3)[:, :, 1]
-            end
-            xr = xr_raw .* (norm(abs.(img_mc)) / norm(abs.(xr_raw)))
-            push!(results, BenchResult("Non-Cartesian", "DCF Adjoint (Gridding)", "MRIReco", NUM_THREADS, tr * 1000, nrmse(xr, img_mc), nrmse(xm, xr)))
-        catch e
-            @warn "MRIReco non-Cartesian failed" exception = (e, catch_backtrace())
-        end
-    end
-
-    # MIRT grids with the same Pipe-Menon weights MRT uses, taken off the operator MRT already built,
-    # so the two rows differ only in the NUFFT and the coil loop.
-    if should_run_framework("MIRT")
-        try
-            nfft_inner = E_dcf.L.A[3].operator
-            nfft_op0 = nfft_inner isa Tuple ? first(nfft_inner) : nfft_inner
-            ti, xi_raw = mirt_gridding(parent(kdata_nc), parent(traj_named), nfft_op0.dcf, ComplexF32.(cmap), (N, N))
-            xi = xi_raw .* (norm(abs.(img_mc)) / norm(abs.(xi_raw)))
-            push!(results, BenchResult("Non-Cartesian", "DCF Adjoint (Gridding)", "MIRT", NUM_THREADS, ti, nrmse(xi, img_mc), nrmse(xm, xi)))
-        catch e
-            @warn "MIRT non-Cartesian failed" exception = (e, catch_backtrace())
-        end
-    end
-    flush_results!("noncart")
 end
 
 write_section("noncart")

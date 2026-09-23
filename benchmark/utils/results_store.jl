@@ -9,12 +9,28 @@
 # Querying is a read-time concern, not a write-time one: `query_results.jl` globs `results/runs/`
 # and filters/sorts the rows in plain Julia -- no database involved at all, so there is nothing to
 # keep in sync with the flat files, which stay the only source of truth.
+#
+# Two stores use this layout: the comparison suite's (`benchmark/comparison/results/runs/`, rows of
+# `category`/`method`/`framework`) and the MRT harness's (`benchmark/results/runs/`, rows keyed by
+# catalog case and method, with the git provenance of the checkout measured). Every function takes
+# the store's `root`; the default is the comparison suite's, which is what its scripts expect.
 module ResultsStore
 
 using JSON, Dates
 
-const RESULTS_DIR = normpath(joinpath(@__DIR__, "..", "results"))
+"""
+    SCHEMA_VERSION
+
+Written into every run file. 1 (or absent): rows from before the case catalog, whose inputs are
+not the catalog's cases; 2: rows measured on catalog cases.
+"""
+const SCHEMA_VERSION = 2
+
+const COMPARISON_RESULTS_DIR = normpath(joinpath(@__DIR__, "..", "comparison", "results"))
+const HARNESS_RESULTS_DIR = normpath(joinpath(@__DIR__, "..", "results"))
+const RESULTS_DIR = COMPARISON_RESULTS_DIR
 const RUNS_DIR = joinpath(RESULTS_DIR, "runs")
+runs_dir(root::AbstractString) = joinpath(root, "runs")
 
 """
     source_tag(hostname = gethostname()) -> "slurm" | "other"
@@ -44,6 +60,8 @@ function record_run(section::AbstractString, backend::AbstractString, threads::I
             "category" => r.category, "method" => r.method, "framework" => r.framework,
             "threads" => r.threads, "time_ms" => _json_num(r.time_ms),
             "nrmse_gt" => _json_num(r.nrmse_gt), "nrmse_mrt" => _json_num(r.nrmse_mrt),
+            "case_id" => hasproperty(r, :case_id) ? r.case_id : "",
+            "data_source" => hasproperty(r, :data_source) ? r.data_source : "",
         ) for r in rows
     ]
     return record_run_rows(section, backend, threads, benchmarks; kwargs...)
@@ -56,18 +74,20 @@ Same as [`record_run`](@ref) but `benchmarks` is already JSON-shaped (one `Dict`
 `category`/`method`/`framework`/`threads`/`time_ms`/`nrmse_gt`/`nrmse_mrt`). Used directly by
 [`record_run`](@ref) and by `migrate_to_store.jl`, which passes rows parsed back out of the old
 per-section JSON files and overrides `ts`/`source` to preserve when/where they actually ran instead
-of stamping them as recorded now.
+of stamping them as recorded now. `root` is the store (see the module header).
 """
 function record_run_rows(
         section::AbstractString, backend::AbstractString, threads::Integer, benchmarks::AbstractVector;
         ts::AbstractString = Dates.format(now(), dateformat"yyyymmdd-HHMMSS-sss"),
-        source::AbstractString = source_tag(), kwargs...,
+        source::AbstractString = source_tag(), root::AbstractString = RESULTS_DIR, kwargs...,
     )
-    mkpath(RUNS_DIR)
+    dir = runs_dir(root)
+    mkpath(dir)
     run_id = "$(ts)_$(backend)_$(threads)threads_$(section)_$(source)_pid$(getpid())"
-    path = joinpath(RUNS_DIR, "$run_id.json")
-    ispath(path) && (path = joinpath(RUNS_DIR, "$(run_id)_$(rand(UInt32)).json"))
+    path = joinpath(dir, "$run_id.json")
+    ispath(path) && (path = joinpath(dir, "$(run_id)_$(rand(UInt32)).json"))
     meta = Dict{String, Any}(string(k) => v for (k, v) in kwargs)
+    haskey(meta, "schema_version") || (meta["schema_version"] = SCHEMA_VERSION)
     open(path, "w") do io
         JSON.print(
             io,
@@ -88,11 +108,33 @@ _json_num(x::Real) = isfinite(x) ? Float64(x) : -1.0
 _json_num(x) = x  # already JSON-safe (e.g. read back from a migrated file)
 
 """
-    run_files() -> Vector{String}
+    run_files(root = RESULTS_DIR) -> Vector{String}
 
-Every recorded run file, oldest first (filename timestamp order).
+Every recorded run file of the store at `root`, oldest first (filename timestamp order).
 """
-run_files() = sort(filter(f -> endswith(f, ".json"), readdir(RUNS_DIR; join = true)))
+function run_files(root::AbstractString = RESULTS_DIR)
+    dir = runs_dir(root)
+    isdir(dir) || return String[]
+    return sort(filter(f -> endswith(f, ".json"), readdir(dir; join = true)))
+end
+
+"""
+    load_run_files(root) -> Vector{Dict{String, Any}}
+
+Every readable run file of the store at `root`, parsed, oldest first. Unreadable files (a run
+killed mid-write) are skipped with a warning.
+"""
+function load_run_files(root::AbstractString)
+    out = Dict{String, Any}[]
+    for f in run_files(root)
+        try
+            push!(out, JSON.parsefile(f))
+        catch e
+            @warn "unreadable run file, skipping" f exception = e
+        end
+    end
+    return out
+end
 
 """
     Row
@@ -111,31 +153,34 @@ struct Row
     nrmse_mrt::Float64
     source::String
     ts::String
+    case_id::String
+    data_source::String
+    schema_version::Int
 end
 
 """
-    load_rows() -> Vector{Row}
+    load_rows(root = RESULTS_DIR; schema_version = SCHEMA_VERSION) -> Vector{Row}
 
-Every row from every recorded run file, flattened.
+Every comparison row from every run file of the store at `root`, flattened. Rows from an older
+schema (measured on other inputs than the catalog's cases) are left out unless `schema_version`
+is lowered.
 """
-function load_rows()
+function load_rows(root::AbstractString = RESULTS_DIR; schema_version::Integer = SCHEMA_VERSION)
     rows = Row[]
-    for f in run_files()
-        d = try
-            JSON.parsefile(f)
-        catch e
-            @warn "unreadable run file, skipping" f exception = e
-            continue
-        end
+    for d in load_run_files(root)
+        v = get(d, "schema_version", 1)
+        v < schema_version && continue
         backend = get(d, "backend", "")
         threads = get(d, "threads", 0)
         source = get(d, "source", "unknown")
         ts = get(d, "ts", "")
         for b in get(d, "benchmarks", [])
+            haskey(b, "category") || continue
             push!(
                 rows, Row(
                     backend, threads, b["category"], b["method"], b["framework"],
                     Float64(b["time_ms"]), Float64(b["nrmse_gt"]), Float64(b["nrmse_mrt"]), source, ts,
+                    get(b, "case_id", ""), get(b, "data_source", ""), v,
                 )
             )
         end
@@ -146,15 +191,15 @@ end
 """
     latest_per_case(rows; prefer_source = nothing) -> Vector{Row}
 
-One row per (backend, threads, category, method, framework): the most recent (`ts`), among rows
-matching `prefer_source` if given, else preferring `"slurm"` over anything else and falling back to
-whatever exists when no `"slurm"` row is present for that case.
+One row per (backend, threads, case, category, method, framework): the most recent (`ts`), among
+rows matching `prefer_source` if given, else preferring `"slurm"` over anything else and falling
+back to whatever exists when no `"slurm"` row is present for that case.
 """
 function latest_per_case(rows::Vector{Row}; prefer_source::Union{Nothing, AbstractString} = nothing)
-    best = Dict{NTuple{5, Any}, Row}()
+    best = Dict{NTuple{6, Any}, Row}()
     for r in rows
         prefer_source !== nothing && r.source != prefer_source && continue
-        key = (r.backend, r.threads, r.category, r.method, r.framework)
+        key = (r.backend, r.threads, r.case_id, r.category, r.method, r.framework)
         cur = get(best, key, nothing)
         if cur === nothing
             best[key] = r

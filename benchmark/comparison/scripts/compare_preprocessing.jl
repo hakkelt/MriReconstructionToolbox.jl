@@ -13,7 +13,7 @@ include(joinpath(@__DIR__, "_setup.jl"))
         # Generate data
         N = 64
         num_coils = 8
-        img, kspace, true_sens = generate_multicoil_brain(N = N, num_coils = num_coils)
+        img, kspace, true_sens = multicoil_phantom(N, num_coils)
 
         # 1. MriReconstructionToolbox
         # We need a calibration region. ESPIRiT usually extracts the center of k-space internally if we pass the whole k-space.
@@ -79,7 +79,7 @@ include(joinpath(@__DIR__, "_setup.jl"))
         N = 64
         num_coils = 8
         target_coils = 4
-        _, kspace, _ = generate_multicoil_brain(N = N, num_coils = num_coils)
+        _, kspace, _ = multicoil_phantom(N, num_coils)
 
         # 1. MRT SVD Compression
         comp_mrt_svd, C_svd = MriReconstructionToolbox.compress_coils(kspace, target_coils, method = MriReconstructionToolbox.SVDCompression())
