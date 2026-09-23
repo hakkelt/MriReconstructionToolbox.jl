@@ -323,12 +323,18 @@ function to_displayable_mask(pattern, dims::NTuple{N, Int}) where {N}
     elseif pattern isa Tuple && all(p -> p isa Union{Colon, AbstractVector}, pattern)
         # One selector per axis, as the subsampling operator indexes the full k-space with it.
         length(pattern) == N || throw(ArgumentError("a per-axis pattern needs one selector per dimension of $dims, got $(length(pattern))"))
-        mask = falses(dims)
-        mask[pattern...] .= true
-        return mask
+        return _per_axis_mask(pattern, dims)
     else
         throw(ArgumentError("Unsupported pattern format: $(typeof(pattern))"))
     end
+end
+
+# A function barrier: every branch of `to_displayable_mask` is compiled for every pattern type, and
+# inlined here the view's type is only known as a union, making the fill a runtime dispatch.
+@noinline function _per_axis_mask(pattern::Tuple, dims::Tuple)
+    mask = falses(dims)
+    fill!(view(mask, pattern...), true)
+    return mask
 end
 
 construct_weights(::UniformRandomSampling, dims) = ones(Float64, dims)
