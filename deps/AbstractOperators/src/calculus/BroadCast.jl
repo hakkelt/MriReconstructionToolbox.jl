@@ -414,6 +414,9 @@ overshoots by up to the square root of the number of copies.
 """
 function _fused_pair_opnorm(B::NoOperatorBroadCast{T, N, M}, D::DiagOp) where {T, N, M}
     size(D, 2) == B.dim_out || return nothing
+    # A `DiagOp` may hold a single number instead of an array, and then every copy is weighted
+    # the same, which is the one case the submultiplicative product already gets exactly right.
+    D.d isa AbstractArray || return nothing
     bdims = Tuple(d for d in 1:M if B.reshaped_dim_in[d] != B.dim_out[d])
     isempty(bdims) && return nothing
     return float(sqrt(maximum(sum(abs2, D.d; dims = bdims))))
