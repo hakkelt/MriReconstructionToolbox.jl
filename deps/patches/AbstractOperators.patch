@@ -37,7 +37,7 @@ index 19f6080..6e93c88 100644
      codomain_type,
      check,
 diff --git a/deps/AbstractOperators/FFTWOperators/src/FFTWOperators.jl b/deps/AbstractOperators/FFTWOperators/src/FFTWOperators.jl
-index 5969e6c..6976c21 100644
+index 1026f68..9799986 100644
 --- a/deps/AbstractOperators/FFTWOperators/src/FFTWOperators.jl
 +++ b/deps/AbstractOperators/FFTWOperators/src/FFTWOperators.jl
 @@ -1,18 +1,20 @@

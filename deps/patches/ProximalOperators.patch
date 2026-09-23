@@ -1,33 +1,24 @@
 diff --git a/deps/ProximalOperators/Project.toml b/deps/ProximalOperators/Project.toml
-index 88dc263..64c68dd 100644
+index 35d555d..ad80887 100644
 --- a/deps/ProximalOperators/Project.toml
 +++ b/deps/ProximalOperators/Project.toml
-@@ -2,9 +2,6 @@ name = "ProximalOperators"
- uuid = "a725b495-10eb-56fe-b38b-717eba820537"
- version = "0.17.0"
- 
--[workspace]
--projects = ["docs", "test", "benchmark"]
--
- [deps]
- IterativeSolvers = "42fd0dbc-a981-5370-80f2-aaf504508153"
- LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-@@ -17,11 +14,9 @@ SuiteSparse = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
- TSVD = "9449cd9e-2762-5aa3-a617-5413e99d722e"
- 
+@@ -19,12 +19,10 @@ TSVD = "9449cd9e-2762-5aa3-a617-5413e99d722e"
  [weakdeps]
+ GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
+ KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 -OSQP = "ab2f91bb-94b4-55e3-9ba0-7f65df51de79"
  RecursiveArrayTools = "731186ca-8d62-57ce-b412-fbd966d074cd"
  
  [extensions]
+ GpuExt = ["GPUArrays", "KernelAbstractions"]
 -ProximalOperatorsOSQPExt = "OSQP"
  RecursiveArrayToolsExt = "RecursiveArrayTools"
  
  [compat]
-@@ -29,7 +24,6 @@ IterativeSolvers = "0.8 - 0.9"
+@@ -34,7 +32,6 @@ KernelAbstractions = "0.9"
  LinearAlgebra = "1.4"
  LoopVectorization = "0.12"
- NestedThreading = "0.1"
+ NestedThreading = "0.1.2"
 -OSQP = "0.3 - 0.8"
  Polyester = "0.7"
  ProximalCore = "0.2.0"
@@ -123,11 +114,15 @@ index 989db84..0000000
 -end
 diff --git b/deps/ProximalOperators/src/recursive_array_tools.jl b/deps/ProximalOperators/src/recursive_array_tools.jl
 new file mode 100644
-index 0000000..50eb8df
+index 0000000..b283727
 --- /dev/null
 +++ b/deps/ProximalOperators/src/recursive_array_tools.jl
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,21 @@
 +using RecursiveArrayTools: ArrayPartition
++
++# An `ArrayPartition` is unwrapped to its tuple of blocks before being handed to
++# the wrapped function, so preallocation follows the same route.
++ProximalOperators.preallocate(g::SeparableSum, xs::ArrayPartition) = preallocate(g, xs.x)
 +
 +(f::PrecomposedSlicedSeparableSum)(x::ArrayPartition) = f(x.x)
 +prox!(y::ArrayPartition, f::PrecomposedSlicedSeparableSum, x::ArrayPartition, gamma) = prox!(y.x, f, x.x, gamma)
@@ -140,4 +135,7 @@ index 0000000..50eb8df
 +    return ArrayPartition(y), fy
 +end
 +gradient!(grads::ArrayPartition, g::SeparableSum, xs::ArrayPartition) = gradient!(grads.x, g, xs.x)
-+gradient(g::SeparableSum, xs::ArrayPartition) = gradient(g, xs.x)
++function gradient(g::SeparableSum, xs::ArrayPartition)
++    grad, f_val = gradient(g, xs.x)
++    return ArrayPartition(grad), f_val
++end
