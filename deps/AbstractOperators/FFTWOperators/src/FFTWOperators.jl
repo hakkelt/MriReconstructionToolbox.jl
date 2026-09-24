@@ -4,6 +4,7 @@ using ..AbstractOperators
 using FFTW, LinearAlgebra
 using Base.Cartesian: @ncall
 using Polyester: @batch
+using FastBroadcast: @..
 import LinearAlgebra: mul!
 import Base: size, ndims
 
