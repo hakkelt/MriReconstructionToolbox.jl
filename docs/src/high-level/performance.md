@@ -222,13 +222,15 @@ or go back to the old high-accuracy default with `m = 5, sigma = 2.0`.
   |------|----------------|---------|
   | dense `svd!`/`eigen!` in a low-rank prox | `ProximalOperators.FACTORIZATION_THREAD_WORK` | `m·n·min(m,n)` ≥ 2^22 |
   | `MatrixOp`/`LMatrixOp` `gemm` | `AbstractOperators.BLAS3_THREAD_WORK` | `m·n·k` ≥ 2^25 |
-  | a CG step's `dot`/`axpy!` | `ProximalAlgorithms.CG_BLAS_THREAD_BYTES` | 8 MiB on MKL, 16 MiB on OpenBLAS |
+  | a CG step's `dot`/`axpy!` | `ProximalAlgorithms.CG_BLAS_THREAD_BYTES` | 8 MiB on MKL, never on OpenBLAS |
 
   A grant never goes past a hard limit, so inside a slice loop that already occupies every
   thread nothing changes. Set a knob to `typemax(Int)` to keep that kind of call serial. On
   OpenBLAS, closing a grant also shuts the BLAS worker threads down
   (`NestedThreading.park_openblas`), which would otherwise spin for about 0.1 s on the cores the
   next FFT needs; this costs about 1 ms per grant, which is what the gates are sized against.
+  A CG step is too short for either: granting OpenBLAS at every step of a 128³ solve made it
+  1.5x slower, which is why CG never grants OpenBLAS by default.
 - Restricting BLAS is not the same as restricting the process: `with_restricted_threads` also
   narrows FFTW and NFFT and switches Polyester off, so `BLAS.get_num_threads() == 1` is never
   evidence that entering the scope would be a no-op.

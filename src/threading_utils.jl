@@ -119,7 +119,7 @@ stack does that for three kinds of call, each behind a size gate checked before 
 |----------------------------------------|--------------------------------------------------|-----------------|
 | dense `svd!` / `eigen!` (low-rank prox)| `ProximalOperators.FACTORIZATION_THREAD_WORK`    | `m·n·min(m,n)` ≥ 2^22 |
 | `MatrixOp` / `LMatrixOp` `gemm`        | `AbstractOperators.BLAS3_THREAD_WORK`            | `m·n·k` ≥ 2^25  |
-| a CG step's `dot` / `axpy!`            | `ProximalAlgorithms.CG_BLAS_THREAD_BYTES`        | 8 MiB MKL, 16 MiB OpenBLAS |
+| a CG step's `dot` / `axpy!`            | `ProximalAlgorithms.CG_BLAS_THREAD_BYTES`        | 8 MiB MKL, never OpenBLAS |
 
 Each is a `Ref`; set it to `typemax(Int)` to keep that kind of call serial. When a grant closes on
 OpenBLAS, NestedThreading shuts the pool's workers down (`NestedThreading.park_openblas`), since
