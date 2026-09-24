@@ -145,6 +145,35 @@ if [ "$PACK" = 1 ]; then
         fi
     done
     echo "### --pack: tasks share domains on disjoint cores, ${PACK_MEM_GB} GB reserved per task, results tagged MRT_BENCH_PLACEMENT=shared"
+    # Memory-bound cases lose most to packing. Measured on the same code, packed / isolated
+    # (EPYC 7763, 20 tasks on 8 domains, 2026-09-24): 3D 1.42x geomean (up to 3.2x), cine 1.24x,
+    # multislice 1.18x (up to 4.0x), against 1.03-1.07x for the 2D and radial cases.
+    heavy_ids="shepp_logan_3d_8ch_cartesian shepp_logan_multislice_8ch_cartesian torso_cine_8ch_cartesian torso_cine_8ch_radial"
+    real_heavy_ids="real_3d_multichannel_cartesian real_multislice_multichannel_cartesian real_cine_multichannel_cartesian real_cine_multichannel_radial"
+    case_patterns=""
+    [ "${MRT_BENCH_REAL_DATA:-}" = 1 ] && heavy_ids="$heavy_ids $real_heavy_ids"
+    for a in "${PASS_ARGS[@]}"; do
+        case "$a" in
+            --cases=*) case_patterns="${a#*=}" ;;
+            --real | --data=real | --data=all) heavy_ids="$heavy_ids $real_heavy_ids" ;;
+        esac
+    done
+    heavy_selected=()
+    for id in $heavy_ids; do
+        if [ -z "$case_patterns" ]; then
+            heavy_selected+=("$id")
+            continue
+        fi
+        IFS=, read -ra pats <<<"$case_patterns"
+        for p in "${pats[@]}"; do
+            [[ "$id" == *"${p,,}"* ]] && { heavy_selected+=("$id"); break; }
+        done
+    done
+    if [ "${#heavy_selected[@]}" -gt 0 ]; then
+        echo "### WARNING: --pack with memory-bound cases (${heavy_selected[*]}): packing slowed them" \
+            "1.2-1.4x on average and up to 4x in measurement, unevenly across tasks. Use these timings" \
+            "for smoke or functional checks only; time these cases without --pack." >&2
+    fi
     echo "### L3 groups: $(printf '%s\n' "${L3_OF[@]}" | sort -u | wc -l), domain memory: ${DOMAIN_MEM_MB[*]} MB"
 fi
 
