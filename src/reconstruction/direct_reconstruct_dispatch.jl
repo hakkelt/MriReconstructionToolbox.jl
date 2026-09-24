@@ -156,13 +156,21 @@ way the shared `_kspace_to_image` helper (used by GRAPPA/SPIRiT/`KSpaceToImage`)
 freshly-built sensitivity-free encoding operator rather than assuming `kspace_data` is already a
 complete (zero-filled) grid, since `DirectReconstruction` also runs on subsampled data. The
 non-Cartesian method below does the same from the gridding adjoint.
+
+`AdjointSensitivity` is `𝒜'` itself and reuses the operator it is handed. Rebuilding a
+sensitivity-free operator for it gives the same image bit for bit, but costs a second operator
+build per slice. In a task-split reconstruction (12 slices, 30 cine frames) those builds made up
+half of all allocations. At 8-16 threads the slices also queued on FFTW's global planner lock and
+spent 30-70 % of the time in GC. Measured on the torso cine adjoint (EPYC 7763), reusing `𝒜'`
+took 47.6 → 27.4 ms at 1 thread and 55.0 → 11.6 ms at 16.
 """
 function _direct_reconstruct_coil_combined(acq_data::CartesianAcquisitionInfo, method::DirectReconstruction, 𝒜)
     smaps = acq_data.sensitivity_maps
-    if isnothing(smaps) && method.coil_combination isa AdjointSensitivity
-        # `check_applicable` has already rejected this at the top level whenever the acquisition
-        # has a coil axis; what reaches here is single-channel data, where the default combination
-        # is the bare adjoint.
+    if method.coil_combination isa AdjointSensitivity
+        # With maps, `𝒜` composes the sensitivity operator (`_compose_with_sensitivity`), so its
+        # adjoint is exactly this combination. Without them, `check_applicable` has already
+        # rejected any acquisition with a coil axis; what reaches here is single-channel data,
+        # where the combination is the bare adjoint.
         return 𝒜' * _measurement(acq_data.kspace_data)
     end
     if _direct_coil_dim(acq_data) == 0
@@ -180,10 +188,7 @@ function _direct_reconstruct_coil_combined(acq_data::CartesianAcquisitionInfo, m
     ℬ = isnothing(smaps) ? 𝒜 : get_encoding_operator(CartesianAcquisitionInfo(acq_data; sensitivity_maps = nothing))
     coil_imgs = unname(ℬ' * _measurement(acq_data.kspace_data))
 
-    img_out, coil_reduced = if method.coil_combination isa AdjointSensitivity
-        @argcheck !isnothing(smaps) "AdjointSensitivity coil combination requires sensitivity maps."
-        sum(coil_imgs .* conj.(unname(smaps)); dims = c_dim), true
-    elseif method.coil_combination isa RootSumSquares
+    img_out, coil_reduced = if method.coil_combination isa RootSumSquares
         sqrt.(sum(abs2, coil_imgs; dims = c_dim)), true
     elseif method.coil_combination isa NoCoilCombination
         coil_imgs, false

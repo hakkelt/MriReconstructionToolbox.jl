@@ -497,6 +497,14 @@ end
     rec_rss_sub = reconstruct(data_sub, DirectReconstruction(coil_combination = RootSumSquares()); verbosity = Silent())
     @test size(rec_rss_sub) == (Nx, Ny)
 
+    # `AdjointSensitivity` reuses the adjoint of the encoding operator instead of combining
+    # per-coil images; both must agree, fully sampled and subsampled.
+    combine(coil_imgs) = dropdims(sum(unname(coil_imgs) .* conj.(unname(sens)); dims = 3); dims = 3)
+    @test unname(rec_adj) ≈ combine(rec_none)
+    rec_adj_sub = reconstruct(data_sub, DirectReconstruction(coil_combination = AdjointSensitivity()); verbosity = Silent())
+    rec_none_sub = reconstruct(data_sub, DirectReconstruction(coil_combination = NoCoilCombination()); verbosity = Silent())
+    @test unname(rec_adj_sub) ≈ combine(rec_none_sub)
+
     # Same three combinations with *named* dimensions. `get_image_dims` describes the combined
     # image, so with sensitivity maps present it has no `:coil` axis; `NoCoilCombination` returns
     # an array that does, and used to be labelled with the two-name tuple (a `NamedDimsArray`
