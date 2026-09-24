@@ -217,6 +217,13 @@ branch = "perf/dft-threaded-scaling"
 parent = "unified-threading"
 pr = ""
 
+# OperatorPool: operators built one after another reuse Compose buffers and DFT plans. Touches
+# Compose and the DFT constructor, both owned by the frozen `unified-threading`.
+[[AbstractOperators.stack]]
+branch = "perf/operator-pool"
+parent = "unified-threading"
+pr = ""
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
