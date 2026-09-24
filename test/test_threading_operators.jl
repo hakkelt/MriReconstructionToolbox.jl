@@ -399,6 +399,21 @@ end
     @test domain_type(replanned) == domain_type(serial_dft)
     @test replanned * x ≈ serial_dft * x
 
+    # The normalization pass threads with the plan, from `THRESHOLD_MEMORY_BOUND` elements, and
+    # divides exactly as the serial pass does: threading it must not change a single bit.
+    n = AbstractOperators.THRESHOLD_MEMORY_BOUND
+    z = randn(ComplexF32, n)
+    serial_scaled(v) = (w = copy(v); w ./= 3.0; w)
+    @test FFTWOperators._scale_output!(copy(z), 3.0, true) == serial_scaled(z)
+    @test FFTWOperators._scale_output!(z[1:(n - 1)], 3.0, true) == serial_scaled(z[1:(n - 1)])
+    @test FFTWOperators._scale_output!(copy(z), 3.0, false) == serial_scaled(z)
+    for normalization in (FFTWOperators.ORTHO, FFTWOperators.FORWARD, FFTWOperators.BACKWARD)
+        s = DFT(ComplexF32, (n,); threaded = false, normalization)
+        t = DFT(ComplexF32, (n,); threaded = true, normalization)
+        @test t * z ≈ s * z
+        @test t' * z ≈ s' * z
+    end
+
     # IDFT must stay an adjoint-wrapped DFT: that is what makes the DFT/IDFT combination
     # rules fire.
     @test IDFT(8) isa AbstractOperators.AdjointOperator

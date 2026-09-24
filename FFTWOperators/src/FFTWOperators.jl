@@ -3,6 +3,7 @@ module FFTWOperators
 using AbstractOperators, FFTW, LinearAlgebra
 using Base.Cartesian: @ncall
 using Polyester: @batch
+using FastBroadcast: @..
 import LinearAlgebra: mul!
 import Base: size, ndims
 
