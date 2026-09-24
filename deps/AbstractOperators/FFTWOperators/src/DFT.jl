@@ -407,8 +407,6 @@ serial pass. FastBroadcast falls back to Base broadcasting for storage it cannot
 arrays), so both branches are safe on any storage.
 """
 function _scale_output!(y, scale, threaded::Bool)
-    # Qualified rather than imported: the subpackage's import list is shared with branches that
-    # drop names from it.
     if threaded && length(y) >= AbstractOperators.THRESHOLD_MEMORY_BOUND
         @.. thread = true y = y / scale
     else
