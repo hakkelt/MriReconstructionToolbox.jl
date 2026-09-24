@@ -70,6 +70,11 @@ end
 
 What the timings are comparable across: the CPU model plus the SLURM partition (`login` outside a
 job). Results from different node classes are never treated as the same measurement.
+
+A run that shared its NUMA domain with other tasks (`matrix.sh --pack`, which sets
+`MRT_BENCH_PLACEMENT=shared`) competed with them for L3 and memory bandwidth, so it gets a class of
+its own: an isolated baseline is never skipped because a packed one is stored, and `compare.jl`
+warns when it compares the two.
 """
 function node_class()
     cpu = "unknown cpu"
@@ -82,7 +87,8 @@ function node_class()
         end
     catch
     end
-    return string(cpu, " / ", get(ENV, "SLURM_JOB_PARTITION", "login"))
+    class = string(cpu, " / ", get(ENV, "SLURM_JOB_PARTITION", "login"))
+    return get(ENV, "MRT_BENCH_PLACEMENT", "isolated") == "shared" ? class * " / shared domain" : class
 end
 
 """
@@ -92,7 +98,7 @@ Environment variables that change what a benchmark measures, recorded with every
 """
 const RECORDED_ENV = (
     "KMP_BLOCKTIME", "OPENBLAS_THREAD_TIMEOUT", "OMP_WAIT_POLICY", "MKL_DYNAMIC", "TMPDIR",
-    "JULIA_EXCLUSIVE", "MRT_BENCH_SNR_DB", "CMP_OUTER", "CMP_CG_ITERS",
+    "JULIA_EXCLUSIVE", "MRT_BENCH_SNR_DB", "CMP_OUTER", "CMP_CG_ITERS", "MRT_BENCH_PLACEMENT",
 )
 
 recorded_env() = Dict(k => get(ENV, k, "") for k in RECORDED_ENV)

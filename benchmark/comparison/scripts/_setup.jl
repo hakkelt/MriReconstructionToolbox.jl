@@ -382,6 +382,7 @@ function flush_results!(name::AbstractString)
         hostname = gethostname(), julia_version = string(VERSION),
         julia_threads = Threads.nthreads(), blas_vendor = BLAS.get_config().loaded_libs[1].libname,
         use_mkl = USE_MKL, bart_binary = BART_BINARY, pinned_cpus = CPU_STR,
+        placement = get(ENV, "MRT_BENCH_PLACEMENT", "isolated"),
         bart_spawn_ms = BART_SPAWN * 1000,
         cases_filter = CASE_FILTER, frameworks_filter = FRAMEWORK_FILTER, data = DATA,
         small = small_mode(), cine_frames = cine_frames(),
