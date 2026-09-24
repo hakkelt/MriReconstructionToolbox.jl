@@ -114,18 +114,6 @@ true
 """
 function IDFT end
 
-# The forward and backward plans for `x`. Under an active `OperatorPool`, a DFT of the same array
-# type, size, strides, dimensions, planner flags and thread count reuses the plans planned first
-# instead of planning again: an FFTW plan applied to new arrays is safe to share between tasks.
-function _dft_plans(x, dims, flags, timelimit, num_threads)
-    key = (:DFT, typeof(x), size(x), strides(x), tuple(dims...), flags, timelimit, num_threads)
-    return AbstractOperators._pooled(key) do
-        _with_fftw_threads(num_threads) do
-            plan_fft(x, dims; flags, timelimit), plan_bfft(x, dims; flags, timelimit)
-        end
-    end
-end
-
 # Constructors
 #standard constructor
 function DFT(
@@ -151,7 +139,9 @@ function DFT(
     ) where {N, D <: Real}
     x = similar(x, Complex{D})
     num_threads = _fftw_num_threads(:c2c, num_threads, threaded, length(x))
-    A, At = _dft_plans(x, dims, flags, timelimit, num_threads)
+    A, At = _with_fftw_threads(num_threads) do
+        plan_fft(x, dims; flags, timelimit), plan_bfft(x, dims; flags, timelimit)
+    end
     S = typeof(x isa SubArray ? parent(x) : x).name.wrapper
     dims = tuple(dims...)
     scaling = _dft_scaling(size(x), dims, normalization)
@@ -173,7 +163,9 @@ function DFT(
         x = similar(x) # FFTW.MEASURE and FFTW.PATIENT may cause the input array to be modified
     end
     num_threads = _fftw_num_threads(:c2c, num_threads, threaded, length(x))
-    A, At = _dft_plans(x, dims, flags, timelimit, num_threads)
+    A, At = _with_fftw_threads(num_threads) do
+        plan_fft(x, dims; flags, timelimit), plan_bfft(x, dims; flags, timelimit)
+    end
     S = typeof(x isa SubArray ? parent(x) : x).name.wrapper
     dims = tuple(dims...)
     scaling = _dft_scaling(size(x), dims, normalization)

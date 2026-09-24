@@ -52,20 +52,3 @@ end
     end
     @test got == expected
 end
-
-@testitem "OperatorPool: DFT plans are planned once per shape" tags = [:fftw, :DFT, :OperatorPool] setup = [TestUtils] begin
-    using AbstractOperators, FFTWOperators, FFTW, LinearAlgebra, Random
-    Random.seed!(0)
-
-    x = randn(ComplexF32, 64, 32)
-    pool = OperatorPool()
-    F1, F2, F3 = with_operator_pool(pool) do
-        DFT(x), DFT(similar(x)), DFT(x, 1)
-    end
-    @test F1.A === F2.A && F1.At === F2.At
-    @test F3.A !== F1.A
-    @test F2 * x == DFT(x) * x
-    @test F2' * x == DFT(x)' * x
-    # Without a pool every DFT plans its own transforms.
-    @test DFT(x).A !== DFT(x).A
-end
