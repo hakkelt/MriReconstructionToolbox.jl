@@ -367,12 +367,11 @@ end
     # Checked on the policy function rather than on constructed operators: one operator per
     # cell at these sizes would cost far more than a contract test is worth.
     nt = Threads.nthreads()
-    # The two real transforms share a threshold, and it is an octave below `:c2c`'s successor,
-    # not two: 2^15 was measured against `FFTW.MEASURE` plans, these operators plan with
-    # `FFTW.ESTIMATE`. A regression here means the provenance table was edited without the
-    # constant, or the reverse.
-    @test fftw_threading_threshold(:c2c) == 2^13
-    @test fftw_threading_threshold(:r2r) == fftw_threading_threshold(:r2c) == 2^14
+    # c2c and r2r share a threshold; r2c needs four times the elements, since each of its
+    # passes does half the work of a complex one. A regression here means the provenance
+    # table was edited without the constant, or the reverse.
+    @test fftw_threading_threshold(:c2c) == fftw_threading_threshold(:r2r) == 2^16
+    @test fftw_threading_threshold(:r2c) == 2^18
 
     for kind in (:c2c, :r2r, :r2c)
         t0 = fftw_threading_threshold(kind)
