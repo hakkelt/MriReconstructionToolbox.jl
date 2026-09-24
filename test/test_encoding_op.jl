@@ -818,7 +818,8 @@ end
 
     for acq in (acq2, acq3)
         @test isempty(threaded_parts(get_subsampling_operator(acq; threaded = false)))
-        @test !isempty(threaded_parts(get_subsampling_operator(acq)))
+        # With one thread even `threaded = true` builds a serial batch loop.
+        Threads.nthreads() > 1 && @test !isempty(threaded_parts(get_subsampling_operator(acq)))
         A = get_encoding_operator(acq; threaded = false, fast_planning = true)
         @test isempty(threaded_parts(A))
         x = randn(ComplexF32, size(A, 2))
