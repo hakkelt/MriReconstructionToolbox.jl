@@ -4,15 +4,11 @@ export OperatorPool, with_operator_pool, recycle!
 	OperatorPool()
 
 Storage that lets many operators of the same shape be built one after another without
-allocating their working memory and planning their transforms each time.
+allocating their working memory each time.
 
-Inside [`with_operator_pool`](@ref), two things are drawn from the pool instead of being made
-afresh:
-
-- the intermediate buffers a [`Compose`](@ref) allocates between its operators, taken from the
-  arrays [`recycle!`](@ref) returned to the pool;
-- objects an operator constructor caches through `_pooled`, such as the FFTW plans of a `DFT`
-  of a given size, type, planner flags and thread count.
+Inside [`with_operator_pool`](@ref), the intermediate buffers a [`Compose`](@ref) allocates
+between its operators are taken from the arrays [`recycle!`](@ref) returned to the pool, when
+one of the right type and size is there.
 
 A pool may be shared by several tasks at once: taking and returning buffers is locked, and a
 buffer taken by one task is not handed to another until it is recycled again. The results of
@@ -20,10 +16,9 @@ operators built with a pool are identical to those of operators built without on
 """
 struct OperatorPool
     buffers::Vector{Array}
-    cache::Dict{Any, Any}
     lock::Threads.SpinLock
 end
-OperatorPool() = OperatorPool(Array[], Dict{Any, Any}(), Threads.SpinLock())
+OperatorPool() = OperatorPool(Array[], Threads.SpinLock())
 
 const _POOL_KEY = :AbstractOperators_OperatorPool
 
@@ -49,22 +44,6 @@ function with_operator_pool(f, pool::OperatorPool)
 end
 
 _active_pool() = get(task_local_storage(), _POOL_KEY, nothing)::Union{Nothing, OperatorPool}
-
-"""
-	_pooled(f, key)
-
-`f()`, or the value an earlier call with an equal `key` produced under the active pool. Without
-an active pool, always `f()`. `f` runs outside the pool's lock, so two tasks missing the same key
-at once both compute it and the first result is kept.
-"""
-function _pooled(f, key)
-    pool = _active_pool()
-    pool === nothing && return f()
-    cached = @lock pool.lock get(pool.cache, key, nothing)
-    cached === nothing || return cached
-    value = f()
-    return @lock pool.lock get!(pool.cache, key, value)
-end
 
 """
 	_pooled_codomain_buffer(L::AbstractOperator)
