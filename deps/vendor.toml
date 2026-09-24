@@ -209,6 +209,14 @@ branch = "perf/blas-flop-grant"
 parent = "unified-threading"
 pr = ""
 
+# The DFT's normalization pass threads with its plan (FastBroadcast), instead of staying a
+# serial full-array pass behind a threaded FFT. `unified-threading` owns the DFT's threading and
+# is frozen, so this is a branch of its own stacked on it.
+[[AbstractOperators.stack]]
+branch = "perf/dft-threaded-scaling"
+parent = "unified-threading"
+pr = ""
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
