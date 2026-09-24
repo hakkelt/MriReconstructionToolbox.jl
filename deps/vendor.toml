@@ -224,6 +224,14 @@ branch = "perf/operator-pool"
 parent = "unified-threading"
 pr = ""
 
+# Sign alternations standing in for shifts, and what the FFTW combination rules build, keep the
+# threading of the operators they replace instead of the constructors' `threaded = true`. The
+# `threaded` flag they ignored comes from the frozen `unified-threading`.
+[[AbstractOperators.stack]]
+branch = "fix/shift-combine-threading"
+parent = "unified-threading"
+pr = ""
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
