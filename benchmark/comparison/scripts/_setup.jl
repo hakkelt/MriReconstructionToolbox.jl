@@ -35,10 +35,14 @@ const FW = "MRT ($(USE_MKL ? "MKL" : "OpenBLAS"))"
 const BART_FW = "BART ($(USE_MKL ? "MKL" : "OpenBLAS"))"
 
 using ThreadPinning
+# Threads go only to allowed CPUs that are not SMT siblings: a sibling shares its core with another
+# thread of the same run, which halves that core for both.
 let mask = getaffinity()
     allowed = findall(==(1), mask) .- 1
     isempty(allowed) && (allowed = collect(0:(Threads.nthreads() - 1)))
-    global const PINNED_CPUS = allowed[1:min(length(allowed), Threads.nthreads())]
+    physical = filter(!ThreadPinning.ishyperthread, allowed)
+    length(physical) >= Threads.nthreads() || error("only $(length(physical)) physical cores among the allowed CPUs $allowed, $(Threads.nthreads()) threads requested")
+    global const PINNED_CPUS = physical[1:Threads.nthreads()]
 end
 pinthreads(PINNED_CPUS)
 # No `mkl_set_dynamic(0)`: timed with and without it, MKL's own dynamic adjustment measured the same.
@@ -374,6 +378,7 @@ function flush_results!(name::AbstractString)
         hostname = gethostname(), julia_version = string(VERSION),
         julia_threads = Threads.nthreads(), blas_vendor = BLAS.get_config().loaded_libs[1].libname,
         use_mkl = USE_MKL, bart_binary = BART_BINARY, pinned_cpus = CPU_STR,
+        placement = get(ENV, "MRT_BENCH_PLACEMENT", "isolated"),
         bart_spawn_ms = BART_SPAWN * 1000,
         cases_filter = CASE_FILTER, frameworks_filter = FRAMEWORK_FILTER, data = DATA,
         small = small_mode(), cine_frames = cine_frames(),

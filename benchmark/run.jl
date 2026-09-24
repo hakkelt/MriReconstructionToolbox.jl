@@ -74,9 +74,13 @@ using .BenchUtils: ResultsStore, time_run, timed_runs, git_ref, tree_hash, node_
 load_site_env!()
 _flag("real") && (ENV["MRT_BENCH_REAL_DATA"] = "1")
 
+# Threads go only to allowed CPUs that are not SMT siblings: a sibling shares its core with another
+# thread of the same run, which halves that core for both.
 const PINNED_CPUS = let allowed = findall(!iszero, getaffinity()) .- 1
     isempty(allowed) && (allowed = collect(0:(NUM_THREADS - 1)))
-    allowed[1:min(length(allowed), NUM_THREADS)]
+    physical = filter(!ThreadPinning.ishyperthread, allowed)
+    length(physical) >= NUM_THREADS || error("only $(length(physical)) physical cores among the allowed CPUs $allowed, $NUM_THREADS threads requested")
+    physical[1:NUM_THREADS]
 end
 pinthreads(PINNED_CPUS)
 BLAS.set_num_threads(NUM_THREADS)
