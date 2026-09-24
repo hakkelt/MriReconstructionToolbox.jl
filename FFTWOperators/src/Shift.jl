@@ -676,14 +676,17 @@ function _is_dft_op(op, side)
     end
 end
 
+# A sign alternation standing in for a shift threads exactly when the operator it wraps does,
+# so a transform built with `threaded = false` stays serial once it is shifted.
 function _shift_op(
         shift_op_type, op::AbstractOperator, domain_shifts::Tuple = (), codomain_shifts::Tuple = ()
     )
+    threaded = is_threaded(op)
     if !isempty(domain_shifts)
         _check_shift_dirs(size(op, 2), domain_shifts)
         shifted_domain_dims_shape = size(op, 2)[collect(domain_shifts)]
         if all(iseven, shifted_domain_dims_shape) && _is_dft_op(op, :domain)
-            domain_op = SignAlternation(codomain_type(op), size(op, 1), domain_shifts; array_type = codomain_array_type(op))
+            domain_op = SignAlternation(codomain_type(op), size(op, 1), domain_shifts; threaded, array_type = codomain_array_type(op))
             op = domain_op * op
         else
             domain_op = shift_op_type(domain_type(op), size(op, 2), domain_shifts; array_type = domain_array_type(op))
@@ -694,7 +697,7 @@ function _shift_op(
         _check_shift_dirs(size(op, 1), codomain_shifts)
         shifted_codomain_dims_shape = size(op, 1)[collect(codomain_shifts)]
         if all(iseven, shifted_codomain_dims_shape) && _is_dft_op(op, :codomain)
-            codomain_op = SignAlternation(domain_type(op), size(op, 2), codomain_shifts; array_type = domain_array_type(op))
+            codomain_op = SignAlternation(domain_type(op), size(op, 2), codomain_shifts; threaded, array_type = domain_array_type(op))
             op = op * codomain_op
         else
             codomain_op = shift_op_type(codomain_type(op), size(op, 1), codomain_shifts; array_type = codomain_array_type(op))

@@ -62,28 +62,28 @@ function can_be_combined(T1::AdjointOperator{<:ShiftOp}, T2::AdjointOperator{<:D
     return all(iseven, size(T2, 1)[collect(T1.A.dirs)])
 end
 function combine(T1::DFT, T2::ShiftOp)
-    return SignAlternation(codomain_type(T1), size(T1, 1), T2.dirs; array_type = codomain_array_type(T1)) * T1
+    return SignAlternation(codomain_type(T1), size(T1, 1), T2.dirs; threaded = is_threaded(T1), array_type = codomain_array_type(T1)) * T1
 end
 function combine(T1::ShiftOp, T2::DFT)
-    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.dirs; array_type = domain_array_type(T2))
+    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.dirs; threaded = is_threaded(T2), array_type = domain_array_type(T2))
 end
 function combine(T1::AdjointOperator{<:DFT}, T2::ShiftOp)
-    return SignAlternation(codomain_type(T1), size(T1, 1), T2.dirs; array_type = codomain_array_type(T1)) * T1
+    return SignAlternation(codomain_type(T1), size(T1, 1), T2.dirs; threaded = is_threaded(T1), array_type = codomain_array_type(T1)) * T1
 end
 function combine(T1::ShiftOp, T2::AdjointOperator{<:DFT})
-    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.dirs; array_type = domain_array_type(T2))
+    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.dirs; threaded = is_threaded(T2), array_type = domain_array_type(T2))
 end
 function combine(T1::DFT, T2::AdjointOperator{<:ShiftOp})
-    return SignAlternation(codomain_type(T1), size(T1, 1), T2.A.dirs; array_type = codomain_array_type(T1)) * T1
+    return SignAlternation(codomain_type(T1), size(T1, 1), T2.A.dirs; threaded = is_threaded(T1), array_type = codomain_array_type(T1)) * T1
 end
 function combine(T1::AdjointOperator{<:ShiftOp}, T2::DFT)
-    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.A.dirs; array_type = domain_array_type(T2))
+    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.A.dirs; threaded = is_threaded(T2), array_type = domain_array_type(T2))
 end
 function combine(T1::AdjointOperator{<:DFT}, T2::AdjointOperator{<:ShiftOp})
-    return SignAlternation(codomain_type(T1), size(T1, 1), T2.A.dirs; array_type = codomain_array_type(T1)) * T1
+    return SignAlternation(codomain_type(T1), size(T1, 1), T2.A.dirs; threaded = is_threaded(T1), array_type = codomain_array_type(T1)) * T1
 end
 function combine(T1::AdjointOperator{<:ShiftOp}, T2::AdjointOperator{<:DFT})
-    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.A.dirs; array_type = domain_array_type(T2))
+    return T2 * SignAlternation(domain_type(T2), size(T2, 2), T1.A.dirs; threaded = is_threaded(T2), array_type = domain_array_type(T2))
 end
 
 # FFTShift/IFFTShift with DFT and SignAlternation
@@ -195,18 +195,25 @@ function combine(T1::SignAlternation, T2::SignAlternation)
     if isempty(new_dirs)
         return Eye(domain_type(T1), size(T1, 2); array_type = domain_array_type(T1))
     else
-        return SignAlternation(domain_type(T1), size(T1, 2), new_dirs; array_type = domain_array_type(T1))
+        return SignAlternation(
+            domain_type(T1), size(T1, 2), new_dirs;
+            threaded = is_threaded(T1) || is_threaded(T2), array_type = domain_array_type(T1),
+        )
     end
 end
 
 # SignAlternation with DiagOp
+#
+# The signs are folded into the diagonal, so only the `DiagOp`'s pass is left, and it keeps the
+# threading it was built with: a diagonal built serial (typically because it runs inside a
+# threaded batch loop) must not come back threaded because a sign alternation was absorbed.
 can_be_combined(::SignAlternation, T2::DiagOp) = diag(T2) isa AbstractArray
 can_be_combined(T1::DiagOp, ::SignAlternation) = diag(T1) isa AbstractArray
 function combine(T1::SignAlternation, T2::DiagOp)
-    return DiagOp(domain_type(T2), size(T2, 2), T1 * diag(T2))
+    return DiagOp(domain_type(T2), size(T2, 2), T1 * diag(T2); threaded = is_threaded(T2))
 end
 function combine(T1::DiagOp, T2::SignAlternation)
-    return DiagOp(domain_type(T1), size(T1, 2), T2 * diag(T1))
+    return DiagOp(domain_type(T1), size(T1, 2), T2 * diag(T1); threaded = is_threaded(T1))
 end
 
 # Shift operators inside a batch

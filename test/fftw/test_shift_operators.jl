@@ -358,6 +358,51 @@ end
     @test (c5 * X) ≈ ((dft2 * sh2) * X)
 end
 
+@testitem "Shifts and their combinations keep the threading they were built with" tags = [:fftw, :CombinationRules, :threading] setup = [TestUtils] begin
+    using AbstractOperators
+    using LinearAlgebra, FFTWOperators
+    using AbstractOperators: combine, is_threaded, get_operators
+
+    # Large enough that an element-wise kernel built with `threaded = true` does thread (256²
+    # is still below the memory-bound threshold), so a serial result is not the size gate.
+    sz = (512, 512)
+    x = randn(ComplexF64, sz)
+    sign_alternations(op) = filter(o -> o isa SignAlternation, collect(get_operators(op)))
+
+    for threaded in (false, true)
+        dft = DFT(zeros(ComplexF64, sz); threaded)
+        # A shift that becomes a sign alternation threads exactly when the transform does.
+        for shifted in (
+                ifftshift_op(dft; domain_shifts = (1, 2), codomain_shifts = (1, 2)),
+                fftshift_op(dft; domain_shifts = (1, 2), codomain_shifts = (1, 2)),
+            )
+            @test length(sign_alternations(shifted)) == 2
+            @test all(s -> is_threaded(s) == is_threaded(dft), sign_alternations(shifted))
+        end
+        for sh in (FFTShift(ComplexF64, sz, (1, 2)), IFFTShift(ComplexF64, sz, (1, 2)))
+            @test is_threaded(only(sign_alternations(combine(dft, sh)))) == is_threaded(dft)
+            @test is_threaded(only(sign_alternations(combine(sh, dft)))) == is_threaded(dft)
+        end
+
+        # Folding a sign alternation into a diagonal keeps the diagonal's threading, whatever
+        # the sign alternation's.
+        d = randn(ComplexF64, sz)
+        D = DiagOp(d; threaded)
+        S = SignAlternation(ComplexF64, sz, (1, 2); threaded = !threaded)
+        @test is_threaded(combine(S, D)) == is_threaded(D)
+        @test is_threaded(combine(D, S)) == is_threaded(D)
+        @test combine(S, D) * x ≈ S * (D * x)
+        @test combine(D, S) * x ≈ D * (S * x)
+    end
+    @test !is_threaded(DiagOp(randn(ComplexF64, sz); threaded = false) * ifftshift_op(DFT(zeros(ComplexF64, sz); threaded = false); codomain_shifts = (1, 2)))
+
+    # Two sign alternations merge into one that threads if either did.
+    S1 = SignAlternation(ComplexF64, sz, (1,); threaded = false)
+    S2 = SignAlternation(ComplexF64, sz, (2,); threaded = true)
+    @test is_threaded(combine(S1, S2)) == (is_threaded(S1) || is_threaded(S2))
+    @test !is_threaded(combine(S1, SignAlternation(ComplexF64, sz, (2,); threaded = false)))
+end
+
 @testitem "FFTShift/IFFTShift (GPU)" tags = [:gpu, :fftw, :FFTShift] setup = [TestUtils, GpuEnvSetup] begin
     using FFTWOperators, GPUEnv, LinearAlgebra
 
