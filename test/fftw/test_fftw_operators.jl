@@ -175,6 +175,16 @@ end
     y1 = op * x1
     @test norm(op' * (op * x1) - diag_AcA(op) * x1) <= 1.0e-12
     @test norm(op * (op' * y1) - diag_AAc(op) * y1) <= 1.0e-12
+
+    # Only a measuring planner may write to its input, so only it plans on a copy: an
+    # `ESTIMATE` plan is built on `x` itself, without allocating an array the size of `x`.
+    x = randn(ComplexF64, 1 << 16)
+    x0 = copy(x)
+    DFT(x)
+    @test x == x0
+    @test (@allocated DFT(x)) < sizeof(x) ÷ 4
+    DFT(x; flags = FFTW.MEASURE)
+    @test x == x0
 end
 
 @testitem "DFT ORTHO normalization" tags = [:fftw, :DFT] setup = [TestUtils] begin

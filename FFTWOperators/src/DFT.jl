@@ -159,7 +159,7 @@ function DFT(
         num_threads = nothing,
         threaded::Bool = true,
     ) where {N, D <: Complex}
-    if x != FFTW.ESTIMATE
+    if flags != FFTW.ESTIMATE
         x = similar(x) # FFTW.MEASURE and FFTW.PATIENT may cause the input array to be modified
     end
     num_threads = _fftw_num_threads(:c2c, num_threads, threaded, length(x))
@@ -407,7 +407,9 @@ serial pass. FastBroadcast falls back to Base broadcasting for storage it cannot
 arrays), so both branches are safe on any storage.
 """
 function _scale_output!(y, scale, threaded::Bool)
-    if threaded && length(y) >= THRESHOLD_MEMORY_BOUND
+    # Qualified rather than imported: the subpackage's import list is shared with branches that
+    # drop names from it.
+    if threaded && length(y) >= AbstractOperators.THRESHOLD_MEMORY_BOUND
         @.. thread = true y = y / scale
     else
         @.. y = y / scale
