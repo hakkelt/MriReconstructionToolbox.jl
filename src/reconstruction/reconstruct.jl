@@ -86,9 +86,22 @@ function _reconstruct_dispatch_plain(acq_data, method::ReconstructionMethod, x�
             # binding, not a reassignment of `config`: rebinding it would box the variable that
             # the `with_progress` closure above captures.
             unscaled_config = ReconstructionConfig(config; scaling = NoScaling())
+            # Every slice builds an encoding operator of the same shape and drops it right after
+            # its one adjoint, so the slices share one pool: each build takes the Compose buffers
+            # an earlier slice returned, and the FFT plans an earlier slice planned.
+            pool = AbstractOperators.OperatorPool()
             execute(task_splitting_plan, acq_data, unscaled_config) do idx, local_acq, local_conf
                 local_x₀ = isnothing(x₀) ? nothing : get_x₀_slice(x₀, task_splitting_plan, idx)
-                _reconstruct(local_acq, method, local_x₀, local_conf)
+                AbstractOperators.with_operator_pool(pool) do
+                    𝒜 = build_encoding_operator(
+                        local_acq, method;
+                        threaded = local_conf.threaded,
+                        fast_planning = method isa DirectReconstruction,
+                    )
+                    slice_result = _reconstruct(local_acq, method, local_x₀, local_conf; 𝒜)
+                    AbstractOperators.recycle!(pool, 𝒜)
+                    slice_result
+                end
             end
         else
             # Each slice's regularization strength is scale-dependent, so each slice is
