@@ -43,7 +43,7 @@ function get_subsampled_fourier_operator(
         threaded::Bool = true,
         fast_planning::Bool = false
     )
-    ksp, 𝒫 = _build_subsampling_context(subsampled_ksp, img_size, subsampling)
+    ksp, 𝒫 = _build_subsampling_context(subsampled_ksp, img_size, subsampling; threaded)
     is3D = length(img_size) == 3
     ℱ = ksp isa NamedDimsArray ?
         get_fourier_operator(ksp; shifted_kspace_dims, shifted_image_dims, threaded, fast_planning) :
@@ -59,8 +59,8 @@ end
 
 
 """
-	get_subsampling_operator(subsampled_ksp, img_size, subsampling)
-	get_subsampling_operator(info::CartesianAcquisitionInfo)
+	get_subsampling_operator(subsampled_ksp, img_size, subsampling; threaded=true)
+	get_subsampling_operator(info::CartesianAcquisitionInfo; threaded=true)
 
 Create the subsampling operator 𝒫 that maps full k-space to a given
 subsampled layout. This is useful when you need 𝒫 separately or want to
@@ -76,6 +76,8 @@ use `get_subsampled_fourier_operator`.
   Supports boolean masks and tuples mixing `Colon`, boolean masks, and ranges.
 - `info::CartesianAcquisitionInfo`: Alternative API that takes configuration from a
 	validated acquisition struct (must contain `image_size` and `subsampling`).
+- `threaded::Bool=true`: Whether the batched form (one `GetIndex` per coil, slice or frame)
+  applies its elements in parallel.
 
 # Returns
 - `𝒫`: A `GetIndex` or `BatchOp{GetIndex}` — or, when `subsampling` is an array of per-frame specs
@@ -111,14 +113,14 @@ info = CartesianAcquisitionInfo(ksp_sub; is3D=false, image_size=(64, 64), subsam
 𝒫_info = get_subsampling_operator(info)
 ```
 """
-function get_subsampling_operator(subsampled_ksp, img_size, subsampling)
-    _, 𝒫 = _build_subsampling_context(subsampled_ksp, img_size, subsampling)
+function get_subsampling_operator(subsampled_ksp, img_size, subsampling; threaded::Bool = true)
+    _, 𝒫 = _build_subsampling_context(subsampled_ksp, img_size, subsampling; threaded)
     return 𝒫
 end
 
-function get_subsampling_operator(acq_info::CartesianAcquisitionInfo)
+function get_subsampling_operator(acq_info::CartesianAcquisitionInfo; threaded::Bool = true)
     @argcheck !isnothing(acq_info.subsampling) "CartesianAcquisitionInfo must include a subsampling pattern"
-    return get_subsampling_operator(acq_info.kspace_data, acq_info.image_size, acq_info.subsampling)
+    return get_subsampling_operator(acq_info.kspace_data, acq_info.image_size, acq_info.subsampling; threaded)
 end
 
 # -------- Type definitions for different subsampling patterns --------
@@ -245,33 +247,33 @@ function _get_dimnames_from_subsampling(ksp_dimnames, img_size, subsampling::Abs
     )
 end
 
-function _get_subsampling_operator(ksp, img_size::Tuple{Int, Int}, subsampling::_2D_subsampling_type)
+function _get_subsampling_operator(ksp, img_size::Tuple{Int, Int}, subsampling::_2D_subsampling_type; threaded::Bool)
     @argcheck length(img_size) == 2 "img_size must be a 2-element tuple for 2D subsampling"
     @argcheck img_size == size(ksp)[1:2] DimensionMismatch
     if ndims(ksp) > length(img_size)
         batch_dims = size(ksp)[3:end]
         ksp_view = @view ksp[:, :, fill(1, length(batch_dims))...]
         𝒫 = GetIndex(ksp_view, subsampling)
-        return BatchOp(𝒫, batch_dims; threaded = true)
+        return BatchOp(𝒫, batch_dims; threaded)
     else
         return GetIndex(ksp, subsampling)
     end
 end
 
-function _get_subsampling_operator(ksp, img_size::Tuple{Int, Int, Int}, subsampling::_3D_subsampling_type)
+function _get_subsampling_operator(ksp, img_size::Tuple{Int, Int, Int}, subsampling::_3D_subsampling_type; threaded::Bool)
     @argcheck length(img_size) == 3 "img_size must be a 3-element tuple for 3D subsampling"
     @argcheck img_size == size(ksp)[1:3] DimensionMismatch
     if ndims(ksp) > length(img_size)
         batch_dims = size(ksp)[4:end]
         ksp_view = @view ksp[:, :, :, fill(1, length(batch_dims))...]
         𝒫 = GetIndex(ksp_view, subsampling)
-        return BatchOp(𝒫, batch_dims; threaded = true)
+        return BatchOp(𝒫, batch_dims; threaded)
     else
         return GetIndex(ksp, subsampling)
     end
 end
 
-function _get_subsampling_operator(ksp, img_size, subsampling::AbstractArray)
+function _get_subsampling_operator(ksp, img_size, subsampling::AbstractArray; threaded::Bool)
     @argcheck !isempty(subsampling) "subsampling array must not be empty"
     fourier_dims = length(img_size)
     spreading_dims = ndims(subsampling)
@@ -313,7 +315,8 @@ function _get_subsampling_operator(ksp, img_size, subsampling::AbstractArray)
     first_op = _get_subsampling_operator(
         first_view,
         img_size,
-        _normalize_subsampling(subsampling[first_index]),
+        _normalize_subsampling(subsampling[first_index]);
+        threaded,
     )
     operators = Array{typeof(first_op)}(undef, size(subsampling))
     operators[first_index] = first_op
@@ -328,7 +331,8 @@ function _get_subsampling_operator(ksp, img_size, subsampling::AbstractArray)
         operators[index] = _get_subsampling_operator(
             local_view,
             img_size,
-            _normalize_subsampling(subsampling[index]),
+            _normalize_subsampling(subsampling[index]);
+            threaded,
         )
     end
 
@@ -343,7 +347,7 @@ function _get_subsampling_operator(ksp, img_size, subsampling::AbstractArray)
         i -> i <= ndims(first_op, 1)::Int ? :_ : :s,
         n_out,
     )
-    return BatchOp(operators, domain_mask => codomain_mask; threaded = true)
+    return BatchOp(operators, domain_mask => codomain_mask; threaded)
 end
 
 # How many samples one spec selects out of the full Fourier grid. Only the Fourier dimensions
@@ -488,10 +492,10 @@ function _full_kspace_template(subsampled_ksp::PartitionedKSpace, img_size, subs
     return ksp
 end
 
-function _build_subsampling_context(subsampled_ksp, img_size, subsampling)
+function _build_subsampling_context(subsampled_ksp, img_size, subsampling; threaded::Bool)
     ksp = _full_kspace_template(subsampled_ksp, img_size, subsampling)
     if ksp isa NamedDimsArray
-        𝒫_unwrapped = _get_subsampling_operator(unname(ksp), img_size, subsampling)
+        𝒫_unwrapped = _get_subsampling_operator(unname(ksp), img_size, subsampling; threaded)
         D = dimnames(ksp)
         # A partitioned codomain has no dimension names to carry: its blocks are separate arrays
         # of different sizes, not axes of one array. `nothing` says so, rather than a name tuple
@@ -501,7 +505,7 @@ function _build_subsampling_context(subsampled_ksp, img_size, subsampling)
             _get_dimnames_from_subsampling(D, img_size, subsampling)
         𝒫 = NamedDimsOp{D, new_dimnames}(𝒫_unwrapped)
     else
-        𝒫 = _get_subsampling_operator(ksp, img_size, subsampling)
+        𝒫 = _get_subsampling_operator(ksp, img_size, subsampling; threaded)
     end
     return ksp, 𝒫
 end

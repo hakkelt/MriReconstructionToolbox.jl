@@ -138,7 +138,7 @@ function model_encoding_operator(model::TemporalBasis, acq::AcquisitionInfo; thr
 end
 
 function model_encoding_operator(::KSpaceToImage, acq::AcquisitionInfo; threaded::Bool, fast_planning::Bool)
-    isnothing(acq.subsampling) || return get_subsampling_operator(acq)
+    isnothing(acq.subsampling) || return get_subsampling_operator(acq; threaded)
     raw = unname(acq.kspace_data)
     P = Eye(eltype(raw), size(raw)...)
     return _has_dimnames(acq.kspace_data) ?

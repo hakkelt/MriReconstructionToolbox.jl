@@ -783,3 +783,45 @@ end
     data_plain = simulate_acquisition(img, acq_plain)
     @test unname(data.kspace_data) ≈ unname(data_plain.kspace_data)
 end
+
+@testitem "threaded = false reaches every operator of the encoding chain" tags = [:encoding, :operators] begin
+    using Test
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, get_subsampling_operator, CartesianAcquisitionInfo
+    using Random
+
+    # The parts of an operator that would run threaded, read off its type: a batch loop, a
+    # FastBroadcast kernel (`DiagOp{static(true)}`), and the element-wise operators that carry a
+    # threaded flag as a type parameter.
+    threaded_parts(op) = unique(
+        m.match for m in eachmatch(
+                r"\w*MultiThreaded\w*|\w+\{static\(true\)|(SignAlternation|NoOperatorBroadCast)\{\w+, \d+, \d+, true",
+                string(typeof(op)),
+            )
+    )
+
+    Random.seed!(0)
+    # Large enough that the element-wise operators would thread if asked to.
+    n, ncoils = 64, 4
+
+    # 2D multislice: the subsampling operator is batched over coils and slices.
+    mask2 = rand(Bool, n, n)
+    ksp2 = randn(ComplexF32, count(mask2), ncoils, 3)
+    smaps2 = randn(ComplexF32, n, n, ncoils, 3)
+    acq2 = CartesianAcquisitionInfo(ksp2; is3D = false, image_size = (n, n), subsampling = mask2, sensitivity_maps = smaps2)
+
+    # 3D, subsampled over ky-kz: the shifted DFT's sign alternations fold into the maps.
+    mask3 = rand(Bool, n, n)
+    ksp3 = randn(ComplexF32, n, count(mask3), ncoils)
+    smaps3 = randn(ComplexF32, n, n, n, ncoils)
+    acq3 = CartesianAcquisitionInfo(ksp3; is3D = true, image_size = (n, n, n), subsampling = (:, mask3), sensitivity_maps = smaps3)
+
+    for acq in (acq2, acq3)
+        @test isempty(threaded_parts(get_subsampling_operator(acq; threaded = false)))
+        @test !isempty(threaded_parts(get_subsampling_operator(acq)))
+        A = get_encoding_operator(acq; threaded = false, fast_planning = true)
+        @test isempty(threaded_parts(A))
+        x = randn(ComplexF32, size(A, 2))
+        @test A * x ≈ get_encoding_operator(acq; threaded = true, fast_planning = true) * x
+    end
+end

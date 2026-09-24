@@ -206,6 +206,6 @@ function Base.show(io::IO, ::MIME"text/plain", info::NonCartesianAcquisitionInfo
     return nothing
 end
 
-function get_subsampling_operator(::NonCartesianAcquisitionInfo)
+function get_subsampling_operator(::NonCartesianAcquisitionInfo; threaded::Bool = true)
     error("Subsampling operator is not applicable to non-Cartesian trajectories")
 end
