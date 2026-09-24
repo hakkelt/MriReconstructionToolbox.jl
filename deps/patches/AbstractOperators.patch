@@ -37,10 +37,10 @@ index 19f6080..6e93c88 100644
      codomain_type,
      check,
 diff --git a/deps/AbstractOperators/FFTWOperators/src/FFTWOperators.jl b/deps/AbstractOperators/FFTWOperators/src/FFTWOperators.jl
-index 1026f68..9799986 100644
+index fd2546a..f21a74b 100644
 --- a/deps/AbstractOperators/FFTWOperators/src/FFTWOperators.jl
 +++ b/deps/AbstractOperators/FFTWOperators/src/FFTWOperators.jl
-@@ -1,18 +1,20 @@
+@@ -1,19 +1,21 @@
  module FFTWOperators
  
 -using AbstractOperators, FFTW, LinearAlgebra
@@ -48,6 +48,7 @@ index 1026f68..9799986 100644
 +using FFTW, LinearAlgebra
  using Base.Cartesian: @ncall
  using Polyester: @batch
+ using FastBroadcast: @..
  import LinearAlgebra: mul!
  import Base: size, ndims
  
