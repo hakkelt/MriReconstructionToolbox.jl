@@ -20,6 +20,22 @@
 #                                        checkout.
 #   --matrix-env=KMP_BLOCKTIME=0,KMP_BLOCKTIME=200   environment variants; `+` joins several
 #                                        assignments into one variant (A=1+B=2). Default: none.
+#
+# Placement:
+#   (default)          isolated: one task per NUMA domain, whatever its thread count. Timings are
+#                      free of any interference between tasks; use this for published numbers and
+#                      whenever memory-bandwidth contention is itself the question.
+#   --pack             several tasks may share a domain, each on its own physical cores (never an
+#                      SMT sibling, never a core another task holds) and with its memory still bound
+#                      to that domain. Cores are taken best-fit, from the fullest L3 group and then
+#                      the fullest domain that still fits, so small tasks fill up the same L3 and
+#                      domain and leave the others free for large ones. Packed tasks share L3 and
+#                      memory bandwidth with their neighbours, so their results get a node class of
+#                      their own (MRT_BENCH_PLACEMENT=shared, see node_class in utils/harness.jl) and
+#                      are never reused for, or silently compared with, an isolated run.
+#   --pack-mem-gb=G    memory reserved per packed task (default 6 for the harness, whose tasks peak
+#                      at 4.5 GB; 12 for the comparison suite). A task starts on a domain only while
+#                      the reservations there stay within 90% of its MemTotal.
 # Everything else (--sections=, --cases=, --methods=, --frameworks=, --remeasure, ...) is passed
 # verbatim to every launched Julia process.
 #
@@ -44,9 +60,13 @@ MATRIX_THREADS=(1 2 4 8 16)
 MATRIX_BACKENDS=(openblas mkl)
 MATRIX_REFS=("")
 MATRIX_ENV=("")
+PACK=0
+PACK_MEM_GB=""
 PASS_ARGS=()
 for a in "$@"; do
     case "$a" in
+        --pack) PACK=1 ;;
+        --pack-mem-gb=*) PACK_MEM_GB="${a#*=}" ;;
         --suite=*) SUITE="${a#*=}" ;;
         --matrix-threads=*) IFS=, read -ra MATRIX_THREADS <<<"${a#*=}" ;;
         --matrix-backends=*) IFS=, read -ra MATRIX_BACKENDS <<<"${a#*=}" ;;
@@ -61,6 +81,7 @@ case "$SUITE" in
         PROJECT_DIR="benchmark/comparison"
         SCRIPT_PATH="benchmark/comparison/scripts/run_all.jl"
         RESULTS_DIR="benchmark/comparison/results/runs"
+        : "${PACK_MEM_GB:=12}"
         if [ "${MATRIX_REFS[*]}" != "" ]; then
             echo "### --matrix-refs is only supported by --suite=harness" >&2
             exit 2
@@ -70,6 +91,7 @@ case "$SUITE" in
         PROJECT_DIR="benchmark"
         SCRIPT_PATH="benchmark/run.jl"
         RESULTS_DIR="benchmark/results/runs"
+        : "${PACK_MEM_GB:=6}"
         ;;
     *) echo "### unknown --suite=$SUITE (comparison or harness)" >&2; exit 2 ;;
 esac
@@ -80,10 +102,12 @@ touch "$START_MARKER"
 
 ### ---- 2. NUMA topology discovery (ThreadPinning.jl, never hardcoded) ---------------------------
 
+# Only one CPU thread per physical core is listed: a task is never given an SMT sibling, whose core
+# it would share with another of its own threads.
 mapfile -t NUMA_CORES < <("$JULIA_BIN" --project="$PROJECT_DIR" -e '
     using ThreadPinning
     for i in 1:ThreadPinning.nnuma()
-        println(join(ThreadPinning.numa(i), " "))
+        println(join(filter(!ThreadPinning.ishyperthread, ThreadPinning.numa(i)), " "))
     end')
 N_DOMAINS=${#NUMA_CORES[@]}
 if [ "$N_DOMAINS" -lt 1 ]; then
@@ -98,13 +122,40 @@ for d in "${!NUMA_CORES[@]}"; do
         exit 1
     fi
 done
-echo "### discovered $N_DOMAINS NUMA domains, $(wc -w <<<"${NUMA_CORES[0]}") cores each"
+echo "### discovered $N_DOMAINS NUMA domains, $(wc -w <<<"${NUMA_CORES[0]}") physical cores each"
 
+# Which L3 each core belongs to (the kernel's shared_cpu_list of its last-level cache, used only as
+# a grouping key) and how much memory each domain has, for --pack.
+declare -A L3_OF
+declare -a DOMAIN_MEM_MB DOMAIN_MEM_USED_MB
+for d in "${!NUMA_CORES[@]}"; do
+    for c in ${NUMA_CORES[$d]}; do
+        L3_OF[$c]="$(cat "/sys/devices/system/cpu/cpu$c/cache/index3/shared_cpu_list" 2>/dev/null || echo "domain$d")"
+    done
+    kb=$(awk '/MemTotal/ {print $4}' "/sys/devices/system/node/node$d/meminfo" 2>/dev/null)
+    DOMAIN_MEM_MB[d]=$(( ${kb:-0} / 1024 ))
+    DOMAIN_MEM_USED_MB[d]=0
+done
+PACK_MEM_MB=$(( PACK_MEM_GB * 1024 ))
+if [ "$PACK" = 1 ]; then
+    for d in "${!NUMA_CORES[@]}"; do
+        if [ $(( DOMAIN_MEM_MB[d] * 9 / 10 )) -lt "$PACK_MEM_MB" ]; then
+            echo "### --pack: domain $d has ${DOMAIN_MEM_MB[$d]} MB, less than one ${PACK_MEM_GB} GB reservation, aborting" >&2
+            exit 1
+        fi
+    done
+    echo "### --pack: tasks share domains on disjoint cores, ${PACK_MEM_GB} GB reserved per task, results tagged MRT_BENCH_PLACEMENT=shared"
+    echo "### L3 groups: $(printf '%s\n' "${L3_OF[@]}" | sort -u | wc -l), domain memory: ${DOMAIN_MEM_MB[*]} MB"
+fi
+
+# Refs and environment variants vary fastest, so the variants of one (threads, backend) pair start
+# together on neighbouring domains and see the same node state: a comparison between them is not
+# confounded by drift over the hours the job runs.
 QUEUE=()
-for r in "${!MATRIX_REFS[@]}"; do
-    for e in "${!MATRIX_ENV[@]}"; do
-        for t in "${MATRIX_THREADS[@]}"; do
-            for b in "${MATRIX_BACKENDS[@]}"; do
+for t in "${MATRIX_THREADS[@]}"; do
+    for b in "${MATRIX_BACKENDS[@]}"; do
+        for e in "${!MATRIX_ENV[@]}"; do
+            for r in "${!MATRIX_REFS[@]}"; do
                 QUEUE+=("$t:$b:$r:$e")
             done
         done
@@ -114,16 +165,77 @@ echo "### suite $SUITE, queue: ${QUEUE[*]}"
 echo "### refs: ${MATRIX_REFS[*]:-<this checkout>}  env variants: ${MATRIX_ENV[*]:-<none>}"
 echo "### pass-through args: ${PASS_ARGS[*]:-<none>}"
 
-### ---- 3. Scheduler: one task per NUMA domain, enforced via numactl ----------------------------
+### ---- 3. Scheduler: tasks on disjoint cores of one NUMA domain, enforced via numactl -----------
+#
+# Isolated (default): a task needs a domain nobody else holds. --pack: a task needs `threads` free
+# cores of one domain plus a memory reservation there. Either way no core is ever held twice.
 
-declare -a DOMAIN_BUSY
-for ((d = 0; d < N_DOMAINS; d++)); do DOMAIN_BUSY[d]=0; done
+declare -A CORE_BUSY    # core id -> 1 while a task holds it
 declare -A PID_DOMAIN   # background pid -> domain id
+declare -A PID_CORES    # background pid -> its cores, space separated
 
-launch_task() {  # threads backend ref_index env_index domain
+free_cores() {  # domain -> its free cores, space separated
+    local c out=()
+    for c in ${NUMA_CORES[$1]}; do [ -z "${CORE_BUSY[$c]:-}" ] && out+=("$c"); done
+    echo "${out[*]}"
+}
+
+pick_cores() {  # domain threads -> the cores to give the task (empty: it does not fit there)
+    local d=$1 t=$2 free n
+    free=($(free_cores "$d"))
+    n=${#free[@]}
+    if [ "$PACK" = 0 ]; then
+        [ "$n" = "$(wc -w <<<"${NUMA_CORES[$d]}")" ] && echo "${free[*]:0:t}"
+        return
+    fi
+    [ "$n" -lt "$t" ] && return
+    [ $(( DOMAIN_MEM_USED_MB[d] + PACK_MEM_MB )) -gt $(( DOMAIN_MEM_MB[d] * 9 / 10 )) ] && return
+    # Best fit over L3 groups: the group with the fewest free cores that still holds all t threads.
+    local key best="" best_n=1000000 c
+    declare -A group_n=()
+    for c in "${free[@]}"; do key=${L3_OF[$c]}; group_n[$key]=$(( ${group_n[$key]:-0} + 1 )); done
+    for key in "${!group_n[@]}"; do
+        if [ "${group_n[$key]}" -ge "$t" ] && [ "${group_n[$key]}" -lt "$best_n" ]; then
+            best=$key; best_n=${group_n[$key]}
+        fi
+    done
+    local out=()
+    if [ -n "$best" ]; then
+        for c in "${free[@]}"; do [ "${L3_OF[$c]}" = "$best" ] && out+=("$c"); done
+    else
+        out=("${free[@]}")   # no single L3 fits: spans several, but stays within the domain
+    fi
+    echo "${out[*]:0:t}"
+}
+
+pick_domain() {  # threads -> "domain cores..." (empty: nothing fits now)
+    local t=$1 d cores best="" best_free=1000000 nfree
+    for ((d = 0; d < N_DOMAINS; d++)); do
+        cores=$(pick_cores "$d" "$t")
+        [ -z "$cores" ] && continue
+        [ "$PACK" = 0 ] && { echo "$d $cores"; return; }
+        nfree=$(wc -w <<<"$(free_cores "$d")")
+        [ "$nfree" -lt "$best_free" ] && { best="$d $cores"; best_free=$nfree; }
+    done
+    echo "$best"
+}
+
+reap_finished() {
+    local pid c
+    for pid in "${!PID_DOMAIN[@]}"; do
+        kill -0 "$pid" 2>/dev/null && continue
+        for c in ${PID_CORES[$pid]}; do unset "CORE_BUSY[$c]"; done
+        [ "$PACK" = 1 ] && DOMAIN_MEM_USED_MB[${PID_DOMAIN[$pid]}]=$(( DOMAIN_MEM_USED_MB[${PID_DOMAIN[$pid]}] - PACK_MEM_MB ))
+        unset "PID_DOMAIN[$pid]" "PID_CORES[$pid]"
+    done
+}
+
+launch_task() {  # threads backend ref_index env_index domain cores...
     local threads=$1 backend=$2 r=$3 e=$4 domain=$5
+    shift 5
+    local cores=("$@")
     local pin
-    pin="$(tr ' ' '\n' <<<"${NUMA_CORES[$domain]}" | head -n "$threads" | paste -sd,)"
+    pin="$(tr ' ' ',' <<<"${cores[*]}")"
     local args=(--threads="$threads")
     [ "$backend" = mkl ] && args+=(--use-mkl)
     local tag="${backend}_${threads}t"
@@ -139,6 +251,8 @@ launch_task() {  # threads backend ref_index env_index domain
         args+=(--env-variant="${MATRIX_ENV[$e]}")
     fi
     local log="$LOG_DIR/${tag}_domain${domain}.log"
+    local placement=isolated
+    [ "$PACK" = 1 ] && placement=shared
 
     # A plain background process, not an `srun` step: this SLURM build's step allocator picks the
     # step's cpu set itself (always starting from the lowest free id) before looking at --cpu-bind,
@@ -150,31 +264,28 @@ launch_task() {  # threads backend ref_index env_index domain
     numactl --physcpubind="$pin" --membind="$domain" \
         /usr/bin/time -v \
         env JULIA_NUM_THREADS="$threads" OMP_NUM_THREADS="$threads" OPENBLAS_NUM_THREADS="$threads" \
-            MKL_NUM_THREADS="$threads" "${envs[@]}" \
+            MKL_NUM_THREADS="$threads" MRT_BENCH_PLACEMENT="$placement" "${envs[@]}" \
         "$JULIA_BIN" --project="$PROJECT_DIR" -t "$threads" "$SCRIPT_PATH" \
             "${args[@]}" "${PASS_ARGS[@]}" \
         >"$log" 2>&1 &
     PID_DOMAIN[$!]=$domain
-    DOMAIN_BUSY[$domain]=1
-    echo "### launched $tag on domain $domain (cores $pin), pid $! -> $log"
-}
-
-next_free_domain() {
-    for ((d = 0; d < N_DOMAINS; d++)); do
-        [ "${DOMAIN_BUSY[$d]}" = 0 ] && { echo "$d"; return; }
-    done
-    echo -1
+    PID_CORES[$!]="${cores[*]}"
+    local c
+    for c in "${cores[@]}"; do CORE_BUSY[$c]=1; done
+    [ "$PACK" = 1 ] && DOMAIN_MEM_USED_MB[domain]=$(( DOMAIN_MEM_USED_MB[domain] + PACK_MEM_MB ))
+    echo "### launched $tag on domain $domain (cores $pin, $placement), pid $! -> $log"
 }
 
 for cfg in "${QUEUE[@]}"; do
     IFS=: read -r threads backend r e <<<"$cfg"
-    while [ "$(next_free_domain)" = -1 ]; do
+    while true; do
+        slot=$(pick_domain "$threads")
+        [ -n "$slot" ] && break
         wait -n
-        for pid in "${!PID_DOMAIN[@]}"; do
-            kill -0 "$pid" 2>/dev/null || { DOMAIN_BUSY[${PID_DOMAIN[$pid]}]=0; unset "PID_DOMAIN[$pid]"; }
-        done
+        reap_finished
     done
-    launch_task "$threads" "$backend" "$r" "$e" "$(next_free_domain)"
+    # shellcheck disable=SC2086  # "domain core core ..." splits into the positional arguments
+    launch_task "$threads" "$backend" "$r" "$e" $slot
 done
 wait
 
