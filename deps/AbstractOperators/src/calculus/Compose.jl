@@ -84,7 +84,7 @@ struct Compose{N, M, L <: Tuple, T <: Tuple} <: AbstractOperator
                         # tuple and drops one buffer too many for a triple combination.
                         buf = (
                             buf[1:(i - 1)]...,
-                            allocate_in_codomain(new_op),
+                            _pooled_codomain_buffer(new_op),
                             buf[(i + 1):end]...,
                         )
                     end
@@ -148,7 +148,7 @@ function Compose(L1::AbstractOperator, L2::AbstractOperator)
         eltype(x) == codomain_type(L2)
     new_buf_pos = findfirst(compatible_bufs, available_bufs)
     new_buf =
-        new_buf_pos === nothing ? allocate_in_codomain(L2) : available_bufs[new_buf_pos]
+        new_buf_pos === nothing ? _pooled_codomain_buffer(L2) : available_bufs[new_buf_pos]
     return Compose(L1, L2, new_buf)
 end
 
