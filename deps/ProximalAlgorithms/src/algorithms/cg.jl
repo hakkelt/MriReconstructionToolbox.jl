@@ -311,9 +311,13 @@ caller runs the solve at serial BLAS by default (`NestedThreading.with_thread_de
 
 Level-1 BLAS is memory-bound, so threading it pays only for large vectors: measured on an
 AMD EPYC 7352 at 8 threads, serial over threaded was 0.76–1.38x at 8 MiB, 1.13–1.35x at
-16 MiB and 1.66x at 64 MiB. MKL gains from about 8 MiB and OpenBLAS from about 16 MiB, which
-are the defaults. Only the vector updates are granted, never `mul!(Ap, A, p)`: the operator
-may run on Julia's own threads, which idle BLAS workers would compete with.
+16 MiB and 1.66x at 64 MiB. That is in isolation. Inside a solve, only MKL keeps the gain,
+from about 8 MiB, which is its default. OpenBLAS's workers either spin after each update, taking
+cores from the operator that runs next, or are parked and re-created on every step. A 16 MiB
+CG iterate granted at every step made a whole solve 1.5x slower (AMD EPYC 7763, 8 threads), so
+OpenBLAS is never granted by default. Only the vector updates are granted, never
+`mul!(Ap, A, p)`: the operator may run on Julia's own threads, which idle BLAS workers would
+compete with.
 """
 const CG_BLAS_THREAD_BYTES = Ref(0)
 
@@ -326,8 +330,7 @@ function _grants_level1(x)
 	bytes = CG_BLAS_THREAD_BYTES[]
 	bytes > 0 && return sizeof(x) >= bytes
 	sizeof(x) < 8 * _MIB && return false
-	mkl = any(lib -> occursin("mkl", lib.libname), BLAS.get_config().loaded_libs)
-	return sizeof(x) >= (mkl ? 8 : 16) * _MIB
+	return any(lib -> occursin("mkl", lib.libname), BLAS.get_config().loaded_libs)
 end
 
 # Run `f()`, a CG step's vector updates, under a BLAS grant when the iterate is large enough
