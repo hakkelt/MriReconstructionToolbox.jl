@@ -133,9 +133,12 @@ using Random
         blas = BLAS.get_num_threads()
         old = PA.CG_BLAS_THREAD_BYTES[]
         try
-            # Defaults: nothing this small is granted, and non-BLAS storage never is.
+            # Defaults: nothing this small is granted, non-BLAS storage never is, and a large
+            # iterate only on MKL.
             @test !PA._grants_level1(x0)
             @test !PA._grants_level1(zeros(BigFloat, 2^21))
+            mkl = any(lib -> occursin("mkl", lib.libname), BLAS.get_config().loaded_libs)
+            @test PA._grants_level1(zeros(2^21)) == mkl
             PA.CG_BLAS_THREAD_BYTES[] = sizeof(x0)
             @test PA._grants_level1(x0)
             @test !PA._grants_level1(zeros(n - 1))
