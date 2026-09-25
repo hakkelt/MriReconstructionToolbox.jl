@@ -244,3 +244,52 @@ end
         @test smooth_parse[2][:f] isa SO_M.SqrNormL2WithNormalOp
     end
 end
+
+@testset "solver selection builds nothing" begin
+    Random.seed!(250)
+    xs = Variable(5)
+    As = randn(20, 5)
+    bs = randn(20)
+    # Tall and fusing: the smooth formulation of this term is the normal-operator one.
+    p_ls = problem(ls(As * xs - bs))
+    p_lasso = problem(ls(As * xs - bs), 0.1 * norm(xs, 1))
+    solvers = (ProximalAlgorithms.CG(), ProximalAlgorithms.CGNR(), FastForwardBackward())
+
+    # `select_solver` is the solver `solve(p, solvers)` runs: CG needs a square operator, so
+    # the least-squares problem goes to CGNR; the ℓ1 term rules out both Krylov solvers.
+    @test SO_M.select_solver(p_ls, solvers) isa typeof(ProximalAlgorithms.CGNR())
+    @test SO_M.select_solver(p_lasso, solvers) isa typeof(FastForwardBackward())
+    @test SO_M.select_solver(p_lasso, solvers[1:2]) === nothing
+
+    # A dry run leaves the normal operator unbuilt, and parses exactly as a real run does.
+    op = MatrixOp(As)
+    f = ProximalOperators.SqrNormL2()
+    @test SO_M.merge_function_with_operator(op, f, 0, 1) isa SO_M.SqrNormL2WithNormalOp
+    @test SO_M._dry_run(() -> SO_M.merge_function_with_operator(op, f, 0, 1)) === f
+    for s in (solvers..., ProximalAlgorithms.PANOCplus())
+        real_parse = SO_M.parse_problem(p_lasso, s)
+        dry_parse = SO_M._dry_run(() -> SO_M.parse_problem(p_lasso, s))
+        @test (real_parse === nothing) == (dry_parse === nothing)
+        real_parse === nothing || @test Set(keys(real_parse[2])) == Set(keys(dry_parse[2]))
+    end
+
+    # A tuple solves with the selected solver.
+    ~xs .= 0
+    solve(p_lasso, solvers; maxit = 50)
+    x_tuple = copy(~xs)
+    ~xs .= 0
+    solve(p_lasso, FastForwardBackward(); maxit = 50)
+    @test ~xs == x_tuple
+
+    # A least-squares slot that asks for AᴴA is handed the one the parser built; one that does
+    # not ask gets none, and none is built for it.
+    vars = SO_M.extract_variables(p_ls)
+    term = only(collect(p_ls))
+    with_aha = ProximalAlgorithms.LeastSquaresTerm(:A => (SO_M.is_linear,), :b, :AHA)
+    without_aha = ProximalAlgorithms.LeastSquaresTerm(:A => (SO_M.is_linear,), :b)
+    prepared = Dict(SO_M.prepare(term, with_aha, vars)...)
+    @test prepared[:AHA] isa AbstractOperators.AbstractOperator
+    @test prepared[:AHA] * ones(5) ≈ As' * (As * ones(5))
+    @test !haskey(Dict(SO_M.prepare(term, without_aha, vars)...), :AHA)
+    @test !haskey(Dict(SO_M._dry_run(() -> SO_M.prepare(term, with_aha, vars))...), :AHA)
+end

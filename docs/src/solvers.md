@@ -48,8 +48,13 @@ directly:
 
 ```@docs
 suggest_algorithm
+select_solver
 StructuredOptimization.print_diagnostics
 ```
+
+Passing a tuple of solvers runs the first one the problem parses into, the one
+[`select_solver`](@ref) names. Only that solver's inputs are built: choosing it parses the
+problem without forming any normal operator or factorization.
 
 As a rule of thumb:
 
