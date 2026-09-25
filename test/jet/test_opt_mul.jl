@@ -85,12 +85,6 @@
     @test_opt target_modules = (AO,) mul!(y2, Axt_mul_Bx(MatrixOp(M), MatrixOp(M)), x2)
     @test_opt target_modules = (AO,) mul!(y2, Ax_mul_Bxt(MatrixOp(M), MatrixOp(M)), x2)
 
-    # MyLinOp: custom linear operator (identity)
-    let my_op = MyLinOp(Float64, (n,), Float64, (n,), (yy, xx) -> (yy .= xx), (yy, xx) -> (yy .= xx))
-        @test_opt target_modules = (AO,) mul!(y, my_op, x)
-        @test_opt target_modules = (AO,) mul!(y, AdjointOperator(my_op), x)
-    end
-
     # SpreadingBatchOp (single-threaded): ℝ^(2×3×4) → ℝ^(2×3×4)
     @test_opt target_modules = (AO,) mul!(
         zeros(2, 3, 4),

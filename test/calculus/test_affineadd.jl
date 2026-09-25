@@ -41,20 +41,17 @@ end
 
 @testitem "displacement inside a combination is still computed" tags = [:calculus, :AffineAdd] setup = [TestUtils] begin
     using AbstractOperators
-    # `is_linear` holds for all of these, yet each has a nonzero displacement.
+    # None of these is linear, and each has a nonzero displacement.
     A = MatrixOp(randn(3, 4))
     d = randn(3)
     T = AffineAdd(A, d)
     B = MatrixOp(randn(4, 2))
-    @test is_linear(T * B)
+    @test !is_linear(T * B) && is_affine(T * B)
     @test displacement(T * B) ≈ d
     E = MatrixOp(ones(2, 3))
     @test displacement(E * T) ≈ E * d
     @test displacement(VCAT(T, MatrixOp(randn(2, 4)))) ≈ ArrayPartition(d, zeros(2))
     @test displacement(2.0 * T) ≈ 2 .* d
-    # A user function wrapped as a linear operator is not trusted to map zero to zero.
-    M = MyLinOp(Float64, (2,), (2,), (y, x) -> (y .= x .+ 1), (y, x) -> (y .= x))
-    @test displacement(M) == 1.0
 end
 
 @testitem "AffineAdd: nonlinear and permute" tags = [:calculus, :AffineAdd] setup = [TestUtils] begin

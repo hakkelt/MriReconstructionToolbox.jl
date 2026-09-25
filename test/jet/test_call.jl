@@ -22,11 +22,6 @@
     @test_call target_modules = (AO,) Zeros(Float64, (n,), Float64, (n,))
     @test_call target_modules = (AO,) MatrixOp(M)
     @test_call target_modules = (AO,) LMatrixOp(randn(n), n)
-    @test_call target_modules = (AO,) MyLinOp(
-        Float64, (n,), Float64, (n,),
-        (yy, xx) -> (yy .= xx),
-        (yy, xx) -> (yy .= xx),
-    )
 
     # Calculus / composition operators
     @test_call target_modules = (AO,) Compose(Eye(n), DiagOp(d))

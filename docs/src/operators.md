@@ -11,7 +11,6 @@ DiagOp
 GetIndex
 MatrixOp
 LMatrixOp
-MyLinOp
 ```
 
 ## Structured Matrix Embeddings

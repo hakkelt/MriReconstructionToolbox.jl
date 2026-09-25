@@ -216,9 +216,10 @@ end
 @testitem "remove_slicing error path first not sliced" tags = [:calculus, :Compose] setup = [TestUtils] begin
     using Random, AbstractOperators
     Random.seed!(0)
-    op1 = MyLinOp(Float64, (3,), Float64, (3,), (y, x) -> (y .= x), (y, x) -> (y .= x))
-    op2 = MatrixOp(randn(2, 3))
-    L = AbstractOperators.Compose((op1, op2), (zeros(3),))
+    # Two operators with no combination rule between them, so they stay a `Compose`.
+    op1 = FiniteDiff((3,))
+    op2 = MatrixOp(randn(2, 2))
+    L = AbstractOperators.Compose((op1, op2), (zeros(2),))
     @test_throws ArgumentError AbstractOperators.remove_slicing(L)
 end
 

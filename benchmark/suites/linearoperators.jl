@@ -3,19 +3,6 @@
 # Standalone: julia --project=benchmark benchmark/suites/linearoperators.jl
 isdefined(Main, :BENCH_COMMON_LOADED) || include(joinpath(@__DIR__, "..", "bench_common.jl"))
 
-function mylinop_state()
-    rng = make_rng()
-    scale = randn(rng, BENCH_LINEAR_MYLIN_N)
-    op = MyLinOp(
-        Float64,
-        (BENCH_LINEAR_MYLIN_N,),
-        (BENCH_LINEAR_MYLIN_N,),
-        (out, inp) -> (@. out = scale * inp),
-        (out, inp) -> (@. out = scale * inp),
-    )
-    return linear_state(op)
-end
-
 function lbfgs_update_state()
     rng = make_rng()
     x = randn(rng, BENCH_LINEAR_LBFGS_N)
@@ -82,10 +69,6 @@ linear["Zeros"]["forward"] = @benchmarkable mul!(state.y, state.op, state.x) set
 linear["LMatrixOp"] = BenchmarkGroup()
 linear["LMatrixOp"]["forward"] = @benchmarkable mul!(state.y, state.op, state.x) setup = (rng = make_rng(); state = linear_state(LMatrixOp(randn(rng, BENCH_LINEAR_LMATRIX_N), BENCH_LINEAR_LMATRIX_N)))
 linear["LMatrixOp"]["adjoint"] = @benchmarkable mul!(state.z, state.adj, state.y) setup = (rng = make_rng(); state = linear_state(LMatrixOp(randn(rng, BENCH_LINEAR_LMATRIX_N), BENCH_LINEAR_LMATRIX_N)))
-
-linear["MyLinOp"] = BenchmarkGroup()
-linear["MyLinOp"]["forward"] = @benchmarkable mul!(state.y, state.op, state.x) setup = (state = mylinop_state())
-linear["MyLinOp"]["adjoint"] = @benchmarkable mul!(state.z, state.adj, state.y) setup = (state = mylinop_state())
 
 linear["LBFGS"] = BenchmarkGroup()
 linear["LBFGS"]["update"] = @benchmarkable update!(state.op, state.x, state.x_prev, state.grad, state.grad_prev) setup = (state = lbfgs_update_state())

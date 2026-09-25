@@ -161,23 +161,13 @@ function LinearAlgebra.mul!(
 end
 ```
 
-## Using MyLinOp for Quick Prototyping
+## Subtyping `LinearOperator` is a promise
 
-For quick prototyping without defining a new struct, you can use the built-in [`MyLinOp`](@ref) constructor:
-
-```julia
-n, m = 5, 4
-A = randn(n, m)
-
-# Define operator with just the forward and adjoint functions
-op = MyLinOp(
-    Float64,           # domain type
-    (m,),              # input dimensions
-    (n,),              # output dimensions
-    (y, x) -> mul!(y, A, x),      # forward function
-    (y, x) -> mul!(y, A', x)      # adjoint function
-)
-```
+A subtype of `LinearOperator` is taken to be linear, `L * 0 = 0` included: [`is_linear`](@ref)
+is `true` for it, and code that needs a linear operator relies on that without checking — its
+[`displacement`](@ref) is zero without `L` being applied, and it may be adjoined, composed into
+a normal operator, or combined linearly. An operator that adds a constant is not linear; build
+it as `AffineAdd(L, d)` around a linear `L`, which [`is_affine`](@ref) reports as affine.
 
 ## Mandatory Functions Summary
 

@@ -21,7 +21,8 @@ julia> [Eye(10); FiniteDiff((10,))]'
 struct AdjointOperator{T <: AbstractOperator} <: AbstractOperator
     A::T
     function AdjointOperator(A::T) where {T <: AbstractOperator}
-        is_linear(A) == false &&
+        # The adjoint of an affine operator is the adjoint of its linear part.
+        is_affine(A) == false &&
             error("Cannot transpose a nonlinear operator. You might use `jacobian`")
         return new{T}(A)
     end
@@ -53,7 +54,7 @@ is_thread_safe(L::AdjointOperator) = is_thread_safe(L.A)
 
 fun_name(L::AdjointOperator) = fun_name(L.A) * "ᵃ"
 
-is_linear(L::AdjointOperator) = is_linear(L.A)
+is_linear(L::AdjointOperator) = is_affine(L.A)
 is_null(L::AdjointOperator) = is_null(L.A)
 is_eye(L::AdjointOperator) = is_eye(L.A)
 is_diagonal(L::AdjointOperator) = is_diagonal(L.A)
@@ -69,7 +70,6 @@ diag_AcA(L::AdjointOperator) = diag_AAc(L.A)
 diag_AAc(L::AdjointOperator) = diag_AcA(L.A)
 
 _children(L::AdjointOperator) = (L.A,)
-displacement(L::AdjointOperator) = _combined_displacement(L, (L.A,))
 is_threaded(L::AdjointOperator) = _is_threaded_from_children(L)
 supports_threading(L::AdjointOperator) = _supports_threading_from_children(L)
 
