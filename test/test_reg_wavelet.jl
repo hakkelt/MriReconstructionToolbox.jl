@@ -156,3 +156,18 @@ end
         @test result ≈ manual_result
     end
 end
+
+@testitem "L1 wavelet operators follow threaded" tags = [:regularization] setup = [RegTestSetup] begin
+    using MriReconstructionToolbox: AbstractOperators
+    # Large enough for the transform to thread when it is allowed to.
+    for (reg, x) in (
+            (L1Wavelet2D(0.1; levels = 2), randn(ComplexF32, 512, 512)),
+            (L1Wavelet3D(0.1; levels = 2), randn(ComplexF32, 64, 64, 64)),
+        )
+        serial = get_operator(reg, x; threaded = false)
+        threaded = get_operator(reg, x; threaded = true)
+        @test !AbstractOperators.is_threaded(serial)
+        @test AbstractOperators.is_threaded(threaded) == (Threads.nthreads() > 1)
+        @test threaded * x == serial * x
+    end
+end

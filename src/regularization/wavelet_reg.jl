@@ -28,12 +28,12 @@ function get_operator(reg::L1Wavelet2D, x::AbstractArray{T}; threaded::Bool = tr
             ceil(Int, img_2D_size[1] / divisions) * divisions,
             ceil(Int, img_2D_size[2] / divisions) * divisions,
         )
-        𝒲 = WaveletOp(T, wavelet(reg.wavelet), padded_size, reg.levels)
+        𝒲 = WaveletOp(T, wavelet(reg.wavelet), padded_size, reg.levels; threaded)
         x_view = view(x, :, :, fill(1, ndims(x) - 2)...)
         𝒵 = ZeroPad(x_view, padded_size .- img_2D_size)
         𝒲 = 𝒲 * 𝒵
     else
-        𝒲 = WaveletOp(T, wavelet(reg.wavelet), img_2D_size, reg.levels)
+        𝒲 = WaveletOp(T, wavelet(reg.wavelet), img_2D_size, reg.levels; threaded)
     end
     if ndims(x) > 2
         𝒲 = BatchOp(𝒲, size(x)[3:end]; threaded)
@@ -85,12 +85,12 @@ function get_operator(reg::L1Wavelet3D, x::AbstractArray{T}; threaded::Bool = tr
             ceil(Int, img_3D_size[2] / divisions) * divisions,
             ceil(Int, img_3D_size[3] / divisions) * divisions,
         )
-        𝒲 = WaveletOp(T, wavelet(reg.wavelet), padded_size, reg.levels)
+        𝒲 = WaveletOp(T, wavelet(reg.wavelet), padded_size, reg.levels; threaded)
         x_view = view(x, :, :, :, fill(1, ndims(x) - 3)...)
         𝒵 = ZeroPad(x_view, padded_size .- img_3D_size)
         𝒲 = 𝒲 * 𝒵
     else
-        𝒲 = WaveletOp(T, wavelet(reg.wavelet), img_3D_size, reg.levels)
+        𝒲 = WaveletOp(T, wavelet(reg.wavelet), img_3D_size, reg.levels; threaded)
     end
     if ndims(x) > 3
         𝒲 = BatchOp(𝒲, size(x)[4:end]; threaded)
