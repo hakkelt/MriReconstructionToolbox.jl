@@ -142,8 +142,10 @@ function permute(T::AffineAdd{L, D, S}, p::AbstractVector{Int}) where {L, D, S}
     return AffineAdd(A, T.d, S)
 end
 
-displacement(A::AffineAdd{L, D, true}) where {L, D} = A.d .+ displacement(A.A)
-displacement(A::AffineAdd{L, D, false}) where {L, D} = -A.d .+ displacement(A.A)
+# Around a linear operator the displacement is `d` itself, returned without a copy: like the
+# displacement stored in the operator, it is read-only.
+displacement(A::AffineAdd{L, D, true}) where {L, D} = is_linear(A.A) ? A.d : A.d .+ displacement(A.A)
+displacement(A::AffineAdd{L, D, false}) where {L, D} = is_linear(A.A) ? -A.d : -A.d .+ displacement(A.A)
 
 remove_displacement(A::AffineAdd) = remove_displacement(A.A)
 
