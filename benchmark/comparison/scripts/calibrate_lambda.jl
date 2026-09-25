@@ -65,7 +65,7 @@ end
     sweep(c, method) -> Dict(toolkit => [(λ, nrmse), ...])
 """
 function sweep(c::BenchCase, method::Symbol)
-    λc = DEFAULT_LAMBDA[method]
+    λc = default_lambda(c, method)
     ngrid = c.heavy ? NGRID_HEAVY : NGRID
     curves = Dict{String, Vector{Tuple{Float64, Float64}}}()
     tks = [:mrt; [tk for tk in COMPETITORS if supports(tk, c, method) && should_run_framework(framework_label(tk))]]

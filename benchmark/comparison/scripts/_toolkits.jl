@@ -28,7 +28,9 @@ const CMP_WAVELET_NAME = get(ENV, "CMP_WAVELET_NAME", "db2")
 # --- shared knobs ---------------------------------------------------------------------------
 # The effort knobs are BenchUtils' (benchmark/utils/mrt_methods.jl), so MRT's rows here and the MRT
 # harness run the same solve. Fixed ADMM penalty used by every toolkit's ADMM path, so ρ is not a
-# hidden degree of freedom.
+# hidden degree of freedom. MRT's own rows take `admm_rho(c)` instead: relative to `‖𝒜‖²`, and
+# `RADIAL_ADMM_RHO` on radial cases, where the competitors' absolute value is the same number in
+# different units.
 const CMP_RHO = ADMM_RHO
 # Outer iterations are capped at CMP_OUTER (20 is plenty for these 2D problems); inner CG at
 # CMP_CG_ITERS (10). MRT, MRIReco and SigPy all run the full budget — `tol = 0` genuinely means

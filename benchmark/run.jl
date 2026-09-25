@@ -186,7 +186,7 @@ for id in IDS
         runs = something(RUNS, timed_runs(c))
         row = Dict{String, Any}(
             "case" => id, "method" => string(m), "framework" => "MRT", "runs" => runs, "warmup" => WARMUP,
-            "lambda" => get(DEFAULT_LAMBDA, m, 0.0), "source" => c.source, "real" => c.real,
+            "lambda" => default_lambda(c, m), "source" => c.source, "real" => c.real,
         )
         try
             f = mrt_reconstructor(c, m)

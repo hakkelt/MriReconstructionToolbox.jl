@@ -152,7 +152,7 @@ own result. A competitor that throws is logged and dropped from the row.
 function run_method_rows!(
         section::AbstractString, c::BenchCase, method::Symbol;
         maxit::Int = default_maxit(method), toolkits = COMPETITORS,
-        λ_default::Real = get(DEFAULT_LAMBDA, method, 0.0),
+        λ_default::Real = default_lambda(c, method),
     )
     label = method_label(method, maxit)
     should_run(c.id, label) || should_run(section, label) || return nothing

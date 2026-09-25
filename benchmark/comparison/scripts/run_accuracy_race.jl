@@ -85,7 +85,7 @@ end
 
 for c in section_cases(_ -> true), method in race_methods(c)
     should_run(c.id, METHOD_LABEL[method]) || should_run("Accuracy race", METHOD_LABEL[method]) || continue
-    λ_default = DEFAULT_LAMBDA[method]
+    λ_default = default_lambda(c, method)
     mrt_run = mrt_race_run(c, method, load_lambda(c, method, "MRT", λ_default))
     target = load_race_target(c, method, NaN)
     if isnan(target)
