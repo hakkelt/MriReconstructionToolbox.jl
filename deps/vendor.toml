@@ -262,6 +262,14 @@ branch = "perf/linear-displacement"
 parent = "feat/affine-operator"
 pr = ""
 
+# Runs of pointwise operators in a `Compose` (diagonals, masks, broadcasts and their adjoints,
+# the DFT's normalization) execute as one loop. Its threaded loop parks Polyester's workers
+# first, which `perf/threads-native-kernels` introduced, so it is stacked on that branch.
+[[AbstractOperators.stack]]
+branch = "perf/fused-pointwise"
+parent = "perf/threads-native-kernels"
+pr = ""
+
 # The 2-D and 3-D filter-bank wavelet transforms split each stage's lines across threads.
 [[AbstractOperators.stack]]
 branch = "perf/wavelet-threads"
