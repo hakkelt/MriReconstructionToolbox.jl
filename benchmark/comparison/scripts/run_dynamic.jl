@@ -3,10 +3,12 @@
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_dynamic.jl --threads=N [--use-mkl] [--data=synthetic|real|all]
 #
 # SigPy and MIRT have no stock low-rank MRI app, but both take an arbitrary prox, so they join the
-# **global** low-rank row through `sigpy_lowrank` / `mirt_lowrank` — a nuclear norm on the Casorati
+# **global** low-rank row through `sigpy_dynamic` / `mirt_lowrank` — a nuclear norm on the Casorati
 # matrix is all that row is. Neither joins LLR (block extraction and cycle spinning are conventions
-# the harness would be inventing) nor temporal TV. MRIReco joins the two low-rank rows through
-# `mrireco_dynamic` (frames as contrasts); it cannot express temporal TV — see that docstring.
+# the harness would be inventing). SigPy also joins temporal TV, with its own finite difference and
+# L1 prox; MIRT ships neither. MRIReco joins the two low-rank rows through `mrireco_dynamic` (frames
+# as contrasts); it cannot express temporal TV — see that docstring. Every row runs on both the
+# Cartesian and the radial cine.
 #
 # ## Three BART `-R L` flags this section needs, all established by measurement
 #

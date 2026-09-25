@@ -151,8 +151,69 @@ proxgrad_budget(outer::Int) = outer * (CMP_CG_ITERS + 1)
 
 # --- MRIReco (Julia) ------------------------------------------------------------------------
 # `MRIBase` accepts a 6D `(x, y, z, channel, echo, rep)` k-space array directly (`enc2D` for a
-# 2D encode); unsampled entries must be zero. `ksp3` is the Julia `(nx, ny, coil)` layout.
-_mrireco_acq(ksp3) = AcquisitionData(reshape(CMP_CTYPE.(ksp3), size(ksp3, 1), size(ksp3, 2), 1, size(ksp3, 3), 1, 1); enc2D = true)
+# 2D encode, a 3D encode otherwise); unsampled entries must be zero, and each echo's sampling
+# pattern is read from its own nonzero samples. `ksp` is the Julia `(nx, ny, coil)` or
+# `(nx, ny, nz, coil)` layout.
+function _mrireco_acq(ksp)
+    ndims(ksp) == 3 || return AcquisitionData(reshape(CMP_CTYPE.(ksp), size(ksp)..., 1, 1))
+    return AcquisitionData(reshape(CMP_CTYPE.(ksp), size(ksp, 1), size(ksp, 2), 1, size(ksp, 3), 1, 1); enc2D = true)
+end
+
+# A zero-filled `(nx, ny, time, coil)` cine stack, the frames as echoes (see `mrireco_dynamic`).
+function _mrireco_cine_acq(ksp4)
+    nx, ny, nt, ncoil = size(ksp4)
+    ksp6 = zeros(CMP_CTYPE, nx, ny, 1, ncoil, nt, 1)
+    for t in 1:nt
+        ksp6[:, :, 1, :, t, 1] .= CMP_CTYPE.(@view ksp4[:, :, t, :])
+    end
+    return AcquisitionData(ksp6; enc2D = true)
+end
+
+"""
+    _mrireco_nc_acq(c) -> AcquisitionData
+
+A non-Cartesian case on its own trajectory (`MRIBase.Trajectory` from the `(2, sample, spoke)`
+nodes), a cine's frames as echoes on the shared trajectory. `circular = false` although the
+trajectory is radial: a circular trajectory makes `reconstruction` zero the image outside the
+inscribed circle after the solve (`circularShutter!`, `IterativeReconstruction.jl:72,244`), a
+post-processing step no other toolkit here applies. `encodingSize` is given explicitly because the
+constructor otherwise infers the encoding dimension from the trajectory vector (1).
+"""
+function _mrireco_nc_acq(c::BenchCase)
+    ns, nsp = size(c.traj, 2), size(c.traj, 3)
+    nc = ncoils(c)
+    nt = c.family === :cine ? size(c.kspace, 4) : 1
+    tr = MRIReco.Trajectory(Float32.(reshape(c.traj, 2, :)), nsp, ns; circular = false)
+    frame(t) = c.family === :cine ? c.kspace[:, :, :, t] : c.kspace
+    kdata = [reshape(CMP_CTYPE.(frame(t)), ns * nsp, nc) for t in 1:nt, _ in 1:1, _ in 1:1]
+    return AcquisitionData(fill(tr, nt), kdata; encodingSize = c.image_size)
+end
+
+# Sensitivity maps as MRIReco takes them: `(x, y, 1, coil)` in 2D, `(x, y, z, coil)` in 3D.
+_mrireco_maps(smaps, reconSize) =
+    reshape(CMP_CTYPE.(smaps), reconSize..., ntuple(_ -> 1, 3 - length(reconSize))..., size(smaps, ndims(smaps)))
+
+# A single-contrast `reconstruction` result `(x, y, z or slice, echo, coil, rep)` as a
+# `reconSize` image; any further trailing axis (frames, coils) follows it.
+_mrireco_image(img, reconSize, rest...) = reshape(Array{ComplexF64}(img), reconSize..., rest...)
+
+"""
+    MRIRECO_UNWEIGHTED
+
+Parameters every MRIReco iterative row passes: `densityWeighting = false`.
+
+MRIReco's iterative reconstructions weight the data term by `W = WeightingOp(samplingDensity)`
+(`IterativeReconstruction.jl:233,309`). On a Cartesian acquisition that density is the uniform
+`1/√N`, but on a non-Cartesian one it is the square root of an iterative density compensation
+(`MRIBase` `samplingDensity`, `sdc(plan, iters = 10)`), so the solve minimises the density-weighted
+`½‖W(Ax - y)‖²` rather than the `½‖Ax - y‖²` MRT, BART and SigPy minimise: a different problem,
+whose CG is also preconditioned by `W`. Measured on the small radial phantom at 10 iterations,
+weighted CG-SENSE reaches NRMSE 0.348 and unweighted 0.412, against MRT's 0.420. With
+`densityWeighting = false` MRIReco uses the uniform `1/√N` for every trajectory
+(`RecoParameters.jl:94-102`), the same weights as its Cartesian path, so every MRIReco row solves the
+unweighted problem up to a constant factor, which λ and ρ absorb.
+"""
+const MRIRECO_UNWEIGHTED = (; densityWeighting = false)
 
 """
     _mrireco_normal_operator(acq, senseMaps, reconSize) -> AHA
@@ -172,9 +233,11 @@ function _mrireco_normal_operator(acq, senseMaps, reconSize)
 end
 
 """
-    mrireco(method, ksp3, smaps3, reconSize; λ, iterations, ρ) -> (time_ms, image)
+    mrireco(method, mkacq, smaps, reconSize; λ, iterations, ρ) -> (time_ms, image)
 
-`method ∈ (:cgsense, :tv, :wavelet, :nuclear, :llr)`. TGV / temporal-TV are unsupported (throw).
+A static (2D or 3D) reconstruction of the acquisition `mkacq()` builds, with maps `smaps`
+(`(x, y, [z,] coil)`). `method ∈ (:cgsense, :tv, :wavelet, :nuclear, :llr)`. TGV / temporal-TV are
+unsupported (throw). The acquisition is built inside the timed region, as `reconstruction`'s input.
 Runs with `vary_rho = :none`, `iterationsCG = CMP_CG_ITERS` and zero tolerances so the full
 iteration budget is spent (`RegularizedLeastSquares.filterKwargs` drops the keys a given solver
 does not accept, so the same kwargs are safe for CGNR / ADMM / FISTA).
@@ -186,7 +249,7 @@ for why it is not passed as a constant. For the ADMM rows `ρ` is a fixed penalt
 size: the case's calibrated one (`load_rho`) or `CMP_RHO`, so nothing is estimated there.
 """
 function mrireco(
-        method::Symbol, ksp3, smaps3, reconSize; λ = 0.0, iterations = 10,
+        method::Symbol, mkacq, smaps, reconSize; λ = 0.0, iterations = 10,
         ρ::Union{Real, Nothing} = method === :wavelet ? nothing : CMP_RHO
     )
     # `regTrafo` stays `opEye` for everything except TV — see the TV branch.
@@ -216,32 +279,35 @@ function mrireco(
     else
         error("MRIReco has no $method")
     end
-    senseMaps = reshape(CMP_CTYPE.(smaps3), reconSize..., 1, size(smaps3, 3))
+    senseMaps = _mrireco_maps(smaps, reconSize)
     # A separate `AcquisitionData` on purpose: the timed closure builds its own (as every other
     # row does), so this one costs the row nothing.
-    AHA = ρ === nothing ? _mrireco_normal_operator(_mrireco_acq(ksp3), senseMaps, reconSize) : nothing
+    AHA = ρ === nothing ? _mrireco_normal_operator(mkacq(), senseMaps, reconSize) : nothing
     t, _, img = time_reconstruction() do
         rp = Dict{Symbol, Any}(
             :reco => "multiCoil", :reconSize => reconSize, :senseMaps => senseMaps,
             :solver => solver, :reg => reg, :iterations => iterations,
             :rho => AHA === nothing ? ρ : 0.95 / RLS.power_iterations(AHA),
             :vary_rho => :none, :iterationsCG => CMP_CG_ITERS,
-            :absTol => 0.0, :relTol => 0.0, :tolInner => CMP_TOL_INNER,
+            :absTol => 0.0, :relTol => 0.0, :tolInner => CMP_TOL_INNER, pairs(MRIRECO_UNWEIGHTED)...,
         )
         sparse !== nothing && (rp[:sparseTrafo] = sparse)
         regTrafo !== nothing && (rp[:regTrafo] = regTrafo)
         with_mrireco_blas() do
-            MRIReco.reconstruction(_mrireco_acq(ksp3), rp)[:, :, 1, 1, 1]
+            MRIReco.reconstruction(mkacq(), rp)
         end
     end
-    return t * 1000, Array{ComplexF64}(img)
+    return t * 1000, _mrireco_image(img, reconSize)
 end
 
 """
-    mrireco_dynamic(method, ksp4, smaps3, reconSize; λ, iterations) -> (time_ms, image)
+    mrireco_dynamic(method, acq, smaps3, reconSize, nt; λ, iterations, ρ) -> (time_ms, image)
 
-Dynamic (2D+t) reconstruction with MRIReco. `method ∈ (:lowrank, :llr)`; `ksp4` is the zero-filled
-`(nx, ny, time, coil)` k-space.
+Dynamic (2D+t) reconstruction with MRIReco of `acq`, a cine with its `nt` frames as echoes
+(`_mrireco_cine_acq` or `_mrireco_nc_acq`). `method ∈ (:adjoint, :gridding, :cgsense, :lowrank,
+:llr)`: the first two are the `direct` reconstruction of every frame with the conjugate-sensitivity
+combination (see `mrireco_direct`), CG-SENSE is CGNR on the joint system of all frames, as MRT and
+BART solve it. Returns `(nx, ny, nt)`.
 
 The frames are handed to MRIReco as **contrasts (echoes)**, not repetitions, and the solve goes
 through `reco = "multiCoilMultiEcho"` — `reconstruction_multiCoil` loops over repetitions and slices
@@ -265,34 +331,31 @@ frames, so a time-difference operator over the `(nx, ny, n_frames)` volume simpl
 throws `LinearOperatorException("shape mismatch")`.
 """
 function mrireco_dynamic(
-        method::Symbol, ksp4, smaps3, reconSize; λ = 0.0, iterations = 10, ρ = CMP_RHO
+        method::Symbol, acq, smaps3, reconSize, nt; λ = 0.0, iterations = 10, ρ = CMP_RHO
     )
-    nx, ny, nt, ncoil = size(ksp4)
-    reg = if method === :lowrank
-        RLS.NuclearRegularization(λ; svtShape = (prod(reconSize), nt))
+    method in (:adjoint, :gridding) && return mrireco_direct(acq, smaps3, reconSize; frames = nt)
+    solver, reg = if method === :cgsense
+        MR_CGNR, L2Regularization(0.0)
+    elseif method === :lowrank
+        MR_ADMM, RLS.NuclearRegularization(λ; svtShape = (prod(reconSize), nt))
     elseif method === :llr
-        RLS.LLRRegularization(λ; shape = (reconSize..., nt), blockSize = (8, 8, nt))
+        MR_ADMM, RLS.LLRRegularization(λ; shape = (reconSize..., nt), blockSize = (8, 8, nt))
     else
         error("MRIReco has no dynamic $method here (see the docstring on temporal TV)")
     end
-    ksp6 = zeros(CMP_CTYPE, nx, ny, 1, ncoil, nt, 1)
-    for t in 1:nt
-        ksp6[:, :, 1, :, t, 1] .= CMP_CTYPE.(@view ksp4[:, :, t, :])
-    end
-    acq = AcquisitionData(ksp6; enc2D = true)
-    senseMaps = reshape(CMP_CTYPE.(smaps3), reconSize..., 1, ncoil)
+    senseMaps = _mrireco_maps(smaps3, reconSize)
     t, _, img = time_reconstruction() do
         rp = Dict{Symbol, Any}(
             :reco => "multiCoilMultiEcho", :reconSize => reconSize, :senseMaps => senseMaps,
-            :solver => MR_ADMM, :reg => reg, :iterations => iterations, :rho => ρ,
+            :solver => solver, :reg => reg, :iterations => iterations, :rho => ρ,
             :vary_rho => :none, :iterationsCG => CMP_CG_ITERS,
-            :absTol => 0.0, :relTol => 0.0, :tolInner => CMP_TOL_INNER,
+            :absTol => 0.0, :relTol => 0.0, :tolInner => CMP_TOL_INNER, pairs(MRIRECO_UNWEIGHTED)...,
         )
         with_mrireco_blas() do
             MRIReco.reconstruction(acq, rp)
         end
     end
-    return t * 1000, reshape(Array{ComplexF64}(img), reconSize..., nt)
+    return t * 1000, _mrireco_image(img, reconSize, nt)
 end
 
 # --- SigPy (Python) ------------------------------------------------------------------------
@@ -338,45 +401,110 @@ end
 # MIRT is Fessler's toolbox and is shaped differently from the other three: it ships system
 # objects (`Asense`, `Anufft`) and generic solvers (`ncg`, `pogm_restart`) rather than
 # reconstruction "apps", so each row is assembled here out of those pieces. That is the intended
-# use, and it is why MIRT appears only in the rows whose functional needs no calibrated λ:
+# use:
 #
 #   * `Asense` builds the Cartesian SENSE operator from a Boolean sampling mask, with `odim`
-#     `(count(samp), ncoil)` — the samples in linear index order, one column per coil.
+#     `(count(samp), ncoil)` — the samples in linear index order, one column per coil. The
+#     non-Cartesian one is `Anufft` composed with the maps (`_mirt_sense_nufft`).
 #   * CG-SENSE is `ncg` on `f(v) = ½‖v - y‖²` with `B = [A]`, whose MM line search reduces to
 #     linear CG for this quadratic, so the iteration count means the same thing as everywhere else.
 #   * `Asense` is not unitary by default, which leaves a global factor on the result; every row
 #     here is scored with `mag_nrmse`, which normalises it away.
 #
-# L1-wavelet and TV are deliberately absent: MIRT would need its own entry in
-# `lambda_calibration.json` for the comparison to stay at matched accuracy.
+# L1-wavelet and TV are absent because MIRT ships no prox for either; one written here would be
+# this file's, not MIRT's.
 const MIRT = ComparisonHarness.MIRT
 
-_mirt_samp(ksp3) = dropdims(any(!iszero, ksp3; dims = 3); dims = 3)
-_mirt_y(ksp3, samp) = reduce(hcat, [ComplexF32.(ksp3[:, :, c])[samp] for c in axes(ksp3, 3)])
+const LinearMapAA = MIRT.LinearMapAA
+
+# The sampling pattern of a zero-filled `(nx, ny, [nz,] coil)` k-space, and its samples in the
+# `(count(samp), ncoil)` layout `Asense` produces.
+_mirt_samp(ksp) = dropdims(any(!iszero, ksp; dims = ndims(ksp)); dims = ndims(ksp))
+_mirt_y(ksp, samp) = reduce(hcat, [ComplexF32.(selectdim(ksp, ndims(ksp), c))[samp] for c in axes(ksp, ndims(ksp))])
 
 """
-    mirt_system(ksp3, smaps3) -> (A, y)
+    mirt_system(ksp, smaps) -> (A, y)
 
-`Asense` for the sampling pattern implied by the zero-filled `ksp3` (nx, ny, coil), plus the
-sampled data in the layout that operator produces.
+`Asense` for the sampling pattern implied by the zero-filled `ksp` (`(nx, ny, [nz,] coil)`), plus
+the sampled data in the layout that operator produces.
 """
-function mirt_system(ksp3, smaps3)
-    samp = _mirt_samp(ksp3)
-    A = MIRT.Asense(samp, ComplexF32.(smaps3))
-    return A, _mirt_y(ksp3, samp)
+function mirt_system(ksp, smaps)
+    samp = _mirt_samp(ksp)
+    A = MIRT.Asense(samp, ComplexF32.(smaps))
+    return A, _mirt_y(ksp, samp)
 end
 
 """
-    mirt_recon(method, ksp3, smaps3; iterations) -> (time_ms, image)
+    mirt_system(c::BenchCase) -> (A, y)
 
-`method ∈ (:adjoint, :cgsense)`; anything else throws so the caller drops the row.
+The SENSE system of a single-slice, volume or cine case as one `LinearMapAA` and its data:
+
+  * Cartesian: `Asense`, one per frame for a cine, since each frame has its own sampling pattern;
+  * non-Cartesian: `Anufft` on the trajectory composed with the maps (`_mirt_sense_nufft`), the
+    same operator for every frame, as the frames share the trajectory.
+
+A cine's frames are stacked into one block-diagonal operator over `(nx, ny, time)`
+(`_mirt_frames`), so that its CG-SENSE is one CG over all frames, as MRT and BART solve it.
 """
-function mirt_recon(method::Symbol, ksp3, smaps3; iterations::Int = 10)
-    A, y = mirt_system(ksp3, smaps3)
+function mirt_system(c::BenchCase)
+    if c.trajectory === :cartesian
+        c.family === :cine || return mirt_system(c.kspace, c.family === :volume ? c.smaps : cart_maps(c))
+        frames = [mirt_system(c.kspace[:, :, :, t], c.smaps) for t in axes(c.kspace, 4)]
+        return _mirt_frames(first.(frames)), reduce(vcat, vec.(last.(frames)))
+    end
+    A = _mirt_sense_nufft(reshape(c.traj, 2, :), c.smaps, c.image_size)
+    c.family === :cine || return A, ComplexF32.(reshape(c.kspace, :, ncoils(c)))
+    return _mirt_frames(fill(A, size(c.kspace, 4))), ComplexF32.(vec(c.kspace))
+end
+
+# MRT's `(dim, k)` trajectory in cycles/sample as MIRT's `(k, dim)` in radians. Kept in Float64 and
+# clamped: a radial trajectory reaches ±0.5 exactly, and `Float32(2π * 0.5)` rounds just above π,
+# which `nufft_init`'s `pi_error` check rejects. `n_shift` centres the image the way every other
+# toolkit here does.
+function _mirt_nufft(traj, image_size)
+    ω = clamp.(2π .* permutedims(Float64.(Array(traj)), (2, 1)), -π, π)
+    return MIRT.Anufft(ω, image_size; n_shift = collect(image_size) ./ 2)
+end
+
+"""
+    _mirt_sense_nufft(traj, smaps3, image_size) -> LinearMapAA
+
+Non-Cartesian SENSE out of MIRT's pieces: `Anufft` applied to each coil image `sᶜ ⊙ x`, output
+`(sample, coil)`. MIRT ships no non-Cartesian SENSE object, but a `LinearMapAA` of a forward and an
+adjoint function is how its system models are composed.
+"""
+function _mirt_sense_nufft(traj, smaps3, image_size)
+    F = _mirt_nufft(traj, image_size)
+    s = ComplexF32.(Array(smaps3))
+    nc = size(s, 3)
+    M = size(traj, 2)
+    forw = x -> reduce(hcat, [F * (x .* @view s[:, :, j]) for j in 1:nc])
+    back = y -> sum(j -> (F' * y[:, j]) .* conj.(@view s[:, :, j]), 1:nc)
+    return LinearMapAA(forw, back, (M * nc, prod(image_size)); idim = Tuple(image_size), odim = (M, nc), T = ComplexF32)
+end
+
+# The block-diagonal operator of per-frame operators `ops` over `(idim..., frame)`, its output the
+# frames' outputs concatenated as one vector.
+function _mirt_frames(ops)
+    idim = ops[1]._idim
+    offs = cumsum([0; [prod(A._odim) for A in ops]])
+    frame(x, t) = copy(selectdim(x, length(idim) + 1, t))
+    forw = x -> reduce(vcat, [vec(ops[t] * frame(x, t)) for t in eachindex(ops)])
+    back = y -> stack([ops[t]' * reshape(y[(offs[t] + 1):offs[t + 1]], ops[t]._odim) for t in eachindex(ops)])
+    return LinearMapAA(forw, back, (offs[end], prod(idim) * length(ops)); idim = (idim..., length(ops)), odim = (offs[end],), T = ComplexF32)
+end
+
+"""
+    mirt_recon(method, A, y; iterations) -> (time_ms, image)
+
+`method ∈ (:adjoint, :cgsense)` on the system `A` (a `LinearMapAA`, see `mirt_system`) and data
+`y`; anything else throws so the caller drops the row. The image has `A`'s input shape.
+"""
+function mirt_recon(method::Symbol, A, y; iterations::Int = 10)
     f = if method === :adjoint
         () -> A' * y
     elseif method === :cgsense
-        x0 = zeros(ComplexF32, size(smaps3, 1), size(smaps3, 2))
+        x0 = zeros(ComplexF32, A._idim)
         () -> first(MIRT.ncg([A], [v -> v - y], [v -> 1.0f0], x0; niter = iterations))
     else
         error("MIRT has no $method here")
@@ -386,29 +514,27 @@ function mirt_recon(method::Symbol, ksp3, smaps3; iterations::Int = 10)
 end
 
 """
-    mirt_gridding(kdata, traj, dcf, smaps3, image_size) -> (time_ms, image)
+    mirt_gridding(c) -> (time_ms, image)
 
-Density-compensated non-Cartesian adjoint: `Anufft` per coil, weighted by `dcf`, combined with
-the conjugate sensitivities. `traj` is MRT's `(dim, k)` trajectory in cycles/sample, which MIRT
-wants in radians; `n_shift` centres the image the way every other toolkit here does.
+Density-compensated non-Cartesian adjoint of case `c`: `Anufft` per coil (and frame), weighted by
+the case's `dcf`, combined with the conjugate sensitivities.
 """
-function mirt_gridding(kdata, traj, dcf, smaps3, image_size)
-    # (M, D), radians. Kept in Float64 and clamped: a radial trajectory reaches ±0.5 exactly, and
-    # `Float32(2π * 0.5)` rounds just above π, which `nufft_init`'s `pi_error` check rejects.
-    ω = clamp.(2π .* permutedims(Float64.(Array(traj)), (2, 1)), -π, π)
-    A = MIRT.Anufft(ω, image_size; n_shift = collect(image_size) ./ 2)
-    w = Float32.(vec(Array(dcf)))
-    kd = ComplexF32.(Array(kdata))
-    smap = ComplexF32.(Array(smaps3))
+function mirt_gridding(c::BenchCase)
+    A = _mirt_nufft(reshape(c.traj, 2, :), c.image_size)
+    w = Float32.(vec(c.dcf))
+    nc = ncoils(c)
+    nt = c.family === :cine ? size(c.kspace, 4) : 1
+    kd = ComplexF32.(reshape(c.kspace, :, nc, nt))
+    smap = ComplexF32.(c.smaps)
     function grid()
-        acc = zeros(ComplexF32, image_size)
-        for c in axes(kd, 2)
-            acc .+= (A' * (w .* @view kd[:, c])) .* conj.(@view smap[:, :, c])
+        acc = zeros(ComplexF32, c.image_size..., nt)
+        for t in 1:nt, j in 1:nc
+            acc[:, :, t] .+= (A' * (w .* @view kd[:, j, t])) .* conj.(@view smap[:, :, j])
         end
         return acc
     end
     t, _, img = time_reconstruction(grid)
-    return t * 1000, Array{ComplexF64}(img)
+    return t * 1000, Array{ComplexF64}(nt == 1 ? img[:, :, 1] : img)
 end
 
 # --- global low-rank in SigPy and MIRT ----------------------------------------------------------
@@ -446,33 +572,70 @@ class _MrtSVT(sp.prox.Prox):
 """
 
 """
-    sigpy_lowrank(ksp4, smaps3, image_size; λ, iterations) -> (time_ms, image)
+    _sp_cine_system(c) -> (A, y, ishape)
 
-Global low-rank reconstruction of a zero-filled `(nx, ny, time, coil)` frame stack, through
-`sigpy.app.LinearLeastSquares` on `sigpy.mri.linop.Sense` with the Casorati SVT prox above.
-The solver settings match the other SigPy rows (`ADMM`, `rho = ρ`, `max_cg_iter =
-CMP_CG_ITERS`). Returns the image as `(nx, ny, time)`.
+The SENSE system of cine case `c` over all frames at once: the image is `(time, 1, y, x)`, the data
+`(time, coil, ky, kx)` for a Cartesian case and `(time, coil, spoke, sample)` for a radial one.
+
+Built from primitives rather than through `sigpy.mri.linop.Sense`, which cannot express a batched
+SENSE operator: given an explicit `ishape` it sets `img_ndim = len(ishape)` and then transforms
+**every** axis, so a `(time, 1, y, x)` image gets Fourier-transformed over time and coil as well.
+Same composition as `Sense` otherwise: `P F S`, `F` the centred FFT over the two image axes or the
+NUFFT on the shared trajectory. `P` is each frame's own sampling mask, read from that frame's
+nonzero samples: the frames of a Cartesian cine are sampled differently, and the union of their
+masks would treat every position another frame sampled as a measured zero.
 """
-function sigpy_lowrank(ksp4, smaps3, image_size; λ = 0.0, iterations = 10, ρ = CMP_RHO)
-    y = parent(permutedims(CMP_CTYPE.(ksp4), (3, 4, 2, 1)))          # (T, coil, ky, kx)
-    mps = parent(permutedims(CMP_CTYPE.(smaps3), (3, 2, 1)))          # (coil, y, x)
-    weights = Float64.(dropdims(sum(abs, y, dims = (1, 2)), dims = (1, 2)) .> 0)
-    T = size(y, 1)
-    ishape = (T, 1, image_size[2], image_size[1])
-    # Built from primitives rather than through `sigpy.mri.linop.Sense`, which cannot express a
-    # batched SENSE operator: given an explicit `ishape` it sets `img_ndim = len(ishape)` and then
-    # transforms **every** axis, so a `(time, 1, y, x)` image gets Fourier-transformed over time and
-    # coil as well. Same composition as `Sense` otherwise — P F S, with the `sqrt(weights)` that
-    # SigPy's own apps apply to the operator and the data alike.
+function _sp_cine_system(c::BenchCase)
+    nx, ny = c.image_size
+    y = parent(permutedims(CMP_CTYPE.(c.kspace), (4, 3, 2, 1)))
+    mps = _sp_s(c.smaps)                                                 # (coil, y, x)
+    ishape = (size(y, 1), 1, ny, nx)
     S = sp.linop.Multiply(collect(ishape), mps)
-    F = sp.linop.FFT(S.oshape, axes = (-2, -1))
-    A = sp.linop.Multiply(F.oshape, sqrt.(weights)) * F * S
-    y = y .* sqrt.(reshape(weights, 1, 1, size(weights)...))
-    prox = py"_MrtSVT"(collect(ishape), λ)
-    app = () -> sp.app.LinearLeastSquares(
-        A, y; proxg = prox, solver = "ADMM", rho = ρ,
-        max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
-    ).run()
+    if c.trajectory === :cartesian
+        mask = Float32.(sum(abs, y; dims = 2) .> 0)                      # (time, 1, ky, kx)
+        A = sp.linop.Multiply(collect(S.oshape), mask) * sp.linop.FFT(S.oshape, axes = (-2, -1)) * S
+        return A, y .* mask, ishape
+    end
+    return sp.linop.NUFFT(S.oshape, _sp_coord(c)) * S, y, ishape
+end
+
+"""
+    sigpy_dynamic(method, c; λ, iterations, ρ) -> (time_ms, image)
+
+Cine reconstruction with SigPy on the joint system of all frames (`_sp_cine_system`), returned as
+`(nx, ny, time)`. `method ∈ (:adjoint, :gridding, :cgsense, :lowrank, :ttv)`:
+
+  * `:adjoint` / `:gridding` apply `Aᴴ`, the latter to the DCF-weighted data;
+  * `:cgsense` is `sigpy.app.LinearLeastSquares` with no prox, i.e. conjugate gradient;
+  * `:lowrank` gives it the Casorati SVT prox above;
+  * `:ttv` is `λ‖D_t x‖₁` with `G = FiniteDifference` along time and an `L1Reg` prox, the same
+    composition `sigpy.mri.app.TotalVariationRecon` builds over the image axes. SigPy's finite
+    difference is circular (`np.roll`), so it also penalises the last frame against the first,
+    which MRT's and BART's temporal TV do not.
+
+The regularized rows use the settings of the other SigPy rows (`ADMM`, `rho = ρ`,
+`max_cg_iter = CMP_CG_ITERS`).
+"""
+function sigpy_dynamic(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = CMP_RHO)
+    A, y, ishape = _sp_cine_system(c)
+    admm = (; solver = "ADMM", rho = ρ, max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false)
+    app = if m === :adjoint
+        () -> A.H(y)
+    elseif m === :gridding
+        yw = y .* reshape(permutedims(c.dcf, (2, 1)), 1, 1, size(c.dcf, 2), size(c.dcf, 1))
+        () -> A.H(yw)
+    elseif m === :cgsense
+        () -> sp.app.LinearLeastSquares(A, y; max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
+    elseif m === :lowrank
+        prox = py"_MrtSVT"(collect(ishape), λ)
+        () -> sp.app.LinearLeastSquares(A, y; proxg = prox, admm...).run()
+    elseif m === :ttv
+        G = sp.linop.FiniteDifference(collect(ishape); axes = (0,))
+        prox = sp.prox.L1Reg(G.oshape, λ)
+        () -> sp.app.LinearLeastSquares(A, y; proxg = prox, G, admm...).run()
+    else
+        error("SigPy has no dynamic $m here")
+    end
     t, _, raw = time_reconstruction(app)
     x = dropdims(Array{ComplexF64}(raw), dims = 2)                     # (T, y, x)
     return t * 1000, permutedims(x, (3, 2, 1))
@@ -504,8 +667,8 @@ NRMSE is 0.0789 with `safety = 1.0` and 0.0789 with `safety = 1.2`, i.e. flat to
 because POGM's step only has to be *valid*, not sharp. Seeded, so the row's accuracy does not
 depend on the random draw.
 """
-function _mirt_lipschitz(A, nx, ny; rtol = 1.0e-4, maxiter = 200, safety = 1.05)
-    v = ComplexF32.(randn(Random.MersenneTwister(0), ComplexF64, nx, ny))
+function _mirt_lipschitz(A; rtol = 1.0e-4, maxiter = 200, safety = 1.05)
+    v = ComplexF32.(randn(Random.MersenneTwister(0), ComplexF64, A._idim))
     v ./= Float32(norm(v))
     λ = 0.0
     for _ in 1:maxiter
@@ -528,30 +691,19 @@ function _svt(x::AbstractArray{<:Complex, 3}, τ::Real)
 end
 
 """
-    mirt_lowrank(ksp4, smaps3; λ, iterations) -> (time_ms, image)
+    mirt_lowrank(A, y; λ, iterations) -> (time_ms, image)
 
-Global low-rank reconstruction with MIRT: one `Asense` for the (frame-independent) sampling
-pattern, POGM with adaptive restart as the solver, and the Casorati SVT as its prox. POGM needs a
-step size rather than the ρ the ADMM rows take; `f_L` comes from [`_mirt_lipschitz`](@ref), which
-is an *upper* bound on `ρ(A'A)` and has to be — see its docstring.
+Global low-rank reconstruction with MIRT on a cine's joint system `A` over `(nx, ny, time)` and its
+data `y` (`mirt_system`): POGM with adaptive restart as the solver, and the Casorati SVT as its
+prox. POGM needs a step size rather than the ρ the ADMM rows take; `f_L` comes from
+[`_mirt_lipschitz`](@ref), which is an *upper* bound on `ρ(A'A)` and has to be — see its docstring.
 
 `iterations` is a proximal-gradient count, so callers pass [`proxgrad_budget`](@ref) of the outer
 count the ADMM rows use, not the outer count itself.
 """
-function mirt_lowrank(ksp4, smaps3; λ = 0.0, iterations = 10)
-    nx, ny, nt, nc = size(ksp4)
-    samp = dropdims(any(!iszero, ksp4; dims = (3, 4)), dims = (3, 4))
-    A = MIRT.Asense(samp, ComplexF32.(smaps3))
-    y = [reduce(hcat, [ComplexF32.(ksp4[:, :, t, c])[samp] for c in 1:nc]) for t in 1:nt]
-
-    x0 = zeros(ComplexF32, nx, ny, nt)
-    f_grad = function (x)
-        g = similar(x)
-        for t in 1:nt
-            g[:, :, t] = A' * (A * x[:, :, t] - y[t])
-        end
-        return g
-    end
+function mirt_lowrank(A, y; λ = 0.0, iterations = 10)
+    x0 = zeros(ComplexF32, A._idim)
+    f_grad = x -> A' * (A * x - y)
     # The SVD runs at the working precision, as SigPy's `_MrtSVT` and MRT's own prox do — promoting
     # to `ComplexF64` here would give MIRT a more accurate prox than the row it is compared against.
     g_prox = (z, c) -> _svt(z, λ * c)
@@ -559,7 +711,7 @@ function mirt_lowrank(ksp4, smaps3; λ = 0.0, iterations = 10)
     # the step size is part of what a solve costs, and MRT pays `estimate_opnorm` in its own timing.
     run = () -> first(
         MIRT.pogm_restart(
-            x0, _ -> 0.0, f_grad, _mirt_lipschitz(A, nx, ny); niter = iterations, g_prox
+            x0, _ -> 0.0, f_grad, _mirt_lipschitz(A); niter = iterations, g_prox
         )
     )
     t, _, img = time_reconstruction(run)
@@ -584,14 +736,21 @@ toolkit_key(tk::Symbol) = tk === :bart ? "BART" : tk === :sigpy ? "SigPy" : tk =
     supports(tk, c::BenchCase, method) -> Bool
 
 Whether toolkit `tk` has a faithful implementation of `method` on case `c` here. A `false` is a
-skip, logged by nothing: it is a property of the toolkit or of this file, not a failure.
+skip, logged by nothing: it is a property of the toolkit or of this file, not a failure. Only the
+methods the case admits (`applicable_methods`) are considered, and every row below covers both
+trajectories of its family.
 
-| toolkit | Cartesian | non-Cartesian |
+| toolkit | static (2D, per slice, 3D) | cine |
 |---|---|---|
-| BART | everything (multislice as a per-slice loop) | gridding, CG-SENSE, TV; cine: low-rank, LLR, temporal TV |
-| SigPy | adjoint, CG-SENSE, TV, L1-wavelet (2D, per slice, 3D); cine: global low-rank | gridding, CG-SENSE, TV (2D) |
-| MRIReco | adjoint, CG-SENSE, TV, L1-wavelet (2D, per slice); cine: global / locally low-rank | gridding, CG-SENSE (2D) |
-| MIRT | adjoint, CG-SENSE (2D multichannel); cine: global low-rank | gridding (2D) |
+| BART | everything | everything |
+| SigPy | adjoint / gridding, CG-SENSE, TV, L1-wavelet | adjoint / gridding, CG-SENSE, global low-rank, temporal TV |
+| MRIReco | adjoint / gridding, CG-SENSE, TV, L1-wavelet | adjoint / gridding, CG-SENSE, global / locally low-rank |
+| MIRT | adjoint / gridding, CG-SENSE | adjoint / gridding, CG-SENSE, global low-rank |
+
+What is absent and why: TGV exists only in BART and MRT. SigPy and MIRT have no locally low-rank
+prox, and building one here would compare this file's block convention rather than the toolkits
+(see the low-rank section). MRIReco applies a regularizer's transform per frame, so it cannot express
+temporal TV (see `mrireco_dynamic`). MIRT ships neither a TV nor a wavelet prox.
 """
 function supports(tk::Symbol, c::BenchCase, m::Symbol)
     m in applicable_methods(c) || return false
@@ -601,17 +760,14 @@ function supports(tk::Symbol, c::BenchCase, m::Symbol)
         cart && return true
         return fam === :cine || m in (:gridding, :cgsense, :tv)
     elseif tk === :sigpy
-        cart && fam === :cine && return m === :lowrank
-        cart && return m in (:adjoint, :cgsense, :tv, :wavelet)
-        return fam === :single_slice && m in (:gridding, :cgsense, :tv)
+        fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank, :ttv)
+        return m in (:adjoint, :gridding, :cgsense, :tv, :wavelet)
     elseif tk === :mrireco
-        cart && fam === :cine && return m in (:lowrank, :llr)
-        cart && fam in (:single_slice, :multislice) && return m in (:adjoint, :cgsense, :tv, :wavelet)
-        return !cart && fam === :single_slice && m in (:gridding, :cgsense)
+        fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank, :llr)
+        return m in (:adjoint, :gridding, :cgsense, :tv, :wavelet)
     elseif tk === :mirt
-        cart && fam === :cine && return m === :lowrank
-        cart && fam === :single_slice && return ncoils(c) > 1 && m in (:adjoint, :cgsense)
-        return !cart && fam === :single_slice && m === :gridding
+        fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank)
+        return m in (:adjoint, :gridding, :cgsense)
     end
     return false
 end
@@ -627,7 +783,7 @@ function uses_admm(tk::Symbol, c::BenchCase, m::Symbol)
     m in (:tv, :tgv, :lowrank, :llr, :ttv) || return false
     tk === :mrt && return true
     tk === :bart && return true
-    tk === :sigpy && return m in (:tv, :lowrank)
+    tk === :sigpy && return m in (:tv, :lowrank, :ttv)
     tk === :mrireco && return m in (:tv, :lowrank, :llr)
     return false
 end
@@ -757,22 +913,17 @@ end
 # ---------------------------------------------------------------- SigPy
 
 function sigpy_run(c::BenchCase, m::Symbol; λ, maxit, ρ = CMP_RHO)
+    c.family === :cine && return sigpy_dynamic(m, c; λ, iterations = maxit, ρ)
     if c.trajectory === :cartesian
         c.family === :multislice && return per_slice((k, s) -> sigpy_recon(m, k, s; λ, iterations = maxit, ρ), c)
-        c.family === :cine && return sigpy_lowrank(cine_stack(c), c.smaps, c.image_size; λ, iterations = maxit, ρ)
         return sigpy_recon(m, c.kspace, c.family === :volume ? c.smaps : cart_maps(c); λ, iterations = maxit, ρ)
     end
     return sigpy_noncartesian(m, c; λ, iterations = maxit, ρ)
 end
 
-"""
-    sigpy_noncartesian(method, c; λ, iterations) -> (time_ms, image)
-
-SigPy's NUFFT path for a single-slice non-Cartesian case: `coord` is `(spoke, sample, 2)` in pixel
-units with the last axis ordered like SigPy's image axes, `(y, x)`. `:gridding` is
-`Sense(mps, coord)ᴴ (dcf · y)`; `:cgsense` and `:tv` are the SigPy apps given `coord`.
-"""
-function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = CMP_RHO)
+# SigPy's `coord` of a non-Cartesian case: `(spoke, sample, 2)` in pixel units, the last axis
+# ordered like SigPy's image axes, `(y, x)`.
+function _sp_coord(c::BenchCase)
     nx, ny = c.image_size
     ns, nsp = size(c.traj, 2), size(c.traj, 3)
     coord = Array{Float64}(undef, nsp, ns, 2)
@@ -780,6 +931,18 @@ function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, 
         coord[j, i, 1] = c.traj[2, i, j] * ny
         coord[j, i, 2] = c.traj[1, i, j] * nx
     end
+    return coord
+end
+
+"""
+    sigpy_noncartesian(method, c; λ, iterations) -> (time_ms, image)
+
+SigPy's NUFFT path for a single-slice non-Cartesian case, on `_sp_coord(c)`. `:gridding` is
+`Sense(mps, coord)ᴴ (dcf · y)`; `:cgsense` and `:tv` are the SigPy apps given `coord`.
+"""
+function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = CMP_RHO)
+    ns, nsp = size(c.traj, 2), size(c.traj, 3)
+    coord = _sp_coord(c)
     y = parent(permutedims(CMP_CTYPE.(c.kspace), (3, 2, 1)))                 # (coil, spoke, sample)
     mps = _sp_s(c.smaps)
     app = if m === :gridding
@@ -804,77 +967,53 @@ end
 # ---------------------------------------------------------------- MRIReco
 
 function mrireco_run(c::BenchCase, m::Symbol; λ, maxit, ρ = CMP_RHO)
-    if c.trajectory === :noncartesian
-        return mrireco_noncartesian(m, c; iterations = maxit)
-    elseif c.family === :cine
-        return mrireco_dynamic(m, cine_stack(c), c.smaps, c.image_size; λ, iterations = maxit, ρ)
+    if c.family === :cine
+        acq = c.trajectory === :cartesian ? _mrireco_cine_acq(cine_stack(c)) : _mrireco_nc_acq(c)
+        return mrireco_dynamic(m, acq, c.smaps, c.image_size, size(c.reference, 3); λ, iterations = maxit, ρ)
     end
     # The FISTA row's `ρ` is its step size, estimated when `nothing` (see `mrireco`).
     ρm = m === :wavelet ? nothing : ρ
-    f = (k, s) -> m === :adjoint ? mrireco_adjoint(k, s) : mrireco(m, k, s, c.image_size; λ, iterations = maxit, ρ = ρm)
+    if c.trajectory === :noncartesian
+        m === :gridding && return mrireco_direct(_mrireco_nc_acq(c), c.smaps, c.image_size)
+        return mrireco(m, () -> _mrireco_nc_acq(c), c.smaps, c.image_size; λ, iterations = maxit, ρ = ρm)
+    end
+    f = function (k, s)
+        m === :adjoint && return mrireco_direct(_mrireco_acq(k), s, c.image_size)
+        return mrireco(m, () -> _mrireco_acq(k), s, c.image_size; λ, iterations = maxit, ρ = ρm)
+    end
     c.family === :multislice && return per_slice(f, c)
-    return f(c.kspace, cart_maps(c))
+    return f(c.kspace, c.family === :volume ? c.smaps : cart_maps(c))
 end
 
 """
-    mrireco_adjoint(ksp3, smaps3) -> (time_ms, image)
+    mrireco_direct(acq, smaps, reconSize; frames = 1) -> (time_ms, image)
 
 MRIReco's `direct` reconstruction (per-coil images) followed by the conjugate-sensitivity coil
-combination, inside the timed region: MRT's direct row includes the sensitivity adjoint.
+combination, inside the timed region: MRT's direct row includes the sensitivity adjoint. On a
+non-Cartesian `acq` this is the gridding row, and `direct` applies MRIReco's own density
+compensation rather than the case's ramp DCF. `frames > 1` is a cine with its frames as echoes,
+returned as `(reconSize..., frames)`.
 """
-function mrireco_adjoint(ksp3, smaps3)
-    nx, ny, nc = size(ksp3)
-    acq = _mrireco_acq(ksp3)
-    s = CMP_CTYPE.(smaps3)
-    rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => (nx, ny), :senseMaps => reshape(s, nx, ny, 1, nc))
+function mrireco_direct(acq, smaps, reconSize; frames::Int = 1)
+    nc = size(smaps, ndims(smaps))
+    s = CMP_CTYPE.(smaps)
+    rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => reconSize, :senseMaps => _mrireco_maps(s, reconSize))
+    # `direct` returns `(x, y, z or slice, echo, coil, rep)`; the maps broadcast over the frames.
+    sb = reshape(s, reconSize..., 1, nc)
     t, _, x = time_reconstruction() do
-        imgs = with_mrireco_blas(() -> MRIReco.reconstruction(acq, rp)[:, :, 1, 1, :])
-        dropdims(sum(imgs .* conj.(s); dims = 3); dims = 3)
+        imgs = with_mrireco_blas(() -> MRIReco.reconstruction(acq, rp))
+        dropdims(sum(reshape(Array(imgs), reconSize..., frames, nc) .* conj.(sb); dims = length(reconSize) + 2); dims = length(reconSize) + 2)
     end
+    x = frames == 1 ? reshape(x, reconSize) : x
     return t * 1000, Array{ComplexF64}(x)
-end
-
-"""
-    mrireco_noncartesian(method, c; iterations) -> (time_ms, image)
-
-MRIReco on the case's own trajectory (`MRIBase.Trajectory` from the `(2, sample, spoke)` nodes,
-`circular = true` as for radial). `:gridding` is its `direct` reconstruction, which applies
-MRIReco's own density compensation, followed by the conjugate-sensitivity combination; `:cgsense`
-is `multiCoil` CGNR, which MRIReco weights by its sampling density.
-"""
-function mrireco_noncartesian(m::Symbol, c::BenchCase; iterations = 10)
-    nx, ny = c.image_size
-    ns, nsp = size(c.traj, 2), size(c.traj, 3)
-    nc = ncoils(c)
-    tr = MRIReco.Trajectory(Float32.(reshape(c.traj, 2, :)), nsp, ns; circular = true)
-    acq = AcquisitionData(tr, fill(reshape(CMP_CTYPE.(c.kspace), ns * nsp, nc), 1, 1, 1))
-    s = CMP_CTYPE.(c.smaps)
-    smap = reshape(s, nx, ny, 1, nc)
-    if m === :gridding
-        rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => (nx, ny), :senseMaps => smap)
-        t, _, x = time_reconstruction() do
-            imgs = with_mrireco_blas(() -> MRIReco.reconstruction(acq, rp)[:, :, 1, 1, :])
-            dropdims(sum(imgs .* conj.(s); dims = 3); dims = 3)
-        end
-        return t * 1000, Array{ComplexF64}(x)
-    elseif m === :cgsense
-        rp = Dict{Symbol, Any}(
-            :reco => "multiCoil", :reconSize => (nx, ny), :senseMaps => smap, :solver => MR_CGNR,
-            :reg => L2Regularization(0.0), :iterations => iterations, :absTol => 0.0, :relTol => 0.0,
-        )
-        t, _, x = time_reconstruction(() -> with_mrireco_blas(() -> MRIReco.reconstruction(acq, rp)[:, :, 1, 1, 1]))
-        return t * 1000, Array{ComplexF64}(x)
-    end
-    error("MRIReco has no non-Cartesian $m here")
 end
 
 # ---------------------------------------------------------------- MIRT
 
 function mirt_run(c::BenchCase, m::Symbol; λ, maxit)
-    c.family === :cine && return mirt_lowrank(cine_stack(c), c.smaps; λ, iterations = proxgrad_budget(maxit))
-    if c.trajectory === :noncartesian
-        nc = ncoils(c)
-        return mirt_gridding(reshape(c.kspace, :, nc), reshape(c.traj, 2, :), vec(c.dcf), c.smaps, c.image_size)
-    end
-    return mirt_recon(m, c.kspace, c.smaps; iterations = maxit)
+    c.family === :multislice && return per_slice((k, s) -> mirt_recon(m, mirt_system(k, s)...; iterations = maxit), c)
+    m === :gridding && return mirt_gridding(c)
+    A, y = mirt_system(c)
+    m === :lowrank && return mirt_lowrank(A, y; λ, iterations = proxgrad_budget(maxit))
+    return mirt_recon(m, A, y; iterations = maxit)
 end
