@@ -16,6 +16,7 @@ import .AbstractOperators:
     domain_type,
     codomain_type,
     is_linear,
+    is_affine,
     is_eye,
     is_null,
     is_diagonal,
@@ -112,6 +113,7 @@ ndoms(L::NamedDimsOp) = ndoms(L.L)
 domain_type(L::NamedDimsOp) = domain_type(L.L)
 codomain_type(L::NamedDimsOp) = codomain_type(L.L)
 is_linear(L::NamedDimsOp) = is_linear(L.L)
+is_affine(L::NamedDimsOp) = is_affine(L.L)
 is_eye(L::NamedDimsOp) = is_eye(L.L)
 is_null(L::NamedDimsOp) = is_null(L.L)
 is_diagonal(L::NamedDimsOp) = is_diagonal(L.L)
