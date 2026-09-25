@@ -587,17 +587,19 @@ function sync(packages)
         # install it from https://github.com/git/git/blob/<matching-tag>/contrib/subtree/git-subtree.sh
         # if it is missing. Using the real command, not a hand-rolled `read-tree --prefix`
         # projection, keeps the split-commit bookkeeping (`git subtree log`, `git subtree split`)
-        # usable on this copy, not just the two trailers replayed from it.
+        # usable on this copy, not just the two trailers replayed from it. A package vendored for
+        # the first time has no subtree to pull into yet, so it is added instead.
+        first_time = !isdir(joinpath(ROOT, pkg.prefix))
         here(
             "subtree",
-            "pull",
+            first_time ? "add" : "pull",
             "--prefix",
             pkg.prefix,
             pkg.fork,
             "integration",
             "--squash",
             "-m",
-            "chore($(pkg.name)): re-vendor integration",
+            "chore($(pkg.name)): $(first_time ? "vendor" : "re-vendor") integration",
         )
         # The subtree pull brings the whole upstream tree; MRT keeps only what it compiles.
         if !isempty(pkg.prune)
