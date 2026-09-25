@@ -71,6 +71,9 @@ function _iterative_reconstruct_core(
         R_type = real(eltype(_first_x0(x₀_or_x₀s)))
         Lf = should_estimate_L ? R_type(_n_vars(vars) * L^2) : nothing
         algorithm = patch_algorithm_with_default_values(selected_algorithm, Lf; eltype_real = R_type)
+        algorithm = _scale_admm_penalty(
+            algorithm, 𝒜, x₀_or_x₀s, acq_data, L, method, config; eltype_real = R_type,
+        )
         # Only add `hook` to the keyword set when a callback was actually supplied: leaving it out
         # keeps the algorithm's `hook` field `Nothing`-typed, and `ProximalAlgorithms._run_hook`
         # then compiles to nothing at all inside the iteration loop.
@@ -382,6 +385,59 @@ function _warm_start_scale_proxy(𝒜, x̂::AbstractArray, config)
     end
     return ρ
 end
+
+"""
+	_scale_admm_penalty(algorithm, 𝒜, x₀, acq_data, L, method, config; eltype_real) -> algorithm
+
+Make a penalty `ρ` given to ADMM relative to the curvature `‖𝒜‖²` of the data term.
+
+ADMM's `x`-update solves `(𝒜'𝒜 + ρ B'B) x = …`, so `ρ` only means something next to `‖𝒜‖²`.
+That is about 1 for a Cartesian encoding and about 2·10⁶ for a radial NFFT one, and a penalty
+that is fine for the first is then seven orders of magnitude too small for the second: `ρ/‖𝒜‖²`
+falls below `Float32` rounding and the proximal steps never reach `x`, so the result stops
+depending on `λ` at all. Multiplying the penalty by `‖𝒜‖²` makes a given `rho` mean the same
+thing for every encoding.
+
+Solving the normalized problem `𝒜/‖𝒜‖`, `y/‖𝒜‖` instead is the same thing in other coordinates:
+with `BartScaling` recomputed on the normalized data it has the same effective `λ`, and its
+fixed-`ρ` iterates are these. Measured on radial cine (low rank, locally low rank; 17, 34 and 68
+spokes) and on 2D radial and Cartesian TV, 20 iterations, the two agree to four digits of NRMSE
+at every `λ`, so the cheaper of the two is the one kept.
+
+Both a fixed `rho` and the initial `rho` of a `penalty_sequence` are scaled. ADMM's default
+adaptive sequence is left to start from 1: it reaches the scale of the problem on its own, and
+starting it from `‖𝒜‖²` measured no better on the same cases.
+
+`‖𝒜‖²` is `L²` when the operator norm was estimated, else the Rayleigh quotient of `𝒜'𝒜` at the
+warm start ([`_warm_start_scale_proxy`](@ref)), or at `𝒜'y` when the warm start is zero. An
+explicit `disable_operator_normalization = true` leaves the penalty as given.
+"""
+_scale_admm_penalty(algorithm, 𝒜, x₀, acq_data, L, method, config; eltype_real) = algorithm
+
+function _scale_admm_penalty(
+        algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.ADMMIteration},
+        𝒜, x₀, acq_data, L, method::IterativeReconstruction, config; eltype_real,
+    )
+    method.disable_operator_normalization === true && return algorithm
+    kwargs = algorithm.kwargs
+    given = haskey(kwargs, :rho) ||
+        (haskey(kwargs, :penalty_sequence) && !isnothing(kwargs[:penalty_sequence].rho))
+    given || return algorithm
+    s = eltype_real(isnothing(L) ? _admm_curvature(𝒜, x₀, acq_data, config) : L^2)
+    if haskey(kwargs, :rho)
+        return ProximalAlgorithms.override_parameters(algorithm; rho = kwargs[:rho] .* s)
+    end
+    ps = kwargs[:penalty_sequence]
+    scaled = ProximalAlgorithms.reinstantiate_penalty_sequence(ps, eltype_real, ps.rho .* s)
+    return ProximalAlgorithms.override_parameters(algorithm; penalty_sequence = scaled)
+end
+
+function _admm_curvature(𝒜, x₀::AbstractArray, acq_data, config)
+    v = iszero(x₀) ? 𝒜' * _measurement(acq_data.kspace_data) : x₀
+    return _warm_start_scale_proxy(𝒜, v, config)
+end
+_admm_curvature(𝒜, x₀s::Tuple, acq_data, config) =
+    _warm_start_scale_proxy(𝒜, 𝒜' * _measurement(acq_data.kspace_data), config)
 
 # `‖𝒜‖`, for use as `Lf = n‖𝒜‖²` and/or to scale-correct the default warm start.
 #

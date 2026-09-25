@@ -268,6 +268,10 @@ where:
   - `SpectralRadiusApproximationPenalty(rho; tau=10.0)`: adaptive penalty sequence based on spectral radius approximation [4]
   Note: rho can be specified either as the `rho` parameter or within the penalty sequence constructor, but not both.
 
+In `reconstruct`, a `rho` given either way is relative to the curvature $\|\mathcal{A}\|^2$ of
+the data term and is multiplied by it before the solve, so the same value means the same thing for
+a Cartesian and a radial encoding; see [Operator norm, step size and λ](@ref).
+
 The adaptive penalty parameter schemes are implemented through the penalty sequence types, 
 following various strategies from the literature. See the individual penalty sequence types 
 for their specific update rules and references.
