@@ -18,7 +18,7 @@ import LinearAlgebra: mul!
 import Base: size, ndims, @lock
 import Base.Threads: @spawn, nthreads
 
-import OperatorCore:
+import ..OperatorCore:
     is_linear,
     is_affine,
     is_eye,

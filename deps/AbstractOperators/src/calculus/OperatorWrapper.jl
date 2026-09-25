@@ -97,7 +97,7 @@ domain_array_type(::OperatorWrapper{Op, DB, CB, DS, CS}) where {Op, DB, CB, DS, 
 codomain_array_type(::OperatorWrapper{Op, DB, CB, DS, CS}) where {Op, DB, CB, DS, CS} = CS
 
 # Forward all predicates to the wrapped operator.
-import OperatorCore:
+import ..OperatorCore:
     is_linear, is_affine, is_eye, is_null, is_diagonal,
     is_AcA_diagonal, is_AAc_diagonal, diag_AcA, diag_AAc,
     is_orthogonal, is_invertible, is_full_row_rank, is_full_column_rank,

@@ -23,7 +23,7 @@ import ..AbstractOperators:
     _copy_operator_impl,
     _elementwise_threaded,
     @budgeted_threads
-import OperatorCore:
+import ..OperatorCore:
     is_AcA_diagonal,
     is_AAc_diagonal,
     diag_AcA,

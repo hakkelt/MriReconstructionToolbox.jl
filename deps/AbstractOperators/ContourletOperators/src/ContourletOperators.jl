@@ -10,7 +10,7 @@ import Base: size
 import ..AbstractOperators:
     domain_type, codomain_type, domain_array_type, codomain_array_type,
     fun_name, is_thread_safe, _normalize_array_type
-import OperatorCore: is_invertible
+import ..OperatorCore: is_invertible
 
 _threading_policy(threaded::Bool) = threaded ? Enabled() : Disabled()
 
