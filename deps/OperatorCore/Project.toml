@@ -1,0 +1,7 @@
+name = "OperatorCore"
+uuid = "3945cd23-d97e-4db0-9df2-35342dbd287d"
+authors = ["Tamas Hakkel <hakkelt@gmail.com>"]
+version = "0.1.2"
+
+[compat]
+julia = "1"
