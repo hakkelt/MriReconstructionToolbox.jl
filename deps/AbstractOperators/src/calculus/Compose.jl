@@ -297,28 +297,32 @@ end
 diag(L::Compose) = is_sliced(L) ? diag(L.A[2]) : prod(diag.(L.A))
 
 """
-Exact `‖R ∘ L‖` for an adjacent pair of factors whose composed norm is known in closed form and
-strictly better than the submultiplicative product `opnorm_bound(R) * opnorm_bound(L)`, or
-`nothing` when the pair is not one of those.
+A certified upper bound on `‖R ∘ L‖` for an adjacent pair of factors whose composed norm has a
+closed form strictly better than the submultiplicative product `opnorm_bound(R) * opnorm_bound(L)`,
+or `nothing` when the pair is not one of those.
 
-The pair that matters is a `DiagOp` on top of a replicating `BroadCast`; its method lives in
-`calculus/BroadCast.jl`, which is included after this file.
+The pairs that matter put a replicating `BroadCast` under a `DiagOp`, or under a `SpreadingBatchOp`
+whose blocks start with one; their methods live in `calculus/BroadCast.jl`, which is included
+after this file.
 """
 _fused_pair_opnorm(L, R) = nothing
 
 """
 An upper bound on `‖L‖` by submultiplicativity over the factors, tightened wherever two adjacent
-factors have an exactly known composed norm that beats their product (see `_fused_pair_opnorm`).
+factors have a closed-form composed bound that beats their product (see `_fused_pair_opnorm`).
 """
-function opnorm_bound(L::Compose)
+opnorm_bound(L::Compose) = _chain_opnorm_bound(L.A)
+
+# The bound of `factors[end] ∘ ⋯ ∘ factors[1]`, the factors given in application order.
+function _chain_opnorm_bound(factors::Tuple)
     bound = 1.0
     i = 1
-    n = length(L.A)
+    n = length(factors)
     while i <= n
-        # `L.A` is stored in application order, so `L.A[i]` feeds `L.A[i + 1]`.
-        pair = i < n ? _fused_pair_opnorm(L.A[i], L.A[i + 1]) : nothing
+        # `factors[i]` feeds `factors[i + 1]`.
+        pair = i < n ? _fused_pair_opnorm(factors[i], factors[i + 1]) : nothing
         if pair === nothing
-            bound *= opnorm_bound(L.A[i])
+            bound *= opnorm_bound(factors[i])
             i += 1
         else
             bound *= pair

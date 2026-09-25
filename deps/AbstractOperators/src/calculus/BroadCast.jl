@@ -133,7 +133,7 @@ end
 # the same in both settings. See `threading_policy.jl` for the policy note.
 function _copy_flat!(_y, _x)
     @inbounds for k in axes(_y, 2)
-        copyto!(view(_y, :, k), _x)
+        copyto!(_y, (k - 1) * length(_x) + 1, _x, 1, length(_x))
     end
     return _y
 end
@@ -146,7 +146,7 @@ function _copy_flat_threaded!(_y, _x)
         k, j = fldmod1(t, per_copy)
         lo, hi = _chunk_range(length(_x), per_copy, j)
         lo > hi && continue
-        @inbounds copyto!(view(_y, lo:hi, k), view(_x, lo:hi))
+        @inbounds copyto!(_y, (k - 1) * length(_x) + lo, _x, lo, hi - lo + 1)
     end
     return _y
 end
@@ -191,7 +191,10 @@ function _chunk_range(len::Int, nchunks::Int, i::Int)
     return (i - 1) * size + 1, min(len, i * size)
 end
 
-_flat_pair(y, x) = (reshape(y, length(x), :), vec(x))
+# The copy count is spelled out rather than left to `:`, which JET's `@test_opt` infers as `Any`;
+# the copies above index the flat layout directly for the same reason, instead of going through
+# a `view` of one column.
+_flat_pair(y, x) = (reshape(y, length(x), length(y) ÷ length(x)), vec(x))
 
 # Kept for callers outside this file (`OperatorBroadCast`), and as the single place the compact
 # layout assumption is written down.
@@ -414,10 +417,56 @@ overshoots by up to the square root of the number of copies.
 """
 function _fused_pair_opnorm(B::NoOperatorBroadCast{T, N, M}, D::DiagOp) where {T, N, M}
     size(D, 2) == B.dim_out || return nothing
+    # A `DiagOp` may hold a single number instead of an array, and then every copy is weighted
+    # the same, which is the one case the submultiplicative product already gets exactly right.
+    D.d isa AbstractArray || return nothing
     bdims = Tuple(d for d in 1:M if B.reshaped_dim_in[d] != B.dim_out[d])
     isempty(bdims) && return nothing
     return float(sqrt(maximum(sum(abs2, D.d; dims = bdims))))
 end
+
+"""
+	_fused_pair_opnorm(B::NoOperatorBroadCast, S::SpreadingBatchOp)
+
+Upper bound on `‖S ∘ B‖` when `B` replicates its input along exactly the spreading dimensions of
+`S` and every block of `S` starts with an array-valued `DiagOp`, `S[k] = P[k] ∘ D[k]`.
+
+Every block then receives the same input `x`, so
+
+    ‖(S ∘ B) x‖² = Σₖ ‖P[k] D[k] x‖² ≤ maxₖ ‖P[k]‖² Σₖ ‖D[k] x‖² ≤ maxₖ ‖P[k]‖² maxᵢ Σₖ |d[k][i]|² ‖x‖²,
+
+which is `maxₖ opnorm_bound(P[k])` times the `DiagOp`-on-`BroadCast` norm of the stacked
+diagonals. The submultiplicative product gives `maxₖ ‖P[k]‖ maxₖ |d[k]|∞ sqrt(K)` instead, which
+overshoots by up to `sqrt(K)` when the diagonals peak at different positions.
+"""
+function _fused_pair_opnorm(B::NoOperatorBroadCast{T, N, M}, S::SpreadingBatchOp) where {T, N, M}
+    size(S, 2) == B.dim_out || return nothing
+    bdims = Tuple(d for d in 1:M if B.reshaped_dim_in[d] != B.dim_out[d])
+    isempty(bdims) && return nothing
+    batch_positions = Tuple(d for d in 1:M if get_domain_batch_dim_mask(typeof(S))[d])
+    spreading_positions = map(s -> batch_positions[s], get_spreading_dims(typeof(S)))
+    bdims == spreading_positions || return nothing
+    blocks = _block_operators(S)
+    diags = map(_leading_diagonal, blocks)
+    any(isnothing, diags) && return nothing
+    all(d -> size(d) == size(first(diags)), diags) || return nothing
+    weight = zeros(real(eltype(first(diags))), size(first(diags)))
+    for d in diags
+        weight .+= abs2.(d)
+    end
+    rest = maximum(_bound_after_leading_diagonal, blocks)
+    isfinite(rest) || return nothing
+    return float(sqrt(maximum(weight))) * rest
+end
+
+# The array a block's first applied factor multiplies by, or `nothing` when that factor is not an
+# array-valued `DiagOp`.
+_leading_diagonal(A) = nothing
+_leading_diagonal(D::DiagOp) = D.d isa AbstractArray ? D.d : nothing
+_leading_diagonal(C::Compose) = _leading_diagonal(first(C.A))
+
+_bound_after_leading_diagonal(::DiagOp) = 1.0
+_bound_after_leading_diagonal(C::Compose) = _chain_opnorm_bound(Base.tail(C.A))
 
 # utils
 

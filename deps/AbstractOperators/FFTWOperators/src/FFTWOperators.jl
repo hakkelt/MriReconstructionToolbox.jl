@@ -1,20 +1,18 @@
 module FFTWOperators
 
-using ..AbstractOperators
-using FFTW, LinearAlgebra
+using AbstractOperators, FFTW, LinearAlgebra
 using Base.Cartesian: @ncall
 using Polyester: @batch
 import LinearAlgebra: mul!
 import Base: size, ndims
 
-import ..AbstractOperators:
+import AbstractOperators:
     _normalize_array_type,
     _array_wrapper_type,
     domain_type,
     codomain_type,
     fun_name,
     get_normal_op,
-    has_optimized_normalop,
     allocate_in_domain,
     allocate_in_codomain,
     domain_array_type,
@@ -46,27 +44,36 @@ import ..AbstractOperators:
 
 Element count at which threading an FFTW transform of this `kind` starts to pay.
 
-PROVENANCE: measured (AMD EPYC 7352, 8 threads, OPENBLAS_NUM_THREADS=1), sweeping `mul!`
-against a 1-thread plan of the same size. The `:c2c` entry is from 2026-08-15; the other two
-were re-measured on 2026-09-20 **with `FFTW.ESTIMATE`**, which is what every operator here
-plans with by default, and moved an octave down as a result:
+PROVENANCE: measured on 2026-09-24 (AMD EPYC 7763, one 16-core NUMA domain, `FFTW.ESTIMATE`,
+OPENBLAS_NUM_THREADS=1), timing each operator's forward plus adjoint `mul!` planned with one
+thread against the same operator planned with every thread, in a process started with
+`-t 2`, `-t 4`, `-t 8` and `-t 16`, once with each Julia thread pinned to a core and once
+without. Sizes are even powers of two, `Float32` and `Float64`, 1D, square 2D and (c2c) 2D
+over 8 coils. The threshold is the smallest swept size from which threading is never slower
+at *any* of those thread counts, pinned or not -- the loss below it is large, the gain at it
+is not:
 
-| kind | first sustained win | speedup there | at n = 2^22 |
-|---|---|---|---|
-| `:c2c` (DFT/IDFT) | 2^13 | 1.75x | 6.99x |
-| `:r2r` (DCT/IDCT) | 2^14 | 2.00x (1D), 4.10x (2D) | 6.44x |
-| `:r2c` (RDFT/IRDFT) | 2^14 | 1.14x (1D), 1.87x (2D) | 6.12x |
+| kind | largest losing size | there (worst, 2-16 threads) | threshold | at the threshold |
+|---|---|---|---|---|
+| `:c2c` (DFT/IDFT) | 2^15 (64x64x8) | 0.35x-0.50x | 2^16 | 1.6x-6.7x (256x256 `Float32`) |
+| `:r2r` (DCT/IDCT) | 2^14 (128x128) | 0.53x-0.73x | 2^16 | 1.05x-5.0x (256x256) |
+| `:r2c` (RDFT/IRDFT) | 2^16 (256x256) | 0.63x-0.92x | 2^18 | 1.15x-6.0x |
 
-The original 2^15 for the two real transforms was measured against `FFTW.MEASURE` plans,
-where a tuned serial plan is harder to beat. Under the planner these operators actually use,
-2^14 already pays on every shape tried and 2^15 left measured speedup on the table -- 4.10x
-on a 128x128 DCT, refused.
+The previous thresholds (c2c 2^13, the real transforms 2^14) came from an 8-thread process
+on an EPYC 7352 with its threads unpinned, which is the kindest case for a threaded plan: a
+128x128 `ComplexF32` transform, 16384 elements and above the old c2c threshold, measures 2.2x
+there but 0.24x at 2 threads, and 0.23x-0.39x at every thread count once the threads are
+pinned. A threaded plan below these sizes pays a fixed ~0.1-0.2 ms per call to wake and join
+its helpers, which is several times the transform itself. Two cells past the thresholds still
+lose, both `Float64` at 8-16 threads (256x256 0.2x-0.6x, 512x512 0.5x at 16), and both are
+FFTW's `ESTIMATE` planner picking a poor threaded plan rather than a size effect: the sizes
+around them win.
 
-Below these sizes threading an FFT is a *large* pessimisation, not a wash -- a 256-point
-c2c transform measures 0.02x, and a 1024-element one 0.15x at eight threads -- which is why
-the policy applies here rather than trusting FFTW's planner to sort it out.
+Below the thresholds threading an FFT is a *large* pessimisation, not a wash -- a 1024-element
+c2c transform measures 0.01x-0.25x -- which is why the policy applies here rather than
+trusting FFTW's planner to sort it out.
 """
-fftw_threading_threshold(kind::Symbol) = kind === :c2c ? 2^13 : 2^14
+fftw_threading_threshold(kind::Symbol) = kind === :r2c ? 2^18 : 2^16
 
 """
 	_fftw_num_threads(kind, num_threads, threaded, n) -> Int
