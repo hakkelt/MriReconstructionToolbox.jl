@@ -291,7 +291,9 @@ PANOCplus(;
     kwargs...,
 )
 
+# `A` may be affine: it is only ever applied (`A * x`) and adjoined (`A'`, the adjoint of its
+# linear part), never combined linearly, so a displacement is carried through exactly.
 get_assumptions(::Type{<:PANOCplusIteration}) = AssumptionGroup(
-    OperatorTerm(:f => (is_smooth,), :A => (is_linear,)),
+    OperatorTerm(:f => (is_smooth,), :A => (is_affine,)),
     SimpleTerm(:g => (is_proximable,))
 )
