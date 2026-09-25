@@ -17,7 +17,15 @@
 #   --matrix-backends=openblas,mkl       BLAS backends (default: both)
 #   --matrix-refs=master:/path,perf:/path   harness only: MRT checkouts to measure, each passed to
 #                                        run.jl as --mrt=<path> --ref-name=<name>. Default: this
-#                                        checkout.
+#                                        checkout. A third field redirects dev'd packages of that
+#                                        ref (run.jl --dev), `+` joining several:
+#                                        perf:/path:NestedThreading=/nt+OperatorCore=/oc
+#   --swap-repeat                        queue the whole matrix a second time (with --remeasure),
+#                                        refs and environment variants in reverse order.
+#                                        Neighbouring variants start on neighbouring domains, the
+#                                        first always on the lower one, and domains differed by up
+#                                        to 1.6x on a 2 ms case; the repeat puts each variant on
+#                                        another domain. Compare with `compare.jl --pick=min`.
 #   --matrix-env=KMP_BLOCKTIME=0,KMP_BLOCKTIME=200   environment variants; `+` joins several
 #                                        assignments into one variant (A=1+B=2). Default: none.
 #
@@ -62,10 +70,12 @@ MATRIX_REFS=("")
 MATRIX_ENV=("")
 PACK=0
 PACK_MEM_GB=""
+SWAP_REPEAT=0
 PASS_ARGS=()
 for a in "$@"; do
     case "$a" in
         --pack) PACK=1 ;;
+        --swap-repeat) SWAP_REPEAT=1 ;;
         --pack-mem-gb=*) PACK_MEM_GB="${a#*=}" ;;
         --suite=*) SUITE="${a#*=}" ;;
         --matrix-threads=*) IFS=, read -ra MATRIX_THREADS <<<"${a#*=}" ;;
@@ -185,11 +195,23 @@ for t in "${MATRIX_THREADS[@]}"; do
     for b in "${MATRIX_BACKENDS[@]}"; do
         for e in "${!MATRIX_ENV[@]}"; do
             for r in "${!MATRIX_REFS[@]}"; do
-                QUEUE+=("$t:$b:$r:$e")
+                QUEUE+=("$t:$b:$r:$e:0")
             done
         done
     done
 done
+# The repeat passes --remeasure: otherwise it would find the first pass's results stored and skip.
+if [ "$SWAP_REPEAT" = 1 ]; then
+    for t in "${MATRIX_THREADS[@]}"; do
+        for b in "${MATRIX_BACKENDS[@]}"; do
+            for ((e = ${#MATRIX_ENV[@]} - 1; e >= 0; e--)); do
+                for ((r = ${#MATRIX_REFS[@]} - 1; r >= 0; r--)); do
+                    QUEUE+=("$t:$b:$r:$e:1")
+                done
+            done
+        done
+    done
+fi
 echo "### suite $SUITE, queue: ${QUEUE[*]}"
 echo "### refs: ${MATRIX_REFS[*]:-<this checkout>}  env variants: ${MATRIX_ENV[*]:-<none>}"
 echo "### pass-through args: ${PASS_ARGS[*]:-<none>}"
@@ -259,19 +281,24 @@ reap_finished() {
     done
 }
 
-launch_task() {  # threads backend ref_index env_index domain cores...
-    local threads=$1 backend=$2 r=$3 e=$4 domain=$5
-    shift 5
+launch_task() {  # threads backend ref_index env_index repeat domain cores...
+    local threads=$1 backend=$2 r=$3 e=$4 rep=$5 domain=$6
+    shift 6
     local cores=("$@")
     local pin
     pin="$(tr ' ' ',' <<<"${cores[*]}")"
     local args=(--threads="$threads")
     [ "$backend" = mkl ] && args+=(--use-mkl)
+    [ "$rep" = 1 ] && args+=(--remeasure)
     local tag="${backend}_${threads}t"
+    [ "$rep" = 1 ] && tag="${tag}_repeat"
     local ref="${MATRIX_REFS[$r]}"
     if [ -n "$ref" ]; then
-        args+=(--ref-name="${ref%%:*}" --mrt="${ref#*:}")
-        tag="${ref%%:*}_$tag"
+        local ref_name ref_path ref_dev
+        IFS=: read -r ref_name ref_path ref_dev <<<"$ref"
+        args+=(--ref-name="$ref_name" --mrt="$ref_path")
+        [ -n "$ref_dev" ] && args+=(--dev="${ref_dev//+/,}")
+        tag="${ref_name}_$tag"
     fi
     local envs=()
     if [ -n "${MATRIX_ENV[$e]}" ]; then
@@ -306,7 +333,7 @@ launch_task() {  # threads backend ref_index env_index domain cores...
 }
 
 for cfg in "${QUEUE[@]}"; do
-    IFS=: read -r threads backend r e <<<"$cfg"
+    IFS=: read -r threads backend r e rep <<<"$cfg"
     while true; do
         slot=$(pick_domain "$threads")
         [ -n "$slot" ] && break
@@ -314,7 +341,7 @@ for cfg in "${QUEUE[@]}"; do
         reap_finished
     done
     # shellcheck disable=SC2086  # "domain core core ..." splits into the positional arguments
-    launch_task "$threads" "$backend" "$r" "$e" $slot
+    launch_task "$threads" "$backend" "$r" "$e" "$rep" $slot
 done
 wait
 
