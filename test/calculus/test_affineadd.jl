@@ -35,7 +35,7 @@ end
     @test displacement(VCAT(P, MatrixOp(fill(NaN, 2, 4)))) === 0.0
     @test displacement(2.0 * P') === 0.0
     d = randn(3)
-    @test displacement(AffineAdd(P, d)) == d
+    @test displacement(AffineAdd(P, d)) === d
     @test displacement(AffineAdd(P, d, false)) == -d
 end
 
