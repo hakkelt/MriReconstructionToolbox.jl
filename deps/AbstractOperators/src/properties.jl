@@ -9,6 +9,7 @@ export ndoms,
     domain_array_type,
     codomain_array_type,
     is_linear,
+    is_affine,
     is_eye,
     is_null,
     is_diagonal,
@@ -227,7 +228,40 @@ function ndoms(L::AbstractOperator)
 end
 ndoms(L::AbstractOperator, i::Int) = ndoms(L)[i]
 
+"""
+	is_linear(A::AbstractOperator)
+
+Returns true if `A` is linear: `A * (αx + βy) = α(A * x) + β(A * y)`, so `A * 0 = 0`. An
+operator with a displacement (`AffineAdd`, or any combination containing one) is not linear;
+see [`is_affine`](@ref). Every `LinearOperator` is linear; a combination is linear when all of
+its parts are.
+
+```jldoctest
+julia> is_linear(DiagOp(rand(3)))
+true
+
+julia> is_linear(AffineAdd(DiagOp(rand(3)), rand(3)))
+false
+```
+"""
 is_linear(L::LinearOperator) = true
+
+"""
+	is_affine(A::AbstractOperator)
+
+Returns true if `A` is affine: `A * x = Aₗ * x + d` for a linear `Aₗ` and a fixed displacement
+`d` (see [`displacement`](@ref) and [`remove_displacement`](@ref)). Every linear operator is
+affine; `AffineOperator` is the supertype of the operators that are affine by construction.
+
+```jldoctest
+julia> is_affine(AffineAdd(DiagOp(rand(3)), rand(3)))
+true
+
+julia> is_affine(Sin(3))
+false
+```
+"""
+is_affine(L::AffineOperator) = true
 
 """
 	is_sliced(A)
@@ -277,10 +311,9 @@ has_fast_opnorm(L) = false
 
 Returns the displacement of the operator: `A * 0`, as a scalar when all its entries are equal.
 
-The fallback applies `A` to zeros. A `LinearOperator` returns zero without applying anything, and
-a combination of operators returns zero when each of its operators does, so a new operator needs
-a method only when it is a `LinearOperator` that does not map zero to zero, or when its
-displacement is cheaper to state than to compute.
+A linear operator (see [`is_linear`](@ref)) returns zero without being applied. Anything else is
+applied to zeros, so a new operator needs a method only when it is affine or nonlinear and its
+displacement is cheaper to state than to compute, as `AffineAdd` does.
 
 ```jldoctest
 julia> A = AffineAdd(Eye(4),[1.;2.;3.;4.])
@@ -296,6 +329,7 @@ julia> displacement(A)
 ```
 """
 function displacement(S::AbstractOperator)
+    is_linear(S) && return _zero_of(codomain_type(S))
     x = allocate_in_domain(S)
     fill!(x, 0)
     d = S * x
@@ -314,21 +348,7 @@ _first_element(d::ArrayPartition) = _first_element(first(d.x))
 _all_equal_to(d::AbstractArray, v) = all(==(v), d)
 _all_equal_to(d::ArrayPartition, v) = all(b -> _all_equal_to(b, v), d.x)
 
-displacement(L::LinearOperator) = _zero_of(codomain_type(L))
-
-# `is_linear` holds for an `AffineAdd` of a linear operator and for anything built from one, so
-# only the displacements of the parts tell whether a combination maps zero to zero. When one of
-# them does not, the combination is applied to zeros.
-function _combined_displacement(L::AbstractOperator, ops)
-    all(A -> _is_zero_displacement(displacement(A)), ops) && return _zero_of(codomain_type(L))
-    return invoke(displacement, Tuple{AbstractOperator}, L)
-end
-_is_zero_displacement(d::Number) = iszero(d)
-# `displacement` returns a uniform array as its scalar entry, so an array is never all zero.
-_is_zero_displacement(d) = false
-
-# The first entry of `S * 0` for an `S` that maps zero to zero: of the first block's type for a
-# block codomain.
+# The first entry of `S * 0` for a linear `S`: of the first block's type for a block codomain.
 _zero_of(T::Type) = zero(T)
 _zero_of(T::Tuple) = _zero_of(first(T))
 
@@ -371,7 +391,7 @@ function can_be_combined(L, R)
     return _is_removable_eye(L) ||
         _is_removable_eye(R) ||
         is_null(L) ||
-        (is_null(R) && is_linear(L) && all(displacement(L) .== 0))
+        (is_null(R) && is_linear(L))
 end
 
 """
@@ -407,7 +427,7 @@ function combine(L, R)
         else
             return Zeros(domain_type(R), size(R, 2), codomain_type(L), size(L, 1))
         end
-    elseif is_null(R) && is_linear(L) && all(displacement(L) .== 0)
+    elseif is_null(R) && is_linear(L)
         if size(L, 1) == size(L, 2) && domain_type(L) == codomain_type(L)
             return R
         else

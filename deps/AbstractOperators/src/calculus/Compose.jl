@@ -260,6 +260,7 @@ domain_array_type(L::Compose) = domain_array_type(L.A[1])
 codomain_array_type(L::Compose) = codomain_array_type(L.A[end])
 
 is_linear(L::Compose) = all(is_linear.(L.A))
+is_affine(L::Compose) = all(is_affine.(L.A))
 function is_diagonal(L::Compose)
     return all(is_diagonal.(L.A[is_sliced(L) ? (2:end) : (1:end)]))
 end
@@ -356,6 +357,5 @@ function _copy_operator_impl(op::Compose; storage_type = nothing, threaded = not
 end
 
 _children(L::Compose) = L.A
-displacement(L::Compose) = _combined_displacement(L, L.A)
 is_threaded(L::Compose) = _is_threaded_from_children(L)
 supports_threading(L::Compose) = _supports_threading_from_children(L)

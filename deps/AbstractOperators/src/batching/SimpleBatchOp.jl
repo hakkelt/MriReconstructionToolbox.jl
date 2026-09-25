@@ -284,8 +284,8 @@ codomain_array_type(L::SimpleBatchOpMultiThreaded) = codomain_array_type(L.opera
 
 is_linear(L::SimpleBatchOpSingleThreaded) = is_linear(L.operator)
 is_linear(L::SimpleBatchOpMultiThreaded) = is_linear(L.operator[1])
-displacement(L::SimpleBatchOpSingleThreaded) = _combined_displacement(L, (L.operator,))
-displacement(L::SimpleBatchOpMultiThreaded) = _combined_displacement(L, L.operator)
+is_affine(L::SimpleBatchOpSingleThreaded) = is_affine(L.operator)
+is_affine(L::SimpleBatchOpMultiThreaded) = is_affine(L.operator[1])
 is_eye(L::SimpleBatchOpSingleThreaded) = is_eye(L.operator)
 is_eye(L::SimpleBatchOpMultiThreaded) = is_eye(L.operator[1])
 is_null(L::SimpleBatchOpSingleThreaded) = is_null(L.operator)
