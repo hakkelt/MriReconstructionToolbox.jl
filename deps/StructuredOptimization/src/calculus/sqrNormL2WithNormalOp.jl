@@ -62,7 +62,7 @@ struct SqrNormL2WithNormalOp{T, SC, L <: AbstractOperator, L2 <: AbstractOperato
     inv_scaling::R
     function SqrNormL2WithNormalOp(A, lambda; pureAᴴA = nothing)
         @assert A isa AbstractOperator
-        @assert is_linear(A)
+        @assert is_affine(A)
         if any(lambda .< 0)
             error("coefficients in λ must be nonnegative")
         end
