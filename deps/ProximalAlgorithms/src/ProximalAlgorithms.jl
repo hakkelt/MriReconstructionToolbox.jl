@@ -4,7 +4,7 @@ using ADTypes: ADTypes
 using DifferentiationInterface: DifferentiationInterface
 using ProximalCore
 using ProximalCore: Zero, IndZero, convex_conjugate, prox, prox!, is_smooth, is_locally_smooth, is_convex, is_strongly_convex, is_proximable
-using OperatorCore: is_linear, is_affine
+using ..OperatorCore: is_linear, is_affine
 using LinearAlgebra
 using NestedThreading: NestedThreading
 using Base.Iterators

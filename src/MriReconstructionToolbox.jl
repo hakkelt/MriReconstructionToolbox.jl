@@ -9,8 +9,9 @@ using NamedDims
 
 # Vendored packages, inlined as submodules so MriReconstructionToolbox has no
 # unregistered dependencies (registration requires every dependency to be
-# registered). OperatorCore and ProximalCore are excluded from this: they stay
-# as normal registered dependencies (see [deps]/[compat] in Project.toml).
+# registered). ProximalCore is excluded from this: it stays a normal registered
+# dependency (see [deps]/[compat] in Project.toml).
+include(joinpath(@__DIR__, "..", "deps", "OperatorCore", "src", "OperatorCore.jl"))
 include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "src", "AbstractOperators.jl"))
 include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "ContourletOperators", "src", "ContourletOperators.jl"))
 include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "DSPOperators", "src", "DSPOperators.jl"))

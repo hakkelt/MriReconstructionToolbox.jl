@@ -1,8 +1,8 @@
 diff --git a/deps/AbstractOperators/ContourletOperators/src/ContourletOperators.jl b/deps/AbstractOperators/ContourletOperators/src/ContourletOperators.jl
-index 07b8f92..ed2d7f2 100644
+index 07b8f92..73df032 100644
 --- a/deps/AbstractOperators/ContourletOperators/src/ContourletOperators.jl
 +++ b/deps/AbstractOperators/ContourletOperators/src/ContourletOperators.jl
-@@ -2,12 +2,12 @@ module ContourletOperators
+@@ -2,15 +2,15 @@ module ContourletOperators
  
  export ContourletOp, NSCTOp, ContourletParams, parabolic_levels
  
@@ -16,7 +16,11 @@ index 07b8f92..ed2d7f2 100644
 +import ..AbstractOperators:
      domain_type, codomain_type, domain_array_type, codomain_array_type,
      fun_name, is_thread_safe, _normalize_array_type
- import OperatorCore: is_invertible
+-import OperatorCore: is_invertible
++import ..OperatorCore: is_invertible
+ 
+ _threading_policy(threaded::Bool) = threaded ? Enabled() : Disabled()
+ 
 diff --git a/deps/AbstractOperators/DSPOperators/src/DSPOperators.jl b/deps/AbstractOperators/DSPOperators/src/DSPOperators.jl
 index 19f6080..6e93c88 100644
 --- a/deps/AbstractOperators/DSPOperators/src/DSPOperators.jl
@@ -94,7 +98,7 @@ index f3125af..2775185 100644
      AdjointOperator
  
 diff --git a/deps/AbstractOperators/WaveletOperators/src/WaveletOperators.jl b/deps/AbstractOperators/WaveletOperators/src/WaveletOperators.jl
-index 3a52d7e..3b72507 100644
+index 11c8bb1..333beeb 100644
 --- a/deps/AbstractOperators/WaveletOperators/src/WaveletOperators.jl
 +++ b/deps/AbstractOperators/WaveletOperators/src/WaveletOperators.jl
 @@ -2,11 +2,11 @@ module WaveletOperators
@@ -111,3 +115,38 @@ index 3a52d7e..3b72507 100644
      domain_type,
      codomain_type,
      domain_array_type,
+@@ -23,7 +23,7 @@ import AbstractOperators:
+     _copy_operator_impl,
+     _elementwise_threaded,
+     @budgeted_threads
+-import OperatorCore:
++import ..OperatorCore:
+     is_AcA_diagonal,
+     is_AAc_diagonal,
+     diag_AcA,
+diff --git a/deps/AbstractOperators/src/AbstractOperators.jl b/deps/AbstractOperators/src/AbstractOperators.jl
+index 9cce82d..7171a2f 100644
+--- a/deps/AbstractOperators/src/AbstractOperators.jl
++++ b/deps/AbstractOperators/src/AbstractOperators.jl
+@@ -18,7 +18,7 @@ import LinearAlgebra: mul!
+ import Base: size, ndims, @lock
+ import Base.Threads: @spawn, nthreads
+ 
+-import OperatorCore:
++import ..OperatorCore:
+     is_linear,
+     is_affine,
+     is_eye,
+diff --git a/deps/AbstractOperators/src/calculus/OperatorWrapper.jl b/deps/AbstractOperators/src/calculus/OperatorWrapper.jl
+index be0349a..4c3ed33 100644
+--- a/deps/AbstractOperators/src/calculus/OperatorWrapper.jl
++++ b/deps/AbstractOperators/src/calculus/OperatorWrapper.jl
+@@ -97,7 +97,7 @@ domain_array_type(::OperatorWrapper{Op, DB, CB, DS, CS}) where {Op, DB, CB, DS,
+ codomain_array_type(::OperatorWrapper{Op, DB, CB, DS, CS}) where {Op, DB, CB, DS, CS} = CS
+ 
+ # Forward all predicates to the wrapped operator.
+-import OperatorCore:
++import ..OperatorCore:
+     is_linear, is_affine, is_eye, is_null, is_diagonal,
+     is_AcA_diagonal, is_AAc_diagonal, diag_AcA, diag_AAc,
+     is_orthogonal, is_invertible, is_full_row_rank, is_full_column_rank,
