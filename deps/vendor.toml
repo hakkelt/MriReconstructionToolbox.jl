@@ -232,6 +232,19 @@ branch = "fix/shift-combine-threading"
 parent = "unified-threading"
 pr = ""
 
+# `displacement` of a LinearOperator, and of a combination whose operators all have a zero one,
+# returns zero instead of applying the operator to zeros.
+[[AbstractOperators.stack]]
+branch = "perf/linear-displacement"
+parent = "unified-threading"
+pr = ""
+
+# The 2-D and 3-D filter-bank wavelet transforms split each stage's lines across threads.
+[[AbstractOperators.stack]]
+branch = "perf/wavelet-threads"
+parent = "unified-threading"
+pr = ""
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
