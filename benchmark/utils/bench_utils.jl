@@ -45,6 +45,7 @@ export BenchCase, get_case, case_ids, filter_case_ids, SYNTHETIC_CASES, REAL_CAS
 export ncoils, acceleration, zero_filled, mrt_acquisition, applicable_methods, METHODS
 export norm_ksp, add_noise, nrmse, mag_nrmse, centred_fft, centred_ifft, multicoil_phantom
 export mrt_reconstructor, mrt_regularizer, mrt_algorithm, DEFAULT_LAMBDA, OUTER_ITERATIONS, CG_ITERATIONS, ADMM_RHO
+export RADIAL_LAMBDA, RADIAL_ADMM_RHO, default_lambda, admm_rho
 export time_run, timed_runs, git_ref, tree_hash, node_class, recorded_env, ResultsStore
 
 end
