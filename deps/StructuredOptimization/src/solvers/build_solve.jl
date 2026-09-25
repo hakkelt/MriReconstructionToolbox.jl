@@ -339,19 +339,42 @@ export solve
 # problems; take its first block in that case (the shared write-back convention).
 #
 # Every function `prepare` placed in `term_kwargs` (`:f`, `:g`, ...) is called by the
-# solver once per iteration with an `x0`-shaped input (`extract_operators` always
+# solver once per iteration, with an `x0`-shaped input (`extract_operators` always
 # builds its operator over the full `variables` tuple, so every term's domain is the
-# same combined space `x0` lives in). `preallocate` is called once here, before the
-# iteration starts, so any scratch space those calls need is allocated once instead of
-# on every iteration; values with nothing to preallocate come back unchanged.
+# same combined space `x0` lives in) -- except a function paired with an operator slot
+# (`h(L·x)`), whose input is in `L`'s codomain. `preallocate` is called once here, before
+# the iteration starts, so any scratch space those calls need is allocated once instead
+# of on every iteration; values with nothing to preallocate come back unchanged.
 function _run_solver(solver, term_kwargs, x; kwargs...)
     solver = override_parameters(solver; kwargs...)
     x0 = ~x
-    term_kwargs = Dict(key => preallocate(value, x0) for (key, value) in term_kwargs)
+    inputs = _operator_slot_inputs(solver, term_kwargs)
+    term_kwargs = Dict(
+        key => _preallocate(value, get(inputs, key, x0)) for (key, value) in term_kwargs
+    )
     x_star, it = solver(; x0 = x0, term_kwargs...)
     ~x .= x_star isa Tuple ? x_star[1] : x_star
     return x, it
 end
+
+# The input each operator-slot function is called with, keyed like `term_kwargs`: an array
+# of its operator's codomain, or a tuple of them for a repeated slot.
+function _operator_slot_inputs(solver, term_kwargs)
+    inputs = Dict{Symbol, Any}()
+    for assumption in ProximalAlgorithms.get_assumptions(solver)
+        hasproperty(assumption, :operator) || continue
+        op = get(term_kwargs, assumption.operator.first, nothing)
+        op === nothing && continue
+        input = op isa Tuple ? map(AbstractOperators.allocate_in_codomain, op) :
+            AbstractOperators.allocate_in_codomain(op)
+        for item in (:func, :func₁, :func₂)
+            hasproperty(assumption, item) && (inputs[getproperty(assumption, item).first] = input)
+        end
+    end
+    return inputs
+end
+_preallocate(value, x) = preallocate(value, x)
+_preallocate(value::Tuple, x::Tuple) = map(preallocate, value, x)
 
 """
     solve(terms::Union{Term,TermSet}; kwargs...)

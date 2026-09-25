@@ -191,6 +191,14 @@ for f in is_op_f
     end
 end
 
+# `is_linear(t)` asks about the term's *linear part* `operator(t)` (the displacement removed),
+# so it holds exactly when the expression inside `f` is affine, which is what convexity and
+# the other function properties below need. `is_affine(t)` asks the same of the operator
+# with its displacement.
+import AbstractOperators: is_affine
+is_affine(t::Term) = is_affine(affine(t))
+is_affine(t::TermSet) = all(is_affine.(t))
+
 is_affine_indicator(t::Term) = is_affine_indicator(t.f) && is_linear(t)
 is_cone_indicator(t::Term) = is_cone_indicator(t.f) && is_linear(t)
 is_convex(t::Term) = is_convex(t.f) && is_linear(t)
