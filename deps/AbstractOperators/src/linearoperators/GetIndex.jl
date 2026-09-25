@@ -190,6 +190,25 @@ AdjointOperator(L::NormalGetIndex) = L
     return y
 end
 
+# Fused into a pointwise run of a `Compose` when the index is a Boolean mask over the trailing
+# dimensions, `(:, ..., :, mask)`, as a sampling pattern is: element `j` is then kept exactly
+# when the mask is set at `(j - 1) ÷ inner + 1`, `inner` being the length of the leading
+# dimensions.
+function _pw_kind(::Type{<:NormalGetIndex{I, N, T, S}}) where {I, N, T, S}
+    return S <: Array && _pw_trailing_mask(I) ? PwMapKind() : PwNoneKind()
+end
+_pw_trailing_mask(::Type{Tuple{}}) = false
+_pw_trailing_mask(::Type{I}) where {I <: Tuple} = _pw_trailing_mask(fieldtype(I, 1), I)
+_pw_trailing_mask(::Type{Colon}, ::Type{I}) where {I} = _pw_trailing_mask(Base.tuple_type_tail(I))
+_pw_trailing_mask(::Type{<:AbstractArray{Bool}}, ::Type{I}) where {I} = fieldcount(I) == 1
+_pw_trailing_mask(::Type, ::Type) = false
+
+_pw_steps(L::NormalGetIndex{<:Tuple{AbstractArray{Bool}}, N, T}) where {N, T} = (PwMask{T}(L.idx[1]),)
+function _pw_steps(L::NormalGetIndex{I, N, T}) where {I, N, T}
+    inner = prod(ntuple(d -> L.dim_in[d], Val(fieldcount(I) - 1)); init = 1)
+    return (PwTrailingMask{T}(last(L.idx), inner),)
+end
+
 # Properties
 domain_type(::GetIndex{I, N, M, T}) where {I, N, M, T} = T
 domain_type(::NormalGetIndex{I, N, T}) where {I, N, T} = T

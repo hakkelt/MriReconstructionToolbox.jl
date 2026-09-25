@@ -46,6 +46,7 @@ const DEBUG_COMPOSE = Ref{Bool}(false)
 include("utils.jl")
 include("properties.jl")
 include("threading_policy.jl")
+include("calculus/pointwise.jl")
 include("calculus/AdjointOperator.jl")
 include("calculus/Scale.jl")
 
