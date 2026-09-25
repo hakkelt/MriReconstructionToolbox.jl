@@ -100,6 +100,18 @@ for the heavy cases) at 30 outer iterations. MRT's best NRMSE is the target, and
 gets the λ whose NRMSE is closest to it. So every section compares toolkits at matched accuracy
 rather than at a nominally equal but differently scaled λ.
 
+A row that runs a fixed-penalty ADMM also sweeps ρ, over the decades `RHO_DECADES` (default
+`-2,-1,0,1,2`) around the toolkit's default: `admm_rho(c)` for MRT, relative to `‖𝒜‖²`, and
+`CMP_RHO` for the others, absolute in their own operator scaling. Each toolkit keeps the ρ at which
+it reaches its best NRMSE (the `rho` table, read back by `load_rho`), and its λ is picked on that
+ρ's curve; a best ρ at the grid's edge is logged. Without a calibrated ρ, rows fall back to those
+defaults.
+
+`--frameworks=mrt,bart,...` recalibrates only the named toolkits and `--methods=tv,...` only the
+named methods. The curves of the other toolkits are read back from the case's file, so the target,
+the picks and `race_target` are always recomputed over every toolkit calibrated so far, and the
+file is merged under a lock, so several processes can calibrate one case at once.
+
 Results go to `results/lambda/<case id>.json`, together with `race_target`: the worst toolkit's best
 NRMSE × 1.10, the target `run_accuracy_race.jl` races to. `load_lambda` falls back from a case to its
 synthetic analogue, then to the pre-catalog `results/lambda_calibration.json`, then to the default

@@ -98,10 +98,10 @@ function mrt_algorithm(method::Symbol, maxit::Int; rho::Real = ADMM_RHO)
 end
 
 """
-    mrt_reconstructor(c, method; λ = default_lambda(c, method), maxit, acq = nothing) -> () -> image
+    mrt_reconstructor(c, method; λ = default_lambda(c, method), rho = admm_rho(c), maxit, acq = nothing) -> () -> image
 
 A zero-argument closure running MRT's reconstruction of `c` by `method`, for `time_run`, with the
-ADMM penalty `admm_rho(c)`. The
+ADMM penalty `rho` (relative to `‖𝒜‖²`; ignored by the methods that do not run ADMM). The
 acquisition is built once, outside the closure; `acq` passes one in (the comparison suite reuses
 it across rows). `maxit` defaults to `CG_ITERATIONS` for CG-SENSE and `OUTER_ITERATIONS` otherwise.
 `maxit` and `reltol = 0` are set on `IterativeReconstruction` as well as on the algorithm: the
@@ -110,6 +110,7 @@ method's values win over the algorithm's, so both must agree to run the full cou
 function mrt_reconstructor(
         c::BenchCase, method::Symbol;
         λ::Real = default_lambda(c, method),
+        rho::Real = admm_rho(c),
         maxit::Int = method === :cgsense ? CG_ITERATIONS : OUTER_ITERATIONS,
         acq = nothing,
     )
@@ -119,6 +120,6 @@ function mrt_reconstructor(
     end
     a = something(acq, mrt_acquisition(c))
     reg = method === :cgsense ? () : mrt_regularizer(c, method, λ)
-    m = IterativeReconstruction(; regularization = reg, algorithm = mrt_algorithm(method, maxit; rho = admm_rho(c)), maxit, reltol = 0.0)
+    m = IterativeReconstruction(; regularization = reg, algorithm = mrt_algorithm(method, maxit; rho), maxit, reltol = 0.0)
     return () -> reconstruct(a, m; verbosity = Silent())
 end

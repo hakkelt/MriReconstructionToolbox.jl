@@ -72,10 +72,26 @@ function load_lambda(c::BenchCase, method::Symbol, toolkit::AbstractString, defa
     return v === nothing ? Float64(default) : v
 end
 
-function _lambda_from(path, method, toolkit)
+"""
+    load_rho(c::BenchCase, method, toolkit) -> Float64 or nothing
+
+Per-toolkit ADMM penalty for `method` on case `c`, from the `rho` table of the case's (or its
+synthetic analogue's) calibration file. `nothing` when none was calibrated: the caller then falls
+back to `admm_rho(c)` for MRT, whose ρ is relative to `‖𝒜‖²`, and to `CMP_RHO` for the others,
+whose ρ is absolute. There is no pre-catalog fallback, since that file predates ρ calibration.
+"""
+function load_rho(c::BenchCase, method::Symbol, toolkit::AbstractString)
+    for id in unique((c.id, c.analogue))
+        v = _lambda_from(joinpath(LAMBDA_DIR, "$id.json"), method, toolkit; table = "rho")
+        v === nothing || return v
+    end
+    return nothing
+end
+
+function _lambda_from(path, method, toolkit; table = "lambda")
     isfile(path) || return nothing
     tbl = try
-        JSON.parsefile(path)["lambda"]
+        JSON.parsefile(path)[table]
     catch
         return nothing
     end
@@ -145,7 +161,8 @@ end
     run_method_rows!(section, c, method; maxit, toolkits, λ_default) -> MRT image or nothing
 
 Time MRT's reconstruction of case `c` by `method` (with `mrt_reconstructor`, the same call the MRT
-harness times), then every competitor in `toolkits` that `supports` it, and push one
+harness times), then every competitor in `toolkits` that `supports` it, each at its own calibrated
+λ and ADMM penalty (`load_lambda`, `load_rho`), and push one
 `BenchResult` per toolkit. `nrmse_gt` is against the case's reference, `nrmse_mrt` against MRT's
 own result. A competitor that throws is logged and dropped from the row.
 """
@@ -159,14 +176,18 @@ function run_method_rows!(
     println("--> $(c.id): $label")
     runs = timed_runs(c)
     λ = load_lambda(c, method, "MRT", λ_default)
-    tm, _, xm = time_run(mrt_reconstructor(c, method; λ, maxit); runs)
+    rho = something(load_rho(c, method, "MRT"), admm_rho(c))
+    tm, _, xm = time_run(mrt_reconstructor(c, method; λ, rho, maxit); runs)
     xm = _score_image(c, method, parent(xm))
     push!(results, BenchResult(section, label, FW, NUM_THREADS, tm * 1000, mag_nrmse(xm, c.reference), 0.0, c.id, c.source))
     for tk in toolkits
         fw = framework_label(tk)
         (supports(tk, c, method) && should_run_framework(fw)) || continue
         try
-            t_ms, x = toolkit_run(tk, c, method; λ = load_lambda(c, method, toolkit_key(tk), λ_default), maxit, runs)
+            key = toolkit_key(tk)
+            t_ms, x = toolkit_run(
+                tk, c, method; λ = load_lambda(c, method, key, λ_default), ρ = load_rho(c, method, key), maxit, runs,
+            )
             x = _score_image(c, method, x)
             push!(results, BenchResult(section, label, fw, NUM_THREADS, t_ms, mag_nrmse(x, c.reference), mag_nrmse(xm, x), c.id, c.source))
         catch err

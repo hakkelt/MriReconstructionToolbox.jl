@@ -1,14 +1,18 @@
 #!/bin/bash
-# Per-case λ calibration (benchmark/comparison/scripts/calibrate_lambda.jl) as a SLURM array job:
-# one array task per case, each writing its own results/lambda/<case id>.json, so the tasks never
-# share a file and a failed case can be resubmitted alone.
+# Per-case λ and ADMM-penalty calibration (benchmark/comparison/scripts/calibrate_lambda.jl) as a
+# SLURM array job: one array task per case, each writing its own results/lambda/<case id>.json, so
+# the tasks never share a file and a failed case can be resubmitted alone.
 #
 #   benchmark/slurm/submit.sh --array=0-6 calibrate.sh
 #   benchmark/slurm/submit.sh calibrate.sh --cases=shepp_logan_2d_8ch_cartesian
+#   benchmark/slurm/submit.sh calibrate.sh --cases=torso_cine_8ch_radial --frameworks=bart --methods=llr
 #
 # `--cases=a,b,...` lists the cases (default: every synthetic catalog case, in catalog order); array
 # task i calibrates the i-th of them, and without an array the job calibrates all of them in turn.
-# Every other argument (--frameworks=, --use-mkl, ...) is passed to calibrate_lambda.jl.
+# Every other argument is passed to calibrate_lambda.jl: `--frameworks=mrt,bart,...` recalibrates
+# only those toolkits (the others' curves are kept from the existing file), `--methods=` only those
+# methods, and `--use-mkl` picks the backend. `RHO_DECADES`, `IT_CAL`, `NGRID` and `NGRID_HEAVY` are
+# read from the environment.
 #
 #SBATCH --job-name=calibrate
 #SBATCH --nodes=1

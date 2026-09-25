@@ -27,10 +27,10 @@ const CMP_WAVELET_NAME = get(ENV, "CMP_WAVELET_NAME", "db2")
 
 # --- shared knobs ---------------------------------------------------------------------------
 # The effort knobs are BenchUtils' (benchmark/utils/mrt_methods.jl), so MRT's rows here and the MRT
-# harness run the same solve. Fixed ADMM penalty used by every toolkit's ADMM path, so ρ is not a
-# hidden degree of freedom. MRT's own rows take `admm_rho(c)` instead: relative to `‖𝒜‖²`, and
-# `RADIAL_ADMM_RHO` on radial cases, where the competitors' absolute value is the same number in
-# different units.
+# harness run the same solve. `CMP_RHO` is the ADMM penalty every competitor's ADMM path falls back
+# to when a case has no calibrated one (`load_rho`); the value is absolute, in each toolkit's own
+# operator scaling. MRT's own rows fall back to `admm_rho(c)` instead, which is relative to `‖𝒜‖²`,
+# so the one number means different things: `calibrate_lambda.jl` fits ρ per toolkit for that reason.
 const CMP_RHO = ADMM_RHO
 # Outer iterations are capped at CMP_OUTER (20 is plenty for these 2D problems); inner CG at
 # CMP_CG_ITERS (10). MRT, MRIReco and SigPy all run the full budget — `tol = 0` genuinely means
@@ -179,11 +179,11 @@ Runs with `vary_rho = :none`, `iterationsCG = CMP_CG_ITERS` and zero tolerances 
 iteration budget is spent (`RegularizedLeastSquares.filterKwargs` drops the keys a given solver
 does not accept, so the same kwargs are safe for CGNR / ADMM / FISTA).
 
-`ρ = nothing` — the default for `:wavelet`, the one FISTA path — means *estimate the step size*:
+`ρ = nothing` for `:wavelet`, the one FISTA path, means *estimate the step size*:
 `0.95 / power_iterations(AHA)`, FISTA's own constructor default, computed inside the timed region
 because that is where MRT's equivalent `estimate_opnorm` is charged. See `CMP_FISTA_RHO_MRIRECO`
-for why it is not passed as a constant. For the ADMM rows `ρ` is a penalty, not a step size,
-and every toolkit is held to the same fixed `CMP_RHO`, so nothing is estimated there.
+for why it is not passed as a constant. For the ADMM rows `ρ` is a fixed penalty, not a step
+size: the case's calibrated one (`load_rho`) or `CMP_RHO`, so nothing is estimated there.
 """
 function mrireco(
         method::Symbol, ksp3, smaps3, reconSize; λ = 0.0, iterations = 10,
@@ -308,12 +308,12 @@ _sp_s(smaps) = _sp_rev(smaps)
 `ksp` is a zero-filled Cartesian `(kx, ky, coil)` or `(kx, ky, kz, coil)` array and `smaps` the
 matching maps; SigPy's apps are dimension-agnostic, so the 3D volume goes through the same calls.
 `method ∈ (:adjoint, :cgsense, :tv, :wavelet)`. TGV / low-rank unsupported here (throw).
-Only **TV** is forced onto ADMM (`rho = CMP_RHO`, `max_cg_iter = CMP_CG_ITERS`) — matching the
+Only **TV** is forced onto ADMM (`rho = ρ`, `max_cg_iter = CMP_CG_ITERS`) — matching the
 ADMM the other toolkits use for TV; SigPy would otherwise default to PDHG. **L1-wavelet** keeps
 SigPy's natural proximal-gradient solver (FISTA-like), as MRT / MRIReco / BART also use FISTA for
 wavelet. `tol ≈ 0` so all `iterations` outer steps run. `:adjoint` is `Sense(mps)ᴴ y`.
 """
-function sigpy_recon(method::Symbol, ksp3, smaps3; λ = 0.0, iterations = 10)
+function sigpy_recon(method::Symbol, ksp3, smaps3; λ = 0.0, iterations = 10, ρ = CMP_RHO)
     y, mps = _sp_k(ksp3), _sp_s(smaps3)
     app = if method === :adjoint
         S = sp_mri.linop.Sense(mps)
@@ -322,7 +322,7 @@ function sigpy_recon(method::Symbol, ksp3, smaps3; λ = 0.0, iterations = 10)
         () -> sp_app.SenseRecon(y, mps; max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
     elseif method === :tv
         () -> sp_app.TotalVariationRecon(
-            y, mps, λ; solver = "ADMM", rho = CMP_RHO,
+            y, mps, λ; solver = "ADMM", rho = ρ,
             max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
         ).run()
     elseif method === :wavelet
@@ -450,10 +450,10 @@ class _MrtSVT(sp.prox.Prox):
 
 Global low-rank reconstruction of a zero-filled `(nx, ny, time, coil)` frame stack, through
 `sigpy.app.LinearLeastSquares` on `sigpy.mri.linop.Sense` with the Casorati SVT prox above.
-The solver settings match the other SigPy rows (`ADMM`, `rho = CMP_RHO`, `max_cg_iter =
+The solver settings match the other SigPy rows (`ADMM`, `rho = ρ`, `max_cg_iter =
 CMP_CG_ITERS`). Returns the image as `(nx, ny, time)`.
 """
-function sigpy_lowrank(ksp4, smaps3, image_size; λ = 0.0, iterations = 10)
+function sigpy_lowrank(ksp4, smaps3, image_size; λ = 0.0, iterations = 10, ρ = CMP_RHO)
     y = parent(permutedims(CMP_CTYPE.(ksp4), (3, 4, 2, 1)))          # (T, coil, ky, kx)
     mps = parent(permutedims(CMP_CTYPE.(smaps3), (3, 2, 1)))          # (coil, y, x)
     weights = Float64.(dropdims(sum(abs, y, dims = (1, 2)), dims = (1, 2)) .> 0)
@@ -470,7 +470,7 @@ function sigpy_lowrank(ksp4, smaps3, image_size; λ = 0.0, iterations = 10)
     y = y .* sqrt.(reshape(weights, 1, 1, size(weights)...))
     prox = py"_MrtSVT"(collect(ishape), λ)
     app = () -> sp.app.LinearLeastSquares(
-        A, y; proxg = prox, solver = "ADMM", rho = CMP_RHO,
+        A, y; proxg = prox, solver = "ADMM", rho = ρ,
         max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
     ).run()
     t, _, raw = time_reconstruction(app)
@@ -617,16 +617,36 @@ function supports(tk::Symbol, c::BenchCase, m::Symbol)
 end
 
 """
-    toolkit_run(tk, c, method; λ, maxit, runs) -> (time_ms, image)
+    uses_admm(tk, c::BenchCase, method) -> Bool
+
+Whether toolkit `tk` (`:mrt` included) solves `method` on `c` with a fixed-penalty ADMM, i.e.
+whether a ρ is a parameter of its row. L1-wavelet runs FISTA everywhere, CG-SENSE CG, and MIRT's
+only regularized row POGM.
+"""
+function uses_admm(tk::Symbol, c::BenchCase, m::Symbol)
+    m in (:tv, :tgv, :lowrank, :llr, :ttv) || return false
+    tk === :mrt && return true
+    tk === :bart && return true
+    tk === :sigpy && return m in (:tv, :lowrank)
+    tk === :mrireco && return m in (:tv, :lowrank, :llr)
+    return false
+end
+
+"""
+    toolkit_run(tk, c, method; λ, maxit, runs, ρ = nothing) -> (time_ms, image)
 
 Reconstruct case `c` by `method` with toolkit `tk`, timed over `runs` runs after a warm-up. The
-image comes back in the case's reference layout.
+image comes back in the case's reference layout. `ρ` is the ADMM penalty of a row that
+[`uses_admm`](@ref), `nothing` meaning `CMP_RHO`; other rows ignore it.
 """
-function toolkit_run(tk::Symbol, c::BenchCase, m::Symbol; λ::Real, maxit::Int, runs::Int = timed_runs(c))
+function toolkit_run(
+        tk::Symbol, c::BenchCase, m::Symbol; λ::Real, maxit::Int, runs::Int = timed_runs(c), ρ = nothing,
+    )
     RUNS[] = runs
-    tk === :bart && return bart_run(c, m; λ, maxit)
-    tk === :sigpy && return sigpy_run(c, m; λ, maxit)
-    tk === :mrireco && return mrireco_run(c, m; λ, maxit)
+    ρ = something(ρ, CMP_RHO)
+    tk === :bart && return bart_run(c, m; λ, maxit, ρ)
+    tk === :sigpy && return sigpy_run(c, m; λ, maxit, ρ)
+    tk === :mrireco && return mrireco_run(c, m; λ, maxit, ρ)
     tk === :mirt && return mirt_run(c, m; λ, maxit)
     throw(ArgumentError("unknown toolkit $tk"))
 end
@@ -653,15 +673,18 @@ cine_stack(c::BenchCase) = permutedims(c.kspace, (1, 2, 4, 3))
 # ---------------------------------------------------------------- BART
 
 """
-    bart_cmd(c, method, λ, maxit; budget = maxit * CMP_CG_ITERS) -> String
+    bart_cmd(c, method, λ, maxit; budget = maxit * CMP_CG_ITERS, ρ = CMP_RHO) -> String
 
 The `pics` command line for `method` on `c` (see `BART_BUDGET` for why an ADMM `-i` is a budget).
 Regularizer flags cover the spatial axes (3, or 7 for the volume); the cine time axis is BART
 dimension 5 (flag 32). `-b` is the LLR block edge (8) or, for global low rank, the whole image.
+`ρ` is the ADMM penalty (`-u`).
 """
-function bart_cmd(c::BenchCase, m::Symbol, λ::Real, maxit::Int; budget::Int = maxit * CMP_CG_ITERS)
+function bart_cmd(
+        c::BenchCase, m::Symbol, λ::Real, maxit::Int; budget::Int = maxit * CMP_CG_ITERS, ρ::Real = CMP_RHO,
+    )
     sp = c.family === :volume ? 7 : 3
-    admm = "-F -i $budget -u $CMP_RHO -C $CMP_CG_ITERS"
+    admm = "-F -i $budget -u $ρ -C $CMP_CG_ITERS"
     m === :cgsense && return "pics -S -w 1 -i $maxit"
     m === :tv && return "pics -S -w 1 $admm -R T:$sp:0:$λ"
     m === :wavelet && return "pics -S -w 1 -e -i $maxit -R W:$sp:0:$λ"
@@ -701,13 +724,13 @@ function bart_image(c::BenchCase, r)
     return r[:, :, 1]
 end
 
-function bart_run(c::BenchCase, m::Symbol; λ, maxit, budget = maxit * CMP_CG_ITERS)
+function bart_run(c::BenchCase, m::Symbol; λ, maxit, budget = maxit * CMP_CG_ITERS, ρ = CMP_RHO)
     nx, ny = c.image_size[1:2]
     nc = ncoils(c)
     if c.family === :multislice
         return per_slice(c) do k, s
             one = BenchCase(; id = c.id, family = :single_slice, trajectory = :cartesian, reference = c.reference[:, :, 1], smaps = s, kspace = k, image_size = c.image_size)
-            bart_run(one, m; λ, maxit, budget)
+            bart_run(one, m; λ, maxit, budget, ρ)
         end
     end
     inputs = bart_inputs(c)
@@ -725,7 +748,7 @@ function bart_run(c::BenchCase, m::Symbol; λ, maxit, budget = maxit * CMP_CG_IT
         imgs = run_bart(1, "nufft -a -d $nx:$ny:1 -t", traj, k .* reshape(c.dcf, 1, size(c.dcf)...))
         return NaN, reshape(sum(imgs .* conj.(s); dims = 4), size(c.reference))
     end
-    cmd = bart_cmd(c, m, λ, maxit; budget)
+    cmd = bart_cmd(c, m, λ, maxit; budget, ρ)
     c.trajectory === :noncartesian && (cmd *= " -t")
     tb, _, r = time_bart(cmd, inputs...; num_runs = RUNS[])
     return 1000 * tb, bart_image(c, r)
@@ -733,13 +756,13 @@ end
 
 # ---------------------------------------------------------------- SigPy
 
-function sigpy_run(c::BenchCase, m::Symbol; λ, maxit)
+function sigpy_run(c::BenchCase, m::Symbol; λ, maxit, ρ = CMP_RHO)
     if c.trajectory === :cartesian
-        c.family === :multislice && return per_slice((k, s) -> sigpy_recon(m, k, s; λ, iterations = maxit), c)
-        c.family === :cine && return sigpy_lowrank(cine_stack(c), c.smaps, c.image_size; λ, iterations = maxit)
-        return sigpy_recon(m, c.kspace, c.family === :volume ? c.smaps : cart_maps(c); λ, iterations = maxit)
+        c.family === :multislice && return per_slice((k, s) -> sigpy_recon(m, k, s; λ, iterations = maxit, ρ), c)
+        c.family === :cine && return sigpy_lowrank(cine_stack(c), c.smaps, c.image_size; λ, iterations = maxit, ρ)
+        return sigpy_recon(m, c.kspace, c.family === :volume ? c.smaps : cart_maps(c); λ, iterations = maxit, ρ)
     end
-    return sigpy_noncartesian(m, c; λ, iterations = maxit)
+    return sigpy_noncartesian(m, c; λ, iterations = maxit, ρ)
 end
 
 """
@@ -749,7 +772,7 @@ SigPy's NUFFT path for a single-slice non-Cartesian case: `coord` is `(spoke, sa
 units with the last axis ordered like SigPy's image axes, `(y, x)`. `:gridding` is
 `Sense(mps, coord)ᴴ (dcf · y)`; `:cgsense` and `:tv` are the SigPy apps given `coord`.
 """
-function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10)
+function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = CMP_RHO)
     nx, ny = c.image_size
     ns, nsp = size(c.traj, 2), size(c.traj, 3)
     coord = Array{Float64}(undef, nsp, ns, 2)
@@ -768,7 +791,7 @@ function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10)
         () -> sp_app.SenseRecon(y, mps; coord, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
     elseif m === :tv
         () -> sp_app.TotalVariationRecon(
-            y, mps, λ; coord, solver = "ADMM", rho = CMP_RHO,
+            y, mps, λ; coord, solver = "ADMM", rho = ρ,
             max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
         ).run()
     else
@@ -780,13 +803,15 @@ end
 
 # ---------------------------------------------------------------- MRIReco
 
-function mrireco_run(c::BenchCase, m::Symbol; λ, maxit)
+function mrireco_run(c::BenchCase, m::Symbol; λ, maxit, ρ = CMP_RHO)
     if c.trajectory === :noncartesian
         return mrireco_noncartesian(m, c; iterations = maxit)
     elseif c.family === :cine
-        return mrireco_dynamic(m, cine_stack(c), c.smaps, c.image_size; λ, iterations = maxit)
+        return mrireco_dynamic(m, cine_stack(c), c.smaps, c.image_size; λ, iterations = maxit, ρ)
     end
-    f = (k, s) -> m === :adjoint ? mrireco_adjoint(k, s) : mrireco(m, k, s, c.image_size; λ, iterations = maxit)
+    # The FISTA row's `ρ` is its step size, estimated when `nothing` (see `mrireco`).
+    ρm = m === :wavelet ? nothing : ρ
+    f = (k, s) -> m === :adjoint ? mrireco_adjoint(k, s) : mrireco(m, k, s, c.image_size; λ, iterations = maxit, ρ = ρm)
     c.family === :multislice && return per_slice(f, c)
     return f(c.kspace, cart_maps(c))
 end

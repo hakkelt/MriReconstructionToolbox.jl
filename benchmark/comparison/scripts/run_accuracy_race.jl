@@ -18,7 +18,8 @@
 #   * BART and MRIReco additionally pay one-off Lipschitz estimates on their FISTA paths (`-e` is
 #     30 `𝒜ᴴ𝒜`; `power_iterations` is 2–30) that a per-iteration accounting hides.
 #
-# So: sweep the iteration count per toolkit at its own calibrated λ, and report the wall time at
+# So: sweep the iteration count per toolkit at its own calibrated λ (and, for an ADMM row, its own
+# calibrated penalty ρ, since each toolkit scales its operator differently), and report the wall time at
 # the first count that reaches a common NRMSE target. That is the number a user actually cares
 # about — "how long until the picture is this good" — and it is invariant to all of the above.
 #
@@ -76,9 +77,9 @@ function addrow!(c::BenchCase, method::Symbol, target, fw, r)
     return nothing
 end
 
-function mrt_race_run(c::BenchCase, method::Symbol, λ)
+function mrt_race_run(c::BenchCase, method::Symbol, λ, rho)
     return it -> begin
-        t, _, x = time_run(mrt_reconstructor(c, method; λ, maxit = it); runs = timed_runs(c))
+        t, _, x = time_run(mrt_reconstructor(c, method; λ, rho, maxit = it); runs = timed_runs(c))
         (1000 * t, parent(x))
     end
 end
@@ -86,7 +87,8 @@ end
 for c in section_cases(_ -> true), method in race_methods(c)
     should_run(c.id, METHOD_LABEL[method]) || should_run("Accuracy race", METHOD_LABEL[method]) || continue
     λ_default = default_lambda(c, method)
-    mrt_run = mrt_race_run(c, method, load_lambda(c, method, "MRT", λ_default))
+    mrt_rho = something(load_rho(c, method, "MRT"), admm_rho(c))
+    mrt_run = mrt_race_run(c, method, load_lambda(c, method, "MRT", λ_default), mrt_rho)
     target = load_race_target(c, method, NaN)
     if isnan(target)
         _, x = mrt_run(last(ladder(c)))
@@ -101,16 +103,17 @@ for c in section_cases(_ -> true), method in race_methods(c)
         fw = framework_label(tk)
         (supports(tk, c, method) && should_run_framework(fw)) || continue
         λ = load_lambda(c, method, toolkit_key(tk), λ_default)
+        ρ = load_rho(c, method, toolkit_key(tk))
         r = if tk === :bart && bart_admm(method)
             steps = c.heavy ? LADDER_BART_ADMM_HEAVY : LADDER_BART_ADMM
             race(
                 "$fw $(c.id) $method", c, method, steps, target,
-                it -> (RUNS[] = timed_runs(c); bart_run(c, method; λ, maxit = it, budget = it)),
+                it -> (RUNS[] = timed_runs(c); bart_run(c, method; λ, maxit = it, budget = it, ρ = something(ρ, CMP_RHO))),
             )
         else
             race(
                 "$fw $(c.id) $method", c, method, ladder(c), target,
-                it -> toolkit_run(tk, c, method; λ, maxit = it),
+                it -> toolkit_run(tk, c, method; λ, ρ, maxit = it),
             )
         end
         addrow!(c, method, target, fw, r)
