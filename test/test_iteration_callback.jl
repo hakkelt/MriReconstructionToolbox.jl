@@ -107,6 +107,32 @@ end
     @test trace.values[end].sparse ≈ img.sparse
 end
 
+@testitem "on_iteration sees the image, not TGV's auxiliary variable" tags = [:reconstruction, :minimizer] setup = [IterationCallbackSetup] begin
+    using NamedDims
+
+    # TotalGeneralizedVariation2D solves for the image and a vector field together, so the
+    # solver's iterate spans both; the callback must still receive only the image.
+    acq, x_true = square_acquisition()
+    trace = IterationTrace()
+    method = IterativeReconstruction(
+        TotalGeneralizedVariation2D(0.01); algorithm = ADMM(), maxit = 4, reltol = 0, on_iteration = trace,
+    )
+    img = reconstruct(acq, method; verbosity = Silent())
+    @test length(trace) == 4
+    @test size(trace.values[end]) == size(img)
+    @test trace.values[end] ≈ img
+
+    # With named dimensions the iterate is wrapped in the image's names, which failed outright
+    # while the auxiliary field was still part of it.
+    named = simulate_acquisition(
+        NamedDimsArray{(:x, :y)}(x_true), CartesianAcquisitionInfo(; is3D = false, image_size = size(x_true)),
+    )
+    trace = IterationTrace()
+    img = reconstruct(named, IterativeReconstruction(TotalGeneralizedVariation2D(0.01); algorithm = ADMM(), maxit = 4, reltol = 0, on_iteration = trace); verbosity = Silent())
+    @test dimnames(trace.values[end]) == dimnames(img)
+    @test parent(trace.values[end]) ≈ parent(img)
+end
+
 @testitem "on_iteration leaves Verbose output intact" tags = [:reconstruction, :minimizer] setup = [IterationCallbackSetup] begin
     acq, _ = square_acquisition()
 
