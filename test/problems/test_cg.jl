@@ -159,4 +159,26 @@ using Random
             PA.CG_BLAS_THREAD_BYTES[] = old
         end
     end
+
+    @testset "CGNR with a caller-supplied AᴴA" begin
+        Random.seed!(0)
+        A = randn(ComplexF64, 80, 50)
+        b = rand(ComplexF64, 80)
+        x0 = zeros(ComplexF64, 50)
+        AHA = A' * A
+        @test ProximalAlgorithms.CGNRIteration(; x0, A, b, AHA).A === AHA
+
+        x, it = ProximalAlgorithms.CGNR(; x0, A, b, maxit = 100, tol = 0.0)()
+        x_aha, it_aha = ProximalAlgorithms.CGNR(; x0, A, b, AHA, maxit = 100, tol = 0.0)()
+        @test x_aha == x
+        @test it_aha == it
+        @test norm(A' * (A * x - b)) < 1e-6 * norm(A' * b)
+
+        P = Diagonal(diag(AHA))
+        xp, _ = ProximalAlgorithms.CGNR(; x0, A, b, P, maxit = 100, tol = 0.0)()
+        xp_aha, _ = ProximalAlgorithms.CGNR(; x0, A, b, AHA, P, maxit = 100, tol = 0.0)()
+        @test ProximalAlgorithms.PCGNRIteration(; x0, A, b, AHA, P).A === AHA
+        @test xp_aha == xp
+        @test xp ≈ x
+    end
 end
