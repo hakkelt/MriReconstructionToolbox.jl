@@ -195,9 +195,8 @@ end
 # so it holds exactly when the expression inside `f` is affine, which is what convexity and
 # the other function properties below need. `is_affine(t)` asks the same of the operator
 # with its displacement.
-import AbstractOperators: is_affine
-is_affine(t::Term) = is_affine(affine(t))
-is_affine(t::TermSet) = all(is_affine.(t))
+AbstractOperators.is_affine(t::Term) = AbstractOperators.is_affine(affine(t))
+AbstractOperators.is_affine(t::TermSet) = all(AbstractOperators.is_affine.(t))
 
 is_affine_indicator(t::Term) = is_affine_indicator(t.f) && is_linear(t)
 is_cone_indicator(t::Term) = is_cone_indicator(t.f) && is_linear(t)
