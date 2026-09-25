@@ -1,4 +1,11 @@
-export suggest_algorithm
+export suggest_algorithm, select_solver
+
+# A dry run parses a problem only to learn whether (and at what cost) it parses, so it skips
+# what `prepare` would build that the answer does not depend on: normal operators and
+# factorizations (see `merge_function_with_operator`). It is task-local, so concurrent
+# parses on other tasks are unaffected.
+_is_dry_run() = get(task_local_storage(), :StructuredOptimization_dry_run, false)::Bool
+_dry_run(f) = task_local_storage(f, :StructuredOptimization_dry_run, true)
 
 """
 	parse_problem(terms::TermSet, solver::IterativeAlgorithm)
@@ -225,10 +232,12 @@ end
 # choose from. This is the same "closest match" `print_diagnostics(terms)` reports.
 function closest_algorithm(terms::TermSet, algorithms = ProximalAlgorithms.get_algorithms())
     best, fewest = nothing, nothing
-    for algorithm in algorithms
-        _, remaining_terms = parse_problem(terms, algorithm, true)
-        if fewest === nothing || length(remaining_terms) < fewest
-            best, fewest = algorithm, length(remaining_terms)
+    _dry_run() do
+        for algorithm in algorithms
+            _, remaining_terms = parse_problem(terms, algorithm, true)
+            if fewest === nothing || length(remaining_terms) < fewest
+                best, fewest = algorithm, length(remaining_terms)
+            end
         end
     end
     return best
@@ -239,19 +248,44 @@ end
 # two layers are scored jointly here: an algorithm that asks less of a term (a gradient
 # rather than a prox, say) may let that term take a cheaper formulation, and that shows up
 # in this total.
+#
+# The ranking runs as a dry run, and only the winner is then prepared for real: the cost of a
+# parse never depends on what preparing builds, so every losing algorithm would otherwise
+# pay for a normal operator nobody uses.
 function parse_problem(terms::Union{Term, TermSet})
     terms = terms isa TermSet ? terms : TermSet(terms)
-    variables = extract_variables(terms)
     best, best_key = nothing, nothing
-    for (position, algorithm) in enumerate(ProximalAlgorithms.get_algorithms())
-        kwargs, remaining_terms, cost = parse_terms(terms, algorithm)
-        isempty(remaining_terms) || continue
-        key = (cost, position)
-        if best_key === nothing || key < best_key
-            best, best_key = (algorithm, kwargs, variables), key
+    _dry_run() do
+        for (position, algorithm) in enumerate(ProximalAlgorithms.get_algorithms())
+            _, remaining_terms, cost = parse_terms(terms, algorithm)
+            isempty(remaining_terms) || continue
+            key = (cost, position)
+            if best_key === nothing || key < best_key
+                best, best_key = algorithm, key
+            end
         end
     end
-    return best
+    best === nothing && return nothing
+    return parse_problem(terms, best)
+end
+
+"""
+    select_solver(terms::Union{Term,TermSet}, solvers)
+
+The solver [`solve`](@ref)`(terms, solvers)` runs: the first of `solvers` that the problem
+parses into, or `nothing` if none does. Nothing is built to decide this -- no normal
+operator, no factorization -- so it is cheap enough to ask before committing to a solver,
+e.g. to know whether a step size is worth estimating for it.
+"""
+function select_solver(terms::Union{Term, TermSet}, solvers)
+    terms = terms isa TermSet ? terms : TermSet(terms)
+    return _dry_run() do
+        for solver in solvers
+            _, remaining_terms, _ = parse_terms(terms, solver)
+            isempty(remaining_terms) && return solver
+        end
+        return nothing
+    end
 end
 
 """
@@ -282,10 +316,10 @@ false
 function suggest_algorithm(terms::Union{Term, TermSet}, algorithms = ProximalAlgorithms.get_algorithms())
     terms = terms isa TermSet ? terms : TermSet(terms)
     suitable_algs = []
-    for algorithm in algorithms
-        result = parse_problem(terms, algorithm)
-        if result !== nothing
-            push!(suitable_algs, algorithm)
+    _dry_run() do
+        for algorithm in algorithms
+            _, remaining_terms, _ = parse_terms(terms, algorithm)
+            isempty(remaining_terms) && push!(suitable_algs, algorithm)
         end
     end
     return suitable_algs
@@ -353,12 +387,9 @@ is `(variables, iterations)`.
 """
 function solve(terms::Union{Term, TermSet}, solvers::Union{<:AbstractVector{<:IterativeAlgorithm}, <:Tuple{Vararg{IterativeAlgorithm}}}; kwargs...)
     terms = terms isa TermSet ? terms : TermSet(terms)
-    for solver in solvers
-        result = parse_problem(terms, solver)
-        if result isa Nothing
-            continue
-        end
-        _, term_kwargs, x = result
+    solver = select_solver(terms, solvers)
+    if solver !== nothing
+        _, term_kwargs, x = parse_problem(terms, solver)
         return _run_solver(solver, term_kwargs, x; kwargs...)
     end
     return if length(solvers) == 1

@@ -237,6 +237,10 @@ syntax layer builds `λ · f(A·x + d)` triples and nothing else (PLAN.md 2.6).
 """
 function merge_function_with_operator(op, f, disp, λ; needs::Symbol = :any)
     kind, _ = best_formulation(op, f, disp, λ, needs)
+    # A dry run only asks whether a problem parses, which the formulation cannot change, so
+    # the two formulations that build something expensive (a normal operator, a
+    # factorization) are left unbuilt.
+    _is_dry_run() && (kind === :normal_op || kind === :ind_affine) && return f
     if kind === :normal_op
         # Scoring used the type-level fuse predicate, which is deliberately conservative but
         # can still be optimistic where inference sees a fusing product that the operator's
@@ -669,10 +673,16 @@ function prepare(term::Term, assumption::ProximalAlgorithms.LeastSquaresTerm, va
         b = -displacement(term)
         # Absorption to the normal-op formulation happens at `merge_function_with_operator`
         # time, not when `ls` builds the term, so `f` is always the plain `SqrNormL2` here.
-        # Ask the same question the formulation layer would, and reuse its AᴴA when it says yes.
-        f_abs = merge_function_with_operator(op, f, displacement(term), term.lambda)
-        if f_abs isa SqrNormL2WithNormalOp
-            aha = remove_displacement(f_abs.AᴴA)
+        # Ask the same question the formulation layer would, and reuse its AᴴA when it says
+        # yes -- but only when it will be handed over: the algorithm takes one, its operator
+        # requirements hold, the weight leaves the operator unscaled (see below), and this
+        # is not a dry run. Building it is the expensive part of preparing.
+        if assumption.AHA !== nothing && lambda isa Real && lambda == 1 &&
+                does_satisfy(op, assumption.operator) && !_is_dry_run()
+            f_abs = merge_function_with_operator(op, f, displacement(term), term.lambda)
+            if f_abs isa SqrNormL2WithNormalOp
+                aha = remove_displacement(f_abs.AᴴA)
+            end
         end
     else
         # ProximalOperators.LeastSquares carries its own embedded operator and vector
