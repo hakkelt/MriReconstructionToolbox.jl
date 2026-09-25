@@ -72,6 +72,46 @@ end
     @test opnorm_bound(scalar) ≥ powerit(scalar; maxit = 2000, rel_margin = 1.0e-14)
 end
 
+@testitem "opnorm_bound: batched diagonals over BroadCast" tags = [:calculus, :OpnormBound] begin
+    using LinearAlgebra, Random
+    using AbstractOperators
+    using AbstractOperators: opnorm_bound, powerit
+
+    # One array replicated into `nc` copies, each weighted by its own diagonal and then
+    # subsampled: the undersampled SENSE encoding. With the weights normalized so that
+    # `sum_c |w[:, :, c]|² == 1`, the norm is at most one, whereas the submultiplicative product
+    # gives `maximum(abs, w) * sqrt(nc)`.
+    Random.seed!(0x5eed)
+    nx, ny, nc = 12, 10, 6
+    w = randn(ComplexF64, nx, ny, nc)
+    w ./= sqrt.(sum(abs2, w; dims = 3))
+    masks = fill(rand(ny) .< 0.5, nc)
+    blocks = [GetIndex(ComplexF64, (nx, ny), (:, masks[c])) * DiagOp(w[:, :, c]) for c in 1:nc]
+    B = BroadCast(Eye(ComplexF64, (nx, ny)), (nx, ny, nc))
+    for threaded in (false, true)
+        S = BatchOp(blocks; threaded) * B
+        exact = powerit(S; maxit = 3000, rel_margin = 1.0e-14)
+        @test opnorm_bound(S) ≈ 1.0
+        @test opnorm_bound(S) ≥ exact
+        @test opnorm_bound(S) < maximum(abs, w) * sqrt(nc)
+    end
+
+    # Unnormalized weights: still a bound, and still at most the product.
+    v = randn(ComplexF64, nx, ny, nc)
+    S = BatchOp([GetIndex(ComplexF64, (nx, ny), (:, masks[c])) * DiagOp(v[:, :, c]) for c in 1:nc]) * B
+    @test opnorm_bound(S) ≈ sqrt(maximum(sum(abs2, v; dims = 3)))
+    @test opnorm_bound(S) ≥ powerit(S; maxit = 3000, rel_margin = 1.0e-14)
+
+    # Blocks that are bare diagonals give the stacked-diagonal norm exactly.
+    S = BatchOp([DiagOp(v[:, :, c]) for c in 1:nc]) * B
+    @test opnorm_bound(S) ≈ powerit(S; maxit = 3000, rel_margin = 1.0e-14) rtol = 1.0e-6
+
+    # A block that does not start with a diagonal leaves the product rule in charge.
+    S = BatchOp([DiagOp(v[:, :, c]) * MatrixOp(randn(ComplexF64, nx, nx), ny) for c in 1:nc]) * B
+    @test opnorm_bound(S) ≈ opnorm_bound(S.A[2]) * opnorm_bound(S.A[1])
+    @test opnorm_bound(S) ≥ powerit(S; maxit = 3000, rel_margin = 1.0e-14)
+end
+
 @testitem "opnorm_bound: a broadcast scales the norm it wraps" tags = [:calculus, :OpnormBound] begin
     using LinearAlgebra, Random
     using AbstractOperators
