@@ -7,6 +7,11 @@
 The fixed effort every iterative method runs at: `OUTER_ITERATIONS` ADMM (or FISTA) iterations,
 `CG_ITERATIONS` inner CG per ADMM iteration, a fixed ADMM penalty `ADMM_RHO`, and no early stop.
 CG-SENSE runs `CG_ITERATIONS` iterations. Overridable with `CMP_OUTER` / `CMP_CG_ITERS`.
+
+`ADMM_RHO` is relative to `‖𝒜‖²` on a checkout whose `reconstruct` scales a given ADMM penalty
+by it (`_scale_admm_penalty`), and absolute on one that does not. The difference is large only
+for radial cases (`‖𝒜‖² ≈ 2·10⁶`): there an absolute `0.05` never lets the regularizer act, and
+their NRMSE from such a checkout is that of an unregularized solve, whatever `λ` says.
 """
 const OUTER_ITERATIONS = parse(Int, get(ENV, "CMP_OUTER", "20"))
 const CG_ITERATIONS = parse(Int, get(ENV, "CMP_CG_ITERS", "10"))
