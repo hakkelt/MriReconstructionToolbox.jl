@@ -13,7 +13,8 @@
 #                             script in PATH/benchmark's environment. PATH needs a Manifest.toml;
 #                             when it has none, this checkout's is copied in.
 #   --dev=Pkg=PATH,...        with --mrt: point the environment's manifest entry of Pkg at PATH
-#                             (e.g. --dev=NestedThreading=/path/to/checkout)
+#                             (e.g. --dev=NestedThreading=/path/to/checkout). The edit stays in
+#                             PATH's untracked Manifest.toml after the run.
 #   --remeasure               measure configurations the store already has
 #   --runs=K / --warmup=K     override the number of timed / warm-up runs
 #   --env-variant=STR         a label for the environment variant (recorded; see matrix.sh)
@@ -31,23 +32,37 @@ _list(name) = (v = _arg(name); v === nothing ? nothing : String.(split(v, ",")))
 
 # ---------------------------------------------------------------- --mrt: re-run in that checkout
 
+# Point the `path` of Pkg's manifest entry at `path`. The entry's other keys (`deps = [...]`,
+# `uuid`, ...) and its extension tables are left as they are; only a dev'd package has a path.
+function redirect_manifest_path!(manifest, pkg, path)
+    lines = readlines(manifest; keep = true)
+    i = findfirst(l -> rstrip(l) == "[[deps.$pkg]]", lines)
+    i === nothing && error("$manifest has no entry for $pkg")
+    j = findnext(l -> startswith(l, "path = ") || startswith(lstrip(l), "["), lines, i + 1)
+    j !== nothing && startswith(lines[j], "path = ") ||
+        error("$pkg in $manifest has no path entry (only a dev'd package can be redirected)")
+    lines[j] = "path = \"$(escape_string(abspath(path)))\"\n"
+    write(manifest, join(lines))
+    return nothing
+end
+
 if _arg("mrt") !== nothing && get(ENV, "MRT_BENCH_REEXEC", "") != "1"
     using FileWatching: mkpidlock
     mrt = abspath(_arg("mrt"))
     proj = joinpath(mrt, "benchmark")
     isfile(joinpath(proj, "Project.toml")) || error("$mrt has no benchmark/Project.toml: it predates the benchmark harness")
     manifest = joinpath(mrt, "Manifest.toml")
-    mkpidlock(joinpath(mrt, ".benchmark_env.pid"); stale_age = 3600) do
+    # The holder refreshes the lock every stale_age / 2 seconds, so a short stale_age never breaks a
+    # live lock; a lock left by a killed job is taken over after stale_age on the same host and
+    # 5 × stale_age from another node, instead of blocking every run for hours.
+    mkpidlock(joinpath(mrt, ".benchmark_env.pid"); stale_age = 60) do
         if !isfile(manifest)
             cp(joinpath(@__DIR__, "..", "Manifest.toml"), manifest)
             @info "copied this checkout's Manifest.toml into $mrt, so both measure the same dependency versions"
         end
         for spec in something(_list("dev"), String[])
             pkg, path = split(spec, "="; limit = 2)
-            text = read(manifest, String)
-            block = Regex("(\\[\\[deps\\.$pkg\\]\\][^\\[]*?\\npath = )\"[^\"]*\"")
-            occursin(block, text) || error("no path entry for $pkg in $manifest (only a dev'd package can be redirected)")
-            write(manifest, replace(text, block => SubstitutionString("\\1\"$(escape_string(abspath(path)))\"")))
+            redirect_manifest_path!(manifest, pkg, path)
         end
         run(`$(Base.julia_cmd()) --project=$proj -e "using Pkg; Pkg.instantiate()"`)
     end
