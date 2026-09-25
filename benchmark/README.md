@@ -129,7 +129,10 @@ julia --project=benchmark benchmark/compare.jl master perf [--threads=8] [--back
 environment variant). It prints the B/A ratio of the minimum time, each side's spread (median /
 minimum) and ΔNRMSE. |ΔNRMSE| > 1e-3 is flagged as a change in *what* is computed, and a ratio outside
 the larger spread plus 5% as a real speed change. Results from different node classes are warned
-about, not compared silently.
+about, not compared silently. Only isolated runs count unless `--placement=shared` or `any` is given:
+a packed run (`matrix.sh --pack`) recorded after an isolated one would otherwise be the one compared.
+`--pick=min` takes the fastest matching result instead of the latest, for repeated measurements
+(`matrix.sh --swap-repeat`).
 
 ## SLURM
 
@@ -145,7 +148,7 @@ unless given `--production`, which occupies a node for hours and needs agreement
 
 | script | what it runs |
 |---|---|
-| `matrix.sh` | one exclusive node; each configuration pinned to its own NUMA domain with `numactl`, several at a time, one CPU per physical core (never an SMT sibling; `run.jl` and the comparison suite pin their threads only to physical cores of the allowed set, and fail when it has too few). Refs and environment variants of one (threads, backend) pair start together. `--suite=harness` runs `run.jl`, `--suite=comparison` runs `comparison/scripts/run_all.jl`. Matrix dimensions: `--matrix-threads=`, `--matrix-backends=`, `--matrix-refs=name:path,...` (harness), `--matrix-env=A=1+B=2,...` (recorded per row). `--pack` lets several tasks share a domain, each on its own physical cores (best-fit within an L3 group, then a domain) and with `--pack-mem-gb=` reserved per task against the domain's memory; packed results get their own node class, so they are never reused for or silently compared with isolated ones. Leave it off for published numbers and when memory-bandwidth contention is the question. Every other flag is passed through. |
+| `matrix.sh` | one exclusive node; each configuration pinned to its own NUMA domain with `numactl`, several at a time, one CPU per physical core (never an SMT sibling; `run.jl` and the comparison suite pin their threads only to physical cores of the allowed set, and fail when it has too few). Refs and environment variants of one (threads, backend) pair start together. `--suite=harness` runs `run.jl`, `--suite=comparison` runs `comparison/scripts/run_all.jl`. Matrix dimensions: `--matrix-threads=`, `--matrix-backends=`, `--matrix-refs=name:path[:Pkg=PATH+...],...` (harness; the optional third field is passed to that ref's `run.jl --dev`), `--matrix-env=A=1+B=2,...` (recorded per row). The first ref or variant of a pair always starts on the lower domain, and domains differ; `--swap-repeat` queues the matrix again in reverse order with `--remeasure`, to be compared with `compare.jl --pick=min`. `--pack` lets several tasks share a domain, each on its own physical cores (best-fit within an L3 group, then a domain) and with `--pack-mem-gb=` reserved per task against the domain's memory; packed results get their own node class, so they are never reused for or silently compared with isolated ones. Leave it off for published numbers and when memory-bandwidth contention is the question. Every other flag is passed through. |
 | `calibrate.sh` | λ calibration (`comparison/scripts/calibrate_lambda.jl`), one case per array task |
 | `report_efficiency.sh <jobid>` | CPU efficiency of a finished matrix job |
 
