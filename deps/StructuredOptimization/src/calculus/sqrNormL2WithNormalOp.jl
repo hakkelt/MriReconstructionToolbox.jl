@@ -82,21 +82,38 @@ struct SqrNormL2WithNormalOp{T, SC, L <: AbstractOperator, L2 <: AbstractOperato
         else
             AᴴA = lambda == 1 ? pureAᴴA : lambda * pureAᴴA
         end
-        # `A * 0` is the displacement `d` of an affine `A` (zero for a purely linear one);
-        # `AᴴA * 0` is `Aᴴd` taken through the very operator `gradient!` uses, so the
-        # constants cannot drift from it.
+        # `displacement(A) = A * 0` is the displacement `d` of an affine `A` (zero for a purely
+        # linear one); `displacement(AᴴA) = AᴴA * 0` is `Aᴴd` taken through the very operator
+        # `gradient!` uses, so the constants cannot drift from it. Both are read from the
+        # operators rather than computed by applying them to a zero vector.
         z = AbstractOperators.allocate_in_domain(A)
-        fill!(z, 0)
-        d = A * z
-        has_displacement = !iszero(d)
-        Aᴴd = has_displacement ? AᴴA * z : nothing
-        inv_scaling = _inv_adjoint_scaling(A, pureAᴴA, z, d, has_displacement ? pureAᴴA * z : nothing)
+        d = _displacement_array(A)
+        has_displacement = d !== nothing
+        pureAᴴd = has_displacement ? _displacement_array(pureAᴴA) : nothing
+        Aᴴd = if !has_displacement
+            nothing
+        elseif lambda isa AbstractArray
+            _displacement_array(AᴴA)
+        else
+            lambda == 1 ? pureAᴴd : lambda .* pureAᴴd
+        end
+        inv_scaling = _inv_adjoint_scaling(A, pureAᴴA, z, d, pureAᴴd)
         R_ = typeof(inv_scaling)
         half_sqnorm_d = has_displacement ? R_(_weighted_sqnorm(lambda, d) * inv_scaling / 2) : zero(R_)
         return new{typeof(lambda), strongly_convex, typeof(A), typeof(AᴴA), typeof(Aᴴd), R_}(
             A, AᴴA, lambda, Aᴴd, half_sqnorm_d, inv_scaling
         )
     end
+end
+
+# The displacement of `A` as an array of its codomain, or `nothing` when it is zero. A
+# scalar displacement stands for that value in every entry, so it is expanded: the constant
+# term of the quadratic sums over the whole codomain.
+function _displacement_array(A)
+    d = displacement(A)
+    iszero(d) && return nothing
+    d isa Number || return d
+    return fill!(AbstractOperators.allocate_in_codomain(A), d)
 end
 
 _weighted_sqnorm(lambda::Real, d) = lambda * real(dot(d, d))
