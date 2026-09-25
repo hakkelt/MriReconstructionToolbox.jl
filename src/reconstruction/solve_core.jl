@@ -29,19 +29,22 @@ function _iterative_reconstruct_core(
     # multiplied the effective regularization weight by `L`, and returned the image `L` times too
     # large — and only the first was intended. See `docs/src/high-level/methods.md`, "Operator
     # norm, step size and λ".
-    should_estimate_L = _should_estimate_operator_norm(method)
-    # `precomputed_L` lets a caller that already estimated `‖𝒜‖` for the warm start
-    # (`_direct_reconstruct`/`_direct_reconstruct_components`) hand it in instead of paying for
-    # `estimate_opnorm` a second time here.
-    L = should_estimate_L ?
-        (isnothing(precomputed_L) ? _operator_norm_for_stepsize(𝒜, method, config) : precomputed_L) :
-        nothing
     # `@printing_step`, not `@step`: `@step`'s verbose path runs its body inside `@spawn`, so the
     # `model` / `vars` bindings would live only in that task's closure — the solve closures below
     # capture them, and neither inference (JET) nor a reader can then see they are defined.
     @printing_step "Building optimization model" config begin
         model, vars, _auxiliaries = build(𝒜, _measurement(acq_data.kspace_data); x₀ = x₀_or_x₀s)
     end
+    # A tuple of algorithms is resolved to the one `solve` would run before anything is estimated
+    # for it: whether `‖𝒜‖` is needed depends on that algorithm alone.
+    selected_algorithm = _select_algorithm(model, method.algorithm)
+    should_estimate_L = _should_estimate_operator_norm(method, selected_algorithm)
+    # `precomputed_L` lets a caller that already estimated `‖𝒜‖` for the warm start
+    # (`_direct_reconstruct`/`_direct_reconstruct_components`) hand it in instead of paying for
+    # `estimate_opnorm` a second time here.
+    L = should_estimate_L ?
+        (isnothing(precomputed_L) ? _operator_norm_for_stepsize(𝒜, method, config) : precomputed_L) :
+        nothing
     @printing_step "Reconstructing image" config begin
         verbose, freq, display = solver_output(config.verbosity, something(method.maxit, 100))
         # `method.maxit` / `method.reltol` are `nothing` when the caller wants the algorithm's own
@@ -67,7 +70,7 @@ function _iterative_reconstruct_core(
         # own step size instead of overriding it.
         R_type = real(eltype(_first_x0(x₀_or_x₀s)))
         Lf = should_estimate_L ? R_type(_n_vars(vars) * L^2) : nothing
-        algorithm = patch_algorithm_with_default_values(method.algorithm, Lf; eltype_real = R_type)
+        algorithm = patch_algorithm_with_default_values(selected_algorithm, Lf; eltype_real = R_type)
         # Only add `hook` to the keyword set when a callback was actually supplied: leaving it out
         # keeps the algorithm's `hook` field `Nothing`-typed, and `ProximalAlgorithms._run_hook`
         # then compiles to nothing at all inside the iteration loop.
@@ -276,14 +279,30 @@ was handed away. The estimate's only remaining consumer there was the warm-start
 
 Reads `method.disable_operator_normalization`, whose name predates the change that stopped this
 rescaling the operator — it now suppresses the `Lf` estimate and nothing else.
+
+`algorithm` is the algorithm that will actually run. For a tuple of candidates that is the one
+[`_select_algorithm`](@ref) resolves once the model exists; asked about the tuple itself, the
+answer is `true` whenever *any* candidate takes `Lf`, which is what the default tuple always
+says (it contains `POGM`) even when `CGNR` or `ADMM` is the one selected.
 """
-function _should_estimate_operator_norm(method::IterativeReconstruction)
+function _should_estimate_operator_norm(method::IterativeReconstruction, algorithm = method.algorithm)
     if !isnothing(method.disable_operator_normalization)
         return !method.disable_operator_normalization
     end
-    is_pure_cg = isempty(method.regularization) && _is_krylov_solver(method.algorithm)
-    return !is_pure_cg && consumes_lf(method.algorithm)
+    is_pure_cg = isempty(method.regularization) && _is_krylov_solver(algorithm)
+    return !is_pure_cg && consumes_lf(algorithm)
 end
+
+"""
+    _select_algorithm(model, algorithm)
+
+The algorithm `solve(model, algorithm)` runs: `algorithm` itself, or for a tuple of candidates
+the first that the model parses into (`StructuredOptimization.select_solver`, which builds
+nothing to decide). A tuple none of whose members fits is returned unchanged, so `solve` still
+reports why.
+"""
+_select_algorithm(model, algorithm) = algorithm
+_select_algorithm(model, algorithms::Tuple) = something(select_solver(model, algorithms), algorithms)
 
 """
     _warm_start_needs_operator_norm(method) -> Bool
@@ -311,6 +330,11 @@ exactly when the algorithm needs it as its own step-size hint, in which case the
 on as `precomputed_L` so `_iterative_reconstruct_core` does not estimate it twice; when only the
 warm start needed a scale, [`_warm_start_scale_proxy`](@ref) supplies it for one operator
 application and there is no `L` to carry.
+
+A tuple of algorithms is decided here as a whole, because which of them runs is only known once
+the model exists (see [`_select_algorithm`](@ref)): if any of them takes `Lf`, `L` is estimated
+and scales the warm start. The proxy would be cheaper, but it lands below `ρ(𝒜'𝒜)` where the
+estimate lands above, and CG-SENSE with the default tuple converges measurably slower from it.
 """
 function _scale_default_warm_start(𝒜, x̂, method::IterativeReconstruction, config)
     _warm_start_needs_operator_norm(method) || return x̂, nothing
@@ -331,7 +355,9 @@ where [`_should_estimate_operator_norm`](@ref) is `false` but
 
 It is the Rayleigh quotient of the normal operator at the warm start,
 `⟨x̂, 𝒜'𝒜 x̂⟩ / ⟨x̂, x̂⟩`, which estimates the same `ρ(𝒜'𝒜)` that `estimate_opnorm`'s power method
-converges to — from below, as that does. One normal-operator application replaces twenty. It
+converges to — from below, as that does. One application of `𝒜` and one of `𝒜'` replace twenty;
+they are applied in turn rather than through `𝒜' * 𝒜`, whose normal operator would be built
+for this one product and then thrown away. It
 works *because* the vector is `𝒜'y`: that already lies in the operator's dominant subspace, so a
 single quotient is close. Measured on a 192²×8 acquisition:
 
@@ -350,7 +376,7 @@ function _warm_start_scale_proxy(𝒜, x̂::AbstractArray, config)
     @printing_step "Estimating the warm-start scale" config begin
         R = real(eltype(x̂))
         denom = real(dot(x̂, x̂))
-        num = denom > 0 ? real(dot(x̂, (𝒜' * 𝒜) * x̂)) : zero(denom)
+        num = denom > 0 ? real(dot(x̂, 𝒜' * (𝒜 * x̂))) : zero(denom)
         # A zero (or numerically degenerate) warm start needs no correction.
         ρ = num > 0 ? R(num / denom) : one(R)
     end
