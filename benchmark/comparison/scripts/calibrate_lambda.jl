@@ -143,7 +143,8 @@ function sweep(c::BenchCase, method::Symbol)
         centre = grid_centre(method, key, λc)
         λs = collect(10 .^ range(log10(centre) - 2, log10(centre) + 1.5; length = ngrid))
         known = RESUME ? stored_points(c, method, key) : Dict{Tuple{Float64, Any}, Float64}()
-        curves[key] = sweep_toolkit(c, method, tk, key, λs, rho_grid(c, method, tk); known)
+        checkpoint = pts -> write_calibration!(c, Dict{String, Any}(String(method) => Dict(key => pts)))
+        curves[key] = sweep_toolkit(c, method, tk, key, λs, rho_grid(c, method, tk); known, checkpoint)
     end
     return curves
 end
@@ -175,21 +176,30 @@ SigPy's radial TV optimum lay above the whole shared grid. So while the best poi
 largest or smallest λ (or ρ) swept, one more grid step is added in that direction for every ρ (or
 every λ), up to `MAX_GRID_EXTENSIONS` times per axis; an optimum still on the edge after that is
 logged. `known` holds points measured earlier (see [`RESUME`](@ref)), which are not measured again.
+
+`checkpoint(points)` is called with every point measured so far, known ones included, after each new
+measurement, so a run cut short (a job's time limit) leaves its points in the case's file for
+`--resume` to pick up.
 """
-function sweep_toolkit(c::BenchCase, method::Symbol, tk::Symbol, key, λs, ρs; known = Dict{Tuple{Float64, Any}, Float64}())
+function sweep_toolkit(
+        c::BenchCase, method::Symbol, tk::Symbol, key, λs, ρs;
+        known = Dict{Tuple{Float64, Any}, Float64}(), checkpoint = _ -> nothing,
+    )
     λs, ρs = copy(λs), copy(ρs)
     nrmse = Dict{Tuple{Float64, Any}, Float64}(known)
     function measure(λ, ρ)
-        return get!(nrmse, (λ, ρ)) do
-            e = try
-                nrmse_at(c, method, tk, λ, ρ)
-            catch ex
-                @warn "$key $(c.id) $method λ=$λ ρ=$ρ failed" exception = (ex, catch_backtrace())
-                NaN
-            end
-            @info @sprintf("%-40s %-8s %-7s λ=%.4g  ρ=%-9s NRMSE=%.4f", c.id, method, key, λ, something(ρ, "-"), e)
-            e
+        haskey(nrmse, (λ, ρ)) && return nrmse[(λ, ρ)]
+        e = try
+            nrmse_at(c, method, tk, λ, ρ)
+        catch ex
+            @warn "$key $(c.id) $method λ=$λ ρ=$ρ failed" exception = (ex, catch_backtrace())
+            NaN
         end
+        @info @sprintf("%-40s %-8s %-7s λ=%.4g  ρ=%-9s NRMSE=%.4f", c.id, method, key, λ, something(ρ, "-"), e)
+        flush(stderr)
+        nrmse[(λ, ρ)] = e
+        checkpoint(sort!([(λ, ρ, e) for ((λ, ρ), e) in nrmse]; by = p -> (something(p[2], 0.0), p[1])))
+        return e
     end
     curve() = [(λ, ρ, measure(λ, ρ)) for ρ in ρs for λ in λs]
     λstep = λs[2] / λs[1]
