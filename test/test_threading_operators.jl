@@ -378,19 +378,19 @@ end
 
     # FFTW is a *counted* thread pool: `threaded` picks a plan-time thread count, so it is
     # fixed at construction and `is_threaded` reads it back rather than switching a loop.
-    # Above the measured c2c crossover (2^13), so `threaded = true` is granted; below it the
+    # At the measured c2c crossover (2^16), so `threaded = true` is granted; below it the
     # policy declines and `is_threaded` would correctly report false.
-    serial_dft = DFT(Float64, (1 << 14,); threaded = false)
-    threaded_dft = DFT(Float64, (1 << 14,); threaded = true)
+    serial_dft = DFT(Float64, (1 << 16,); threaded = false)
+    threaded_dft = DFT(Float64, (1 << 16,); threaded = true)
     @test supports_threading(serial_dft) == true
     @test is_threaded(serial_dft) == false
     @test is_threaded(threaded_dft) == (Threads.nthreads() > 1)
 
-    x = randn(1 << 14)
+    x = randn(1 << 16)
     @test serial_dft * x ≈ threaded_dft * x
 
     # `num_threads`, FFTW's own spelling, still works and still wins.
-    @test is_threaded(DFT(Float64, (1 << 14,); num_threads = 1)) == false
+    @test is_threaded(DFT(Float64, (1 << 16,); num_threads = 1)) == false
 
     # Switching the flag has to replan, and must preserve the *domain* element type --
     # for a real-input DFT the codomain is complex, so replanning from the codomain would
@@ -511,9 +511,9 @@ end
     # FFTW threads these transform kinds -- measured at n = 2^22 with 8 threads:
     # r2c (RDFT) 3.08x, r2r forward (DCT) 2.25x, r2r inverse (IDCT) 1.91x. That is why they
     # carry a plan-time thread count rather than being declared unthreaded.
-    # Above every FFTW crossover measured for these kinds (c2c 2^13, r2r 2^15, r2c 2^15),
-    # so `threaded = true` is a permission the policy grants.
-    n = 1 << 16
+    # Above every FFTW crossover measured for these kinds (r2r 2^16, r2c 2^18; IRDFT gates on
+    # its n ÷ 2 + 1 complex input), so `threaded = true` is a permission the policy grants.
+    n = 1 << 19
     x = randn(n)
     z = randn(ComplexF64, n ÷ 2 + 1)
 

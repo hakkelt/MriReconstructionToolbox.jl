@@ -202,6 +202,9 @@ is_AcA_diagonal(L::VCAT) = all(is_AcA_diagonal.(L.A))
 is_AAc_diagonal(L::VCAT) = all(is_AAc_diagonal.(L.A))
 is_full_column_rank(L::VCAT) = any(is_full_column_rank.(L.A))
 
+# `‖[A; B] x‖² = ‖Ax‖² + ‖Bx‖²`; attained only if one `x` maximises every block at once.
+opnorm_bound(L::VCAT) = sqrt(sum(abs2, opnorm_bound.(L.A)))
+
 is_sliced(L::VCAT) = any(is_sliced.(L.A))
 function get_slicing_expr(L::VCAT)
     return get_slicing_expr.(Tuple(L.A[i] for i in eachindex(L.A)))

@@ -295,6 +295,43 @@ function remove_slicing(L::Compose)
 end
 
 diag(L::Compose) = is_sliced(L) ? diag(L.A[2]) : prod(diag.(L.A))
+
+"""
+A certified upper bound on `‖R ∘ L‖` for an adjacent pair of factors whose composed norm has a
+closed form strictly better than the submultiplicative product `opnorm_bound(R) * opnorm_bound(L)`,
+or `nothing` when the pair is not one of those.
+
+The pairs that matter put a replicating `BroadCast` under a `DiagOp`, or under a `SpreadingBatchOp`
+whose blocks start with one; their methods live in `calculus/BroadCast.jl`, which is included
+after this file.
+"""
+_fused_pair_opnorm(L, R) = nothing
+
+"""
+An upper bound on `‖L‖` by submultiplicativity over the factors, tightened wherever two adjacent
+factors have a closed-form composed bound that beats their product (see `_fused_pair_opnorm`).
+"""
+opnorm_bound(L::Compose) = _chain_opnorm_bound(L.A)
+
+# The bound of `factors[end] ∘ ⋯ ∘ factors[1]`, the factors given in application order.
+function _chain_opnorm_bound(factors::Tuple)
+    bound = 1.0
+    i = 1
+    n = length(factors)
+    while i <= n
+        # `factors[i]` feeds `factors[i + 1]`.
+        pair = i < n ? _fused_pair_opnorm(factors[i], factors[i + 1]) : nothing
+        if pair === nothing
+            bound *= opnorm_bound(factors[i])
+            i += 1
+        else
+            bound *= pair
+            i += 2
+        end
+        isfinite(bound) || return Inf
+    end
+    return bound
+end
 function diag_AAc(L::Compose)
     return if is_AAc_diagonal(L)
         diag_AAc(L.A[2])

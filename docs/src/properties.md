@@ -56,6 +56,7 @@ is_sliced
 remove_slicing
 is_thread_safe
 estimate_opnorm
+opnorm_bound
 ```
 
 ## Operator Copying
