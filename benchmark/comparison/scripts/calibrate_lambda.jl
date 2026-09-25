@@ -273,9 +273,23 @@ function write_calibration!(c::BenchCase, fresh::Dict{String, Any})
         for k in ("lambda", "rho", "target_nrmse", "race_target", "sweeps")
             haskey(file, k) || (file[k] = Dict{String, Any}())
         end
+        # Under `--resume` a toolkit's fresh points are added to its stored ones rather than
+        # replacing them, so processes that sweep disjoint parts of one toolkit's grid (one ρ decade
+        # each, say) all keep their points.
+        union = RESUME && get(get(file, "meta", Dict()), "iterations", nothing) == IT_CAL
         for (method, curves) in fresh
             stored = Dict{String, Any}(tk => _curve_from_json(pts) for (tk, pts) in get(file["sweeps"], method, Dict()))
             merged = merge(stored, curves)
+            if union
+                for (tk, curve) in curves
+                    haskey(stored, tk) || continue
+                    pts = Dict((λ, ρ) => e for (λ, ρ, e) in stored[tk])
+                    for (λ, ρ, e) in curve
+                        pts[(λ, ρ)] = e
+                    end
+                    merged[tk] = sort!([(λ, ρ, e) for ((λ, ρ), e) in pts]; by = p -> (something(p[2], 0.0), p[1]))
+                end
+            end
             # Target = the NRMSE MRT reaches at its own best λ and ρ (MRT is the reference
             # implementation); every other toolkit's λ is then chosen to match MRT's accuracy. If a
             # toolkit cannot reach that NRMSE anywhere on the grid, `pick_lambda` returns its closest
