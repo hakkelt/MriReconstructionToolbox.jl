@@ -25,6 +25,38 @@
     @test_throws ErrorException AffineAdd(Eye(4), im * pi)
 end
 
+@testitem "displacement of a linear operator is zero without applying it" tags = [:calculus, :AffineAdd] setup = [TestUtils] begin
+    using AbstractOperators
+    # `NaN * 0` is `NaN`, so applying any of these to zeros would not give zero.
+    P = MatrixOp(fill(NaN, 3, 4))
+    @test displacement(P) === 0.0
+    @test displacement(MatrixOp(fill(NaN + 0im, 3, 4))) === 0.0im
+    @test displacement(P * MatrixOp(fill(NaN, 4, 2))) === 0.0
+    @test displacement(VCAT(P, MatrixOp(fill(NaN, 2, 4)))) === 0.0
+    @test displacement(2.0 * P') === 0.0
+    d = randn(3)
+    @test displacement(AffineAdd(P, d)) == d
+    @test displacement(AffineAdd(P, d, false)) == -d
+end
+
+@testitem "displacement inside a combination is still computed" tags = [:calculus, :AffineAdd] setup = [TestUtils] begin
+    using AbstractOperators
+    # `is_linear` holds for all of these, yet each has a nonzero displacement.
+    A = MatrixOp(randn(3, 4))
+    d = randn(3)
+    T = AffineAdd(A, d)
+    B = MatrixOp(randn(4, 2))
+    @test is_linear(T * B)
+    @test displacement(T * B) ≈ d
+    E = MatrixOp(ones(2, 3))
+    @test displacement(E * T) ≈ E * d
+    @test displacement(VCAT(T, MatrixOp(randn(2, 4)))) ≈ ArrayPartition(d, zeros(2))
+    @test displacement(2.0 * T) ≈ 2 .* d
+    # A user function wrapped as a linear operator is not trusted to map zero to zero.
+    M = MyLinOp(Float64, (2,), (2,), (y, x) -> (y .= x .+ 1), (y, x) -> (y .= x))
+    @test displacement(M) == 1.0
+end
+
 @testitem "AffineAdd: nonlinear and permute" tags = [:calculus, :AffineAdd] setup = [TestUtils] begin
     using Random, AbstractOperators
     Random.seed!(0)

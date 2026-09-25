@@ -181,6 +181,7 @@ permute(S::Scale, p::AbstractVector{Int}) = _rethread_scale(S, S.coeff, S.coeff_
 # Scale's own broadcast threading lives in its FastBroadcast type parameter; it is threaded
 # if either that flag or the wrapped operator says so.
 _children(L::Scale) = (L.A,)
+displacement(L::Scale) = _combined_displacement(L, (L.A,))
 is_threaded(L::Scale{Th}) where {Th} = _fbbool(Th) || _is_threaded_from_children(L)
 supports_threading(::Scale) = true
 

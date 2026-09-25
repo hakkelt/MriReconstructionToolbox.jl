@@ -79,15 +79,44 @@ end
     mul!(y2, op2, x)
     @test y1 ≈ y2
 
-    # `threaded` is accepted (vacuously, since WaveletOp never has a threaded path).
+    # A 1-D transform has no threaded path, so `threaded` changes nothing.
     op3 = copy_operator(op; threaded = false)
     @test domain_array_type(op3) <: Array{Float64}
+    @test !supports_threading(op3) && !is_threaded(op3)
 
     # `storage_type` rebuilds the storage-tracking type parameter.
     op4 = copy_operator(op; storage_type = Array{Float64})
     @test op4 isa WaveletOp
     @test domain_array_type(op4) <: Array{Float64}
     @test codomain_array_type(op4) <: Array{Float64}
+end
+
+@testitem "WaveletOp: the threaded 2-D and 3-D transforms equal Wavelets.jl's" tags = [:wavelet, :WaveletOp, :Threading] setup = [TestUtils] begin
+    using Wavelets, LinearAlgebra, Random, AbstractOperators, WaveletOperators
+    Random.seed!(7)
+
+    # Sizes above the threading threshold, including a dimension that does not split evenly
+    # across threads; levels up to the maximum.
+    for (T, dims, w, L) in (
+            (Float64, (512, 512), wavelet(WT.db2), 3),
+            (ComplexF32, (512, 1024), wavelet(WT.haar), 9),
+            (ComplexF32, (64, 64, 64), wavelet(WT.db2), 3),
+            (Float64, (64, 96, 64), wavelet(WT.db4), 5),
+        )
+        op = WaveletOp(T, w, dims, L)
+        @test supports_threading(op)
+        @test is_threaded(op) == (Threads.nthreads() > 1)
+        serial = copy_operator(op; threaded = false)
+        @test !is_threaded(serial)
+        x = randn(T, dims)
+        @test op * x == dwt(x, w, L)
+        @test op' * x == idwt(x, w, L)
+        @test serial * x == op * x
+        @test op' * (op * x) ≈ x
+    end
+
+    # Below the threshold the policy keeps it serial.
+    @test !is_threaded(WaveletOp(Float64, wavelet(WT.db2), (32, 32), 2))
 end
 
 @testitem "WaveletOp constructor errors" tags = [:wavelet, :WaveletOp] setup = [TestUtils] begin
