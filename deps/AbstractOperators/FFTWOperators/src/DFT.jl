@@ -415,6 +415,35 @@ function _scale_output!(y, scale, threaded::Bool)
     return y
 end
 
+# In a `Compose`, the normalization pass joins the pointwise operators that follow the
+# transform. Without a normalization the pass divides by one, which is exact, so that its type
+# does not depend on the normalization.
+AbstractOperators._pw_kind(::Type{<:DFT}) = AbstractOperators.PwEpilogueKind()
+AbstractOperators._pw_kind(::Type{<:AdjointOperator{<:DFT}}) = AbstractOperators.PwEpilogueKind()
+
+AbstractOperators._pw_core!(y, L::DFT{N, C, D}, b) where {N, C, D <: Complex} = mul!(y, L.A, b)
+AbstractOperators._pw_core!(y, L::DFT{N, C, D}, b) where {N, C, D <: Real} =
+    mul!(y, L.A, complex(b))
+AbstractOperators._pw_core!(y, L::AdjointOperator{<:DFT{N, C, D}}, b) where {N, C, D <: Complex} =
+    mul!(y, L.A.At, b)
+function AbstractOperators._pw_core!(
+        y, L::AdjointOperator{<:DFT{N, C, D}}, b
+    ) where {N, C, D <: Real}
+    y2 = complex(y)
+    mul!(y2, L.A.At, b)
+    y .= real.(y2)
+    return y
+end
+
+function AbstractOperators._pw_epilogue(L::DFT)
+    s = L.normalization == FORWARD || L.normalization == ORTHO ? L.scale : one(L.scale)
+    return AbstractOperators.PwDiv{codomain_type(L)}(s)
+end
+function AbstractOperators._pw_epilogue(L::AdjointOperator{<:DFT})
+    s = L.A.normalization == BACKWARD || L.A.normalization == ORTHO ? L.A.scale : one(L.A.scale)
+    return AbstractOperators.PwDiv{codomain_type(L)}(s)
+end
+
 # ─── Threading ────────────────────────────────────────────────────────────────
 
 is_threaded(op::DFT) = op.num_threads > 1

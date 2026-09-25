@@ -200,38 +200,17 @@ _ndoms_from_type(::Type{<:Compose{N, M, L, T}}, dim::Int) where {N, M, L <: Tupl
 
 # Mappings
 
-@generated function mul!(y::AbstractArray, L::Compose{N, M, T1, T2}, b::AbstractArray) where {N, M, T1, T2}
-    ex = :(mul!(L.buf[1], L.A[1], b))
-    for i in 2:M
-        ex = quote
-            $ex
-            mul!(L.buf[$i], L.A[$i], L.buf[$(i - 1)])
-        end
-    end
-    return ex = quote
-        check(y, L, b)
-        $ex
-        mul!(y, L.A[N], L.buf[M])
-        return y
-    end
+# Runs of pointwise operators execute as one loop; see `pointwise.jl`.
+function mul!(y::AbstractArray, L::Compose, b::AbstractArray)
+    check(y, L, b)
+    _pw_chain!(y, L.A, L.buf, b)
+    return y
 end
 
-@generated function mul!(
-        y::AbstractArray, L::AdjointOperator{Compose{N, M, T1, T2}}, b::AbstractArray
-    ) where {N, M, T1, T2}
-    ex = :(mul!(L.A.buf[M], L.A.A[N]', b))
-    for i in M:-1:2
-        ex = quote
-            $ex
-            mul!(L.A.buf[$(i - 1)], L.A.A[$i]', L.A.buf[$i])
-        end
-    end
-    return ex = quote
-        check(y, L, b)
-        $ex
-        mul!(y, L.A.A[1]', L.A.buf[1])
-        return y
-    end
+function mul!(y::AbstractArray, L::AdjointOperator{<:Compose}, b::AbstractArray)
+    check(y, L, b)
+    _pw_chain!(y, map(adjoint, reverse(L.A.A)), reverse(L.A.buf), b)
+    return y
 end
 
 has_optimized_normalop(L::Compose) = has_optimized_normalop(L.A[end])

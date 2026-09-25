@@ -133,7 +133,7 @@ end
 # the same in both settings. See `threading_policy.jl` for the policy note.
 function _copy_flat!(_y, _x)
     @inbounds for k in axes(_y, 2)
-        copyto!(view(_y, :, k), _x)
+        copyto!(_y, (k - 1) * length(_x) + 1, _x, 1, length(_x))
     end
     return _y
 end
@@ -146,7 +146,7 @@ function _copy_flat_threaded!(_y, _x)
         k, j = fldmod1(t, per_copy)
         lo, hi = _chunk_range(length(_x), per_copy, j)
         lo > hi && continue
-        @inbounds copyto!(view(_y, lo:hi, k), view(_x, lo:hi))
+        @inbounds copyto!(_y, (k - 1) * length(_x) + lo, _x, lo, hi - lo + 1)
     end
     return _y
 end
@@ -191,13 +191,45 @@ function _chunk_range(len::Int, nchunks::Int, i::Int)
     return (i - 1) * size + 1, min(len, i * size)
 end
 
-_flat_pair(y, x) = (reshape(y, length(x), :), vec(x))
+# The copy count is spelled out rather than left to `:`, which JET's `@test_opt` infers as `Any`;
+# the copies above index the flat layout directly for the same reason, instead of going through
+# a `view` of one column.
+_flat_pair(y, x) = (reshape(y, length(x), length(y) ÷ length(x)), vec(x))
 
 # Kept for callers outside this file (`OperatorBroadCast`), and as the single place the compact
 # layout assumption is written down.
 function tbroadcast!(y, x)
     _y, _x = _flat_pair(y, x)
     return _copy_flat_threaded!(_y, _x)
+end
+
+# A broadcast is an expansion into copies, and its adjoint the sum of those copies, so both join
+# a pointwise run of a `Compose` when the broadcast axes are adjacent.
+_pw_kind(::Type{<:NoOperatorBroadCast{T, N, M, Th, S}}) where {T, N, M, Th, S} =
+    S <: Array ? PwExpandKind() : PwNoneKind()
+_pw_kind(::Type{<:AdjointOperator{<:NoOperatorBroadCast{T, N, M, Th, S}}}) where {T, N, M, Th, S} =
+    S <: Array ? PwReduceKind() : PwNoneKind()
+_pw_layout(A::AdjointOperator{<:NoOperatorBroadCast}) = _pw_layout(A.A)
+function _pw_layout(A::NoOperatorBroadCast)
+    r, o = A.reshaped_dim_in, A.dim_out
+    first_axis, last_axis = 0, 0
+    for d in eachindex(o)
+        if r[d] != o[d]
+            first_axis == 0 && (first_axis = d)
+            last_axis = d
+        end
+    end
+    first_axis == 0 && return (prod(o), 1)
+    inner, K = 1, 1
+    for d in eachindex(o)
+        if d < first_axis
+            inner *= o[d]
+        elseif d <= last_axis
+            r[d] == 1 || return nothing
+            K *= o[d]
+        end
+    end
+    return inner, K
 end
 
 # NoOperatorBroadCast

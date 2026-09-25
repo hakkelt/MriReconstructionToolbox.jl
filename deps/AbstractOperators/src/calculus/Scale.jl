@@ -94,6 +94,11 @@ function mul!(y::AbstractArray, L::Scale{Th}, x::AbstractArray) where {Th}
     return @.. thread = Th y *= L.coeff
 end
 
+# A scaled pointwise operator is pointwise.
+_pw_kind(::Type{<:Scale{Th, T, L}}) where {Th, T, L} =
+    _pw_kind(L) isa PwMapKind ? PwMapKind() : PwNoneKind()
+_pw_steps(L::Scale) = (_pw_steps(L.A)..., PwRightMul{codomain_type(L)}(L.coeff))
+
 function mul!(y::Tuple, L::Scale{Th}, x::AbstractArray) where {Th}
     check(y, L, x)
     mul!(y, L.A, x)

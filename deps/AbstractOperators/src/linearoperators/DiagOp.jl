@@ -99,6 +99,15 @@ function mul!(y::AbstractArray, L::AdjointOperator{<:DiagOp{B, <:Real, <:Complex
     return @.. thread = B y = real(conj(L.A.d) * b)
 end
 
+# Fused into a pointwise run of a `Compose` when the diagonal lives on the CPU.
+const _CPUDiagOp = DiagOp{<:Any, <:Any, <:Any, <:Any, <:Any, <:Any, <:Union{Number, Array}}
+_pw_kind(::Type{<:_CPUDiagOp}) = PwMapKind()
+_pw_kind(::Type{<:AdjointOperator{<:_CPUDiagOp}}) = PwMapKind()
+_pw_steps(L::DiagOp) = (PwLeftMul{codomain_type(L)}(L.d),)
+_pw_steps(L::AdjointOperator{<:DiagOp}) = (PwConjLeftMul{codomain_type(L)}(L.A.d),)
+_pw_steps(L::AdjointOperator{<:DiagOp{<:Any, <:Real, <:Complex}}) =
+    (PwRealConjLeftMul{codomain_type(L)}(L.A.d),)
+
 # Transformations (we'll see about this)
 # inv(L::DiagOp) = DiagOp(L.domain_type, L.dim_in, (L.d).^(-1))
 
