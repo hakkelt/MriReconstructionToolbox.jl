@@ -368,6 +368,12 @@ branch = "perf/cg-blas-grant"
 parent = "master"
 pr = ""
 
+# CGNR/PCGNR take a caller-supplied AᴴA, as ADMM does since `c3-admm-reuse-aha`.
+[[ProximalAlgorithms.stack]]
+branch = "perf/cgnr-reuse-aha"
+parent = "c3-admm-reuse-aha"
+pr = ""
+
 # `pogm-algorithm` is deliberately absent: it added POGM as a `pogm::Bool` variant of
 # `FastForwardBackward`, and `master` (#100) supersedes it with a `src/algorithms/pogm.jl` of its
 # own. Merging it would only re-add the old path. The branch is still on the fork, unmerged.
@@ -392,4 +398,10 @@ prune = [
 [[StructuredOptimization.stack]]
 branch = "master"
 parent = ""
+pr = ""
+
+# Solver selection by a parse that builds nothing, so a solve forms one normal operator.
+[[StructuredOptimization.stack]]
+branch = "perf/single-normal-op"
+parent = "master"
 pr = ""
