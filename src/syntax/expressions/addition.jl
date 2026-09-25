@@ -176,9 +176,11 @@ end
 
 (+)(a::Union{AbstractArray, Number}, b::AbstractExpression) = b + a
 
+# `-b` is formed once, here: stored with a positive sign, the displacement is `b`'s negation
+# itself, where a subtracting `AffineAdd` would negate `b` again on every `displacement` call.
 function (-)(a::AbstractExpression, b::Union{AbstractArray, Number})
     A = convert(Expression, a)
-    return Expression(A.x, AffineAdd(affine(A), b, false))
+    return Expression(A.x, AffineAdd(affine(A), -b))
 end
 
 function (-)(a::Union{AbstractArray, Number}, b::AbstractExpression)
