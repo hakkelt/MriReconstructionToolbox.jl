@@ -105,6 +105,7 @@ LinearAlgebra.opnorm(R::Reshape) = LinearAlgebra.opnorm(R.A)
 opnorm_bound(R::Reshape) = opnorm_bound(R.A)
 
 _children(R::Reshape) = (R.A,)
+displacement(R::Reshape) = _combined_displacement(R, (R.A,))
 is_threaded(R::Reshape) = _is_threaded_from_children(R)
 supports_threading(L::Reshape) = _supports_threading_from_children(L)
 

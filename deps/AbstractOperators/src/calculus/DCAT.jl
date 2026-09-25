@@ -389,6 +389,7 @@ block_threading_threshold(::Type{<:DCAT}) = THRESHOLD_BLOCK_PARALLEL
 is_block_threaded(::DCAT{N, L, P1, P2, DS, CS, Th}) where {N, L, P1, P2, DS, CS, Th} = Th
 
 _children(L::DCAT) = L.A
+displacement(L::DCAT) = _combined_displacement(L, L.A)
 # Threaded if the block loop itself threads, or any block does.
 is_threaded(L::DCAT{N, Ls, P1, P2, DS, CS, Th}) where {N, Ls, P1, P2, DS, CS, Th} =
     Th || _is_threaded_from_children(L)

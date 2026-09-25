@@ -69,6 +69,7 @@ diag_AcA(L::AdjointOperator) = diag_AAc(L.A)
 diag_AAc(L::AdjointOperator) = diag_AcA(L.A)
 
 _children(L::AdjointOperator) = (L.A,)
+displacement(L::AdjointOperator) = _combined_displacement(L, (L.A,))
 is_threaded(L::AdjointOperator) = _is_threaded_from_children(L)
 supports_threading(L::AdjointOperator) = _supports_threading_from_children(L)
 
