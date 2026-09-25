@@ -16,8 +16,9 @@
 # (`RHO_DECADES`) around the toolkit's uncalibrated default: `admm_rho(c)` for MRT, whose ρ is
 # relative to `‖𝒜‖²`, and `CMP_RHO` for the others, whose ρ is absolute in their own operator
 # scaling. One number cannot mean the same thing to all of them, so each gets the ρ at which it
-# reaches its best NRMSE, and its λ is then picked on that ρ's curve. A best ρ at the edge of the
-# grid is logged, since the optimum may lie beyond it.
+# reaches its best NRMSE, and its λ is then picked on that ρ's curve. Both grids grow past an edge
+# that holds a toolkit's best point (`sweep_toolkit`), since one toolkit's optimum can lie far from
+# another's.
 #
 # `--frameworks=` selects the toolkits to (re)calibrate, by case-insensitive substring of their
 # label, `mrt` included; without it every toolkit runs. The curves of the toolkits left out are
@@ -47,6 +48,8 @@ const NGRID = parse(Int, get(ENV, "NGRID", "8"))
 const NGRID_HEAVY = parse(Int, get(ENV, "NGRID_HEAVY", "6"))
 # Decades of the ρ grid around each toolkit's default, e.g. "-2,-1,0,1,2" = ρ₀ · 10^(-2:2).
 const RHO_DECADES = parse.(Float64, split(get(ENV, "RHO_DECADES", "-2,-1,0,1,2"), ","))
+# How many grid steps `sweep_toolkit` may add past either edge of each axis to reach an interior optimum.
+const MAX_GRID_EXTENSIONS = parse(Int, get(ENV, "MAX_GRID_EXTENSIONS", "4"))
 
 """
     METHOD_FILTER
@@ -57,6 +60,16 @@ regularized method of a case.
 const METHOD_FILTER = let i = findfirst(a -> startswith(a, "--methods="), ARGS)
     i === nothing ? nothing : Symbol.(lowercase.(split(ARGS[i][(length("--methods=") + 1):end], ",")))
 end
+
+"""
+    RESUME
+
+`--resume`: reuse the points already stored in the case's file for the toolkits and methods being
+calibrated, measuring only grid points it lacks (the extensions of a widened grid, say). Only a
+file written at the same `IT_CAL` is reused. Off by default, since a stored point is stale once
+the code or the case behind it changes.
+"""
+const RESUME = "--resume" in ARGS
 
 """
     calibrates(key) -> Bool
@@ -128,8 +141,46 @@ function sweep(c::BenchCase, method::Symbol)
     for tk in tks
         key = tk === :mrt ? "MRT" : toolkit_key(tk)
         centre = grid_centre(method, key, λc)
-        pts = Tuple{Float64, Any, Float64}[]
-        for ρ in rho_grid(c, method, tk), λ in 10 .^ range(log10(centre) - 2, log10(centre) + 1.5; length = ngrid)
+        λs = collect(10 .^ range(log10(centre) - 2, log10(centre) + 1.5; length = ngrid))
+        known = RESUME ? stored_points(c, method, key) : Dict{Tuple{Float64, Any}, Float64}()
+        curves[key] = sweep_toolkit(c, method, tk, key, λs, rho_grid(c, method, tk); known)
+    end
+    return curves
+end
+
+# The points of `key`'s stored curve for `method`, keyed by `(λ, ρ)`, when the case's file was
+# written at this `IT_CAL`; empty otherwise.
+function stored_points(c::BenchCase, method::Symbol, key)
+    path = joinpath(LAMBDA_DIR, "$(c.id).json")
+    out = Dict{Tuple{Float64, Any}, Float64}()
+    isfile(path) || return out
+    file = JSON.parsefile(path)
+    get(get(file, "meta", Dict()), "iterations", nothing) == IT_CAL || return out
+    pts = get(get(get(file, "sweeps", Dict()), String(method), Dict()), key, nothing)
+    pts === nothing && return out
+    for (λ, ρ, e) in _curve_from_json(pts)
+        out[(λ, ρ === nothing ? nothing : Float64(ρ))] = e
+    end
+    return out
+end
+
+"""
+    sweep_toolkit(c, method, tk, key, λs, ρs; known) -> [(λ, ρ, nrmse), ...]
+
+One toolkit's curve over the grid `λs × ρs`, extended past whichever edge holds its best point.
+
+The λ grid is shared across toolkits and centred on MRT's λ, but a toolkit that scales its
+regularizer or its operator differently can have its optimum a decade or more away: BART's and
+SigPy's radial TV optimum lay above the whole shared grid. So while the best point sits on the
+largest or smallest λ (or ρ) swept, one more grid step is added in that direction for every ρ (or
+every λ), up to `MAX_GRID_EXTENSIONS` times per axis; an optimum still on the edge after that is
+logged. `known` holds points measured earlier (see [`RESUME`](@ref)), which are not measured again.
+"""
+function sweep_toolkit(c::BenchCase, method::Symbol, tk::Symbol, key, λs, ρs; known = Dict{Tuple{Float64, Any}, Float64}())
+    λs, ρs = copy(λs), copy(ρs)
+    nrmse = Dict{Tuple{Float64, Any}, Float64}(known)
+    function measure(λ, ρ)
+        return get!(nrmse, (λ, ρ)) do
             e = try
                 nrmse_at(c, method, tk, λ, ρ)
             catch ex
@@ -137,11 +188,39 @@ function sweep(c::BenchCase, method::Symbol)
                 NaN
             end
             @info @sprintf("%-40s %-8s %-7s λ=%.4g  ρ=%-9s NRMSE=%.4f", c.id, method, key, λ, something(ρ, "-"), e)
-            push!(pts, (λ, ρ, e))
+            e
         end
-        curves[key] = pts
     end
-    return curves
+    curve() = [(λ, ρ, measure(λ, ρ)) for ρ in ρs for λ in λs]
+    λstep = λs[2] / λs[1]
+    ρstep = 10.0
+    extended = Dict(:λ => 0, :ρ => 0)
+    while true
+        pts = curve()
+        fin = [p for p in pts if isfinite(p[3])]
+        isempty(fin) && return pts
+        bλ, bρ, _ = fin[argmin([p[3] for p in fin])]
+        grew = false
+        if extended[:λ] < MAX_GRID_EXTENSIONS && (bλ == last(λs) || bλ == first(λs))
+            bλ == last(λs) ? push!(λs, last(λs) * λstep) : pushfirst!(λs, first(λs) / λstep)
+            extended[:λ] += 1
+            grew = true
+        end
+        if bρ !== nothing && length(ρs) > 1 && extended[:ρ] < MAX_GRID_EXTENSIONS &&
+                (bρ == last(ρs) || bρ == first(ρs))
+            bρ == last(ρs) ? push!(ρs, last(ρs) * ρstep) : pushfirst!(ρs, first(ρs) / ρstep)
+            extended[:ρ] += 1
+            grew = true
+        end
+        if !grew
+            (bλ == last(λs) || bλ == first(λs)) &&
+                @warn "$key $(c.id) $method: best λ = $bλ is still at the edge of the grid" λs
+            bρ !== nothing && length(ρs) > 1 && (bρ == last(ρs) || bρ == first(ρs)) &&
+                @warn "$key $(c.id) $method: best ρ = $bρ is still at the edge of the grid" ρs
+            return pts
+        end
+    end
+    return
 end
 
 """Best (lowest) finite NRMSE on a curve."""
@@ -170,15 +249,6 @@ end
 # calibration holds `[λ, nrmse]`.
 _curve_from_json(pts) = [length(p) == 2 ? (Float64(p[1]), nothing, Float64(p[2])) : (Float64(p[1]), p[2], Float64(p[3])) for p in pts]
 _curve_to_json(curve) = [[λ, ρ, e] for (λ, ρ, e) in curve]
-
-function edge_warning(c, method, key, curve)
-    ρs = unique(r for (_, r, _) in curve if r !== nothing)
-    length(ρs) > 1 || return nothing
-    ρ = best_rho(curve)
-    (ρ == minimum(ρs) || ρ == maximum(ρs)) &&
-        @warn "$key $(c.id) $method: best ρ = $ρ is at the edge of the grid; widen RHO_DECADES" ρs
-    return nothing
-end
 
 """
     write_calibration!(c, fresh)
@@ -231,9 +301,6 @@ for c in section_cases(c -> !isempty(regularized_methods(c)))
         METHOD_FILTER === nothing || method in METHOD_FILTER || continue
         curves = sweep(c, method)
         isempty(curves) && continue
-        for (key, curve) in curves
-            edge_warning(c, method, key, curve)
-        end
         fresh[String(method)] = curves
     end
     isempty(fresh) || write_calibration!(c, fresh)
