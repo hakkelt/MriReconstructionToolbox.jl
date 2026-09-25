@@ -72,7 +72,8 @@ function patch_algorithm_with_default_values(
     # L1Wavelet + TV reconstruction the adaptive penalty reaches 0.035 relative error within 100
     # iterations, while a fixed `rho = 1` needs ~2000 iterations to match it. Terms whose ADMM
     # behaviour is sensitive to the penalty should document a tuned `rho` of their own rather than
-    # have one imposed on every caller here.
+    # have one imposed on every caller here. A `rho` the caller does give is relative to `‖𝒜‖²`
+    # (`_scale_admm_penalty`).
     :cg_maxit ∈ keys(algorithm.kwargs) && return algorithm
     return ProximalAlgorithms.override_parameters(algorithm; cg_maxit = 10)
 end

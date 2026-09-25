@@ -134,6 +134,22 @@ that is too small is not, which is why the power method still runs wherever $L$ 
 Either way the correction is skipped (keeping the bare adjoint) only when
 `disable_operator_normalization = true` is passed explicitly.
 
+ADMM has no step size, but its penalty $\rho$ plays the same part: the $x$-update solves
+$(\mathcal{A}^*\mathcal{A} + \rho B^*B)\,x = \dots$, so $\rho$ only means something next to
+$\|\mathcal{A}\|^2$. That is about 1 for a Cartesian encoding and about $2\cdot10^6$ for a radial
+NFFT one, so a `rho` given to [`ADMM`](@ref) is taken **relative to** $\|\mathcal{A}\|^2$ and
+multiplied by it (the Rayleigh quotient above, or $L^2$ where $L$ was estimated); the initial
+`rho` of a `penalty_sequence` is treated the same way. An absolute penalty tuned on Cartesian data
+is seven orders of magnitude too small for radial data: $\rho/\|\mathcal{A}\|^2$ falls below
+`Float32` rounding, the proximal steps never reach $x$, and the image stops depending on `λ`
+(measured on radial cine with a low-rank prior: bit-identical images for `λ` from $10^{-4}$ to 1).
+This is the same as solving the normalized problem $\mathcal{A}/L$, $y/L$ with `BartScaling`
+recomputed — which leaves the effective `λ` unchanged — and measured the same to four digits of
+NRMSE, radial and Cartesian, at every `λ` tried. ADMM's default adaptive penalty, used when no
+`rho` is given, starts from 1 and adapts to the problem's scale by itself; starting it from
+$\|\mathcal{A}\|^2$ measured no better, so it is left alone. `disable_operator_normalization = true`
+also leaves a given `rho` as it is.
+
 #### Signal Models (`ℳ`)
 
 Signal models map low-dimensional subspace or parameter representations to dynamic/multi-contrast image series $\mathcal{M}: \mathbb{C}^K \to \mathbb{C}^{N_{\text{frames}}}$, composing with the physical encoding operator as $\mathcal{A}_{\text{eff}} = \mathcal{A} \mathcal{M}$.

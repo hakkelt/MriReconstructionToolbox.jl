@@ -465,3 +465,59 @@ end
     # A name for the axes is an isometry, so the bound sees through it rather than giving up.
     @test isfinite(AbstractOperators.opnorm_bound(E))
 end
+
+@testitem "ADMM's penalty is relative to the curvature of the data term" tags = [:minimizer] begin
+    using MriReconstructionToolbox: _scale_admm_penalty
+    import MriReconstructionToolbox.ProximalAlgorithms as PA
+
+    method = IterativeReconstruction(; regularization = TotalVariation2D(0.01))
+    config = ReconstructionConfig()
+    scaled(alg; m = method) = _scale_admm_penalty(alg, nothing, nothing, nothing, 2.0, m, config; eltype_real = Float32)
+
+    # `L = 2`, so every penalty is multiplied by `L² = 4`.
+    @test scaled(ADMM(; rho = 0.05f0)).kwargs[:rho] ≈ 0.2f0
+    @test scaled(ADMM(; rho = (0.05f0, 1.0f0))).kwargs[:rho] == (0.2f0, 4.0f0)
+    ps = scaled(ADMM(; penalty_sequence = PA.FixedPenalty([0.1f0]))).kwargs[:penalty_sequence]
+    @test ps isa PA.FixedPenalty && ps.rho ≈ [0.4f0]
+    # A penalty that was not given -- the default adaptive sequence, or a sequence without an
+    # initial value -- is left to ADMM, and so are other algorithms and an explicit opt-out.
+    @test scaled(ADMM(; maxit = 3)).kwargs == ADMM(; maxit = 3).kwargs
+    alg = scaled(ADMM(; penalty_sequence = PA.ResidualBalancingPenalty()))
+    @test !haskey(alg.kwargs, :rho)
+    @test scaled(FISTA(; maxit = 3)).kwargs == FISTA(; maxit = 3).kwargs
+    opt_out = IterativeReconstruction(; regularization = TotalVariation2D(0.01), disable_operator_normalization = true)
+    @test scaled(ADMM(; rho = 0.05f0); m = opt_out).kwargs[:rho] == 0.05f0
+end
+
+@testitem "Fixed-penalty ADMM does not depend on the scale of the encoding" tags = [:minimizer, :reconstruction, :nfft] begin
+    using LinearAlgebra
+    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+
+    # Multiplying the sensitivity maps and the data by `c` multiplies the encoding by `c` and
+    # leaves the problem unchanged, once `BartScaling` is recomputed. A penalty relative to the
+    # curvature makes ADMM's iterates unchanged too; an absolute one does not, which is how a
+    # radial NFFT encoding (curvature ~10⁶) used to make the result independent of `λ`.
+    nx, ny = 32, 32
+    img = zeros(ComplexF32, nx, ny)
+    img[10:22, 10:22] .= 1
+    traj = radial_trajectory(64, 32; ordering = GoldenAngle())
+    smaps = coil_sensitivities(nx, ny, 4)
+    acq = NonCartesianAcquisitionInfo(nothing; trajectory = traj, image_size = (nx, ny), sensitivity_maps = smaps)
+    data = simulate_acquisition(img, acq)
+    c = 1.0f3
+    scaled_data = NonCartesianAcquisitionInfo(
+        data.kspace_data .* c; trajectory = traj, image_size = (nx, ny), sensitivity_maps = smaps .* c
+    )
+    rec(d, λ) = reconstruct(
+        d,
+        IterativeReconstruction(;
+            regularization = TotalVariation2D(λ), maxit = 10, reltol = 0,
+            algorithm = ADMM(; rho = 0.05, maxit = 10, tol = 0, cg_tol = 0, cg_maxit = 5),
+        );
+        verbosity = Silent(),
+    )
+    x1, xc = rec(data, 0.01), rec(scaled_data, 0.01)
+    @test norm(xc - x1) / norm(x1) < 1.0e-5
+    # And the penalty reaches the image: λ changes the result.
+    @test norm(rec(data, 1.0) - x1) / norm(x1) > 1.0e-2
+end
