@@ -457,6 +457,49 @@ function _fused_pair_opnorm(B::NoOperatorBroadCast{T, N, M}, D::DiagOp) where {T
     return float(sqrt(maximum(sum(abs2, D.d; dims = bdims))))
 end
 
+"""
+	_fused_pair_opnorm(B::NoOperatorBroadCast, S::SpreadingBatchOp)
+
+Upper bound on `‖S ∘ B‖` when `B` replicates its input along exactly the spreading dimensions of
+`S` and every block of `S` starts with an array-valued `DiagOp`, `S[k] = P[k] ∘ D[k]`.
+
+Every block then receives the same input `x`, so
+
+    ‖(S ∘ B) x‖² = Σₖ ‖P[k] D[k] x‖² ≤ maxₖ ‖P[k]‖² Σₖ ‖D[k] x‖² ≤ maxₖ ‖P[k]‖² maxᵢ Σₖ |d[k][i]|² ‖x‖²,
+
+which is `maxₖ opnorm_bound(P[k])` times the `DiagOp`-on-`BroadCast` norm of the stacked
+diagonals. The submultiplicative product gives `maxₖ ‖P[k]‖ maxₖ |d[k]|∞ sqrt(K)` instead, which
+overshoots by up to `sqrt(K)` when the diagonals peak at different positions.
+"""
+function _fused_pair_opnorm(B::NoOperatorBroadCast{T, N, M}, S::SpreadingBatchOp) where {T, N, M}
+    size(S, 2) == B.dim_out || return nothing
+    bdims = Tuple(d for d in 1:M if B.reshaped_dim_in[d] != B.dim_out[d])
+    isempty(bdims) && return nothing
+    batch_positions = Tuple(d for d in 1:M if get_domain_batch_dim_mask(typeof(S))[d])
+    spreading_positions = map(s -> batch_positions[s], get_spreading_dims(typeof(S)))
+    bdims == spreading_positions || return nothing
+    blocks = _block_operators(S)
+    diags = map(_leading_diagonal, blocks)
+    any(isnothing, diags) && return nothing
+    all(d -> size(d) == size(first(diags)), diags) || return nothing
+    weight = zeros(real(eltype(first(diags))), size(first(diags)))
+    for d in diags
+        weight .+= abs2.(d)
+    end
+    rest = maximum(_bound_after_leading_diagonal, blocks)
+    isfinite(rest) || return nothing
+    return float(sqrt(maximum(weight))) * rest
+end
+
+# The array a block's first applied factor multiplies by, or `nothing` when that factor is not an
+# array-valued `DiagOp`.
+_leading_diagonal(A) = nothing
+_leading_diagonal(D::DiagOp) = D.d isa AbstractArray ? D.d : nothing
+_leading_diagonal(C::Compose) = _leading_diagonal(first(C.A))
+
+_bound_after_leading_diagonal(::DiagOp) = 1.0
+_bound_after_leading_diagonal(C::Compose) = _chain_opnorm_bound(Base.tail(C.A))
+
 # utils
 
 function permute(R::OperatorBroadCast{T, N, M, false}, p::AbstractVector{Int}) where {T, N, M}
