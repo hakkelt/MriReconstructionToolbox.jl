@@ -41,6 +41,21 @@
 # answer for it, while `rebuild`, `patch` and `sync` say which entry they need. Nothing tracked in
 # this repository, and nothing pushed to a fork, may name a path of one machine.
 
+# The fork is the upstream: OperatorCore is the user's own package. It is vendored because MRT
+# needs `is_affine` before a release has it.
+[OperatorCore]
+fork = "https://github.com/hakkelt/OperatorCore.jl.git"
+upstream = "https://github.com/hakkelt/OperatorCore.jl.git"
+base = "upstream/master"
+prefix = "deps/OperatorCore"
+prune = [".github", ".claude", "Manifest.toml", "test", "docs"]
+
+# `is_affine`, and `is_linear` documented as excluding a displacement.
+[[OperatorCore.stack]]
+branch = "feat/is-affine"
+parent = ""
+pr = ""
+
 [AbstractOperators]
 fork = "https://github.com/hakkelt/AbstractOperators.jl.git"
 upstream = "https://github.com/kul-optec/AbstractOperators.jl.git"
@@ -232,11 +247,19 @@ branch = "fix/shift-combine-threading"
 parent = "unified-threading"
 pr = ""
 
-# `displacement` of a LinearOperator, and of a combination whose operators all have a zero one,
-# returns zero instead of applying the operator to zeros.
+# `AffineOperator` and `is_affine`; `is_linear` holds only for truly linear operators, so an
+# `AffineAdd` and anything built from one is affine but not linear. Needs OperatorCore 0.1.2.
+[[AbstractOperators.stack]]
+branch = "feat/affine-operator"
+parent = "unified-threading"
+pr = ""
+
+# `displacement` of a linear operator returns zero instead of applying the operator to zeros,
+# which a strict `is_linear` makes one check. Also removes `MyLinOp`, a `LinearOperator` around
+# an unchecked user function.
 [[AbstractOperators.stack]]
 branch = "perf/linear-displacement"
-parent = "unified-threading"
+parent = "feat/affine-operator"
 pr = ""
 
 # The 2-D and 3-D filter-bank wavelet transforms split each stage's lines across threads.
@@ -374,6 +397,12 @@ branch = "perf/cgnr-reuse-aha"
 parent = "c3-admm-reuse-aha"
 pr = ""
 
+# PANOCplus takes an affine operator (`is_affine`, OperatorCore 0.1.2); the rest keep `is_linear`.
+[[ProximalAlgorithms.stack]]
+branch = "feat/affine-assumptions"
+parent = "master"
+pr = ""
+
 # `pogm-algorithm` is deliberately absent: it added POGM as a `pogm::Bool` variant of
 # `FastForwardBackward`, and `master` (#100) supersedes it with a `src/algorithms/pogm.jl` of its
 # own. Merging it would only re-add the old path. The branch is still on the fork, unmerged.
@@ -404,4 +433,11 @@ pr = ""
 [[StructuredOptimization.stack]]
 branch = "perf/single-normal-op"
 parent = "master"
+pr = ""
+
+# An operator slot is handed a term's linear operator, with the displacement moved into the
+# function (`Translate`), since `is_linear` no longer holds for an affine operator.
+[[StructuredOptimization.stack]]
+branch = "feat/affine-terms"
+parent = "perf/single-normal-op"
 pr = ""
