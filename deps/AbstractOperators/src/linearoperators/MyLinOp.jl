@@ -74,6 +74,8 @@ codomain_type(::MyLinOp{N, M, C}) where {N, M, C} = C
 domain_type(::MyLinOp{N, M, C, D}) where {N, M, C, D} = D
 domain_array_type(::MyLinOp{N, M, C, D, F, G, dS}) where {N, M, C, D, F, G, dS} = dS
 codomain_array_type(::MyLinOp{N, M, C, D, F, G, dS, cS}) where {N, M, C, D, F, G, dS, cS} = cS
+# The wrapped function is the caller's, and nothing checks that it maps zero to zero.
+displacement(L::MyLinOp) = invoke(displacement, Tuple{AbstractOperator}, L)
 
 fun_name(L::MyLinOp) = "A"
 

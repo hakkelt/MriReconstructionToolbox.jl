@@ -275,7 +275,12 @@ has_fast_opnorm(L) = false
 """
 	displacement(A::AbstractOperator)
 
-Returns the displacement of the operator.
+Returns the displacement of the operator: `A * 0`, as a scalar when all its entries are equal.
+
+The fallback applies `A` to zeros. A `LinearOperator` returns zero without applying anything, and
+a combination of operators returns zero when each of its operators does, so a new operator needs
+a method only when it is a `LinearOperator` that does not map zero to zero, or when its
+displacement is cheaper to state than to compute.
 
 ```jldoctest
 julia> A = AffineAdd(Eye(4),[1.;2.;3.;4.])
@@ -308,6 +313,24 @@ _first_element(d::ArrayPartition) = _first_element(first(d.x))
 
 _all_equal_to(d::AbstractArray, v) = all(==(v), d)
 _all_equal_to(d::ArrayPartition, v) = all(b -> _all_equal_to(b, v), d.x)
+
+displacement(L::LinearOperator) = _zero_of(codomain_type(L))
+
+# `is_linear` holds for an `AffineAdd` of a linear operator and for anything built from one, so
+# only the displacements of the parts tell whether a combination maps zero to zero. When one of
+# them does not, the combination is applied to zeros.
+function _combined_displacement(L::AbstractOperator, ops)
+    all(A -> _is_zero_displacement(displacement(A)), ops) && return _zero_of(codomain_type(L))
+    return invoke(displacement, Tuple{AbstractOperator}, L)
+end
+_is_zero_displacement(d::Number) = iszero(d)
+# `displacement` returns a uniform array as its scalar entry, so an array is never all zero.
+_is_zero_displacement(d) = false
+
+# The first entry of `S * 0` for an `S` that maps zero to zero: of the first block's type for a
+# block codomain.
+_zero_of(T::Type) = zero(T)
+_zero_of(T::Tuple) = _zero_of(first(T))
 
 """
 	remove_displacement(A::AbstractOperator)

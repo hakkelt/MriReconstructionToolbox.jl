@@ -492,3 +492,5 @@ is_threaded(R::OperatorBroadCast{T, N, M, Th}) where {T, N, M, Th} =
 _broadcast_children(R::OperatorBroadCast{T, N, M, false}) where {T, N, M} = (R.A,)
 _broadcast_children(R::OperatorBroadCast{T, N, M, true}) where {T, N, M} = R.A
 _children(R::OperatorBroadCast) = _broadcast_children(R)
+displacement(R::OperatorBroadCast) = _combined_displacement(R, _broadcast_children(R))
+displacement(R::NoOperatorBroadCast) = _zero_of(codomain_type(R))

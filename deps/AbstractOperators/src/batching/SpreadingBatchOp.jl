@@ -635,6 +635,8 @@ end
 
 is_linear(L::SpreadingBatchOp) = is_linear(L.operators[1])
 is_linear(L::SpreadingBatchOpCopying) = is_linear(L.operators[1][1])
+displacement(L::SpreadingBatchOp) = _combined_displacement(L, L.operators)
+displacement(L::SpreadingBatchOpCopying) = _combined_displacement(L, Iterators.flatten(L.operators))
 is_eye(L::SpreadingBatchOp) = is_eye(L.operators[1])
 is_eye(L::SpreadingBatchOpCopying) = is_eye(L.operators[1][1])
 is_AAc_diagonal(L::SpreadingBatchOp) = is_AAc_diagonal(L.operators[1])

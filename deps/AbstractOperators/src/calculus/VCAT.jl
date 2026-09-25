@@ -288,6 +288,7 @@ block_threading_threshold(::Type{<:VCAT}) = THRESHOLD_BLOCK_PARALLEL
 is_block_threaded(::VCAT{N, L, P, C, CS, Th}) where {N, L, P, C, CS, Th} = Th
 
 _children(L::VCAT) = L.A
+displacement(L::VCAT) = _combined_displacement(L, L.A)
 # Threaded if the forward block loop threads, or any block does.
 is_threaded(L::VCAT{N, Ls, P, C, CS, Th}) where {N, Ls, P, C, CS, Th} =
     Th || _is_threaded_from_children(L)
