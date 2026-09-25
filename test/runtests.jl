@@ -43,6 +43,10 @@ Random.seed!(0)
         include("test_phase4_coverage.jl")
     end
 
+    @testset "Affine terms" begin
+        include("test_affine_terms.jl")
+    end
+
     @testset "End-to-end tests" begin
         include("test_usage_small.jl")
         include("test_usage.jl")

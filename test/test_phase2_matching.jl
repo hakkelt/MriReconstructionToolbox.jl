@@ -230,10 +230,12 @@ end
         @test Dict(k => typeof(v) for (k, v) in first_parse[2]) ==
             Dict(k => typeof(v) for (k, v) in second_parse[2])
         # PANOCplus assumes `f(Ax) + g(x)`, so the least-squares term is split into the
-        # function and its affine operator rather than absorbed, and the ℓ1 term keeps its
-        # prox. This is exactly the choice the fixed branch chain made.
-        @test first_parse[2][:f] isa SqrNormL2
+        # function and its linear operator rather than absorbed -- the displacement `-b` moves
+        # into the function as a `Translate` -- and the ℓ1 term keeps its prox.
+        @test first_parse[2][:f] isa ProximalOperators.Translate
+        @test first_parse[2][:f].f isa SqrNormL2
         @test first_parse[2][:A] isa AbstractOperators.AbstractOperator
+        @test is_linear(first_parse[2][:A])
         @test SO_M.is_proximable(first_parse[2][:g])
 
         # With a purely smooth algorithm there is no operator slot, so the same term must be
