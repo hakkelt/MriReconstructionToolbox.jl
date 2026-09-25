@@ -99,7 +99,10 @@ domain_array_type(L::AffineAdd) = domain_array_type(L.A)
 codomain_array_type(L::AffineAdd) = codomain_array_type(L.A)
 is_thread_safe(L::AffineAdd) = is_thread_safe(L.A)
 
-is_linear(L::AffineAdd) = is_linear(L.A)
+# Never linear: `A * 0 = d`. A zero `d` is not looked for, since that would make a type-level
+# trait an O(n) scan of the displacement.
+is_linear(L::AffineAdd) = false
+is_affine(L::AffineAdd) = is_affine(L.A)
 is_null(L::AffineAdd) = is_null(L.A) && all(displacement(L) .== 0)
 is_eye(L::AffineAdd) = is_eye(L.A) && all(displacement(L) .== 0)
 is_diagonal(L::AffineAdd) = is_diagonal(L.A)

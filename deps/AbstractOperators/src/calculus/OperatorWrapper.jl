@@ -98,12 +98,13 @@ codomain_array_type(::OperatorWrapper{Op, DB, CB, DS, CS}) where {Op, DB, CB, DS
 
 # Forward all predicates to the wrapped operator.
 import OperatorCore:
-    is_linear, is_eye, is_null, is_diagonal,
+    is_linear, is_affine, is_eye, is_null, is_diagonal,
     is_AcA_diagonal, is_AAc_diagonal, diag_AcA, diag_AAc,
     is_orthogonal, is_invertible, is_full_row_rank, is_full_column_rank,
     is_symmetric, is_positive_definite, is_positive_semidefinite
 
 is_linear(A::OperatorWrapper) = is_linear(A.op)
+is_affine(A::OperatorWrapper) = is_affine(A.op)
 is_eye(A::OperatorWrapper) = is_eye(A.op)
 is_null(A::OperatorWrapper) = is_null(A.op)
 is_diagonal(A::OperatorWrapper) = is_diagonal(A.op)

@@ -171,6 +171,7 @@ _ndoms_from_type(::Type{<:Sum{K, C, D, L}}, dim::Int) where {K, C, D, L} =
 fun_name(S::Sum) = length(S.A) == 2 ? fun_name(S.A[1]) * "+" * fun_name(S.A[2]) : "Σ"
 
 is_linear(L::Sum) = all(is_linear.(L.A))
+is_affine(L::Sum) = all(is_affine.(L.A))
 is_null(L::Sum) = all(is_null.(L.A))
 is_diagonal(L::Sum) = all(is_diagonal.(L.A))
 is_full_row_rank(L::Sum) = any(is_full_row_rank.(L.A))
@@ -199,6 +200,5 @@ function _copy_operator_impl(op::Sum; storage_type = nothing, threaded = nothing
 end
 
 _children(L::Sum) = L.A
-displacement(L::Sum) = _combined_displacement(L, L.A)
 is_threaded(L::Sum) = _is_threaded_from_children(L)
 supports_threading(L::Sum) = _supports_threading_from_children(L)

@@ -125,9 +125,9 @@ end
 # Rebuilds a `Scale` around new coeffs/wrapped operator, preserving `S`'s own threading flag.
 _rethread_scale(::Scale{Th}, coeff, coeff_conj, A) where {Th} = Scale(coeff, coeff_conj, A; threaded = _fbbool(Th))
 
-has_optimized_normalop(L::Scale) = is_linear(L.A) && has_optimized_normalop(L.A)
+has_optimized_normalop(L::Scale) = is_affine(L.A) && has_optimized_normalop(L.A)
 function get_normal_op(L::Scale)
-    if is_linear(L.A)
+    if is_affine(L.A)
         return _rethread_scale(L, L.coeff * L.coeff_conj, L.coeff * L.coeff_conj, get_normal_op(L.A))
     else
         return L' * L
@@ -148,6 +148,7 @@ codomain_array_type(L::Scale) = codomain_array_type(L.A)
 is_thread_safe(L::Scale) = is_thread_safe(L.A)
 
 is_linear(L::Scale) = is_linear(L.A)
+is_affine(L::Scale) = is_affine(L.A)
 is_sliced(L::Scale) = is_sliced(L.A)
 get_slicing_expr(L::Scale) = get_slicing_expr(L.A)
 get_slicing_mask(L::Scale) = get_slicing_mask(L.A)
@@ -181,7 +182,6 @@ permute(S::Scale, p::AbstractVector{Int}) = _rethread_scale(S, S.coeff, S.coeff_
 # Scale's own broadcast threading lives in its FastBroadcast type parameter; it is threaded
 # if either that flag or the wrapped operator says so.
 _children(L::Scale) = (L.A,)
-displacement(L::Scale) = _combined_displacement(L, (L.A,))
 is_threaded(L::Scale{Th}) where {Th} = _fbbool(Th) || _is_threaded_from_children(L)
 supports_threading(::Scale) = true
 
