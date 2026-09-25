@@ -33,7 +33,7 @@ function _iterative_reconstruct_core(
     # `model` / `vars` bindings would live only in that task's closure — the solve closures below
     # capture them, and neither inference (JET) nor a reader can then see they are defined.
     @printing_step "Building optimization model" config begin
-        model, vars, _auxiliaries = build(𝒜, _measurement(acq_data.kspace_data); x₀ = x₀_or_x₀s)
+        model, vars, auxiliaries = build(𝒜, _measurement(acq_data.kspace_data); x₀ = x₀_or_x₀s)
     end
     # A tuple of algorithms is resolved to the one `solve` would run before anything is estimated
     # for it: whether `‖𝒜‖` is needed depends on that algorithm alone.
@@ -79,7 +79,7 @@ function _iterative_reconstruct_core(
         # then compiles to nothing at all inside the iteration loop.
         if !isnothing(method.on_iteration)
             hook = _iteration_hook(
-                method.on_iteration, present,
+                method.on_iteration, _image_selector(model, vars, auxiliaries), present,
                 (!config.disable_inverse_scale_output && scale != 1) ? scale : nothing,
                 config.slice_id,
             )
@@ -173,25 +173,50 @@ _extract_solution(x_var::Variable) = copy(~x_var)
 _extract_solution(vars::Tuple) = map(v -> copy(~v), vars)
 
 """
-    _iteration_hook(on_iteration, present, scale, slice_id) -> Function
+    _image_selector(model, vars, auxiliaries) -> Function
+
+Maps the iterate the solver holds to the part of it that `vars` stand for.
+
+The solver iterates over every variable of `model`, in the order `solve` extracts them, so once a
+regularization adds auxiliary variables (total generalized variation's vector field) the iterate
+is an `ArrayPartition` that also carries those. The positions of `vars` in that order are looked
+up here, once, and the selector returns the image array for a single `Variable` or the tuple of
+component arrays for a tuple of them. Without auxiliaries the iterate already is exactly that.
+"""
+function _image_selector(model, vars, auxiliaries)
+    isempty(auxiliaries) && return identity
+    # `solve` wraps a single `Term` in a `TermSet` before extracting, so the same is done here.
+    terms = model isa StructuredOptimization.TermSet ? model : StructuredOptimization.TermSet(model)
+    order = StructuredOptimization.extract_variables(terms)
+    positions = map(v -> findfirst(u -> u === v, order), ensure_tuple(vars))
+    return function (raw)
+        parts = (raw isa Tuple ? first(raw) : raw).x
+        picked = map(i -> parts[i], positions)
+        return vars isa Variable ? only(picked) : picked
+    end
+end
+
+"""
+    _iteration_hook(on_iteration, select, present, scale, slice_id) -> Function
 
 The `hook(k, alg, iter, state)` handed to `ProximalAlgorithms`, wrapping the user's
 `on_iteration` callback.
 
 The iterate the solver holds is in the solver's own (scaled) units and is a bare array that the
-solver keeps writing into, so it is copied, inverse-scaled and put through `present` before the
-callback sees it — a callback that received the internal buffer could neither compare against a
-reference image nor keep it. `scale === nothing` means the caller asked for no inverse scaling
-(the `disable_inverse_scale_output` path), and then the copy comes from `present` alone.
+solver keeps writing into, so it is narrowed to the image variables by `select` (see
+[`_image_selector`](@ref)), copied, inverse-scaled and put through `present` before the callback
+sees it — a callback that received the internal buffer could neither compare against a reference
+image nor keep it. `scale === nothing` means the caller asked for no inverse scaling (the
+`disable_inverse_scale_output` path), and then the copy comes from `present` alone.
 
 The wall clock is `time_ns`, which is monotonic; `t₀` is read when the hook is built, immediately
 before `solve`, so `elapsed_ns` measures solver time and excludes the operator build and the
 operator-norm estimate.
 """
-function _iteration_hook(on_iteration, present::Function, scale, slice_id)
+function _iteration_hook(on_iteration, select, present::Function, scale, slice_id)
     t₀ = time_ns()
     return function (k, alg, iter, state)
-        raw = alg.solution(iter, state)
+        raw = select(alg.solution(iter, state))
         x = present(isnothing(scale) ? _copy_iterate(raw) : _inv_scale(raw, scale))
         base = (; iteration = k, x = x, elapsed_ns = time_ns() - t₀)
         info = merge(base, _iteration_metrics(iter, state))
