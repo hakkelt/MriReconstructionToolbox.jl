@@ -147,6 +147,7 @@ function get_fourier_operator(
         m::Union{Nothing, Integer} = nothing,
         sigma::Union{Nothing, Real} = nothing,
         precompute = nothing,
+        fast_planning::Bool = false,
     )
     @argcheck !isnothing(info.kspace_data) "The provided NonCartesianAcquisitionInfo does not contain k-space data, which is required to build the NFFT operator."
     return get_fourier_operator(
@@ -154,7 +155,7 @@ function get_fourier_operator(
         info.image_size,
         info.trajectory;
         dcf = info.dcf,
-        threaded, m, sigma, precompute,
+        threaded, m, sigma, precompute, fast_planning,
     )
 end
 
@@ -167,6 +168,7 @@ function get_fourier_operator(
         m::Union{Nothing, Integer} = nothing,
         sigma::Union{Nothing, Real} = nothing,
         precompute = nothing,
+        fast_planning::Bool = false,
     )
     fourier_dims = _trajectory_sample_dims_count(trajectory, ksp)
     ksp_dimnames = dimnames(ksp)
@@ -183,14 +185,15 @@ function get_fourier_operator(
     # left to guess it from sizes, which can be ambiguous (a coil count equal to the frame count).
     nframe = ndims(trajectory) - 1 - fourier_dims
     𝒩 = _nfft_operator(
-        parent(ksp), image_size, parent(trajectory), nframe; dcf = raw_dcf, threaded, m, sigma, precompute
+        parent(ksp), image_size, parent(trajectory), nframe; dcf = raw_dcf, threaded, m, sigma, precompute, fast_planning
     )
     return NamedDimsOp{image_dimnames, ksp_dimnames}(𝒩)
 end
 
 """
     get_fourier_operator(ksp::AbstractArray, image_size::Tuple, trajectory::AbstractArray;
-                          dcf=nothing, threaded=true, m=nothing, sigma=nothing, precompute=nothing)
+                          dcf=nothing, threaded=true, m=nothing, sigma=nothing, precompute=nothing,
+                          fast_planning=false)
 
 Non-Cartesian (NFFT-backed) Fourier operator. `m`, `sigma` (`σ`) and `precompute` expose the
 gridding operating point: `m` is the interpolation kernel's half-width, `sigma` its oversampling
@@ -201,6 +204,10 @@ accuracy cost; pass explicit values for a different point on the accuracy/speed 
 NFFT.jl's own higher-accuracy default (`m=5, sigma=2.0`) or MRIReco's faster, less accurate one
 (`m=3, sigma=1.25, precompute=NFFT.TENSOR`). See "Non-Cartesian accuracy / speed trade-off" in
 `docs/src/high-level/performance.md` for the measured table.
+
+The FFT inside the NFFT, and the one of its Toeplitz normal operator, are planned with
+`FFTW.MEASURE`, as the Cartesian DFT is; `fast_planning = true` uses `FFTW.ESTIMATE`, which plans
+faster but can pick a several times slower FFT.
 
 `dcf` (density compensation) is forwarded to `NFFTOp` unchanged: `nothing` (the default) applies
 none, so `op'` is the *true* adjoint of `op` (required by anything that assumes the adjoint
@@ -226,16 +233,17 @@ function get_fourier_operator(
         m::Union{Nothing, Integer} = nothing,
         sigma::Union{Nothing, Real} = nothing,
         precompute = nothing,
+        fast_planning::Bool = false,
     )
     nframe = _trajectory_frame_dims_count(trajectory, ksp)
-    return _nfft_operator(ksp, image_size, trajectory, nframe; dcf, threaded, m, sigma, precompute)
+    return _nfft_operator(ksp, image_size, trajectory, nframe; dcf, threaded, m, sigma, precompute, fast_planning)
 end
 
 # The NFFT operator of `trajectory` over the batch axes of `ksp`, whose last `nframe` axes are the
 # trajectory's frame axes (`0` for a shared trajectory).
-function _nfft_operator(ksp, image_size, trajectory, nframe::Int; dcf, threaded, m, sigma, precompute)
+function _nfft_operator(ksp, image_size, trajectory, nframe::Int; dcf, threaded, m, sigma, precompute, fast_planning)
     fourier_dims = ndims(trajectory) - 1 - nframe
-    nfft_kwargs = _nfft_operating_point_kwargs(m, sigma, precompute)
+    nfft_kwargs = _nfft_operating_point_kwargs(m, sigma, precompute, fast_planning)
     if nframe > 0
         return _per_frame_nfft_operator(ksp, image_size, trajectory, nframe, fourier_dims; dcf, threaded, nfft_kwargs)
     end
@@ -305,12 +313,15 @@ const DEFAULT_NFFT_PRECOMPUTE = NFFT.POLYNOMIAL
 
 # Always forward a concrete operating point: leaving `m`/`sigma`/`precompute` at `nothing` now
 # substitutes MRT's own (lower-accuracy, faster) default rather than NFFT.jl's own default -- see
-# `DEFAULT_NFFT_M` and friends for the measured justification.
-function _nfft_operating_point_kwargs(m, sigma, precompute)
+# `DEFAULT_NFFT_M` and friends for the measured justification. The FFT inside the NFFT is planned
+# like the Cartesian DFT: `MEASURE` unless `fast_planning`. `ESTIMATE`, NFFT.jl's own default, picks
+# a 3.3x slower plan for the 192×192 oversampled grid of a 128×128 image on an EPYC 7352.
+function _nfft_operating_point_kwargs(m, sigma, precompute, fast_planning::Bool)
     return (
         m = isnothing(m) ? DEFAULT_NFFT_M : m,
         σ = isnothing(sigma) ? DEFAULT_NFFT_SIGMA : sigma,
         precompute = isnothing(precompute) ? DEFAULT_NFFT_PRECOMPUTE : precompute,
+        fftflags = fast_planning ? FFTW.ESTIMATE : FFTW.MEASURE,
     )
 end
 

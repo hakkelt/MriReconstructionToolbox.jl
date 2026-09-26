@@ -194,7 +194,7 @@ function get_encoding_operator(
         precompute = nothing,
     )
     @argcheck !isnothing(info.kspace_data) "The provided NonCartesianAcquisitionInfo does not contain k-space data, which is required to build the encoding operator."
-    ℱ = get_fourier_operator(info; threaded, m, sigma, precompute)
+    ℱ = get_fourier_operator(info; threaded, m, sigma, precompute, fast_planning)
     return _compose_with_sensitivity(ℱ, info; threaded)
 end
 
