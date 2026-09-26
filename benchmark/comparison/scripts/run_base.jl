@@ -1,5 +1,5 @@
 # Section: direct (adjoint) reconstruction of every Cartesian catalog case — MRT / SigPy / BART /
-# MRIReco / MIRT.
+# MRIReco / MIRT / MRpro.
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_base.jl --threads=N [--use-mkl] [--data=synthetic|real|all]
 #
 # Every toolkit returns Σ conj(Sᶜ) xᶜ, scored after dividing by Σ|Sᶜ|² (`_score_image`).

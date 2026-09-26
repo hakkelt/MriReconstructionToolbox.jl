@@ -1,9 +1,26 @@
 # benchmark/comparison/
 
-Cross-toolkit MRI reconstruction benchmark: MRT vs BART / SigPy / MRIReco / MIRT, on the cases of
-the benchmark case catalog (`benchmark/utils/`, see [`benchmark/README.md`](../README.md)), at
-matched effort or matched accuracy. Comparing one checkout of MRT against another is the MRT
+Cross-toolkit MRI reconstruction benchmark: MRT vs BART / SigPy / MRIReco / MIRT / MRpro, on the
+cases of the benchmark case catalog (`benchmark/utils/`, see [`benchmark/README.md`](../README.md)),
+at matched effort or matched accuracy. Comparing one checkout of MRT against another is the MRT
 harness's job (`benchmark/run.jl`), not this suite's.
+
+## Python toolkits
+
+SigPy and MRpro run in-process through PyCall, in the one interpreter PyCall was built against,
+which needs Python ≥ 3.10 (MRpro's floor). A CPU-only environment:
+
+```sh
+uv venv -p python3.12 /path/to/venvs/py312
+uv pip install -p /path/to/venvs/py312 "numpy<2" sigpy numba scipy
+uv pip install -p /path/to/venvs/py312 torch torchvision --index-url https://download.pytorch.org/whl/cpu
+uv pip install -p /path/to/venvs/py312 mrpro
+julia --project=benchmark/comparison -e 'ENV["PYTHON"] = "/path/to/venvs/py312/bin/python"; using Pkg; Pkg.build("PyCall")'
+```
+
+`MRT_BENCH_SIGPY_PYTHON` in `benchmark/slurm/site.env` names the same interpreter; a mismatch is
+reported at load. MRpro's rows are skipped when it does not import. SigPy is single-threaded on the
+CPU; MRpro threads through PyTorch (`torch.set_num_threads`) and finufft (`OMP_NUM_THREADS`).
 
 ## Sections
 
@@ -45,7 +62,7 @@ subprocess:
 | `--sections=sparsity,dynamic` | specific sections instead of all seven |
 | `--data=all` | which catalog cases: `synthetic` (default), `real` or `all` |
 | `--cases=shepp_logan_2d,low-rank` | case-insensitive substrings matched against a catalog case id, a section, or a method label — `shepp_logan_2d` runs the three 2D Shepp-Logan cases, `low-rank` every low-rank row across `dynamic` and `accuracy_race` |
-| `--frameworks=BART` | gates only the *competitor* toolkits (SigPy/BART/MRIReco/MIRT); MRT's own solve always runs — it is the reference every other framework's `nrmse_mrt` is computed against, and it is cheap next to whichever toolkit is under suspicion |
+| `--frameworks=BART` | gates only the *competitor* toolkits (SigPy/BART/MRIReco/MIRT/MRpro); MRT's own solve always runs — it is the reference every other framework's `nrmse_mrt` is computed against, and it is cheap next to whichever toolkit is under suspicion |
 
 ```sh
 # re-verify one suspect BART timing without paying for the other three toolkits or 7 other sections

@@ -1,5 +1,6 @@
 # Section: temporal priors on every cine catalog case — global low-rank ↔ BART `-R L -b <image>`,
-# locally low-rank ↔ `-R L -b 8`, temporal TV ↔ `-R T:32` — MRT vs BART vs MRIReco vs SigPy vs MIRT.
+# locally low-rank ↔ `-R L -b 8`, temporal TV ↔ `-R T:32` — MRT vs BART vs MRIReco vs SigPy vs MIRT
+# vs MRpro (MRpro in the global low-rank and temporal-TV PDHG rows).
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_dynamic.jl --threads=N [--use-mkl] [--data=synthetic|real|all]
 #
 # SigPy and MIRT have no stock low-rank MRI app, but both take an arbitrary prox, so they join the

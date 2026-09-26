@@ -778,10 +778,11 @@ end
 
 The toolkits every section compares MRT against, in row order.
 """
-const COMPETITORS = (:bart, :sigpy, :mrireco, :mirt)
+const COMPETITORS = (:bart, :sigpy, :mrireco, :mirt, :mrpro)
 
-framework_label(tk::Symbol) = tk === :bart ? BART_FW : tk === :sigpy ? "SigPy" : tk === :mrireco ? "MRIReco" : "MIRT"
-toolkit_key(tk::Symbol) = tk === :bart ? "BART" : tk === :sigpy ? "SigPy" : tk === :mrireco ? "MRIReco" : "MIRT"
+framework_label(tk::Symbol) = tk === :bart ? BART_FW : toolkit_key(tk)
+toolkit_key(tk::Symbol) =
+    tk === :bart ? "BART" : tk === :sigpy ? "SigPy" : tk === :mrireco ? "MRIReco" : tk === :mrpro ? "MRpro" : "MIRT"
 
 """
     supports(tk, c::BenchCase, method) -> Bool
@@ -797,6 +798,7 @@ trajectories of its family.
 | SigPy | adjoint / gridding, CG-SENSE, isotropic / anisotropic TV (ADMM and PDHG), L1-wavelet | adjoint / gridding, CG-SENSE, global low-rank, temporal TV (ADMM and PDHG) |
 | MRIReco | adjoint / gridding, CG-SENSE, anisotropic TV, L1-wavelet | adjoint / gridding, CG-SENSE, global / locally low-rank |
 | MIRT | adjoint / gridding, CG-SENSE | adjoint / gridding, CG-SENSE, global low-rank |
+| MRpro | adjoint / gridding, CG-SENSE, isotropic / anisotropic TV (PDHG), L1-wavelet | adjoint / gridding, CG-SENSE, global low-rank, temporal TV (PDHG) |
 
 What is absent and why: TGV exists only in BART and MRT. SigPy and MIRT have no locally low-rank
 prox, and building one here would compare this file's block convention rather than the toolkits
@@ -805,7 +807,8 @@ temporal TV (see `mrireco_dynamic`). MIRT ships neither a TV nor a wavelet prox.
 RegularizedLeastSquares is anisotropic, so MRIReco has no isotropic TV row (see `mrireco`); BART's
 anisotropic row sums one `-R T` term per axis, and SigPy's isotropic one replaces the prox of its
 `TotalVariationRecon` with a joint threshold (`_IsoTVRecon`). The PDHG rows (`PDHG_METHODS`) are
-absent from MRIReco, whose `PrimalDualSolver` takes only a dense matrix, and from MIRT.
+absent from MRIReco, whose `PrimalDualSolver` takes only a dense matrix, and from MIRT. MRpro has
+no ADMM, so of the TV rows it has only the PDHG ones, and no locally low-rank or TGV row.
 """
 function supports(tk::Symbol, c::BenchCase, m::Symbol)
     m in applicable_methods(c) || return false
@@ -823,6 +826,9 @@ function supports(tk::Symbol, c::BenchCase, m::Symbol)
     elseif tk === :mirt
         fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank)
         return m in (:adjoint, :gridding, :cgsense)
+    elseif tk === :mrpro
+        fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank, :ttv_pd)
+        return m in (:adjoint, :gridding, :cgsense, :tv_pd, :atv_pd, :wavelet)
     end
     return false
 end
@@ -860,6 +866,7 @@ function toolkit_run(
     tk === :sigpy && return sigpy_run(c, m; λ, maxit, ρ)
     tk === :mrireco && return mrireco_run(c, m; λ, maxit, ρ)
     tk === :mirt && return mirt_run(c, m; λ, maxit)
+    tk === :mrpro && return mrpro_run(c, m; λ, maxit)
     throw(ArgumentError("unknown toolkit $tk"))
 end
 
@@ -1078,6 +1085,172 @@ function mrireco_direct(acq, smaps, reconSize; frames::Int = 1)
     end
     x = frames == 1 ? reshape(x, reconSize) : x
     return t * 1000, Array{ComplexF64}(x)
+end
+
+# ---------------------------------------------------------------- MRpro
+
+# MRpro (PyTorch) composes each reconstruction from its operators, functionals and optimizers, as
+# its own examples do; it ships no reconstruction "app" for these problems. The system is built
+# from tensors in MRpro's `(other, coil, z, y, x)` layout, never from its `KData`: masking ∘ FFT ∘
+# sensitivities on zero-filled Cartesian k-space, the NUFFT (`FourierOp`) ∘ sensitivities on a
+# radial trajectory in grid units, a cine's frames along `other`.
+#
+# MRpro has no ADMM, so it joins the PDHG rows and none of the ADMM ones. Its `L1Norm` is the
+# complex modulus, so the anisotropic row has MRT's penalty; the isotropic one needs the joint
+# threshold over the stacked differences, `_MrproJointL1`, the counterpart of SigPy's `_JointL1`.
+# Temporal TV uses a circular difference along the frames, as SigPy's does. L1-wavelet is FISTA
+# (`pgd`) on the synthesis form `‖A Wᴴ z - y‖² + λ‖z‖₁`: MRpro's `WaveletOp` is a Parseval frame
+# (`WᴴW = I`) with a few boundary coefficients more than pixels, whose analysis prox has no closed
+# form. Global low rank is `pgd` with a Casorati singular-value threshold, `_MrproSVT`. The step size
+# `1/(2‖A‖²)` of both `pgd` rows comes from a power method inside the timed region, as MRT's does.
+#
+# Every functional here is MRpro's `‖·‖²` without the ½, and its FFT is orthonormal; the per-toolkit
+# λ calibration absorbs both.
+py"""
+import numpy as np
+import torch
+from mrpro.operators import (CartesianMaskingOp, FastFourierOp, SensitivityOp, FiniteDifferenceOp,
+                             FourierOp, WaveletOp, LinearOperatorMatrix, ProximableFunctional)
+from mrpro.operators.functionals import L1Norm, L2NormSquared
+from mrpro.algorithms.optimizers import pdhg, pgd, cg
+from mrpro.data import SpatialDimension, KTrajectory
+
+def _mrpro_tensor(a):
+    return None if a is None else torch.from_numpy(np.ascontiguousarray(a))
+
+class _MrproJointL1(ProximableFunctional):
+    '''lam * sum over voxels of the 2-norm along axis 0, the stacked finite differences.'''
+    def __init__(self, lam):
+        super().__init__()
+        self.lam = lam
+
+    def forward(self, x):
+        return (self.lam * x.abs().square().sum(0).sqrt().sum(),)
+
+    def prox(self, x, sigma=1.0):
+        n = x.abs().square().sum(0, keepdim=True).sqrt()
+        return (x * torch.clamp(1 - self.lam * sigma / n.clamp_min(1e-30), min=0),)
+
+    def prox_convex_conj(self, x, sigma=1.0):
+        n = x.abs().square().sum(0, keepdim=True).sqrt()
+        return (x / torch.clamp(n / self.lam, min=1),)
+
+class _MrproSVT(ProximableFunctional):
+    '''lam * nuclear norm of the (frames x voxels) Casorati matrix.'''
+    def __init__(self, lam):
+        super().__init__()
+        self.lam = lam
+
+    def forward(self, x):
+        return (self.lam * torch.linalg.svdvals(x.reshape(x.shape[0], -1)).sum(),)
+
+    def prox(self, x, sigma=1.0):
+        u, s, vh = torch.linalg.svd(x.reshape(x.shape[0], -1), full_matrices=False)
+        s = torch.clamp(s - self.lam * sigma, min=0).to(u.dtype)
+        return (((u * s[None, :]) @ vh).reshape(x.shape),)
+
+    def prox_convex_conj(self, x, sigma=1.0):
+        return (x - sigma * self.prox(x / sigma, 1.0 / sigma)[0],)
+
+def _mrpro_system(csm, mask, kx, ky, ndim):
+    S = SensitivityOp(csm)
+    if kx is None:
+        return CartesianMaskingOp(mask) @ FastFourierOp(dim=tuple(range(-ndim, 0))) @ S
+    ny, nx = csm.shape[-2], csm.shape[-1]
+    traj = KTrajectory(torch.zeros(1, 1, 1, 1, 1), ky, kx)
+    return FourierOp(recon_matrix=SpatialDimension(1, ny, nx), encoding_matrix=SpatialDimension(1, ny, nx), traj=traj) @ S
+
+def _mrpro_solve(method, y, csm, mask, kx, ky, dcf, lam, maxit, ndim, wavelet, levels):
+    y, csm, mask, kx, ky, dcf = map(_mrpro_tensor, (y, csm, mask, kx, ky, dcf))
+    A = _mrpro_system(csm, mask, kx, ky, ndim)
+    if method == 'adjoint':
+        return A.H(y)[0].numpy()
+    if method == 'gridding':
+        return A.H(y * dcf)[0].numpy()
+    (b,) = A.H(y)
+    if method == 'cgsense':
+        return cg(A.gram, b, max_iterations=maxit, tolerance=0.0)[0].numpy()
+    if method in ('tv_pd', 'atv_pd', 'ttv_pd'):
+        if method == 'ttv_pd':
+            D = FiniteDifferenceOp(dim=(-5,), mode='forward', pad_mode='circular')
+        else:
+            D = FiniteDifferenceOp(dim=tuple(range(-ndim, 0)), mode='forward')
+        g = _MrproJointL1(lam) if method == 'tv_pd' else L1Norm(weight=lam)
+        K = LinearOperatorMatrix(((A,), (D,)))
+        return pdhg(f=L2NormSquared(target=y) | g, g=None, operator=K,
+                    initial_values=(torch.zeros_like(b),), max_iterations=maxit)[0].numpy()
+    torch.manual_seed(0)
+    L2 = 1.05 * float(A.operator_norm(torch.randn_like(b), dim=None, max_iterations=30)) ** 2
+    if method == 'wavelet':
+        W = WaveletOp(domain_shape=tuple(b.shape[-ndim:]), dim=tuple(range(-ndim, 0)), wavelet_name=wavelet, level=levels)
+        (z0,) = W(torch.zeros_like(b))
+        (z,) = pgd(f=L2NormSquared(target=y) @ A @ W.H, g=L1Norm(weight=lam), initial_value=z0,
+                   stepsize=0.5 / L2, max_iterations=maxit)
+        return W.H(z)[0].numpy()
+    if method == 'lowrank':
+        return pgd(f=L2NormSquared(target=y) @ A, g=_MrproSVT(lam), initial_value=torch.zeros_like(b),
+                   stepsize=0.5 / L2, max_iterations=maxit)[0].numpy()
+    raise ValueError('MRpro has no ' + method + ' here')
+"""
+
+"""
+    mrpro_inputs(c) -> (y, csm, mask, kx, ky, dcf, ndim)
+
+Case `c` in MRpro's `(other, coil, z, y, x)` layout — every axis of the case's `(x, y, [z,] coil,
+[time])` or `(sample, spoke, coil, [time])` arrays reversed, singleton axes inserted: k-space, maps,
+the per-frame sampling mask of a Cartesian case, the radial trajectory in grid units
+`(1, 1, 1, spoke, sample)` with its DCF, and the number of image axes. Absent pieces are `nothing`.
+"""
+function mrpro_inputs(c::BenchCase)
+    nx, ny = c.image_size[1:2]
+    nt = c.family === :cine ? size(c.reference, 3) : 1
+    nc = ncoils(c)
+    smaps = c.family === :volume ? c.smaps : cart_maps(c)
+    ndim = c.family === :volume ? 3 : 2
+    csm = reshape(parent(permutedims(CMP_CTYPE.(smaps), ndims(smaps):-1:1)), 1, nc, (ndim == 3 ? size(smaps, 3) : 1), ny, nx)
+    if c.trajectory === :cartesian
+        k = parent(permutedims(CMP_CTYPE.(c.kspace), ndims(c.kspace):-1:1))            # (time?, coil, [z,] y, x)
+        y = reshape(k, nt, nc, (ndim == 3 ? size(k, 2 + (nt > 1)) : 1), ny, nx)
+        mask = Float32.(sum(abs, y; dims = 2) .> 0)
+        return y, csm, mask, nothing, nothing, nothing, ndim
+    end
+    ns, nsp = size(c.traj, 2), size(c.traj, 3)
+    k = parent(permutedims(CMP_CTYPE.(c.kspace), ndims(c.kspace):-1:1))                # (time?, coil, spoke, sample)
+    y = reshape(k, nt, nc, 1, nsp, ns)
+    kx = reshape(permutedims(Float32.(c.traj[1, :, :] .* nx), (2, 1)), 1, 1, 1, nsp, ns)
+    ky = reshape(permutedims(Float32.(c.traj[2, :, :] .* ny), (2, 1)), 1, 1, 1, nsp, ns)
+    dcf = reshape(permutedims(Float32.(c.dcf), (2, 1)), 1, 1, 1, nsp, ns)
+    return y, csm, nothing, kx, ky, dcf, ndim
+end
+
+# MRpro's `(other, 1, z, y, x)` result → the case's image layout.
+function mrpro_image(c::BenchCase, raw)
+    c.family === :cine && return permutedims(Array{ComplexF64}(raw[:, 1, 1, :, :]), (3, 2, 1))
+    c.family === :volume && return permutedims(Array{ComplexF64}(raw[1, 1, :, :, :]), (3, 2, 1))
+    return permutedims(Array{ComplexF64}(raw[1, 1, 1, :, :]), (2, 1))
+end
+
+"""
+    mrpro_run(c, method; λ, maxit) -> (time_ms, image)
+
+MRpro's reconstruction of case `c` by `method` (see the section comment above for how each row is
+composed). The inputs are handed to Python before the clock starts; the solve, the construction of
+its operators and the step-size estimate are timed. A multislice case runs slice by slice. Global
+low rank runs `proxgrad_budget(maxit)` iterations, as MIRT's proximal-gradient row does.
+"""
+function mrpro_run(c::BenchCase, m::Symbol; λ, maxit)
+    if c.family === :multislice
+        return per_slice(c) do k, s
+            one = BenchCase(; id = c.id, family = :single_slice, trajectory = :cartesian, reference = c.reference[:, :, 1], smaps = s, kspace = k, image_size = c.image_size)
+            mrpro_run(one, m; λ, maxit)
+        end
+    end
+    y, csm, mask, kx, ky, dcf, ndim = map(a -> a isa AbstractArray ? PyObject(a) : a, mrpro_inputs(c))
+    it = m === :lowrank ? proxgrad_budget(maxit) : maxit
+    t, _, raw = time_reconstruction() do
+        py"_mrpro_solve"(String(m), y, csm, mask, kx, ky, dcf, Float64(λ), it, ndim, CMP_WAVELET_NAME, CMP_WAVELET_LEVELS)
+    end
+    return t * 1000, mrpro_image(c, raw)
 end
 
 # ---------------------------------------------------------------- MIRT

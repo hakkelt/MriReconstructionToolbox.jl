@@ -9,7 +9,7 @@ MRT and another toolkit, reconstruct byte-identical inputs.
 | `utils/` | the case catalog (`BenchUtils`): phantoms, sampling, noise, real-data loaders, MRT method specs, timing, result store |
 | `run.jl` | the MRT harness: every catalog case × every applicable method, one checkout of MRT at a time |
 | `compare.jl` | compares two checkouts (refs) measured by `run.jl` |
-| `comparison/` | the cross-toolkit suite: MRT against BART, SigPy, MRIReco and MIRT ([its README](comparison/README.md)) |
+| `comparison/` | the cross-toolkit suite: MRT against BART, SigPy, MRIReco, MIRT and MRpro ([its README](comparison/README.md)) |
 | `slurm/` | SLURM scripts for both; machine paths live in the untracked `slurm/site.env` |
 | `results/` | harness results and SLURM logs (gitignored) |
 

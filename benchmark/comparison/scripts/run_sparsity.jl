@@ -1,5 +1,5 @@
 # Section: spatial sparsity — isotropic / anisotropic TV, L1-wavelet, TGV — on every static catalog case, MRT vs BART vs
-# SigPy vs MRIReco.
+# SigPy vs MRIReco vs MRpro (MRpro in the PDHG and wavelet rows only).
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_sparsity.jl --threads=N [--use-mkl] [--data=synthetic|real|all]
 #
 # Matched-effort comparison: CMP_OUTER (20) outer iterations, CMP_CG_ITERS (10) inner CG, fixed

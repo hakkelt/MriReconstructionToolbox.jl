@@ -118,12 +118,14 @@ function rho_grid(c::BenchCase, method::Symbol, tk::Symbol)
 end
 
 function nrmse_at(c::BenchCase, method::Symbol, tk::Symbol, λ::Real, ρ)
+    # A PDHG row runs as many iterations as its ADMM row applies the operator (`PDHG_ITERATIONS`).
+    maxit = haskey(PDHG_METHODS, method) ? IT_CAL * CG_ITERATIONS : IT_CAL
     x = if tk === :mrt
-        parent(mrt_reconstructor(c, method; λ, rho = something(ρ, admm_rho(c)), maxit = IT_CAL)())
+        parent(mrt_reconstructor(c, method; λ, rho = something(ρ, admm_rho(c)), maxit)())
     elseif tk === :bart
-        last(bart_run(c, method; λ, maxit = IT_CAL, ρ = something(ρ, CMP_RHO)))
+        last(bart_run(c, method; λ, maxit, ρ = something(ρ, CMP_RHO)))
     else
-        last(toolkit_run(tk, c, method; λ, ρ, maxit = IT_CAL, runs = 1))
+        last(toolkit_run(tk, c, method; λ, ρ, maxit, runs = 1))
     end
     return mag_nrmse(_score_image(c, method, x), c.reference)
 end

@@ -1,5 +1,5 @@
 # Section: CG-SENSE (10 iterations, no early stop) on every multichannel catalog case — MRT vs
-# SigPy vs BART vs MRIReco vs MIRT.
+# SigPy vs BART vs MRIReco vs MIRT vs MRpro.
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_cgsense.jl --threads=N [--use-mkl] [--data=synthetic|real|all]
 #
 # The cases are undersampled, so the normal equations are not trivially conditioned and every

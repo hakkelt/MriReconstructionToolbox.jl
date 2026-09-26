@@ -1,5 +1,5 @@
 # Section: non-Cartesian DCF adjoint (gridding) of every non-Cartesian catalog case — MRT vs BART
-# vs SigPy vs MRIReco vs MIRT, all on the case's own ramp DCF except MRIReco, whose `direct`
+# vs SigPy vs MRIReco vs MIRT vs MRpro, all on the case's own ramp DCF except MRIReco, whose `direct`
 # reconstruction applies its own density compensation.
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_noncart.jl --threads=N [--use-mkl] [--data=synthetic|real|all]
 #

@@ -9,7 +9,7 @@
 # least 16 cores (the largest thread count in the default matrix).
 #
 # Suites:
-#   --suite=comparison   benchmark/comparison/scripts/run_all.jl (MRT vs BART/SigPy/MRIReco/MIRT)
+#   --suite=comparison   benchmark/comparison/scripts/run_all.jl (MRT vs BART/SigPy/MRIReco/MIRT/MRpro)
 #   --suite=harness      benchmark/run.jl (MRT only, every catalog case and method)
 #
 # Matrix dimensions (each a comma-separated list):

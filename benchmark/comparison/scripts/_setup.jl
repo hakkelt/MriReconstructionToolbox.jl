@@ -73,6 +73,24 @@ using PyCall
 using MRIReco
 
 """
+    MRPRO_AVAILABLE
+
+Whether MRpro imports in PyCall's interpreter; its rows are skipped otherwise (see
+`should_run_framework`). PyTorch's intra-op pool is set to `NUM_THREADS` and its inter-op pool to
+one thread before any tensor work; finufft, MRpro's NUFFT, follows `OMP_NUM_THREADS` above.
+"""
+const MRPRO_AVAILABLE = try
+    torch = pyimport("torch")
+    torch.set_num_threads(NUM_THREADS)
+    torch.set_num_interop_threads(1)
+    pyimport("mrpro")
+    true
+catch err
+    @warn "MRpro is unavailable in PyCall's Python, so MRpro rows are skipped" exception = err
+    false
+end
+
+"""
     MRIRECO_BLAS_THREADS
 
 The BLAS thread count MRIReco chose for itself, captured before this file overrides it.
@@ -337,7 +355,7 @@ end
 
 Parsed from `--frameworks=pat1,pat2,...`, or `nothing`. Each `pat` is a case-insensitive substring
 matched against a framework label (`"BART"` matches `"BART (MKL)"` and `"BART (OpenBLAS)"` alike).
-Gates only the *competitor* toolkits (SigPy/BART/MRIReco/MIRT) in each case, never MRT itself: MRT's
+Gates only the *competitor* toolkits (SigPy/BART/MRIReco/MIRT/MRpro) in each case, never MRT itself: MRT's
 own solve is the reference every other framework's `nrmse_mrt` is computed against, so it always
 runs regardless of this filter, and stays cheap next to whichever toolkit is under suspicion.
 """
@@ -349,11 +367,13 @@ end
     should_run_framework(framework) -> Bool
 
 True unless [`FRAMEWORK_FILTER`](@ref) is set and no pattern in it is a substring of `framework`
-(case-insensitive), or `framework` is BART and no BART build is configured for this backend. See
-[`FRAMEWORK_FILTER`](@ref) -- never call this for MRT's own row.
+(case-insensitive), or `framework` is BART and no BART build is configured for this backend, or
+MRpro and it does not import ([`MRPRO_AVAILABLE`](@ref)). See [`FRAMEWORK_FILTER`](@ref) -- never
+call this for MRT's own row.
 """
 function should_run_framework(framework)
     occursin("bart", lowercase(framework)) && !BART_AVAILABLE && return false
+    occursin("mrpro", lowercase(framework)) && !MRPRO_AVAILABLE && return false
     return FRAMEWORK_FILTER === nothing || any(p -> occursin(p, lowercase(framework)), FRAMEWORK_FILTER)
 end
 
