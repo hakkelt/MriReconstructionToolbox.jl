@@ -9,6 +9,19 @@ function get_operators_for_var(term, var)
     end
 end
 
+"""
+    splits_per_variable(term)
+
+Whether `term` can be handed to a per-variable treatment at all.
+
+A single-variable term trivially can. A multi-variable one can only if its function is
+itself separable — otherwise the slicing structure of its operators says nothing about
+whether the sum decomposes, because the function couples the blocks regardless. Shared by
+[`is_separable_sum`](@ref), `can_be_separable_sum` and `get_unseparable_pairs`, which must
+agree on this rule: the first two are predicates and the third names the offending pairs.
+"""
+splits_per_variable(term) = length(variables(term)) == 1 || is_separable(term.f)
+
 function is_separable_sum(terms::TermSet)
     # Construct the set of occurring variables
     vars = Set()
@@ -19,8 +32,8 @@ function is_separable_sum(terms::TermSet)
     for var in vars
         terms_with_var = [t for t in terms if var in variables(t)]
         if length(terms_with_var) != 1
-            # All terms must be either  or have a single variable
-            if ! all(length(variables(term)) == 1 || is_separable(term.f) for term in terms_with_var)
+            # All terms must be either separable or have a single variable
+            if !all(splits_per_variable, terms_with_var)
                 return false
             end
             # All terms must be sliced for this variable

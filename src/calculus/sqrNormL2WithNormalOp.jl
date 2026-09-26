@@ -323,6 +323,14 @@ gate. The predicate is trustworthy everywhere else it holds: `Eye`, `DiagOp`, `G
 `Hankel` and `Zeros` all mean it in the "cheap regardless of shape" sense, and `HCAT` means it
 in the "one shared computation instead of N identical ones" sense (see `has_optimized_normalop`
 in `AbstractOperators.HCAT.jl`) -- neither of which describes what a `MatrixOp` offers.
+
+!!! note "Known limitation"
+    The exclusion is a test on the outer type, so a `MatrixOp` behind a wrapper that forwards
+    the trait (`Scale`, `AffineAdd`, `Compose`, `Reshape`, or an `HCAT` of identical blocks)
+    still takes the bypass and still pays the dense Gram. The property actually wanted is
+    "the optimized normal operator is cheap to *form*", which is structural and recursive;
+    expressing it properly means either a second upstream trait alongside
+    `has_optimized_normalop` (which answers "cheap to *apply*") or walking the wrappers here.
 """
 reuses_optimized_normalop(op) = AbstractOperators.has_optimized_normalop(op) && !(op isa AbstractOperators.MatrixOp)
 
@@ -340,7 +348,7 @@ _total_length(size_::Tuple) = sum(_total_length, size_)
 # applications against the 2N of applying the `HCAT` and its adjoint in turn, so a single
 # block left as a `Compose` already makes it the more expensive of the two.
 function fused_normal_op(L::AbstractOperators.HCAT)
-    AbstractOperators.has_optimized_normalop(L) && return L' * L
+    reuses_optimized_normalop(L) && return L' * L
     normal_op_worthwhile(L) || return nothing
     rows = ()
     for Li in L.A
