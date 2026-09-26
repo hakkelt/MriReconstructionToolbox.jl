@@ -462,3 +462,10 @@ pr = ""
 branch = "feat/affine-terms"
 parent = "perf/single-normal-op"
 pr = ""
+
+# A least-squares term padded with `Zeros` blocks for the variables it leaves out is folded into
+# its normal operator by the block it does mention.
+[[StructuredOptimization.stack]]
+branch = "perf/padded-normal-op"
+parent = "master"
+pr = ""
