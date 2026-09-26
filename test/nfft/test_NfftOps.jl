@@ -205,3 +205,19 @@ end
     expected_custom = 2 .* reshape(NFFTTools.sdc(plan; iters = 5), ksp_shape)
     @test op_auto_custom.dcf ≈ expected_custom
 end
+
+@testitem "NfftNormalOp planner rigor" tags = [:nfft, :NfftNormalOp] begin
+    using AbstractOperators, NFFTOperators, FFTW, LinearAlgebra, Random
+    rigor(p) = p.flags & (FFTW.ESTIMATE | FFTW.PATIENT | FFTW.EXHAUSTIVE | FFTW.WISDOM_ONLY)
+    traj = rand(Xoshiro(1), 2, 64, 16) .- 0.5
+    image = randn(Xoshiro(2), ComplexF64, 32, 32)
+    results = map((FFTW.ESTIMATE, FFTW.MEASURE)) do flags
+        op = NFFTOp((32, 32), traj, ones(64, 16); threaded = false, fftflags = flags)
+        N = AbstractOperators.get_normal_op(op)
+        @test rigor(N.fftplan) == flags
+        y = N * image
+        @test y ≈ op' * (op * image)
+        y
+    end
+    @test results[1] ≈ results[2]
+end
