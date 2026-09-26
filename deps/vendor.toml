@@ -412,6 +412,12 @@ branch = "perf/cgnr-reuse-aha"
 parent = "c3-admm-reuse-aha"
 pr = ""
 
+# CGNR/PCGNR/ADMM take a caller-supplied Aᴴb (the least-squares normal operator's displacement).
+[[ProximalAlgorithms.stack]]
+branch = "perf/reuse-ahb"
+parent = "perf/cgnr-reuse-aha"
+pr = ""
+
 # PANOCplus takes an affine operator (`is_affine`, OperatorCore 0.1.2); the rest keep `is_linear`.
 [[ProximalAlgorithms.stack]]
 branch = "feat/affine-assumptions"
