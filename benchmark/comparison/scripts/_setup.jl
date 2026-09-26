@@ -69,13 +69,22 @@ using Statistics
 using Random
 using FFTW
 using BartIO
-using PyCall
+# SigPy and MRpro run in-process through PythonCall, on the interpreter `MRT_BENCH_SIGPY_PYTHON`
+# names rather than an environment of CondaPkg's own. PythonCall picks its interpreter when it
+# loads, so both variables are set before it does. It frees a Python object that Julia's GC
+# finalizes on a thread without the GIL later, on the thread that holds it, which is what makes
+# the multithreaded MRT solves between Python calls safe.
+get!(ENV, "JULIA_CONDAPKG_BACKEND", "Null")
+let py = get(ENV, "MRT_BENCH_SIGPY_PYTHON", "")
+    isempty(py) || (ENV["JULIA_PYTHONCALL_EXE"] = py)
+end
+using PythonCall
 using MRIReco
 
 """
     MRPRO_AVAILABLE
 
-Whether MRpro imports in PyCall's interpreter; its rows are skipped otherwise (see
+Whether MRpro imports in the Python interpreter; its rows are skipped otherwise (see
 `should_run_framework`). PyTorch's intra-op pool is set to `NUM_THREADS` and its inter-op pool to
 one thread before any tensor work; finufft, MRpro's NUFFT, follows `OMP_NUM_THREADS` above.
 """
@@ -86,7 +95,7 @@ const MRPRO_AVAILABLE = try
     pyimport("mrpro")
     true
 catch err
-    @warn "MRpro is unavailable in PyCall's Python, so MRpro rows are skipped" exception = err
+    @warn "MRpro is unavailable in the Python interpreter, so MRpro rows are skipped" exception = err
     false
 end
 

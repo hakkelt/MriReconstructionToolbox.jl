@@ -4,7 +4,6 @@ using LinearAlgebra: norm
 using Test: @test
 
 include("bart_bridge.jl")
-include("sigpy_bridge.jl")
 include("mirt_bridge.jl")
 
 """
@@ -27,7 +26,6 @@ catch err
     false
 end
 using .BARTBridge
-using .SigPyBridge
 using .MIRTBridge
 if MATLAB_AVAILABLE
     @eval using .MATLABBridge
@@ -40,7 +38,6 @@ else
 end
 
 export run_bart
-export sigpy, np, sigpy_mri_app
 export setup_matlab_paths
 export MIRT
 export nrmse, check_nrmse

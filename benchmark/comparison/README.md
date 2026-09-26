@@ -7,10 +7,11 @@ harness's job (`benchmark/run.jl`), not this suite's.
 
 ## Python toolkits
 
-SigPy and MRpro run in-process through PyCall, in the one interpreter PyCall was built against,
-which needs Python ≥ 3.10 (MRpro's floor). PyCall loads that interpreter's `libpython`, so on a
-cluster it must exist on the compute nodes too: a system Python of the login node may not. A
-standalone build on shared storage is. A CPU-only environment:
+SigPy and MRpro run in-process through PythonCall, in the interpreter `MRT_BENCH_SIGPY_PYTHON` in
+`benchmark/slurm/site.env` names (CondaPkg's `Null` backend: no environment of its own is built).
+It needs Python ≥ 3.10 (MRpro's floor), and PythonCall loads its `libpython`, so on a cluster it
+must exist on the compute nodes too: a system Python of the login node may not. A standalone build
+on shared storage is. A CPU-only environment:
 
 ```sh
 UV_PYTHON_INSTALL_DIR=/path/to/uv-python uv python install 3.14
@@ -18,12 +19,13 @@ uv venv -p /path/to/uv-python/cpython-3.14.*/bin/python3.14 /path/to/venvs/py314
 uv pip install -p /path/to/venvs/py314 numpy sigpy numba scipy
 uv pip install -p /path/to/venvs/py314 torch torchvision --index-url https://download.pytorch.org/whl/cpu
 uv pip install -p /path/to/venvs/py314 mrpro
-julia --project=benchmark/comparison -e 'ENV["PYTHON"] = "/path/to/venvs/py314/bin/python"; using Pkg; Pkg.build("PyCall")'
 ```
 
-`MRT_BENCH_SIGPY_PYTHON` in `benchmark/slurm/site.env` names the same interpreter; a mismatch is
-reported at load. MRpro's rows are skipped when it does not import. SigPy is single-threaded on the
-CPU; MRpro threads through PyTorch (`torch.set_num_threads`) and finufft (`OMP_NUM_THREADS`).
+PythonCall rather than PyCall because the MRT solves between Python calls are multithreaded:
+PyCall frees a Python object from whichever thread Julia's GC finalizes it on, which segfaults the
+process at 8 and 16 threads, while PythonCall defers such a free to the thread that holds the GIL.
+MRpro's rows are skipped when it does not import. SigPy is single-threaded on the CPU; MRpro
+threads through PyTorch (`torch.set_num_threads`) and finufft (`OMP_NUM_THREADS`).
 
 ## Sections
 

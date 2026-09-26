@@ -368,42 +368,59 @@ function mrireco_dynamic(
     return t * 1000, _mrireco_image(img, reconSize, nt)
 end
 
+# --- Python (SigPy, MRpro) -----------------------------------------------------------------
+# Python code of the harness's own (`_IsoTVRecon`, `_MrtSVT`, `_mrpro_solve`, ...) is executed into
+# `PY` by the `pyexec` blocks below and looked up there by name.
+const PY = pydict()
+const np = pyimport("numpy")
+
+# A Julia array as a NumPy array of the same shape sharing its memory (column-major strides);
+# anything else as PythonCall converts it.
+_np(a::AbstractArray) = np.asarray(a)
+_np(x) = x
+
+# The Python reconstruction `f` with its NumPy result copied into a Julia array of the same shape,
+# inside the timed region, so that a toolkit's time includes handing its image back.
+_jl(f) = () -> pyconvert(Array, f())
+
 # --- SigPy (Python) ------------------------------------------------------------------------
 # SigPy wants k-space `(coil, [kz,] ky, kx)` and maps `(coil, [z,] y, x)`, returns `([z,] y, x)`:
 # every axis reversed against the Julia layout `(kx, ky, [kz,] coil)`.
 _sp_rev(a) = parent(permutedims(CMP_CTYPE.(a), ndims(a):-1:1))
-_sp_k(ksp) = _sp_rev(ksp)
-_sp_s(smaps) = _sp_rev(smaps)
+_sp_k(ksp) = _np(_sp_rev(ksp))
+_sp_s(smaps) = _np(_sp_rev(smaps))
 
 # Isotropic TV in SigPy. SigPy ships only the anisotropic one (`TotalVariationRecon`: an `L1Reg`
 # prox on `FiniteDifference`, whose output stacks the per-axis differences along axis 0) and no
 # joint (group) threshold. `_IsoTVRecon` is `TotalVariationRecon` with that prox replaced by the
 # joint soft threshold over axis 0, the prox of `λ Σ ‖∇x‖₂`; data weighting, operator and solver
 # are built exactly as `TotalVariationRecon` builds them.
-py"""
-import numpy as np
-import sigpy as sp
-import sigpy.mri as spm
-from sigpy.mri.app import _estimate_weights
+pyexec(
+    """
+    import numpy as np
+    import sigpy as sp
+    import sigpy.mri as spm
+    from sigpy.mri.app import _estimate_weights
 
-class _JointL1(sp.prox.Prox):
-    '''Soft thresholding of the l2 norm over axis 0: the prox of lamda * sum ||x[:, i]||_2.'''
-    def __init__(self, shape, lamda):
-        self.lamda = lamda
-        super().__init__(shape)
+    class _JointL1(sp.prox.Prox):
+        '''Soft thresholding of the l2 norm over axis 0: the prox of lamda * sum ||x[:, i]||_2.'''
+        def __init__(self, shape, lamda):
+            self.lamda = lamda
+            super().__init__(shape)
 
-    def _prox(self, alpha, input):
-        n = np.sqrt(np.sum(np.abs(input) ** 2, axis=0, keepdims=True))
-        return input * np.maximum(1 - alpha * self.lamda / np.maximum(n, 1e-30), 0)
+        def _prox(self, alpha, input):
+            n = np.sqrt(np.sum(np.abs(input) ** 2, axis=0, keepdims=True))
+            return input * np.maximum(1 - alpha * self.lamda / np.maximum(n, 1e-30), 0)
 
-def _IsoTVRecon(y, mps, lamda, coord=None, **kwargs):
-    weights = _estimate_weights(y, None, coord)
-    if weights is not None:
-        y = y * weights ** 0.5
-    A = spm.linop.Sense(mps, coord=coord, weights=weights)
-    G = sp.linop.FiniteDifference(A.ishape)
-    return sp.app.LinearLeastSquares(A, y, proxg=_JointL1(G.oshape, lamda), G=G, **kwargs)
-"""
+    def _IsoTVRecon(y, mps, lamda, coord=None, **kwargs):
+        weights = _estimate_weights(y, None, coord)
+        if weights is not None:
+            y = y * weights ** 0.5
+        A = spm.linop.Sense(mps, coord=coord, weights=weights)
+        G = sp.linop.FiniteDifference(A.ishape)
+        return sp.app.LinearLeastSquares(A, y, proxg=_JointL1(G.oshape, lamda), G=G, **kwargs)
+    """, PY,
+)
 
 """
     sigpy_recon(method, ksp, smaps; λ, iterations) -> (time_ms, image)
@@ -427,13 +444,13 @@ function sigpy_recon(method::Symbol, ksp3, smaps3; λ = 0.0, iterations = 10, ρ
     elseif method === :cgsense
         () -> sp_app.SenseRecon(y, mps; max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
     elseif method in (:tv, :atv)
-        tv = method === :tv ? py"_IsoTVRecon" : sp_app.TotalVariationRecon
+        tv = method === :tv ? PY["_IsoTVRecon"] : sp_app.TotalVariationRecon
         () -> tv(
             y, mps, λ; solver = "ADMM", rho = ρ,
             max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
         ).run()
     elseif method in (:tv_pd, :atv_pd)
-        tv = method === :tv_pd ? py"_IsoTVRecon" : sp_app.TotalVariationRecon
+        tv = method === :tv_pd ? PY["_IsoTVRecon"] : sp_app.TotalVariationRecon
         () -> tv(
             y, mps, λ; solver = "PrimalDualHybridGradient", max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
         ).run()
@@ -442,7 +459,7 @@ function sigpy_recon(method::Symbol, ksp3, smaps3; λ = 0.0, iterations = 10, ρ
     else
         error("SigPy has no $method here")
     end
-    t, _, raw = time_reconstruction(app)
+    t, _, raw = time_reconstruction(_jl(app))
     return t * 1000, Array{ComplexF64}(permutedims(raw, ndims(raw):-1:1))
 end
 
@@ -603,22 +620,24 @@ const sp = pyimport("sigpy")
 const sp_linop = pyimport("sigpy.mri.linop")
 
 # The prox lives in Python so SigPy's solver calls it without a round trip per iteration.
-py"""
-import numpy as np
-import sigpy as sp
+pyexec(
+    """
+    import numpy as np
+    import sigpy as sp
 
-class _MrtSVT(sp.prox.Prox):
-    '''Singular-value soft thresholding of the (frames x voxels) Casorati matrix.'''
-    def __init__(self, shape, lamda):
-        self.lamda = lamda
-        super().__init__(shape)
+    class _MrtSVT(sp.prox.Prox):
+        '''Singular-value soft thresholding of the (frames x voxels) Casorati matrix.'''
+        def __init__(self, shape, lamda):
+            self.lamda = lamda
+            super().__init__(shape)
 
-    def _prox(self, alpha, input):
-        m = input.reshape(input.shape[0], -1)
-        u, s, vh = np.linalg.svd(m, full_matrices=False)
-        s = np.maximum(s - alpha * self.lamda, 0)
-        return (u @ (s[:, None] * vh)).reshape(input.shape)
-"""
+        def _prox(self, alpha, input):
+            m = input.reshape(input.shape[0], -1)
+            u, s, vh = np.linalg.svd(m, full_matrices=False)
+            s = np.maximum(s - alpha * self.lamda, 0)
+            return (u @ (s[:, None] * vh)).reshape(input.shape)
+    """, PY,
+)
 
 """
     _sp_cine_system(c) -> (A, y, ishape)
@@ -639,13 +658,13 @@ function _sp_cine_system(c::BenchCase)
     y = parent(permutedims(CMP_CTYPE.(c.kspace), (4, 3, 2, 1)))
     mps = _sp_s(c.smaps)                                                 # (coil, y, x)
     ishape = (size(y, 1), 1, ny, nx)
-    S = sp.linop.Multiply(collect(ishape), mps)
+    S = sp.linop.Multiply(ishape, mps)
     if c.trajectory === :cartesian
         mask = Float32.(sum(abs, y; dims = 2) .> 0)                      # (time, 1, ky, kx)
-        A = sp.linop.Multiply(collect(S.oshape), mask) * sp.linop.FFT(S.oshape, axes = (-2, -1)) * S
+        A = sp.linop.Multiply(S.oshape, _np(mask)) * sp.linop.FFT(S.oshape, axes = (-2, -1)) * S
         return A, y .* mask, ishape
     end
-    return sp.linop.NUFFT(S.oshape, _sp_coord(c)) * S, y, ishape
+    return sp.linop.NUFFT(S.oshape, _np(_sp_coord(c))) * S, y, ishape
 end
 
 """
@@ -668,26 +687,27 @@ The regularized rows use the settings of the other SigPy rows (`ADMM`, `rho = ρ
 function sigpy_dynamic(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = CMP_RHO)
     A, y, ishape = _sp_cine_system(c)
     admm = (; solver = "ADMM", rho = ρ, max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false)
+    yn = _np(y)
     app = if m === :adjoint
-        () -> A.H(y)
+        () -> A.H(yn)
     elseif m === :gridding
-        yw = y .* reshape(permutedims(c.dcf, (2, 1)), 1, 1, size(c.dcf, 2), size(c.dcf, 1))
+        yw = _np(y .* reshape(permutedims(c.dcf, (2, 1)), 1, 1, size(c.dcf, 2), size(c.dcf, 1)))
         () -> A.H(yw)
     elseif m === :cgsense
-        () -> sp.app.LinearLeastSquares(A, y; max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
+        () -> sp.app.LinearLeastSquares(A, yn; max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
     elseif m === :lowrank
-        prox = py"_MrtSVT"(collect(ishape), λ)
-        () -> sp.app.LinearLeastSquares(A, y; proxg = prox, admm...).run()
+        prox = PY["_MrtSVT"](ishape, λ)
+        () -> sp.app.LinearLeastSquares(A, yn; proxg = prox, admm...).run()
     elseif m in (:ttv, :ttv_pd)
-        G = sp.linop.FiniteDifference(collect(ishape); axes = (0,))
+        G = sp.linop.FiniteDifference(ishape; axes = (0,))
         prox = sp.prox.L1Reg(G.oshape, λ)
         solver = m === :ttv ? admm :
             (; solver = "PrimalDualHybridGradient", max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false)
-        () -> sp.app.LinearLeastSquares(A, y; proxg = prox, G, solver...).run()
+        () -> sp.app.LinearLeastSquares(A, yn; proxg = prox, G, solver...).run()
     else
         error("SigPy has no dynamic $m here")
     end
-    t, _, raw = time_reconstruction(app)
+    t, _, raw = time_reconstruction(_jl(app))
     x = dropdims(Array{ComplexF64}(raw), dims = 2)                     # (T, y, x)
     return t * 1000, permutedims(x, (3, 2, 1))
 end
@@ -1015,31 +1035,32 @@ SigPy's NUFFT path for a single-slice non-Cartesian case, on `_sp_coord(c)`. `:g
 """
 function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = CMP_RHO)
     ns, nsp = size(c.traj, 2), size(c.traj, 3)
-    coord = _sp_coord(c)
-    y = parent(permutedims(CMP_CTYPE.(c.kspace), (3, 2, 1)))                 # (coil, spoke, sample)
+    coord = _np(_sp_coord(c))
+    yj = parent(permutedims(CMP_CTYPE.(c.kspace), (3, 2, 1)))                # (coil, spoke, sample)
+    y = _np(yj)
     mps = _sp_s(c.smaps)
     app = if m === :gridding
         S = sp_mri.linop.Sense(mps; coord)
         w = reshape(permutedims(c.dcf, (2, 1)), 1, nsp, ns)
-        yw = y .* w
+        yw = _np(yj .* w)
         () -> S.H(yw)
     elseif m === :cgsense
         () -> sp_app.SenseRecon(y, mps; coord, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
     elseif m in (:tv, :atv)
-        tv = m === :tv ? py"_IsoTVRecon" : sp_app.TotalVariationRecon
+        tv = m === :tv ? PY["_IsoTVRecon"] : sp_app.TotalVariationRecon
         () -> tv(
             y, mps, λ; coord, solver = "ADMM", rho = ρ,
             max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
         ).run()
     elseif m in (:tv_pd, :atv_pd)
-        tv = m === :tv_pd ? py"_IsoTVRecon" : sp_app.TotalVariationRecon
+        tv = m === :tv_pd ? PY["_IsoTVRecon"] : sp_app.TotalVariationRecon
         () -> tv(
             y, mps, λ; coord, solver = "PrimalDualHybridGradient", max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
         ).run()
     else
         error("SigPy has no non-Cartesian $m here")
     end
-    t, _, raw = time_reconstruction(app)
+    t, _, raw = time_reconstruction(_jl(app))
     return t * 1000, Array{ComplexF64}(permutedims(raw, (2, 1)))
 end
 
@@ -1106,92 +1127,94 @@ end
 #
 # Every functional here is MRpro's `‖·‖²` without the ½, and its FFT is orthonormal; the per-toolkit
 # λ calibration absorbs both.
-py"""
-import numpy as np
-import torch
-from mrpro.operators import (CartesianMaskingOp, FastFourierOp, SensitivityOp, FiniteDifferenceOp,
-                             FourierOp, WaveletOp, LinearOperatorMatrix, ProximableFunctional)
-from mrpro.operators.functionals import L1Norm, L2NormSquared
-from mrpro.algorithms.optimizers import pdhg, pgd, cg
-from mrpro.data import SpatialDimension, KTrajectory
+pyexec(
+    """
+    import numpy as np
+    import torch
+    from mrpro.operators import (CartesianMaskingOp, FastFourierOp, SensitivityOp, FiniteDifferenceOp,
+                                 FourierOp, WaveletOp, LinearOperatorMatrix, ProximableFunctional)
+    from mrpro.operators.functionals import L1Norm, L2NormSquared
+    from mrpro.algorithms.optimizers import pdhg, pgd, cg
+    from mrpro.data import SpatialDimension, KTrajectory
 
-def _mrpro_tensor(a):
-    return None if a is None else torch.from_numpy(np.ascontiguousarray(a))
+    def _mrpro_tensor(a):
+        return None if a is None else torch.from_numpy(np.ascontiguousarray(a))
 
-class _MrproJointL1(ProximableFunctional):
-    '''lam * sum over voxels of the 2-norm along axis 0, the stacked finite differences.'''
-    def __init__(self, lam):
-        super().__init__()
-        self.lam = lam
+    class _MrproJointL1(ProximableFunctional):
+        '''lam * sum over voxels of the 2-norm along axis 0, the stacked finite differences.'''
+        def __init__(self, lam):
+            super().__init__()
+            self.lam = lam
 
-    def forward(self, x):
-        return (self.lam * x.abs().square().sum(0).sqrt().sum(),)
+        def forward(self, x):
+            return (self.lam * x.abs().square().sum(0).sqrt().sum(),)
 
-    def prox(self, x, sigma=1.0):
-        n = x.abs().square().sum(0, keepdim=True).sqrt()
-        return (x * torch.clamp(1 - self.lam * sigma / n.clamp_min(1e-30), min=0),)
+        def prox(self, x, sigma=1.0):
+            n = x.abs().square().sum(0, keepdim=True).sqrt()
+            return (x * torch.clamp(1 - self.lam * sigma / n.clamp_min(1e-30), min=0),)
 
-    def prox_convex_conj(self, x, sigma=1.0):
-        n = x.abs().square().sum(0, keepdim=True).sqrt()
-        return (x / torch.clamp(n / self.lam, min=1),)
+        def prox_convex_conj(self, x, sigma=1.0):
+            n = x.abs().square().sum(0, keepdim=True).sqrt()
+            return (x / torch.clamp(n / self.lam, min=1),)
 
-class _MrproSVT(ProximableFunctional):
-    '''lam * nuclear norm of the (frames x voxels) Casorati matrix.'''
-    def __init__(self, lam):
-        super().__init__()
-        self.lam = lam
+    class _MrproSVT(ProximableFunctional):
+        '''lam * nuclear norm of the (frames x voxels) Casorati matrix.'''
+        def __init__(self, lam):
+            super().__init__()
+            self.lam = lam
 
-    def forward(self, x):
-        return (self.lam * torch.linalg.svdvals(x.reshape(x.shape[0], -1)).sum(),)
+        def forward(self, x):
+            return (self.lam * torch.linalg.svdvals(x.reshape(x.shape[0], -1)).sum(),)
 
-    def prox(self, x, sigma=1.0):
-        u, s, vh = torch.linalg.svd(x.reshape(x.shape[0], -1), full_matrices=False)
-        s = torch.clamp(s - self.lam * sigma, min=0).to(u.dtype)
-        return (((u * s[None, :]) @ vh).reshape(x.shape),)
+        def prox(self, x, sigma=1.0):
+            u, s, vh = torch.linalg.svd(x.reshape(x.shape[0], -1), full_matrices=False)
+            s = torch.clamp(s - self.lam * sigma, min=0).to(u.dtype)
+            return (((u * s[None, :]) @ vh).reshape(x.shape),)
 
-    def prox_convex_conj(self, x, sigma=1.0):
-        return (x - sigma * self.prox(x / sigma, 1.0 / sigma)[0],)
+        def prox_convex_conj(self, x, sigma=1.0):
+            return (x - sigma * self.prox(x / sigma, 1.0 / sigma)[0],)
 
-def _mrpro_system(csm, mask, kx, ky, ndim):
-    S = SensitivityOp(csm)
-    if kx is None:
-        return CartesianMaskingOp(mask) @ FastFourierOp(dim=tuple(range(-ndim, 0))) @ S
-    ny, nx = csm.shape[-2], csm.shape[-1]
-    traj = KTrajectory(torch.zeros(1, 1, 1, 1, 1), ky, kx)
-    return FourierOp(recon_matrix=SpatialDimension(1, ny, nx), encoding_matrix=SpatialDimension(1, ny, nx), traj=traj) @ S
+    def _mrpro_system(csm, mask, kx, ky, ndim):
+        S = SensitivityOp(csm)
+        if kx is None:
+            return CartesianMaskingOp(mask) @ FastFourierOp(dim=tuple(range(-ndim, 0))) @ S
+        ny, nx = csm.shape[-2], csm.shape[-1]
+        traj = KTrajectory(torch.zeros(1, 1, 1, 1, 1), ky, kx)
+        return FourierOp(recon_matrix=SpatialDimension(1, ny, nx), encoding_matrix=SpatialDimension(1, ny, nx), traj=traj) @ S
 
-def _mrpro_solve(method, y, csm, mask, kx, ky, dcf, lam, maxit, ndim, wavelet, levels):
-    y, csm, mask, kx, ky, dcf = map(_mrpro_tensor, (y, csm, mask, kx, ky, dcf))
-    A = _mrpro_system(csm, mask, kx, ky, ndim)
-    if method == 'adjoint':
-        return A.H(y)[0].numpy()
-    if method == 'gridding':
-        return A.H(y * dcf)[0].numpy()
-    (b,) = A.H(y)
-    if method == 'cgsense':
-        return cg(A.gram, b, max_iterations=maxit, tolerance=0.0)[0].numpy()
-    if method in ('tv_pd', 'atv_pd', 'ttv_pd'):
-        if method == 'ttv_pd':
-            D = FiniteDifferenceOp(dim=(-5,), mode='forward', pad_mode='circular')
-        else:
-            D = FiniteDifferenceOp(dim=tuple(range(-ndim, 0)), mode='forward')
-        g = _MrproJointL1(lam) if method == 'tv_pd' else L1Norm(weight=lam)
-        K = LinearOperatorMatrix(((A,), (D,)))
-        return pdhg(f=L2NormSquared(target=y) | g, g=None, operator=K,
-                    initial_values=(torch.zeros_like(b),), max_iterations=maxit)[0].numpy()
-    torch.manual_seed(0)
-    L2 = 1.05 * float(A.operator_norm(torch.randn_like(b), dim=None, max_iterations=30)) ** 2
-    if method == 'wavelet':
-        W = WaveletOp(domain_shape=tuple(b.shape[-ndim:]), dim=tuple(range(-ndim, 0)), wavelet_name=wavelet, level=levels)
-        (z0,) = W(torch.zeros_like(b))
-        (z,) = pgd(f=L2NormSquared(target=y) @ A @ W.H, g=L1Norm(weight=lam), initial_value=z0,
-                   stepsize=0.5 / L2, max_iterations=maxit)
-        return W.H(z)[0].numpy()
-    if method == 'lowrank':
-        return pgd(f=L2NormSquared(target=y) @ A, g=_MrproSVT(lam), initial_value=torch.zeros_like(b),
-                   stepsize=0.5 / L2, max_iterations=maxit)[0].numpy()
-    raise ValueError('MRpro has no ' + method + ' here')
-"""
+    def _mrpro_solve(method, y, csm, mask, kx, ky, dcf, lam, maxit, ndim, wavelet, levels):
+        y, csm, mask, kx, ky, dcf = map(_mrpro_tensor, (y, csm, mask, kx, ky, dcf))
+        A = _mrpro_system(csm, mask, kx, ky, ndim)
+        if method == 'adjoint':
+            return A.H(y)[0].numpy()
+        if method == 'gridding':
+            return A.H(y * dcf)[0].numpy()
+        (b,) = A.H(y)
+        if method == 'cgsense':
+            return cg(A.gram, b, max_iterations=maxit, tolerance=0.0)[0].numpy()
+        if method in ('tv_pd', 'atv_pd', 'ttv_pd'):
+            if method == 'ttv_pd':
+                D = FiniteDifferenceOp(dim=(-5,), mode='forward', pad_mode='circular')
+            else:
+                D = FiniteDifferenceOp(dim=tuple(range(-ndim, 0)), mode='forward')
+            g = _MrproJointL1(lam) if method == 'tv_pd' else L1Norm(weight=lam)
+            K = LinearOperatorMatrix(((A,), (D,)))
+            return pdhg(f=L2NormSquared(target=y) | g, g=None, operator=K,
+                        initial_values=(torch.zeros_like(b),), max_iterations=maxit)[0].numpy()
+        torch.manual_seed(0)
+        L2 = 1.05 * float(A.operator_norm(torch.randn_like(b), dim=None, max_iterations=30)) ** 2
+        if method == 'wavelet':
+            W = WaveletOp(domain_shape=tuple(b.shape[-ndim:]), dim=tuple(range(-ndim, 0)), wavelet_name=wavelet, level=levels)
+            (z0,) = W(torch.zeros_like(b))
+            (z,) = pgd(f=L2NormSquared(target=y) @ A @ W.H, g=L1Norm(weight=lam), initial_value=z0,
+                       stepsize=0.5 / L2, max_iterations=maxit)
+            return W.H(z)[0].numpy()
+        if method == 'lowrank':
+            return pgd(f=L2NormSquared(target=y) @ A, g=_MrproSVT(lam), initial_value=torch.zeros_like(b),
+                       stepsize=0.5 / L2, max_iterations=maxit)[0].numpy()
+        raise ValueError('MRpro has no ' + method + ' here')
+    """, PY,
+)
 
 """
     mrpro_inputs(c) -> (y, csm, mask, kx, ky, dcf, ndim)
@@ -1245,11 +1268,12 @@ function mrpro_run(c::BenchCase, m::Symbol; λ, maxit)
             mrpro_run(one, m; λ, maxit)
         end
     end
-    y, csm, mask, kx, ky, dcf, ndim = map(a -> a isa AbstractArray ? PyObject(a) : a, mrpro_inputs(c))
+    y, csm, mask, kx, ky, dcf, ndim = map(_np, mrpro_inputs(c))
     it = m === :lowrank ? proxgrad_budget(maxit) : maxit
-    t, _, raw = time_reconstruction() do
-        py"_mrpro_solve"(String(m), y, csm, mask, kx, ky, dcf, Float64(λ), it, ndim, CMP_WAVELET_NAME, CMP_WAVELET_LEVELS)
-    end
+    solve = PY["_mrpro_solve"]
+    t, _, raw = time_reconstruction(
+        _jl(() -> solve(String(m), y, csm, mask, kx, ky, dcf, Float64(λ), it, ndim, CMP_WAVELET_NAME, CMP_WAVELET_LEVELS))
+    )
     return t * 1000, mrpro_image(c, raw)
 end
 
