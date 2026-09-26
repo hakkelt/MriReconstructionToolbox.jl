@@ -88,43 +88,13 @@ _matrix_of(op::MatrixOp) = op.A
 _matrix_of(op::AbstractOperators.AffineAdd) = _matrix_of(AbstractOperators.remove_displacement(op))
 
 """
-    is_aac_diagonal(op)
-
-`AbstractOperators.is_AAc_diagonal(op)`, answered cheaply where that matters.
-
-For every structured operator the upstream predicate is a type-level trait and costs
-nothing. For a `MatrixOp` it is `isdiag(A * Aᴴ)`: `O(m²n)` work and an `m × m` temporary,
-more than several iterations of the solver being selected — unaffordable in a predicate the
-parser consults for every candidate formulation of every term subset.
-
-`A * Aᴴ` is diagonal exactly when the rows of `A` are pairwise orthogonal, and a *single*
-non-orthogonal pair disproves it. A handful of pairs are therefore tested first, in `O(n)`
-each; anything that is not genuinely AAᴴ-diagonal — the overwhelmingly common case — is
-rejected there. Only a matrix that survives the sample falls through to the full check, so
-the answer is identical to the upstream one, never merely an approximation of it.
-"""
-is_aac_diagonal(op) = is_AAc_diagonal(op)
-is_aac_diagonal(op::AbstractOperators.AffineAdd) = is_aac_diagonal(AbstractOperators.remove_displacement(op))
-function is_aac_diagonal(op::MatrixOp)
-    A = op.A
-    m = size(A, 1)
-    m <= 1 && return is_AAc_diagonal(op)
-    # `isdiag` compares against exact zero, so use the same test here — the sample must
-    # reject only matrices the full check would reject too.
-    for i in 1:min(m - 1, 4), j in (i + 1):min(m, i + 4)
-        iszero(dot(view(A, i, :), view(A, j, :))) || return false
-    end
-    return is_AAc_diagonal(op)
-end
-
-"""
     keeps_exact_prox(op, f)
 
 Whether absorbing `op` into `f` (see [`merge_function_with_operator`](@ref)) leaves a
 function whose `prox!` is still the exact proximal operator of the composition.
 
 This mirrors the branch table of `merge_function_with_operator`: the identity, diagonal and
-AAᴴ-diagonal absorptions all have a closed-form prox (the "prox trick" — `is_aac_diagonal`
+AAᴴ-diagonal absorptions all have a closed-form prox (the "prox trick" — `is_AAc_diagonal`
 covers the first two, since `Eye` and `DiagOp` are both AAᴴ-diagonal), and so does the
 `IndPoint` + `MatrixOp` rewrite into `IndAffine`. Everything below that — the normal-operator
 formulation, `Precompose` with a general linear operator, `PrecomposeNonlinear` — implements
@@ -133,7 +103,7 @@ on the strength of a prox it does not have would fail at the first iteration.
 
 `op` may carry a displacement (`affine(term)`); it does not affect the answer.
 """
-keeps_exact_prox(op, f) = is_aac_diagonal(op) || (f isa IndPoint && _matrix_of(op) !== nothing)
+keeps_exact_prox(op, f) = is_AAc_diagonal(op) || (f isa IndPoint && _matrix_of(op) !== nothing)
 
 # The cost of the `:normal_op` candidate in `best_formulation` below. `n / m` prices it as a
 # dense-matrix Gram construction, which is the honest estimate for everything except a
@@ -167,7 +137,7 @@ method does for this term in one iteration — normalised so that the generic fo
 | `:eye` | `is_eye(op)` | yes | `0` | no operator is applied at all |
 | `:diagonal_weight` | diagonal `op`, `f::SqrNormL2`, no displacement | yes | `0` | `½‖diag(a)x‖²` *is* the weighted `½∑aᵢ²xᵢ²`; the operator disappears |
 | `:diagonal` | `is_diagonal(op)` | yes | `1` | one elementwise pass, no adjoint |
-| `:aac_diagonal` | `is_aac_diagonal(op)` | yes | `2` | the "prox trick": `op` and `opᴴ` once each |
+| `:aac_diagonal` | `is_AAc_diagonal(op)` | yes | `2` | the "prox trick": `op` and `opᴴ` once each |
 | `:ind_affine` | `f::IndPoint`, `op` a `MatrixOp` | yes | `2.5` | a QR factorisation amortised over a triangular solve per prox |
 | `:normal_op` | `f::SqrNormL2`, `opᴴop` fuses and is worthwhile | no | `n/m` (`1` for a shared-operator `HCAT`) | one fused `opᴴop` pass on the domain instead of two passes through `op` |
 | `:precompose` | `is_linear(op)` | no | `2` | `op` then `opᴴ`, the generic linear case |
@@ -184,7 +154,7 @@ breaks exact ties — so the ranking reproduces the fixed `if`-chain this replac
 
 Scoring must be negligible next to the optimization pass it selects, even a pass of a few
 iterations, so it reads **only static operator metadata**: the trait predicates
-(`is_eye`/`is_diagonal`/[`is_aac_diagonal`](@ref)/`is_linear`), the two size tuples, and the
+(`is_eye`/`is_diagonal`/`is_AAc_diagonal`/`is_linear`), the two size tuples, and the
 *type-level* [`normal_op_fuses`](@ref). No operator is built and no array is touched. In
 particular `fused_normal_op`, which answers the same question by constructing `opᴴ*op` (for
 a `MatrixOp` that is the Gram matrix — `O(n²m)`, more than several solver iterations), is
@@ -201,10 +171,10 @@ function best_formulation(op, f, disp, λ, needs::Symbol = :any)
     best = _consider(best, want_prox, :eye, is_eye(op), true, 0.0)
     best = _consider(best, want_prox, :diagonal_weight, diagonal && f isa SqrNormL2 && iszero(disp), true, 0.0)
     best = _consider(best, want_prox, :diagonal, diagonal, true, 1.0)
-    # `is_aac_diagonal` is the only predicate here that is not a type-level trait for every
+    # `is_AAc_diagonal` is the only predicate here that is not a type-level trait for every
     # operator, so it is asked last and only when its answer can still change the winner:
     # any prox-keeping candidate already found with cost ≤ 2 beats it outright.
-    best = _consider(best, want_prox, :aac_diagonal, (best[2], best[3]) > (0, 2.0) && is_aac_diagonal(op), true, 2.0)
+    best = _consider(best, want_prox, :aac_diagonal, (best[2], best[3]) > (0, 2.0) && is_AAc_diagonal(op), true, 2.0)
     best = _consider(best, want_prox, :ind_affine, f isa IndPoint && _matrix_of(op) !== nothing, true, 2.5)
     best = _consider(best, want_prox, :normal_op, linear && normal_op_applicable(f, op, disp, λ), false, normal_op_cost(op, n, m))
     best = _consider(best, want_prox, :precompose, linear, false, 2.0)
