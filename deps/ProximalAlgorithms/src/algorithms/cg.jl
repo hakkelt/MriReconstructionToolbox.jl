@@ -252,8 +252,9 @@ function Base.iterate(iter::AbstractCGIteration)
 
 	state = iter.state
 
-	# Reset state
-	copyto!(state.x, iter.x0)
+	# Reset state. A caller that hands its own iterate in as `x0` (ADMM's x-update) needs no
+	# copy, and a device backend may reject a copy onto itself (OpenCL: CL_MEM_COPY_OVERLAP).
+	state.x === iter.x0 || copyto!(state.x, iter.x0)
 
 	# Compute residual r = b - Ax - λx
 	mul!(state.r, iter.A, state.x)
@@ -279,8 +280,9 @@ function Base.iterate(iter::AbstractPCGIteration)
 	end
 
 	state = iter.state
-	# Reset state
-	copyto!(state.x, iter.x0)
+	# Reset state. A caller that hands its own iterate in as `x0` (ADMM's x-update) needs no
+	# copy, and a device backend may reject a copy onto itself (OpenCL: CL_MEM_COPY_OVERLAP).
+	state.x === iter.x0 || copyto!(state.x, iter.x0)
 
 	# r = b - Ax
 	mul!(state.r, iter.A, state.x)
