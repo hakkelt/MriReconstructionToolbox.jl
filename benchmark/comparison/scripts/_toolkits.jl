@@ -275,7 +275,7 @@ function mrireco(
     elseif method === :nuclear
         (NuclearRegularization(λ), MR_ADMM, nothing, nothing)
     elseif method === :llr
-        (LLRRegularization(λ; shape = reconSize, blockSize = (8, 8)), MR_ADMM, nothing, nothing)
+        (LLRRegularization(λ; shape = reconSize, blockSize = (8, 8), randshift = false), MR_ADMM, nothing, nothing)
     else
         error("MRIReco has no $method")
     end
@@ -318,9 +318,14 @@ all contrasts (`:273`) and applies the regularizer to the stacked volume. That i
 
 `RegularizedLeastSquares` needs the volume shape spelled out, since the prox reshapes a flat vector:
 `NuclearRegularization` takes `svtShape = (prod(reconSize), n_frames)` — the Casorati matrix, i.e.
-MRT's global `LowRank` — and `LLRRegularization` takes `shape` and a `blockSize` of the *same* arity
-(`(8, 8, n_frames)`, i.e. blocks that span the whole time axis, matching MRT's `block_size = (8, 8)`
-with all frames in the Casorati direction).
+MRT's global `LowRank` — and `LLRRegularization` takes the *spatial* `shape = reconSize` with
+`blockSize = (8, 8)`. Its prox reshapes the vector to `(shape..., K)` and thresholds the singular
+values of each block's `(64, K)` Casorati matrix, so the frames must be the trailing `K`: given
+`shape = (nx, ny, n_frames)` and `blockSize = (8, 8, n_frames)`, as this row once did, `K = 1` and
+each block is a single `64·n_frames` vector whose "SVT" merely shrinks its norm — a group-sparsity
+penalty, which measured 2.6× MRT's NRMSE on the Cartesian cine. `randshift = false` tiles the blocks
+at fixed positions, as MRT's `LocallyLowRank` and BART's `-n` do; the default shifts them randomly
+every iteration, a different objective.
 
 **Temporal TV is not reachable through this API and therefore has no MRIReco row.** Not for lack of
 a prox — `L1Regularization` + a `GradientOp` along the time axis is the right formulation, and it is
@@ -339,7 +344,7 @@ function mrireco_dynamic(
     elseif method === :lowrank
         MR_ADMM, RLS.NuclearRegularization(λ; svtShape = (prod(reconSize), nt))
     elseif method === :llr
-        MR_ADMM, RLS.LLRRegularization(λ; shape = (reconSize..., nt), blockSize = (8, 8, nt))
+        MR_ADMM, RLS.LLRRegularization(λ; shape = reconSize, blockSize = (8, 8), randshift = false)
     else
         error("MRIReco has no dynamic $method here (see the docstring on temporal TV)")
     end
