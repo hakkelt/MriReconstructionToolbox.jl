@@ -52,6 +52,21 @@ function _mul!(y, op::NfftNormalOp, x)
     return y
 end
 
+"""
+    _planner_rigor(plan) -> flags
+
+The planner rigor (`ESTIMATE`, `MEASURE`, `PATIENT`, `EXHAUSTIVE`, `WISDOM_ONLY`) of the FFT
+inside NFFT plan `plan`, so the Toeplitz embedding's FFT is planned as carefully as the
+operator's own. The two FFTs run equally often, and `ESTIMATE` can pick a plan several times
+slower than `MEASURE` (7x for a 256×256 in-place `ComplexF32` FFT on an EPYC 7352). A plan that
+records no FFTW flags (a GPU plan) gets `ESTIMATE`.
+"""
+function _planner_rigor(plan)
+    fft = hasproperty(plan, :forwardFFT) ? plan.forwardFFT : nothing
+    fft isa FFTW.FFTWPlan || return FFTW.ESTIMATE
+    return fft.flags & (FFTW.ESTIMATE | FFTW.PATIENT | FFTW.EXHAUSTIVE | FFTW.WISDOM_ONLY)
+end
+
 AbstractOperators.has_optimized_normalop(::NFFTOp) = true
 function AbstractOperators.get_normal_op(op::NFFTOp)
     return with_nfft_threading(op.threaded) do
@@ -68,7 +83,8 @@ function _get_normal_op(op::NFFTOp)
     tmp = allocate_in_codomain(op, size(op.plan.k, 2))
     tmp .= vec(op.dcf)
 
-    fftplan = FFTW.plan_fft!(buf)
+    fftplan = FFTW.plan_fft!(buf; flags = _planner_rigor(op.plan))
+    fill!(buf, 0)
     p = NFFT.plan_nfft(
         op.plan.k,
         shape_ext;
