@@ -74,15 +74,15 @@ function execute_regularized(plan, acq_data, config, method::IterativeReconstruc
         # iterative solve in phase 2 below -- otherwise phase 2 would plan an equivalent operator
         # again from scratch.
         𝒜 = build_encoding_operator(local_acq, method; threaded = false, fast_planning = false)
-        warm_start, scale, L = _direct_reconstruct(𝒜, local_acq, local_x₀, method, local_conf)
-        return warm_start, scale, 𝒜, L
+        warm_start, scale, prior = _direct_reconstruct(𝒜, local_acq, local_x₀, method, local_conf)
+        return warm_start, scale, 𝒜, prior
     end
-    solve_slice = function (local_acq, warm_start, ratio, global_scale, local_conf, 𝒜, L)
+    solve_slice = function (local_acq, warm_start, ratio, global_scale, local_conf, 𝒜, prior)
         local_reg = map(r -> scale_regularization(r, ratio), method.regularization)
         local_method = _with_regularization(method, local_reg)
         result, _ = _reconstruct(
             local_acq, local_method, warm_start, local_conf;
-            scale_override = global_scale, 𝒜, precomputed_L = L,
+            scale_override = global_scale, 𝒜, prior,
         )
         return result
     end
@@ -97,15 +97,15 @@ function execute_regularized_components(plan, acq_data, config, method::Iterativ
     prepare = function (idx, local_acq, local_conf)
         local_x₀ = isnothing(x₀) ? nothing : slice_x₀_components(x₀, plan, idx)
         𝒜 = build_encoding_operator(local_acq, method; threaded = false, fast_planning = false)
-        x̂, scale, L = _direct_reconstruct_components(𝒜, local_acq, method, local_conf)
-        return get_component_x0s(method.regularization, x̂, local_x₀), scale, 𝒜, L
+        x̂, scale, prior = _direct_reconstruct_components(𝒜, local_acq, method, local_conf)
+        return get_component_x0s(method.regularization, x̂, local_x₀), scale, 𝒜, prior
     end
-    solve_slice = function (local_acq, x₀s, ratio, global_scale, local_conf, 𝒜, L)
+    solve_slice = function (local_acq, x₀s, ratio, global_scale, local_conf, 𝒜, prior)
         local_components = map(c -> scale_regularization(c, ratio), method.regularization)
         local_method = _with_regularization(method, local_components)
         result, _ = _reconstruct_components(
             local_acq, local_method, nothing, local_conf;
-            scale_override = global_scale, x₀s, 𝒜, precomputed_L = L,
+            scale_override = global_scale, x₀s, 𝒜, prior,
         )
         return result
     end
@@ -115,10 +115,10 @@ end
 # Shared skeleton of the two-phase scheme described above. `prepare(idx, local_acq, local_conf)` returns
 # `(warm_start, scale, 𝒜, L)` for one slice -- `𝒜` is the fully-planned encoding operator phase 1
 # already had to build to get the warm start, cached here so phase 2 does not plan an equivalent
-# one again; `L` is the operator-norm estimate phase 1 used to scale-correct that warm start
-# (`nothing` when not estimated), cached the same way so phase 2's step-size estimate does not
-# repeat it. `solve(local_acq, warm_start, ratio, global_scale, local_conf, 𝒜, L)` solves that
-# slice under the shared scale, with its regularization compensated by `ratio`, reusing both.
+# one again; `L` is what phase 1 computed while forming that warm start (`_warm_start_prior`: the
+# operator-norm estimate, the curvature, `𝒜'y`), cached the same way so phase 2 does not repeat
+# it. `solve(local_acq, warm_start, ratio, global_scale, local_conf, 𝒜, L)` solves that slice under
+# the shared scale, with its regularization compensated by `ratio`, reusing both.
 function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Function)
     executor = suggest_executor(plan, acq_data, config)
     maybe_print_task_splitting_info(plan, config)

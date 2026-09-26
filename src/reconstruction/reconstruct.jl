@@ -120,7 +120,7 @@ end
 
 function _reconstruct(
         acq_data, method::ReconstructionMethod, x₀, config;
-        scale_override = nothing, 𝒜 = nothing, precomputed_L = nothing,
+        scale_override = nothing, 𝒜 = nothing, prior = nothing,
     )
     fast_planning = method isa DirectReconstruction
     if isnothing(𝒜)
@@ -132,8 +132,8 @@ function _reconstruct(
     end
 
     # Direct reconstruction / estimate
-    x̂, scale, direct_L = _direct_reconstruct(𝒜, acq_data, x₀, method, config; scale_override)
-    precomputed_L = isnothing(precomputed_L) ? direct_L : precomputed_L
+    x̂, scale, direct_prior = _direct_reconstruct(𝒜, acq_data, x₀, method, config; scale_override)
+    prior = something(prior, direct_prior)
 
     if method isa DirectMethod
         # No regularization, return direct reconstruction
@@ -155,7 +155,7 @@ function _reconstruct(
         # names of the value this function returns.
         present = x -> _present_image(x, method, acq_data, config)
         x̂ = _iterative_reconstruct_core(
-            𝒜, acq_data, x̂, scale, method, config; build, present, precomputed_L,
+            𝒜, acq_data, x̂, scale, method, config; build, present, prior,
         )
         x̂ = _present_image(x̂, method, acq_data, config)
     end
@@ -213,7 +213,7 @@ end
 
 function _reconstruct_components(
         acq_data, method::IterativeReconstruction, x₀, config;
-        scale_override = nothing, x₀s = nothing, 𝒜 = nothing, precomputed_L = nothing,
+        scale_override = nothing, x₀s = nothing, 𝒜 = nothing, prior = nothing,
     )
     components = bind_dimensions(method.regularization, get_image_dims(acq_data))
     if isnothing(𝒜)
@@ -225,9 +225,9 @@ function _reconstruct_components(
     # that would produce them. The task-splitting path computes them in its first phase to derive the
     # per-slice scales, and without this would recompute 𝒜'y per slice only to discard it.
     scale = if isnothing(x₀s)
-        x̂, s, direct_L = _direct_reconstruct_components(𝒜, acq_data, method, config; scale_override)
+        x̂, s, direct_prior = _direct_reconstruct_components(𝒜, acq_data, method, config; scale_override)
         x₀s = get_component_x0s(components, x̂, x₀)
-        precomputed_L = isnothing(precomputed_L) ? direct_L : precomputed_L
+        prior = something(prior, direct_prior)
         s
     else
         @argcheck !isnothing(scale_override) "scale_override is required when x₀s is supplied."
@@ -240,7 +240,7 @@ function _reconstruct_components(
     )
     names = map(c -> c.name, components)
     present = xs -> _present_components(xs, names, method, acq_data)
-    xs = _iterative_reconstruct_core(𝒜, acq_data, x₀s, scale, method, config; build, present, precomputed_L)
+    xs = _iterative_reconstruct_core(𝒜, acq_data, x₀s, scale, method, config; build, present, prior = something(prior, _NO_PRIOR))
     return _present_components(xs, names, method, acq_data), scale
 end
 

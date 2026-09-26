@@ -9,8 +9,8 @@ function _direct_reconstruct_components(𝒜, acq_data, method::ReconstructionMe
     end
     scale = _resolve_scale(acq_data, scale_input, config, scale_override)
     # Computed from the pre-rescale `x̂`, so `scale` above stays exactly as before.
-    x̂, L = _scale_default_warm_start(𝒜, x̂, method, config)
-    return x̂, scale, L
+    x̂s, L, curvature = _scale_default_warm_start(𝒜, x̂, _measurement(acq_data.kspace_data), method, config)
+    return x̂s, scale, _warm_start_prior(x̂, L, curvature)
 end
 
 # The scale is either imposed by the caller (task splitting uses one shared scale for every slice),
@@ -272,7 +272,7 @@ function _direct_reconstruct(𝒜, acq_data, x₀, method::ReconstructionMethod,
     # Only the case that actually produced a fresh default adjoint here is rescaled: not a
     # caller-supplied x₀, and not a pure direct method's own reconstruction, which is already
     # correctly scaled.
-    x₀, L = is_default_iterative_adjoint ?
-        _scale_default_warm_start(𝒜, x₀, method, config) : (x₀, nothing)
-    return x₀, scale, L
+    is_default_iterative_adjoint || return x₀, scale, _NO_PRIOR
+    x̂, L, curvature = _scale_default_warm_start(𝒜, x₀, _measurement(acq_data.kspace_data), method, config)
+    return x̂, scale, _warm_start_prior(x₀, L, curvature)
 end

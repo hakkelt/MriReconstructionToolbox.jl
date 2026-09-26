@@ -12,10 +12,13 @@ shape dispatches on that (`_scale_x0`, `_inv_scale`, `_max_abs`, `_n_vars`, `_ex
 would have got back from `reconstruct`: it applies the signal model and the `NamedDimsArray` /
 `DecomposedImage` wrapping that the two paths do differently. It is used only to build the
 `on_iteration` callback's `x`, so it is never called at all when no callback was supplied.
+
+`prior` is what forming the default warm start computed ([`_warm_start_prior`](@ref)), reused
+here instead of being computed again.
 """
 function _iterative_reconstruct_core(
         𝒜, acq_data, x₀_or_x₀s, scale, method::IterativeReconstruction, config;
-        build::Function, present::Function = identity, precomputed_L = nothing,
+        build::Function, present::Function = identity, prior = _NO_PRIOR,
     )
     if scale != 1
         @step "Scaling k-space data" config begin
@@ -39,11 +42,11 @@ function _iterative_reconstruct_core(
     # for it: whether `‖𝒜‖` is needed depends on that algorithm alone.
     selected_algorithm = _select_algorithm(model, method.algorithm)
     should_estimate_L = _should_estimate_operator_norm(method, selected_algorithm)
-    # `precomputed_L` lets a caller that already estimated `‖𝒜‖` for the warm start
+    # `prior.L` lets a caller that already estimated `‖𝒜‖` for the warm start
     # (`_direct_reconstruct`/`_direct_reconstruct_components`) hand it in instead of paying for
     # `estimate_opnorm` a second time here.
     L = should_estimate_L ?
-        (isnothing(precomputed_L) ? _operator_norm_for_stepsize(𝒜, method, config) : precomputed_L) :
+        (isnothing(prior.L) ? _operator_norm_for_stepsize(𝒜, method, config) : prior.L) :
         nothing
     @printing_step "Reconstructing image" config begin
         verbose, freq, display = solver_output(config.verbosity, something(method.maxit, 100))
@@ -72,8 +75,10 @@ function _iterative_reconstruct_core(
         Lf = should_estimate_L ? R_type(_n_vars(vars) * L^2) : nothing
         algorithm = patch_algorithm_with_default_values(selected_algorithm, Lf; eltype_real = R_type)
         algorithm = _scale_admm_penalty(
-            algorithm, 𝒜, x₀_or_x₀s, acq_data, L, method, config; eltype_real = R_type,
+            algorithm, 𝒜, x₀_or_x₀s, acq_data, L, method, config;
+            eltype_real = R_type, curvature = prior.curvature,
         )
+        algorithm = _hand_over_normal_rhs(algorithm, prior.AHy, scale, vars, auxiliaries, method)
         # Only add `hook` to the keyword set when a callback was actually supplied: leaving it out
         # keeps the algorithm's `hook` field `Nothing`-typed, and `ProximalAlgorithms._run_hook`
         # then compiles to nothing at all inside the iteration loop.
@@ -346,16 +351,17 @@ callers who deliberately opted out of the operator-norm estimate altogether.
 _warm_start_needs_operator_norm(method::IterativeReconstruction) = method.disable_operator_normalization !== true
 
 """
-	_scale_default_warm_start(𝒜, x̂, method, config) -> (x̂, L_or_nothing)
+	_scale_default_warm_start(𝒜, x̂, y, method, config) -> (x̂, L_or_nothing, curvature_or_nothing)
 
 Put the default warm start `x̂ = 𝒜'y` on the image's scale, and return the operator norm if one
-was computed. `𝒜'y` is only on the image's scale when `𝒜'𝒜 ≈ I`, which a raw FFT/NFFT is not, so
+was computed, or else the curvature estimate [`_warm_start_scale_proxy`](@ref) the warm start was
+divided by. `𝒜'y` is only on the image's scale when `𝒜'𝒜 ≈ I`, which a raw FFT/NFFT is not, so
 the warm start is divided by `ρ(𝒜'𝒜)` — one Landweber step.
 
 This is the one place that decision is made, for both the single-variable and the component path
 (`_direct_reconstruct`, `_direct_reconstruct_components`). The returned `L` is non-`nothing`
 exactly when the algorithm needs it as its own step-size hint, in which case the caller threads it
-on as `precomputed_L` so `_iterative_reconstruct_core` does not estimate it twice; when only the
+on in its `prior` so `_iterative_reconstruct_core` does not estimate it twice; when only the
 warm start needed a scale, [`_warm_start_scale_proxy`](@ref) supplies it for one operator
 application and there is no `L` to carry.
 
@@ -364,17 +370,33 @@ the model exists (see [`_select_algorithm`](@ref)): if any of them takes `Lf`, `
 and scales the warm start. The proxy would be cheaper, but it lands below `ρ(𝒜'𝒜)` where the
 estimate lands above, and CG-SENSE with the default tuple converges measurably slower from it.
 """
-function _scale_default_warm_start(𝒜, x̂, method::IterativeReconstruction, config)
-    _warm_start_needs_operator_norm(method) || return x̂, nothing
+function _scale_default_warm_start(𝒜, x̂, y, method::IterativeReconstruction, config)
+    _warm_start_needs_operator_norm(method) || return x̂, nothing, nothing
     if _should_estimate_operator_norm(method)
         L = _operator_norm_for_stepsize(𝒜, method, config)
-        return _scale_x0(x̂, L^2), L
+        return _scale_x0(x̂, L^2), L, nothing
     end
-    return _scale_x0(x̂, _warm_start_scale_proxy(𝒜, x̂, config)), nothing
+    ρ = _warm_start_scale_proxy(𝒜, x̂, config, y)
+    return _scale_x0(x̂, ρ), nothing, ρ
 end
 
 """
-	_warm_start_scale_proxy(𝒜, x̂, config) -> Real
+    _warm_start_prior(x̂, L, curvature)
+
+What forming the default warm start `x̂ = 𝒜'y` learned about the solve, for
+[`_iterative_reconstruct_core`](@ref) to reuse rather than recompute: the operator norm `L` (or
+`nothing`), the curvature `‖𝒜‖²` estimate that scaled the warm start (or `nothing`), and `𝒜'y`
+itself, before any scaling.
+
+`curvature` is the Rayleigh quotient of `𝒜'𝒜` at `x̂`, which is unchanged by the scaling of the
+warm start and of the data, so it is the quotient ADMM's penalty scaling would compute again at the
+scaled warm start. `_NO_PRIOR` is the value when the warm start was not the default one.
+"""
+_warm_start_prior(x̂, L, curvature) = (; L, curvature, AHy = x̂)
+const _NO_PRIOR = (; L = nothing, curvature = nothing, AHy = nothing)
+
+"""
+	_warm_start_scale_proxy(𝒜, x̂, config, y = nothing) -> Real
 
 A one-application stand-in for `‖𝒜‖²`, used to put the default warm start `x̂ = 𝒜'y` on the
 image's scale when **nothing else in the solve needs the operator norm** — a pure Krylov solve,
@@ -397,22 +419,33 @@ single quotient is close. Measured on a 192²×8 acquisition:
 A few per cent is immaterial here: the correction exists to remove an order-of-magnitude scale
 mismatch from the warm start, not to set a step size. Where `L` *is* the step size, the power
 method still runs — an `Lf` hint that is too small costs convergence.
+
+Given the measurement `y` with `x̂ = 𝒜'y` exactly, the same quotient takes one application of `𝒜`
+and none of `𝒜'`. `𝒜'` is the adjoint of `𝒜` up to a positive scalar `c` (`c = 1` for an NFFT,
+`1/N` for a `BACKWARD`-normalized DFT): `⟨u, 𝒜'v⟩ = c⟨𝒜u, v⟩`. So `⟨x̂, 𝒜'𝒜x̂⟩ = c‖𝒜x̂‖²`, and
+`‖x̂‖² = ⟨x̂, 𝒜'y⟩ = c⟨𝒜x̂, y⟩`, and the quotient is `‖𝒜x̂‖² / Re⟨𝒜x̂, y⟩`, whatever `c` is.
 """
-function _warm_start_scale_proxy(𝒜, x̂::AbstractArray, config)
+function _warm_start_scale_proxy(𝒜, x̂::AbstractArray, config, y = nothing)
     local ρ
     # `@printing_step`, not `@step`, for the same reason as `_operator_norm_for_stepsize`.
     @printing_step "Estimating the warm-start scale" config begin
         R = real(eltype(x̂))
-        denom = real(dot(x̂, x̂))
-        num = denom > 0 ? real(dot(x̂, 𝒜' * (𝒜 * x̂))) : zero(denom)
+        if isnothing(y)
+            denom = real(dot(x̂, x̂))
+            num = denom > 0 ? real(dot(x̂, 𝒜' * (𝒜 * x̂))) : zero(denom)
+        else
+            v = 𝒜 * x̂
+            num = real(dot(v, v))
+            denom = real(dot(v, y))
+        end
         # A zero (or numerically degenerate) warm start needs no correction.
-        ρ = num > 0 ? R(num / denom) : one(R)
+        ρ = num > 0 && denom > 0 ? R(num / denom) : one(R)
     end
     return ρ
 end
 
 """
-	_scale_admm_penalty(algorithm, 𝒜, x₀, acq_data, L, method, config; eltype_real) -> algorithm
+	_scale_admm_penalty(algorithm, 𝒜, x₀, acq_data, L, method, config; eltype_real, curvature = nothing) -> algorithm
 
 Make a penalty `ρ` given to ADMM relative to the curvature `‖𝒜‖²` of the data term.
 
@@ -434,21 +467,25 @@ adaptive sequence is left to start from 1: it reaches the scale of the problem o
 starting it from `‖𝒜‖²` measured no better on the same cases.
 
 `‖𝒜‖²` is `L²` when the operator norm was estimated, else the Rayleigh quotient of `𝒜'𝒜` at the
-warm start ([`_warm_start_scale_proxy`](@ref)), or at `𝒜'y` when the warm start is zero. An
-explicit `disable_operator_normalization = true` leaves the penalty as given.
+warm start ([`_warm_start_scale_proxy`](@ref)), or at `𝒜'y` when the warm start is zero. A
+`curvature` the warm start already computed is that quotient and is used as it is. An explicit
+`disable_operator_normalization = true` leaves the penalty as given.
 """
-_scale_admm_penalty(algorithm, 𝒜, x₀, acq_data, L, method, config; eltype_real) = algorithm
+_scale_admm_penalty(algorithm, 𝒜, x₀, acq_data, L, method, config; eltype_real, curvature = nothing) = algorithm
 
 function _scale_admm_penalty(
         algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.ADMMIteration},
-        𝒜, x₀, acq_data, L, method::IterativeReconstruction, config; eltype_real,
+        𝒜, x₀, acq_data, L, method::IterativeReconstruction, config; eltype_real, curvature = nothing,
     )
     method.disable_operator_normalization === true && return algorithm
     kwargs = algorithm.kwargs
     given = haskey(kwargs, :rho) ||
         (haskey(kwargs, :penalty_sequence) && !isnothing(kwargs[:penalty_sequence].rho))
     given || return algorithm
-    s = eltype_real(isnothing(L) ? _admm_curvature(𝒜, x₀, acq_data, config) : L^2)
+    s = eltype_real(
+        !isnothing(L) ? L^2 :
+            !isnothing(curvature) ? curvature : _admm_curvature(𝒜, x₀, acq_data, config)
+    )
     if haskey(kwargs, :rho)
         return ProximalAlgorithms.override_parameters(algorithm; rho = kwargs[:rho] .* s)
     end
@@ -457,12 +494,41 @@ function _scale_admm_penalty(
     return ProximalAlgorithms.override_parameters(algorithm; penalty_sequence = scaled)
 end
 
-function _admm_curvature(𝒜, x₀::AbstractArray, acq_data, config)
-    v = iszero(x₀) ? 𝒜' * _measurement(acq_data.kspace_data) : x₀
-    return _warm_start_scale_proxy(𝒜, v, config)
+"""
+    _hand_over_normal_rhs(algorithm, AHy, scale, vars, auxiliaries, method) -> algorithm
+
+Give CGNR, PCGNR or ADMM the right-hand side `𝒜'y` of its normal equations, which forming the
+default warm start already computed (`AHy`, before scaling), instead of letting the algorithm
+apply `𝒜'` to the measurement once more. The model's data term is `½‖𝒜x - y/scale‖²`, so the
+right-hand side is `AHy / scale`.
+
+Only for the plain least-squares data term (`L2Loss`) over the image alone: an auxiliary variable
+(total generalized variation) or a component tuple makes the data term's operator act on more than
+the image, and its right-hand side is then not `𝒜'y`.
+"""
+_hand_over_normal_rhs(algorithm, AHy, scale, vars, auxiliaries, method) = algorithm
+
+function _hand_over_normal_rhs(
+        algorithm::ProximalAlgorithms.IterativeAlgorithm{
+            <:Union{ProximalAlgorithms.CGNRIteration, ProximalAlgorithms.PCGNRIteration, ProximalAlgorithms.ADMMIteration},
+        },
+        AHy::AbstractArray, scale, vars::Variable, auxiliaries, method::IterativeReconstruction,
+    )
+    (method.fidelity isa L2Loss && isempty(auxiliaries)) || return algorithm
+    haskey(algorithm.kwargs, :AHb) && return algorithm
+    AHb = scale == 1 ? unname(AHy) : unname(AHy) ./ scale
+    return ProximalAlgorithms.override_parameters(algorithm; AHb)
 end
-_admm_curvature(𝒜, x₀s::Tuple, acq_data, config) =
-    _warm_start_scale_proxy(𝒜, 𝒜' * _measurement(acq_data.kspace_data), config)
+
+function _admm_curvature(𝒜, x₀::AbstractArray, acq_data, config)
+    iszero(x₀) || return _warm_start_scale_proxy(𝒜, x₀, config)
+    y = _measurement(acq_data.kspace_data)
+    return _warm_start_scale_proxy(𝒜, 𝒜' * y, config, y)
+end
+function _admm_curvature(𝒜, x₀s::Tuple, acq_data, config)
+    y = _measurement(acq_data.kspace_data)
+    return _warm_start_scale_proxy(𝒜, 𝒜' * y, config, y)
+end
 
 # `‖𝒜‖`, for use as `Lf = n‖𝒜‖²` and/or to scale-correct the default warm start.
 #
