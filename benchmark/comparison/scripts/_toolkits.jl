@@ -529,7 +529,44 @@ end
 # toolkit here does.
 function _mirt_nufft(traj, image_size)
     ω = clamp.(2π .* permutedims(Float64.(Array(traj)), (2, 1)), -π, π)
-    return MIRT.Anufft(ω, image_size; n_shift = collect(image_size) ./ 2)
+    A = MIRT.Anufft(ω, image_size; n_shift = collect(image_size) ./ 2)
+    _cap_nfft_fft_threads!(A._prop.p)
+    return A
+end
+
+"""
+    MIRT_FFTW_THREADS
+
+FFTW threads MIRT's transforms run with: `NUM_THREADS`, at most 8. On Julia 1.13 a transform
+planned with 16 FFTW threads and executed from the root task segfaults intermittently inside
+FFTW.jl's task callback (12 did not in 6 runs); MIRT runs its operators from the root task, so its
+transforms are capped. See [`with_mirt_fftw`](@ref).
+"""
+const MIRT_FFTW_THREADS = min(NUM_THREADS, 8)
+
+"""
+    with_mirt_fftw(f)
+
+Run `f()` with FFTW's global thread count at [`MIRT_FFTW_THREADS`](@ref), which the FFTs `Asense`
+plans use, and restore `NUM_THREADS` afterwards, including on exception.
+"""
+function with_mirt_fftw(f)
+    MIRT_FFTW_THREADS == NUM_THREADS && return f()
+    FFTW.set_num_threads(MIRT_FFTW_THREADS)
+    try
+        return f()
+    finally
+        FFTW.set_num_threads(NUM_THREADS)
+    end
+end
+
+# NFFT.jl plans its FFTs with `Threads.nthreads()` threads whatever FFTW's global count is, so the
+# plan's two FFTs are replaced by `MIRT_FFTW_THREADS`-thread plans with NFFT's default flags.
+function _cap_nfft_fft_threads!(p)
+    Threads.nthreads() > MIRT_FFTW_THREADS || return p
+    p.forwardFFT = plan_fft!(p.tmpVec, p.dims; num_threads = MIRT_FFTW_THREADS)
+    p.backwardFFT = plan_bfft!(p.tmpVec, p.dims; num_threads = MIRT_FFTW_THREADS)
+    return p
 end
 
 """
@@ -1279,7 +1316,9 @@ end
 
 # ---------------------------------------------------------------- MIRT
 
-function mirt_run(c::BenchCase, m::Symbol; λ, maxit)
+mirt_run(c::BenchCase, m::Symbol; λ, maxit) = with_mirt_fftw(() -> _mirt_run(c, m; λ, maxit))
+
+function _mirt_run(c::BenchCase, m::Symbol; λ, maxit)
     c.family === :multislice && return per_slice((k, s) -> mirt_recon(m, mirt_system(k, s)...; iterations = maxit), c)
     m === :gridding && return mirt_gridding(c)
     A, y = mirt_system(c)
