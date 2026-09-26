@@ -327,6 +327,38 @@ y_{k+1} = \operatorname{prox}_{\gamma f}(x_k), \quad z_{k+1} = \operatorname{pro
 **Cons:**
 - ❌ Restricted to at most two proximable terms
 
+### Primal-Dual Hybrid Gradient (`ChambollePock`, also `PDHG`)
+
+**When to use:**
+- One non-smooth regularizer composed with a linear transform — total variation, temporal TV —
+  when a solve without inner CG iterations and without a penalty `ρ` to tune is wanted.
+
+**How it works:**
+Chambolle-Pock's primal-dual method solves ``\min f(x) + h(Dx)`` by alternating a gradient step
+on the primal variable with a proximal step on a dual variable for ``h``, so ``h`` is only ever
+used through its proximal operator and ``D`` only through `D` and `D'`. The data term
+``\tfrac12\|\mathcal{A}x - y\|^2`` enters as the smooth ``f``, through its gradient (the fused
+normal operator), which makes the iteration the Condat-Vũ generalization of Chambolle-Pock.
+`reconstruct` supplies the gradient's Lipschitz constant ``\|\mathcal{A}\|^2`` as `beta_f`.
+
+**Parameters:**
+- `gamma1`, `gamma2`: primal and dual step sizes, derived from `beta_f` and ``\|D\|`` when not
+  given.
+- `maxit`, `tol`.
+
+**Pros:**
+- ✅ One application of ``\mathcal{A}'\mathcal{A}``, ``D`` and ``D'`` per iteration; no inner solve
+- ✅ No penalty parameter
+
+**Cons:**
+- ❌ Needs many more iterations than ADMM; count operator applications, not iterations, when
+  comparing the two
+- ❌ One regularizer term only
+
+```julia
+img = reconstruct(acq, IterativeReconstruction(TotalVariation2D(1e-2); algorithm = PDHG(), maxit = 500))
+```
+
 ## Tuning Algorithm Parameters
 
 ### Maximum Iterations

@@ -49,6 +49,8 @@ const DouglasRachford = ProximalAlgorithms.DouglasRachford
 const CG = ProximalAlgorithms.CG
 const CGNR = ProximalAlgorithms.CGNR
 const POGM = ProximalAlgorithms.POGM
+const ChambollePock = ProximalAlgorithms.ChambollePock
+const PDHG = ChambollePock
 
 # Exported names target a non-expert user assembling a reconstruction from the built-in pieces.
 # The extension surface (abstract supertypes, interface functions) is `public` but not exported.
@@ -69,7 +71,9 @@ export build_model, reconstruct, ReconstructionConfig, SequentialExecutor, Multi
 export Silent, ProgressBar, Verbose
 export IterationTrace
 export BartScaling, FixedScaling, MeasurementBasedScaling, NoScaling
-export ISTA, FISTA, POGM, ADMM, DouglasRachford, CG, CGNR
+export ISTA, FISTA, POGM, ADMM, DouglasRachford, CG, CGNR, ChambollePock
+# Established second name for `ChambollePock` (NAMING.md rule 2.1)
+export PDHG
 
 # Reconstruction methods
 export DirectReconstruction, IterativeReconstruction

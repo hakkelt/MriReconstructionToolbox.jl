@@ -211,6 +211,32 @@ end
     @test isapprox(rec, x_true; rtol = 1.0e-4, atol = 1.0e-4)
 end
 
+@testitem "ChambollePock (PDHG) reaches the ADMM solution of total variation" tags = [:minimizer, :reconstruction] begin
+    using Test
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using LinearAlgebra, Random
+
+    @test PDHG === ChambollePock
+    Random.seed!(3)
+    nx, ny = 24, 24
+    img = zeros(ComplexF32, nx, ny)
+    img[6:18, 8:16] .= 1
+    img[10:13, 10:13] .= 2
+    smaps = coil_sensitivities(nx, ny, 4)
+    mask = rand(nx, ny) .< 0.5
+    mask[:, (ny ÷ 2 - 2):(ny ÷ 2 + 3)] .= true
+    acq = CartesianAcquisitionInfo(; is3D = false, image_size = (nx, ny), subsampling = mask, sensitivity_maps = smaps)
+    data = simulate_acquisition(img, acq)
+
+    reg = TotalVariation2D(1.0e-2)
+    admm = IterativeReconstruction(reg; algorithm = ADMM(rho = 0.05, maxit = 1000, tol = 0.0, cg_tol = 0.0, cg_maxit = 10), maxit = 1000, reltol = 0.0)
+    pdhg = IterativeReconstruction(reg; algorithm = PDHG(maxit = 5000, tol = 0.0), maxit = 5000, reltol = 0.0)
+    x_admm = reconstruct(data, admm; verbosity = Silent())
+    x_pdhg = reconstruct(data, pdhg; verbosity = Silent())
+    @test norm(x_pdhg - x_admm) / norm(x_admm) < 1.0e-2
+end
+
 @testitem "CGNR on radial data beats the plain adjoint" tags = [:reconstruction, :nfft, :quality] begin
     using Test
     using MriReconstructionToolbox

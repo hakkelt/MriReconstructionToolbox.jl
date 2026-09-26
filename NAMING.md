@@ -84,6 +84,7 @@ Approved aliases:
 ```julia
 const Tikhonov = L2Image        # the textbook name for the ℓ₂ image-domain term
 const LLR      = LocallyLowRank # BART, RegularizedLeastSquares.jl, and the literature
+const PDHG     = ChambollePock  # primal-dual hybrid gradient: SigPy, MRpro, the literature
 ```
 
 **Rule 2.2** — Do not add an alias merely to shorten a name, and never add one that cannot name a
@@ -142,7 +143,8 @@ built-in pieces. Anything needed only to *extend* the package is `public` but no
 - every concrete `Regularization`;
 - every concrete reconstruction method (`DirectReconstruction`, `IterativeReconstruction`, `GRAPPA`,
   `SPIRiT`, `Homodyne`, `PhaseConstrained`, `POCS`);
-- algorithm aliases (`ISTA`, `FISTA`, `ADMM`, `DouglasRachford`, `CG`, `CGNR`);
+- algorithm aliases (`ISTA`, `FISTA`, `POGM`, `ADMM`, `DouglasRachford`, `CG`, `CGNR`, `ChambollePock`,
+  `PDHG`);
 - the concrete members of each configuration family — coil combination, data fidelity, verbosity,
   scaling, executors, partial-Fourier filters, sampling patterns, preprocessing methods;
 - `AcquisitionInfo` (its two concrete subtypes are `public`, see Rule 6.2);
