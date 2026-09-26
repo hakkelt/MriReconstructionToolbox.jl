@@ -13,12 +13,12 @@ cluster it must exist on the compute nodes too: a system Python of the login nod
 standalone build on shared storage is. A CPU-only environment:
 
 ```sh
-UV_PYTHON_INSTALL_DIR=/path/to/uv-python uv python install 3.12
-uv venv -p /path/to/uv-python/cpython-3.12.*/bin/python3.12 /path/to/venvs/py312
-uv pip install -p /path/to/venvs/py312 "numpy<2" sigpy numba scipy
-uv pip install -p /path/to/venvs/py312 torch torchvision --index-url https://download.pytorch.org/whl/cpu
-uv pip install -p /path/to/venvs/py312 mrpro
-julia --project=benchmark/comparison -e 'ENV["PYTHON"] = "/path/to/venvs/py312/bin/python"; using Pkg; Pkg.build("PyCall")'
+UV_PYTHON_INSTALL_DIR=/path/to/uv-python uv python install 3.14
+uv venv -p /path/to/uv-python/cpython-3.14.*/bin/python3.14 /path/to/venvs/py314
+uv pip install -p /path/to/venvs/py314 numpy sigpy numba scipy
+uv pip install -p /path/to/venvs/py314 torch torchvision --index-url https://download.pytorch.org/whl/cpu
+uv pip install -p /path/to/venvs/py314 mrpro
+julia --project=benchmark/comparison -e 'ENV["PYTHON"] = "/path/to/venvs/py314/bin/python"; using Pkg; Pkg.build("PyCall")'
 ```
 
 `MRT_BENCH_SIGPY_PYTHON` in `benchmark/slurm/site.env` names the same interpreter; a mismatch is
