@@ -55,7 +55,7 @@ const DEFAULT_LAMBDA = Dict(
 method.
 """
 default_lambda(c::BenchCase, method::Symbol) =
-    get(c.trajectory === :noncartesian ? RADIAL_LAMBDA : DEFAULT_LAMBDA, method, 0.0)
+    get(c.trajectory === :noncartesian ? RADIAL_LAMBDA : DEFAULT_LAMBDA, penalty_of(method), 0.0)
 
 """
     admm_rho(c::BenchCase) -> ρ
@@ -79,6 +79,7 @@ different problems with different optima: on `shepp_logan_3d_8ch_cartesian` the 
 reaches NRMSE 0.008 where the anisotropic one reaches 0.0033.
 """
 function mrt_regularizer(c::BenchCase, method::Symbol, λ::Real)
+    method = penalty_of(method)
     vol = c.family === :volume
     method === :tv && return vol ? TotalVariation3D(λ) : TotalVariation2D(λ)
     method === :atv && return vol ? AnisotropicTotalVariation3D(λ) : AnisotropicTotalVariation2D(λ)
@@ -93,14 +94,35 @@ function mrt_regularizer(c::BenchCase, method::Symbol, λ::Real)
 end
 
 """
+    PDHG_ITERATIONS
+
+The iteration count of a PDHG row: `OUTER_ITERATIONS × CG_ITERATIONS`, the normal-operator
+applications of the matching ADMM row. A PDHG iteration applies the operator about once where an
+ADMM iteration applies it once per inner CG step, so equal iteration counts would not be equal
+effort.
+"""
+const PDHG_ITERATIONS = OUTER_ITERATIONS * CG_ITERATIONS
+
+"""
+    default_maxit(method) -> Int
+
+`CG_ITERATIONS` for CG-SENSE, `PDHG_ITERATIONS` for a PDHG row, `OUTER_ITERATIONS` otherwise.
+"""
+default_maxit(m::Symbol) =
+    m === :cgsense ? CG_ITERATIONS : haskey(PDHG_METHODS, m) ? PDHG_ITERATIONS : OUTER_ITERATIONS
+
+"""
     mrt_algorithm(method, maxit; rho = ADMM_RHO)
 
 Fixed-ρ ADMM with a fixed inner CG and no early stop for every regularized method except
-L1-wavelet, which runs FISTA (forcing a fixed-ρ ADMM on it wrecks it); CGNR for CG-SENSE.
+L1-wavelet, which runs FISTA (forcing a fixed-ρ ADMM on it wrecks it); CGNR for CG-SENSE;
+`ChambollePock` for a PDHG row, with its default step sizes. The data term is its smooth part, so
+it runs the Condat-Vũ form of the iteration.
 """
 function mrt_algorithm(method::Symbol, maxit::Int; rho::Real = ADMM_RHO)
     method === :cgsense && return MriReconstructionToolbox.CGNR(; maxit, tol = 0.0)
     method === :wavelet && return MriReconstructionToolbox.FISTA(; maxit, tol = 0.0)
+    haskey(PDHG_METHODS, method) && return MriReconstructionToolbox.ChambollePock(; maxit, tol = 0.0)
     return MriReconstructionToolbox.ADMM(; rho, maxit, tol = 0.0, cg_tol = 0.0, cg_maxit = CG_ITERATIONS)
 end
 
@@ -110,7 +132,7 @@ end
 A zero-argument closure running MRT's reconstruction of `c` by `method`, for `time_run`, with the
 ADMM penalty `rho` (relative to `‖𝒜‖²`; ignored by the methods that do not run ADMM). The
 acquisition is built once, outside the closure; `acq` passes one in (the comparison suite reuses
-it across rows). `maxit` defaults to `CG_ITERATIONS` for CG-SENSE and `OUTER_ITERATIONS` otherwise.
+it across rows). `maxit` defaults to [`default_maxit`](@ref).
 `maxit` and `reltol = 0` are set on `IterativeReconstruction` as well as on the algorithm: the
 method's values win over the algorithm's, so both must agree to run the full count.
 """
@@ -118,7 +140,7 @@ function mrt_reconstructor(
         c::BenchCase, method::Symbol;
         λ::Real = default_lambda(c, method),
         rho::Real = admm_rho(c),
-        maxit::Int = method === :cgsense ? CG_ITERATIONS : OUTER_ITERATIONS,
+        maxit::Int = default_maxit(method),
         acq = nothing,
     )
     if method === :adjoint || method === :gridding

@@ -390,7 +390,19 @@ end
 
 Every method name the harness and the comparison suite know, in run order.
 """
-const METHODS = (:adjoint, :gridding, :cgsense, :tv, :atv, :wavelet, :tgv, :lowrank, :llr, :ttv)
+const METHODS = (
+    :adjoint, :gridding, :cgsense, :tv, :atv, :tv_pd, :atv_pd, :wavelet, :tgv, :lowrank, :llr, :ttv, :ttv_pd,
+)
+
+"""
+    PDHG_METHODS, penalty_of(method) -> Symbol
+
+The methods that solve a penalty of another method with a primal-dual (PDHG, Chambolle-Pock
+family) algorithm instead of ADMM, and the method whose penalty each solves: `:tv_pd` is `:tv`'s
+problem, and so on. `penalty_of` is the identity for every other method.
+"""
+const PDHG_METHODS = Dict(:tv_pd => :tv, :atv_pd => :atv, :ttv_pd => :ttv)
+penalty_of(m::Symbol) = get(PDHG_METHODS, m, m)
 
 """
     applicable_methods(c::BenchCase) -> Vector{Symbol}
@@ -398,6 +410,7 @@ const METHODS = (:adjoint, :gridding, :cgsense, :tv, :atv, :wavelet, :tgv, :lowr
 The methods that make sense for case `c`: a direct reconstruction (adjoint for Cartesian, DCF
 gridding for radial), CG-SENSE where there is more than one coil, spatial sparsity (isotropic and
 anisotropic TV, L1-wavelet, TGV) for static images, and temporal priors (global and locally low rank, temporal TV) for cine.
+Each TV runs twice, by ADMM and by PDHG ([`PDHG_METHODS`](@ref)).
 TGV is 2D-only here (the 3D variant costs an order of magnitude more per iteration than anything
 else in the catalog).
 """
@@ -405,13 +418,13 @@ function applicable_methods(c::BenchCase)
     ms = Symbol[c.trajectory === :noncartesian ? :gridding : :adjoint]
     ncoils(c) > 1 && push!(ms, :cgsense)
     if c.family === :cine
-        append!(ms, (:lowrank, :llr, :ttv))
+        append!(ms, (:lowrank, :llr, :ttv, :ttv_pd))
     elseif c.trajectory === :noncartesian
-        append!(ms, (:tv, :atv))
+        append!(ms, (:tv, :atv, :tv_pd, :atv_pd))
     elseif c.family === :volume
-        append!(ms, (:tv, :atv, :wavelet))
+        append!(ms, (:tv, :atv, :tv_pd, :atv_pd, :wavelet))
     else
-        append!(ms, (:tv, :atv, :wavelet, :tgv))
+        append!(ms, (:tv, :atv, :tv_pd, :atv_pd, :wavelet, :tgv))
     end
     return ms
 end

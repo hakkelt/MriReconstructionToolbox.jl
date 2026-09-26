@@ -177,6 +177,8 @@ for id in IDS
     end
     methods = applicable_methods(c)
     METHOD_FILTER === nothing || (methods = [m for m in methods if string(m) in METHOD_FILTER])
+    # A checkout that predates the primal-dual algorithm has no PDHG rows.
+    isdefined(MriReconstructionToolbox, :ChambollePock) || filter!(m -> !haskey(PDHG_METHODS, m), methods)
     for m in methods
         if !REMEASURE && !isempty(CODE_KEY) && config_key(id, m) in STORED
             @info "stored, skipping (--remeasure to rerun)" case = id method = m

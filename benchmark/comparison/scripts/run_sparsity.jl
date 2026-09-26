@@ -7,8 +7,10 @@
 # toolkit uses its own calibrated λ (`load_lambda`), so the operating point, not the nominal λ, is
 # matched. See `run_accuracy_race.jl` for the time-to-target-NRMSE view; this section is the
 # fixed-effort snapshot. TV runs twice, isotropic (`tv`) and anisotropic (`atv`): the two are
-# different problems, and not every toolkit has both (`supports`). The volume runs 3D TV / 3D
-# wavelet; TGV is 2D only (`applicable_methods`).
+# different problems, and not every toolkit has both (`supports`). Each TV runs again by PDHG
+# (`tv_pd`, `atv_pd`), a different algorithm from ADMM with step sizes in place of ρ, at
+# `PDHG_ITERATIONS` iterations — as many operator applications as an ADMM row. The volume runs 3D
+# TV / 3D wavelet; TGV is 2D only (`applicable_methods`).
 #
 # ## BART flags — four non-obvious ones, all verified against the 0.9.00 source
 #
@@ -32,7 +34,7 @@ include(joinpath(@__DIR__, "_setup.jl"))
 include(joinpath(@__DIR__, "_toolkits.jl"))
 include(joinpath(@__DIR__, "_methods.jl"))
 
-for c in section_cases(c -> c.family !== :cine), m in (:tv, :atv, :wavelet, :tgv)
+for c in section_cases(c -> c.family !== :cine), m in (:tv, :atv, :tv_pd, :atv_pd, :wavelet, :tgv)
     m in applicable_methods(c) || continue
     run_method_rows!("Sparsity", c, m)
 end

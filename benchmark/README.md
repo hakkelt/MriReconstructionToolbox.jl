@@ -43,7 +43,9 @@ case takes the minimum of three runs.
 for radial data) and CG-SENSE for every case, then TV (isotropic `tv` and anisotropic `atv`),
 L1-wavelet and TGV for the static Cartesian ones (TV and wavelet for the volume, TV for radial),
 and global low rank, locally low
-rank and temporal TV for the cines. Iteration counts, λ and the ADMM ρ are fixed
+rank and temporal TV for the cines. Every TV also runs by PDHG instead of ADMM (`tv_pd`, `atv_pd`,
+`ttv_pd`) at `CMP_OUTER × CMP_CG_ITERS` iterations; a checkout without `ChambollePock` skips those
+rows. Iteration counts, λ and the ADMM ρ are fixed
 (`utils/mrt_methods.jl`, `CMP_OUTER` / `CMP_CG_ITERS` to override).
 
 The GRAPPA rows of the comparison suite use `get_case(id; pattern = :regular)`, a regularly

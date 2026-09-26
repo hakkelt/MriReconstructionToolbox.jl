@@ -410,8 +410,10 @@ def _IsoTVRecon(y, mps, lamda, coord=None, **kwargs):
 
 `ksp` is a zero-filled Cartesian `(kx, ky, coil)` or `(kx, ky, kz, coil)` array and `smaps` the
 matching maps; SigPy's apps are dimension-agnostic, so the 3D volume goes through the same calls.
-`method ∈ (:adjoint, :cgsense, :tv, :atv, :wavelet)`: `:atv` is SigPy's `TotalVariationRecon`,
-`:tv` the isotropic `_IsoTVRecon`. TGV / low-rank unsupported here (throw).
+`method ∈ (:adjoint, :cgsense, :tv, :atv, :tv_pd, :atv_pd, :wavelet)`: `:atv` is SigPy's
+`TotalVariationRecon`, `:tv` the isotropic `_IsoTVRecon`; `:tv_pd` / `:atv_pd` are the same apps
+with `solver = "PrimalDualHybridGradient"` at SigPy's own step sizes. TGV / low-rank unsupported
+here (throw).
 Only **TV** is forced onto ADMM (`rho = ρ`, `max_cg_iter = CMP_CG_ITERS`) — matching the
 ADMM the other toolkits use for TV; SigPy would otherwise default to PDHG. **L1-wavelet** keeps
 SigPy's natural proximal-gradient solver (FISTA-like), as MRT / MRIReco / BART also use FISTA for
@@ -429,6 +431,11 @@ function sigpy_recon(method::Symbol, ksp3, smaps3; λ = 0.0, iterations = 10, ρ
         () -> tv(
             y, mps, λ; solver = "ADMM", rho = ρ,
             max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
+        ).run()
+    elseif method in (:tv_pd, :atv_pd)
+        tv = method === :tv_pd ? py"_IsoTVRecon" : sp_app.TotalVariationRecon
+        () -> tv(
+            y, mps, λ; solver = "PrimalDualHybridGradient", max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
         ).run()
     elseif method === :wavelet
         () -> sp_app.L1WaveletRecon(y, mps, λ; wave_name = CMP_WAVELET_NAME, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
@@ -656,7 +663,7 @@ Cine reconstruction with SigPy on the joint system of all frames (`_sp_cine_syst
     which MRT's and BART's temporal TV do not.
 
 The regularized rows use the settings of the other SigPy rows (`ADMM`, `rho = ρ`,
-`max_cg_iter = CMP_CG_ITERS`).
+`max_cg_iter = CMP_CG_ITERS`); `:ttv_pd` is `:ttv` with `solver = "PrimalDualHybridGradient"`.
 """
 function sigpy_dynamic(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = CMP_RHO)
     A, y, ishape = _sp_cine_system(c)
@@ -671,10 +678,12 @@ function sigpy_dynamic(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = 
     elseif m === :lowrank
         prox = py"_MrtSVT"(collect(ishape), λ)
         () -> sp.app.LinearLeastSquares(A, y; proxg = prox, admm...).run()
-    elseif m === :ttv
+    elseif m in (:ttv, :ttv_pd)
         G = sp.linop.FiniteDifference(collect(ishape); axes = (0,))
         prox = sp.prox.L1Reg(G.oshape, λ)
-        () -> sp.app.LinearLeastSquares(A, y; proxg = prox, G, admm...).run()
+        solver = m === :ttv ? admm :
+            (; solver = "PrimalDualHybridGradient", max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false)
+        () -> sp.app.LinearLeastSquares(A, y; proxg = prox, G, solver...).run()
     else
         error("SigPy has no dynamic $m here")
     end
@@ -785,7 +794,7 @@ trajectories of its family.
 | toolkit | static (2D, per slice, 3D) | cine |
 |---|---|---|
 | BART | everything | everything |
-| SigPy | adjoint / gridding, CG-SENSE, isotropic / anisotropic TV, L1-wavelet | adjoint / gridding, CG-SENSE, global low-rank, temporal TV |
+| SigPy | adjoint / gridding, CG-SENSE, isotropic / anisotropic TV (ADMM and PDHG), L1-wavelet | adjoint / gridding, CG-SENSE, global low-rank, temporal TV (ADMM and PDHG) |
 | MRIReco | adjoint / gridding, CG-SENSE, anisotropic TV, L1-wavelet | adjoint / gridding, CG-SENSE, global / locally low-rank |
 | MIRT | adjoint / gridding, CG-SENSE | adjoint / gridding, CG-SENSE, global low-rank |
 
@@ -795,7 +804,8 @@ prox, and building one here would compare this file's block convention rather th
 temporal TV (see `mrireco_dynamic`). MIRT ships neither a TV nor a wavelet prox. Every TV of
 RegularizedLeastSquares is anisotropic, so MRIReco has no isotropic TV row (see `mrireco`); BART's
 anisotropic row sums one `-R T` term per axis, and SigPy's isotropic one replaces the prox of its
-`TotalVariationRecon` with a joint threshold (`_IsoTVRecon`).
+`TotalVariationRecon` with a joint threshold (`_IsoTVRecon`). The PDHG rows (`PDHG_METHODS`) are
+absent from MRIReco, whose `PrimalDualSolver` takes only a dense matrix, and from MIRT.
 """
 function supports(tk::Symbol, c::BenchCase, m::Symbol)
     m in applicable_methods(c) || return false
@@ -803,10 +813,10 @@ function supports(tk::Symbol, c::BenchCase, m::Symbol)
     fam = c.family
     if tk === :bart
         cart && return true
-        return fam === :cine || m in (:gridding, :cgsense, :tv, :atv)
+        return fam === :cine || m in (:gridding, :cgsense, :tv, :atv, :tv_pd, :atv_pd)
     elseif tk === :sigpy
-        fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank, :ttv)
-        return m in (:adjoint, :gridding, :cgsense, :tv, :atv, :wavelet)
+        fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank, :ttv, :ttv_pd)
+        return m in (:adjoint, :gridding, :cgsense, :tv, :atv, :tv_pd, :atv_pd, :wavelet)
     elseif tk === :mrireco
         fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank, :llr)
         return m in (:adjoint, :gridding, :cgsense, :atv, :wavelet)
@@ -825,6 +835,7 @@ whether a ρ is a parameter of its row. L1-wavelet runs FISTA everywhere, CG-SEN
 only regularized row POGM.
 """
 function uses_admm(tk::Symbol, c::BenchCase, m::Symbol)
+    # A PDHG row (`PDHG_METHODS`) has step sizes, not a penalty, and falls through here.
     m in (:tv, :atv, :tgv, :lowrank, :llr, :ttv) || return false
     tk === :mrt && return true
     tk === :bart && return true
@@ -897,7 +908,12 @@ function bart_cmd(
     m === :lowrank && return "pics -S -w 1 -m $admm -n -b $(maximum(c.image_size)) -R L:3:3:$λ"
     m === :llr && return "pics -S -w 1 -m $admm -n -b 8 -R L:3:3:$λ"
     m === :ttv && return "pics -S -w 1 $admm -R T:32:0:$λ"
-    throw(ArgumentError("BART has no $m here"))
+    # `-a` is the primal-dual (Chambolle-Pock) solver. It takes the data term only as one more prox
+    # in its stack (`iter2_chambolle_pock` asserts there is no normal-equation operator), which
+    # `--precond` sets up (`opt_precond_configure`); `-e` sizes the steps by a power method over the
+    # whole stack. Its tolerance is fixed at 1e-4 (`src/grecon/italgo.c`), so it may stop before `-i`.
+    haskey(PDHG_METHODS, m) || throw(ArgumentError("BART has no $m here"))
+    return replace(bart_cmd(c, penalty_of(m), λ, maxit; budget, ρ), admm => "-a -e --precond -i $maxit")
 end
 
 """
@@ -987,7 +1003,7 @@ end
     sigpy_noncartesian(method, c; λ, iterations) -> (time_ms, image)
 
 SigPy's NUFFT path for a single-slice non-Cartesian case, on `_sp_coord(c)`. `:gridding` is
-`Sense(mps, coord)ᴴ (dcf · y)`; `:cgsense`, `:atv` and `:tv` are the apps of `sigpy_recon` given
+`Sense(mps, coord)ᴴ (dcf · y)`; `:cgsense` and the TV rows are the apps of `sigpy_recon` given
 `coord`.
 """
 function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = CMP_RHO)
@@ -1007,6 +1023,11 @@ function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, 
         () -> tv(
             y, mps, λ; coord, solver = "ADMM", rho = ρ,
             max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
+        ).run()
+    elseif m in (:tv_pd, :atv_pd)
+        tv = m === :tv_pd ? py"_IsoTVRecon" : sp_app.TotalVariationRecon
+        () -> tv(
+            y, mps, λ; coord, solver = "PrimalDualHybridGradient", max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
         ).run()
     else
         error("SigPy has no non-Cartesian $m here")

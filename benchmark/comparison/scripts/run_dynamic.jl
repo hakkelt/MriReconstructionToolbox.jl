@@ -26,11 +26,14 @@
 # `D_t x` at ρ = CMP_RHO, so a *more* exact inner CG makes the result worse (measured 0.0769 at
 # cg = 10, 0.2440 at cg = 80); BART hides this behind its hardcoded `1e-3 · ‖rhs‖` inner tolerance.
 # At CMP_CG_ITERS = 10 MRT and BART agree closely, which is the operating point λ is calibrated at.
+#
+# Temporal TV also runs by PDHG (`ttv_pd`, BART `-a`), which has no inner solve and no ρ, at
+# `PDHG_ITERATIONS` iterations.
 include(joinpath(@__DIR__, "_setup.jl"))
 include(joinpath(@__DIR__, "_toolkits.jl"))
 include(joinpath(@__DIR__, "_methods.jl"))
 
-for c in section_cases(c -> c.family === :cine), m in (:lowrank, :llr, :ttv)
+for c in section_cases(c -> c.family === :cine), m in (:lowrank, :llr, :ttv, :ttv_pd)
     run_method_rows!("Dynamic", c, m)
 end
 

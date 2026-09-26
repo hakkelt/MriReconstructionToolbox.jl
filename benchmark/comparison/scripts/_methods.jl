@@ -13,6 +13,7 @@ const METHOD_LABEL = Dict(
     :adjoint => "Adjoint", :gridding => "DCF Adjoint (Gridding)", :cgsense => "CG-SENSE",
     :tv => "Total Variation", :atv => "Anisotropic TV", :wavelet => "L1-Wavelet", :tgv => "TGV",
     :lowrank => "Global Low-Rank", :llr => "Locally Low-Rank", :ttv => "Temporal TV",
+    :tv_pd => "Total Variation (PDHG)", :atv_pd => "Anisotropic TV (PDHG)", :ttv_pd => "Temporal TV (PDHG)",
 )
 
 """
@@ -21,8 +22,6 @@ const METHOD_LABEL = Dict(
 `"Total Variation (20 it)"` for an iterative method, the bare label for a direct one.
 """
 method_label(m::Symbol, maxit) = m in (:adjoint, :gridding) ? METHOD_LABEL[m] : "$(METHOD_LABEL[m]) ($maxit it)"
-
-default_maxit(m::Symbol) = m === :cgsense ? CG_ITERATIONS : OUTER_ITERATIONS
 
 """
     regularized_methods(c) -> Vector{Symbol}
@@ -61,7 +60,8 @@ const LAMBDA_DIR = normpath(joinpath(@__DIR__, "..", "results", small_mode() ? "
 Per-toolkit λ for `method` on case `c`, from `LAMBDA_DIR/<case id>.json` (written by
 `calibrate_lambda.jl`); failing that from the case's synthetic analogue's file (a real case uses the
 λ of the synthetic case it mirrors -- valid because both k-spaces are unit-RMS normalised); failing
-that from the pre-catalog `results/lambda_calibration.json`; failing that `default`.
+that from the pre-catalog `results/lambda_calibration.json`; failing that, for a PDHG row, the λ of
+the ADMM row whose problem it solves ([`penalty_of`](@ref)); failing that `default`.
 """
 function load_lambda(c::BenchCase, method::Symbol, toolkit::AbstractString, default::Real)
     for id in unique((c.id, c.analogue))
@@ -69,7 +69,10 @@ function load_lambda(c::BenchCase, method::Symbol, toolkit::AbstractString, defa
         v === nothing || return v
     end
     v = _lambda_from(normpath(joinpath(@__DIR__, "..", "results", "lambda_calibration.json")), method, toolkit)
-    return v === nothing ? Float64(default) : v
+    v === nothing || return v
+    # A PDHG row solves the problem of its ADMM row, so that row's λ stands in until it has its own.
+    penalty_of(method) === method || return load_lambda(c, penalty_of(method), toolkit, default)
+    return Float64(default)
 end
 
 """

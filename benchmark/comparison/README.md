@@ -19,8 +19,8 @@ data of its own. Every toolkit gets the same prepared case, rearranged to its la
 | `base` | adjoint on the Cartesian cases |
 | `noncart` | DCF-weighted gridding on the radial cases, plus MRT at MRIReco's NFFT operating point |
 | `cgsense` | CG-SENSE on every multichannel case |
-| `sparsity` | isotropic TV, anisotropic TV, L1-wavelet, TGV on the static cases (TGV 2D only; radial cases get the two TVs and no wavelet or TGV), matched effort |
-| `dynamic` | global / locally low rank, temporal TV on both cine cases, matched effort |
+| `sparsity` | isotropic TV, anisotropic TV, each by ADMM and by PDHG, L1-wavelet, TGV on the static cases (TGV 2D only; radial cases get the TVs and no wavelet or TGV), matched effort |
+| `dynamic` | global / locally low rank, temporal TV (ADMM and PDHG) on both cine cases, matched effort |
 | `kspace` | GRAPPA on the regularly undersampled variant of the 2D and multislice cases (MRT only — no cross-toolkit row exists, see the script's header) |
 | `accuracy_race` | time-to-target-NRMSE per toolkit, the fair comparison (see the script's header for why the other sections' fixed-iteration-count numbers are not directly comparable across toolkits) |
 
