@@ -80,6 +80,40 @@ end
     @test is_AAc_diagonal(Dop) == true
 end
 
+# The Gram-diagonal predicates reject on a sample of row (column) pairs before forming the
+# product; the sample must never change the answer.
+@testitem "MatrixOp: Gram-diagonal predicates are exact" tags = [:linearoperator, :MatrixOp] setup = [TestUtils] begin
+    using Random, LinearAlgebra, SparseArrays, AbstractOperators
+    Random.seed!(504)
+    Q = Matrix(qr(randn(8, 8)).Q)
+    mats = (
+        randn(7, 4), randn(4, 7), randn(9, 9) + im * randn(9, 9),
+        Q[1:4, :], Q[:, 1:4], Q, reshape([2.0], 1, 1), diagm(0 => randn(6)),
+        [1.0 0.0 0.0; 0.0 2.0 0.0], [1.0 0.0; 0.0 2.0; 0.0 0.0],
+        # orthogonal on the sampled rows, not beyond them
+        vcat(Matrix(1.0I, 5, 7), ones(1, 7)),
+        sprandn(10, 6, 0.3),
+    )
+    for A in mats
+        op = MatrixOp(A)
+        @test is_AAc_diagonal(op) == isdiag(A * A')
+        @test is_AcA_diagonal(op) == isdiag(A' * A)
+    end
+    # A Hadamard matrix has exactly orthogonal rows and columns, more of them than the sample.
+    H2 = [1.0 1.0; 1.0 -1.0]
+    H = kron(H2, kron(H2, H2))
+    @test is_AAc_diagonal(MatrixOp(H[1:6, :]))
+    @test is_AcA_diagonal(MatrixOp(H[:, 1:6]))
+    @test !is_AAc_diagonal(MatrixOp(vcat(Matrix(1.0I, 5, 7), ones(1, 7))))
+    @test is_AAc_diagonal(AbstractOperators.AffineAdd(MatrixOp(H[1:6, :]), randn(6)))
+
+    # The sample allocates nothing, so rejecting a dense matrix costs no temporary.
+    big = MatrixOp(randn(400, 300))
+    is_AAc_diagonal(big)
+    @test (@allocated is_AAc_diagonal(big)) == 0
+    @test (@allocated is_AcA_diagonal(big)) == 0
+end
+
 @testitem "MatrixOp: adjoint and in-place" tags = [:linearoperator, :MatrixOp] setup = [TestUtils] begin
     using Random, LinearAlgebra, AbstractOperators
     Random.seed!(0)
@@ -109,7 +143,7 @@ end
 end
 
 @testitem "MatrixOp (GPU)" tags = [:gpu, :linearoperator, :MatrixOp] setup = [TestUtils, GpuEnvSetup] begin
-    using Random, AbstractOperators, GPUEnv
+    using Random, LinearAlgebra, AbstractOperators, GPUEnv
 
     for backend in gpu_backends()
         Random.seed!(0)
@@ -123,5 +157,13 @@ end
             gpu_randn(backend, ComplexF64, n),
             false,
         )
+        Q = Matrix(qr(randn(8, 8)).Q)
+        H2 = [1.0 1.0; 1.0 -1.0]
+        H = kron(H2, kron(H2, H2))
+        for M in (A, Ac, Q[1:4, :], H[1:6, :], H[:, 1:6], vcat(Matrix(1.0I, 5, 7), ones(1, 7)))
+            op = MatrixOp(to_gpu(backend, M))
+            @test is_AAc_diagonal(op) == isdiag(M * M')
+            @test is_AcA_diagonal(op) == isdiag(M' * M)
+        end
     end
 end

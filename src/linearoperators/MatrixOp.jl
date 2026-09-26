@@ -187,8 +187,44 @@ fun_name(L::MatrixOp) = "▒"
 
 is_diagonal(L::MatrixOp) = isdiag(L.A)
 is_symmetric(L::MatrixOp) = issymmetric(L.A)
-is_AAc_diagonal(L::MatrixOp) = isdiag(L.A * L.A')
-is_AcA_diagonal(L::MatrixOp) = isdiag(L.A' * L.A)
+is_AAc_diagonal(L::MatrixOp) = _gram_is_diagonal(L.A, 1)
+is_AcA_diagonal(L::MatrixOp) = _gram_is_diagonal(L.A, 2)
+
+"""
+    _gram_is_diagonal(A, d) -> Bool
+
+Whether `A * Aᴴ` (`d = 1`) or `Aᴴ * A` (`d = 2`) is diagonal, compared against exact zero as
+`isdiag` does: whether the rows (`d = 1`) or columns (`d = 2`) of `A` are pairwise orthogonal.
+
+Forming the product costs `O(m²n)` and an `m × m` temporary, more than several iterations of a
+solver that asks the question while choosing a formulation. A single non-orthogonal pair disproves
+the answer, so pairs among the first few rows (columns) are tested first, `O(n)` each, and a matrix
+that is not genuinely Gram-diagonal, the overwhelmingly common case, is rejected there. Only one
+that survives the sample reaches the full product, so the answer is always the exact one.
+"""
+function _gram_is_diagonal(A::AbstractMatrix, d::Int)
+    _gram_sample_is_diagonal(A, d) || return false
+    return _isdiag(d == 1 ? A * A' : A' * A)
+end
+
+# The pairs among the first `_GRAM_SAMPLE` rows (`d = 1`) or columns (`d = 2`) of `A`, each a
+# `dot` of two views, which allocates nothing for a host array.
+const _GRAM_SAMPLE = 5
+function _gram_sample_is_diagonal(A::AbstractMatrix, d::Int)
+    k = min(size(A, d), _GRAM_SAMPLE)
+    if d == 1
+        for i in 1:(k - 1), j in (i + 1):k
+            iszero(dot(view(A, i, :), view(A, j, :))) || return false
+        end
+    else
+        for i in 1:(k - 1), j in (i + 1):k
+            iszero(dot(view(A, :, i), view(A, :, j))) || return false
+        end
+    end
+    return true
+end
+
+_isdiag(G) = isdiag(G)
 is_null(L::MatrixOp) = L.A == 0 * I
 is_eye(L::MatrixOp) = L.A == I
 function is_invertible(L::MatrixOp)

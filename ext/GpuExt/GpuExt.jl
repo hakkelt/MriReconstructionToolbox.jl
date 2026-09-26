@@ -3,12 +3,12 @@ module GpuExt
 using GPUArrays
 using KernelAbstractions
 using AbstractOperators
-import LinearAlgebra: mul!
+import LinearAlgebra: mul!, isdiag
 import AbstractOperators:
     _should_thread, array_type_display_string, check,
     AdjointOperator, Variation, NoOperatorBroadCast,
     domain_type, allocate_in_domain, allocate_in_codomain,
-    GetIndex, ZeroPad, OperatorWrapper
+    GetIndex, ZeroPad, OperatorWrapper, _gram_sample_is_diagonal, _isdiag
 using RecursiveArrayTools: ArrayPartition
 
 include("properties.jl")
