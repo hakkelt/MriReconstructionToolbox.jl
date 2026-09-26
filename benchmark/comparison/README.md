@@ -115,7 +115,12 @@ file is merged under a lock, so several processes can calibrate one case at once
 A toolkit's optimum can lie outside the shared grid (BART's and SigPy's radial TV λ lies above
 it), so each axis grows past an edge holding the best point, up to `MAX_GRID_EXTENSIONS` (4) steps.
 `--resume` reuses the points already stored for the toolkits being calibrated and measures only
-the missing ones, which makes widening a finished calibration cheap.
+the missing ones, which makes widening a finished calibration cheap. Every point is written to the
+case's file as soon as it is measured, so a job cut off by its time limit loses nothing, and under
+`--resume` a toolkit's new points are added to its stored ones. A slow toolkit can therefore be
+split over several processes, one ρ decade each (`RHO_DECADES=-1` and so on), followed by one
+`--resume` run over the full grid that measures only the extensions an edge optimum still needs.
+SigPy's 3D TV (about 20 minutes a point) and radial cine rows (about 7) were calibrated that way.
 
 Results go to `results/lambda/<case id>.json`, together with `race_target`: the worst toolkit's best
 NRMSE × 1.10, the target `run_accuracy_race.jl` races to. `load_lambda` falls back from a case to its
