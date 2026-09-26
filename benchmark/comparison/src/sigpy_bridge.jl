@@ -9,11 +9,12 @@ const sigpy_mri_app = PyNULL()
 
 function __init__()
     # PyCall's interpreter is fixed when PyCall is built, so setting `ENV["PYTHON"]` here would
-    # change nothing. `MRT_BENCH_SIGPY_PYTHON` only documents which interpreter was intended; a
-    # mismatch means PyCall must be rebuilt (`ENV["PYTHON"] = ...; Pkg.build("PyCall")`).
+    # change nothing. `MRT_BENCH_SIGPY_PYTHON` only documents which interpreter was intended (the
+    # one that serves SigPy and MRpro); a mismatch means PyCall must be rebuilt
+    # (`ENV["PYTHON"] = ...; Pkg.build("PyCall")`).
     want = get(ENV, "MRT_BENCH_SIGPY_PYTHON", "")
     if !isempty(want) && (!ispath(want) || realpath(want) != realpath(PyCall.python))
-        @warn "PyCall uses a different Python than MRT_BENCH_SIGPY_PYTHON; rebuild PyCall to change it" pycall = PyCall.python configured = want
+        @warn "PyCall uses a different Python than MRT_BENCH_SIGPY_PYTHON, the interpreter meant for SigPy and MRpro; rebuild PyCall to change it" pycall = PyCall.python configured = want
     end
 
     copy!(sigpy, pyimport("sigpy"))
