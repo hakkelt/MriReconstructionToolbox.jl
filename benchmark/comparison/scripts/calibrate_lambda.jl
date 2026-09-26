@@ -52,6 +52,18 @@ const RHO_DECADES = parse.(Float64, split(get(ENV, "RHO_DECADES", "-2,-1,0,1,2")
 const MAX_GRID_EXTENSIONS = parse(Int, get(ENV, "MAX_GRID_EXTENSIONS", "4"))
 
 """
+    LAMBDA_SHARD
+
+`LAMBDA_SHARD=i/n` (`0 ≤ i < n`): measure only the λ points of the grid whose index is `i` modulo
+`n`, with no grid extension, and add them to the stored curve as `--resume` does. `n` processes, one
+per shard, then measure a toolkit's whole grid at once; one `--resume` run without a shard follows
+and measures only the extensions an edge optimum still needs. `nothing` when unset.
+"""
+const LAMBDA_SHARD = let s = get(ENV, "LAMBDA_SHARD", "")
+    isempty(s) ? nothing : Tuple(parse.(Int, split(s, "/")))
+end
+
+"""
     METHOD_FILTER
 
 Parsed from `--methods=m1,m2,...` (method symbols such as `tv`, `lowrank`), or `nothing` for every
@@ -144,7 +156,9 @@ function sweep(c::BenchCase, method::Symbol)
         key = tk === :mrt ? "MRT" : toolkit_key(tk)
         centre = grid_centre(method, key, λc)
         λs = collect(10 .^ range(log10(centre) - 2, log10(centre) + 1.5; length = ngrid))
-        known = RESUME ? stored_points(c, method, key) : Dict{Tuple{Float64, Any}, Float64}()
+        LAMBDA_SHARD === nothing || (λs = λs[(LAMBDA_SHARD[1] + 1):LAMBDA_SHARD[2]:end])
+        isempty(λs) && continue
+        known = RESUME || LAMBDA_SHARD !== nothing ? stored_points(c, method, key) : Dict{Tuple{Float64, Any}, Float64}()
         checkpoint = pts -> write_calibration!(c, Dict{String, Any}(String(method) => Dict(key => pts)))
         curves[key] = sweep_toolkit(c, method, tk, key, λs, rho_grid(c, method, tk); known, checkpoint)
     end
@@ -204,6 +218,7 @@ function sweep_toolkit(
         return e
     end
     curve() = [(λ, ρ, measure(λ, ρ)) for ρ in ρs for λ in λs]
+    LAMBDA_SHARD === nothing || return curve()
     λstep = λs[2] / λs[1]
     ρstep = 10.0
     extended = Dict(:λ => 0, :ρ => 0)
@@ -278,7 +293,7 @@ function write_calibration!(c::BenchCase, fresh::Dict{String, Any})
         # Under `--resume` a toolkit's fresh points are added to its stored ones rather than
         # replacing them, so processes that sweep disjoint parts of one toolkit's grid (one ρ decade
         # each, say) all keep their points.
-        union = RESUME && get(get(file, "meta", Dict()), "iterations", nothing) == IT_CAL
+        union = (RESUME || LAMBDA_SHARD !== nothing) && get(get(file, "meta", Dict()), "iterations", nothing) == IT_CAL
         for (method, curves) in fresh
             stored = Dict{String, Any}(tk => _curve_from_json(pts) for (tk, pts) in get(file["sweeps"], method, Dict()))
             merged = merge(stored, curves)

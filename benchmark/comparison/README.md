@@ -138,9 +138,11 @@ it), so each axis grows past an edge holding the best point, up to `MAX_GRID_EXT
 the missing ones, which makes widening a finished calibration cheap. Every point is written to the
 case's file as soon as it is measured, so a job cut off by its time limit loses nothing, and under
 `--resume` a toolkit's new points are added to its stored ones. A slow toolkit can therefore be
-split over several processes, one ρ decade each (`RHO_DECADES=-1` and so on), followed by one
+split over several processes, one ρ decade each (`RHO_DECADES=-1` and so on), or one share of the
+λ grid each (`LAMBDA_SHARD=i/n` measures the points whose index is `i` modulo `n`), followed by one
 `--resume` run over the full grid that measures only the extensions an edge optimum still needs.
-SigPy's 3D TV (about 20 minutes a point) and radial cine rows (about 7) were calibrated that way.
+SigPy's 3D TV (about 20 minutes a point) and radial cine rows (about 7) were calibrated by ρ
+decade, and its 3D PDHG TV by λ share.
 
 Results go to `results/lambda/<case id>.json`, together with `race_target`: the worst toolkit's best
 NRMSE × 1.10, the target `run_accuracy_race.jl` races to. `load_lambda` falls back from a case to its
