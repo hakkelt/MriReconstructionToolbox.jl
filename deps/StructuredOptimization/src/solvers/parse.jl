@@ -28,10 +28,7 @@ end
 function can_be_separable_sum(variable_bags)
     for (var, term_list) in variable_bags
         if length(term_list) > 1 # more than one term for this variable
-            # A multi-variable term can only be split apart per-variable if its function
-            # is itself separable; otherwise slicing alone says nothing about whether the
-            # sum decomposes. Mirrors the guard in is_separable_sum.
-            all(length(variables(term)) == 1 || is_separable(term.f) for term in term_list) || return false
+            all(splits_per_variable, term_list) || return false
             # Check if any of the terms are sliced
             operators = [get_operators_for_var(term, var) for term in term_list]
             slicing_masks = [is_sliced(op) ? AbstractOperators.get_slicing_mask(op) : nothing for op in operators]
@@ -56,11 +53,11 @@ function get_unseparable_pairs(variable_bags)
     incompatibilities = Dict{Term, Set{Term}}()
     for (var, term_list) in variable_bags
         if length(term_list) > 1 # more than one term for this variable
-            # A multi-variable, non-separable term is incompatible with every other term
-            # sharing this variable, regardless of slicing (see can_be_separable_sum).
-            nonseparable = [t for t in term_list if length(variables(t)) > 1 && !is_separable(t.f)]
-            for t in nonseparable, other in term_list
-                t === other || add_to_incompatibilities(incompatibilities, t, other)
+            # A term that does not split per variable is incompatible with every other term
+            # sharing this variable, regardless of slicing (see `splits_per_variable`).
+            for t in term_list, other in term_list
+                (t === other || splits_per_variable(t)) && continue
+                add_to_incompatibilities(incompatibilities, t, other)
             end
             # Check if any of the terms are sliced
             operators = [get_operators_for_var(term, var) for term in term_list]
@@ -138,6 +135,15 @@ on the strength of a prox it does not have would fail at the first iteration.
 """
 keeps_exact_prox(op, f) = is_aac_diagonal(op) || (f isa IndPoint && _matrix_of(op) !== nothing)
 
+# The cost of the `:normal_op` candidate in `best_formulation` below. `n / m` prices it as a
+# dense-matrix Gram construction, which is the honest estimate for everything except a
+# multi-variable `HCAT` whose blocks share one encoding operator: there the shared operator's
+# own fast normal operator is reused rather than reconstructed, so forming it is cheap
+# regardless of shape. See [`reuses_optimized_normalop`](@ref) for why the bypass is not taken
+# on the strength of `has_optimized_normalop` alone.
+normal_op_cost(op, n, m) = n / m
+normal_op_cost(op::AbstractOperators.HCAT, n, m) = reuses_optimized_normalop(op) ? 1.0 : n / m
+
 """
     best_formulation(op, f, disp, λ, needs = :any) -> (kind::Symbol, cost::Float64)
 
@@ -180,16 +186,6 @@ particular `fused_normal_op`, which answers the same question by constructing `o
 a `MatrixOp` that is the Gram matrix — `O(n²m)`, more than several solver iterations), is
 called only for the candidate that actually wins.
 """
-# `n / m` prices the normal operator as a dense-matrix Gram construction. For most operators
-# that is the right estimate even when `has_optimized_normalop(op)` is true: `MatrixOp` answers
-# `true` unconditionally (it can always literally form `Aᴴ*A`), but `get_normal_op` still builds
-# the dense Gram matrix to do it, so the size ratio is the honest cost. The one case where the
-# bypass is real is a multi-variable `HCAT` whose blocks share one encoding operator -- there
-# `has_optimized_normalop` means the *same* fast normal operator that operator would build for
-# itself is reused, not reconstructed, so forming it is cheap regardless of shape.
-normal_op_cost(op, n, m) = n / m
-normal_op_cost(op::AbstractOperators.HCAT, n, m) = AbstractOperators.has_optimized_normalop(op) ? 1.0 : n / m
-
 function best_formulation(op, f, disp, λ, needs::Symbol = :any)
     want_prox = needs === :prox
     n = _total_length(size(op, 2))
@@ -674,19 +670,6 @@ function prepare(term::Term, assumption::ProximalAlgorithms.LeastSquaresTerm, va
         lambda = term.lambda * f.lambda
         op = extract_operators(variables, term)
         b = -displacement(term)
-        # Absorption to the normal-op formulation happens at `merge_function_with_operator`
-        # time, not when `ls` builds the term, so `f` is always the plain `SqrNormL2` here.
-        # Ask the same question the formulation layer would, and reuse its AᴴA when it says
-        # yes -- but only when it will be handed over: the algorithm takes one, its operator
-        # requirements hold, the weight leaves the operator unscaled (see below), and this
-        # is not a dry run. Building it is the expensive part of preparing.
-        if assumption.AHA !== nothing && lambda isa Real && lambda == 1 &&
-                does_satisfy(op, assumption.operator) && !_is_dry_run()
-            f_abs = merge_function_with_operator(op, f, displacement(term), term.lambda)
-            if f_abs isa SqrNormL2WithNormalOp
-                aha = remove_displacement(f_abs.AᴴA)
-            end
-        end
     else
         # ProximalOperators.LeastSquares carries its own embedded operator and vector
         # that this path does not read; reject rather than silently mis-scale it.
@@ -704,16 +687,32 @@ function prepare(term::Term, assumption::ProximalAlgorithms.LeastSquaresTerm, va
     # regularizer to λ_reg = term.lambda*f.lambda (no ½). To keep the data term at the
     # correct *relative* weight, scale the residual by √λ, not by λ.
     c = sqrt(lambda)
+    # `AᴴA` is only worth having when the algorithm asks for it and the operator is not about
+    # to be rescaled — `(cA)ᴴ(cA) ≠ AᴴA`, so a cached one would no longer match — and this is
+    # not a dry run. The tests are free, and they come first so that the `SqrNormL2` branch
+    # below never pays to build a normal operator it would immediately discard.
+    want_aha = assumption.AHA !== nothing && c == 1 && !_is_dry_run()
+    if want_aha && f isa ProximalOperators.SqrNormL2
+        # Absorption to the normal-op formulation happens at `merge_function_with_operator`
+        # time, not when `ls` builds the term, so `f` is always the plain `SqrNormL2` here.
+        # Ask the formulation layer's question at the metadata level, then build only the one
+        # operator wanted: going through `merge_function_with_operator` would construct a whole
+        # `SqrNormL2WithNormalOp` and tilt its normal operator by the displacement, only for
+        # this to strip the tilt straight back off.
+        if best_formulation(op, f, displacement(term), term.lambda)[1] === :normal_op
+            aha = fused_normal_op(op)
+        end
+    end
     if c != 1
         op = c * op
         b = c * b
-        aha = nothing # the cached AᴴA was built for the unscaled operator; it no longer matches
     end
     result = (assumption.operator.first => op, assumption.b => b)
-    if assumption.AHA !== nothing && aha !== nothing
-        result = (result..., assumption.AHA => aha)
+    return if want_aha && aha !== nothing
+        (result..., assumption.AHA => aha)
+    else
+        result
     end
-    return result
 end
 
 function print_diagnostics(term::Term, assumption::ProximalAlgorithms.LeastSquaresTerm, variables::NTuple{N, Variable}) where {N}
