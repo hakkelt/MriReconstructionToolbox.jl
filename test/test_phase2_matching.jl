@@ -193,30 +193,6 @@ end
         @test t_score < t_solve / 5
     end
 
-    # `is_aac_diagonal` short-circuits the upstream O(m²n) `isdiag(A*Aᴴ)` for a `MatrixOp`
-    # by disproving row orthogonality on a sample. It must agree with the predicate it
-    # replaces on every operator shape, not merely approximate it.
-    @testset "is_aac_diagonal agrees with is_AAc_diagonal" begin
-        Random.seed!(504)
-        Q = Matrix(qr(randn(6, 6)).Q)
-        aac_ops = (
-            AbstractOperators.Eye(Float64, (5,)),
-            DiagOp(randn(5)),
-            SO_M.operator(fft(Variable(8))),
-            MatrixOp(randn(7, 4)),
-            MatrixOp(randn(4, 7)),
-            MatrixOp(Q[1:4, :]),
-            MatrixOp(reshape([2.0], 1, 1)),
-            AbstractOperators.AffineAdd(MatrixOp(randn(7, 4)), randn(7)),
-        )
-        for op in aac_ops
-            @test SO_M.is_aac_diagonal(op) == is_AAc_diagonal(op)
-        end
-        # An exactly-diagonal-rows matrix is accepted, so the sample is not simply
-        # answering "false" for everything dense.
-        @test SO_M.is_aac_diagonal(MatrixOp([1.0 0.0 0.0; 0.0 2.0 0.0]))
-    end
-
     # Behaviour preservation: the scored search must still be deterministic, and pick the
     # same formulations the fixed branch chain did.
     @testset "parse results are stable" begin

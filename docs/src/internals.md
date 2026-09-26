@@ -15,7 +15,6 @@ them keeping an exact proximal operator. The choice is scored, not fixed.
 StructuredOptimization.best_formulation
 StructuredOptimization.merge_function_with_operator
 StructuredOptimization.keeps_exact_prox
-StructuredOptimization.is_aac_diagonal
 ```
 
 ## Choosing an algorithm and a term split
