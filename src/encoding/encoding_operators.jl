@@ -59,6 +59,20 @@ function get_encoding_operator(info::CartesianAcquisitionInfo; threaded::Bool = 
 end
 
 """
+	COIL_FUSED_MAX_VOXELS
+
+Largest image, in voxels per frame, for which the Cartesian encoding operator is built coil-fused
+(see `_coil_fused_encoding_operator`).
+
+The fused form wins by keeping one coil's working set in a worker's cache, and it parallelises
+over coils only. Past a few MB per coil the first no longer holds, and the second leaves threads
+idle once there are more threads than coils, where the chain's batched FFT uses them all.
+Measured `𝒜ᴴ𝒜`, 8 coils, 8 threads, `ComplexF32`, chain time over fused time: 1.31 at 128²,
+1.07 at 512², 1.32 at 64³, 0.98 at 96³ and 0.85 at 128³ (0.56 at 128³ with 4 coils).
+"""
+const COIL_FUSED_MAX_VOXELS = 2^18
+
+"""
 	_coil_fused_encoding_operator(info::CartesianAcquisitionInfo; threaded, fast_planning)
 
 The Cartesian multicoil encoding operator written as one batch over coils, or `nothing` when
@@ -114,10 +128,14 @@ the per-coil work, not the loop around it.
 The cost is one FFT plan per coil instead of one batched plan, paid once when the operator is
 built. `fast_planning` is forwarded unchanged, so a caller that cares keeps its existing control.
 
+Axes after the coil axis in k-space (frames, say) are batched over, one per-frame operator of
+this form each, unless `fast_planning` is set; see [`_frame_batched_coil_fused_operator`](@ref).
+
 Returns `nothing` unless the acquisition is Cartesian with sensitivity maps whose last axis is
-`:coil`, nothing after the coil axis in k-space, more than one coil, and threading actually
-available: the fused form is not faster serially, and the generic chain stays the only path a
-single-threaded run takes.
+`:coil` and that are shared by every frame, more than one coil, at most
+[`COIL_FUSED_MAX_VOXELS`](@ref) voxels per frame, and threading actually available: the fused
+form is not faster serially, and the generic chain stays the only path a single-threaded run
+takes.
 """
 function _coil_fused_encoding_operator(
         info::CartesianAcquisitionInfo; threaded::Bool, fast_planning::Bool
@@ -126,19 +144,89 @@ function _coil_fused_encoding_operator(
     (threaded && !isnothing(smaps) && Threads.nthreads() > 1) || return nothing
     ksp = info.kspace_data
     image_size = info.image_size
+    prod(image_size) <= COIL_FUSED_MAX_VOXELS || return nothing
     nd = length(image_size)
     ndims(smaps) == nd + 1 || return nothing
     _has_dimnames(smaps) && dimnames(smaps)[end] !== :coil && return nothing
-    _has_dimnames(ksp) && dimnames(ksp)[end] !== :coil && return nothing
-    # Anything after the coil axis (a time or slab axis) means a per-coil operator is not the
-    # whole story: the generic chain, which wraps the result in its own `BatchOp`, stays in
-    # charge rather than growing a second batching layer here.
-    ndims(ksp) == _get_sample_dims_count(info) + 1 || return nothing
-    ncoils = size(smaps, nd + 1)
-    ncoils > 1 || return nothing
+    size(smaps, nd + 1) > 1 || return nothing
     _is_cartesian_storage(ksp) || return nothing
+    nsample = _get_sample_dims_count(info)
+    _has_dimnames(ksp) && dimnames(ksp)[nsample + 1] !== :coil && return nothing
+    ndims(ksp) == nsample + 1 && return _coil_fused_frame_operator(info; threaded, fast_planning)
+    fast_planning && return nothing
+    return _frame_batched_coil_fused_operator(info, nsample; threaded, fast_planning)
+end
 
-    plain_smaps = smaps isa NamedDimsArray ? unname(smaps) : smaps
+"""
+	_frame_batched_coil_fused_operator(info, nsample; threaded, fast_planning)
+
+The coil-fused operator of an acquisition with axes after the coil axis (frames of a cine,
+say), one per-frame coil-fused operator per trailing index, batched over them; or `nothing` when
+the frames do not all have the same number of samples.
+
+Each frame's operator runs its coils serially and the batch over frames is the one parallel
+region, so a worker keeps one coil's image-sized working set in cache from the map multiply to
+the sampling, as in the single-frame form. The generic chain instead streams the whole
+`(image, coil, frame)` intermediate through memory once per stage.
+
+Measured on the comparison benchmark's Cartesian cine (128×128, 8 coils, 30 frames,
+4×-undersampled, `ComplexF32`), 8 Julia threads, bit-identical outputs:
+
+| apply           | chain    | frame-batched |
+|-----------------|----------|---------------|
+| forward         |  6.8 ms  |  4.0 ms       |
+| adjoint         |  9.1 ms  |  5.1 ms       |
+| `𝒜ᴴ𝒜` (per CG)  | 16.1 ms  |  8.5 ms       |
+| build           |  4.7 ms  | 19.0 ms       |
+
+The build is the price: one operator per frame and coil, and one FFT plan per frame (the coils
+of a frame share one, as its batch over coils is serial). That pays back after about three
+applies, so it is not built under `fast_planning`, which asks for the operator that is cheapest
+to set up — what a direct reconstruction applies once.
+"""
+function _frame_batched_coil_fused_operator(
+        info::CartesianAcquisitionInfo, nsample::Int; threaded::Bool, fast_planning::Bool
+    )
+    ksp = info.kspace_data
+    frame_dims = Tuple((nsample + 2):ndims(ksp))
+    frames = CartesianIndices(size(ksp)[collect(frame_dims)])
+    coil_maps = _coil_maps(info)
+    per_frame = map(zip(frames, _ksp_eachslice(ksp, frame_dims))) do (idx, ksp_frame)
+        subsampling = slice_subsampling(info.subsampling, ksp, frame_dims, idx)
+        frame_info = CartesianAcquisitionInfo(info; kspace_data = ksp_frame, subsampling)
+        op = _coil_fused_frame_operator(frame_info; threaded = false, fast_planning, coil_maps)
+        return _unwrap_named(op)
+    end
+    codomain = size(first(per_frame), 1)
+    all(op -> isequal(size(op, 1), codomain), per_frame) || return nothing
+    nd = length(info.image_size)
+    codomain_rank = length(size(first(per_frame), 1))
+    nframe_dims = length(frame_dims)
+    mask = (ntuple(_ -> :_, nd)..., ntuple(_ -> :s, nframe_dims)...) =>
+        (ntuple(_ -> :_, codomain_rank)..., ntuple(_ -> :s, nframe_dims)...)
+    op = BatchOp(
+        reshape(per_frame, size(frames)), mask;
+        threaded, threading_strategy = ThreadingStrategy.FIXED_OPERATOR,
+    )
+    _has_dimnames(ksp) || return op
+    return NamedDimsOp{get_image_dims(info), dimnames(ksp)}(op)
+end
+
+"""
+	_coil_fused_frame_operator(info; threaded, fast_planning, coil_maps = _coil_maps(info))
+
+The coil-fused operator of an acquisition whose k-space ends with the coil axis, its batch over
+coils threaded when `threaded` is. `coil_maps` holds one contiguous map per coil, which several
+frames' operators may share, as they only read it.
+"""
+function _coil_fused_frame_operator(
+        info::CartesianAcquisitionInfo; threaded::Bool, fast_planning::Bool,
+        coil_maps = _coil_maps(info),
+    )
+    ksp = info.kspace_data
+    image_size = info.image_size
+    nd = length(image_size)
+    ncoils = length(coil_maps)
     ksp_one_coil = ksp[ntuple(_ -> Colon(), ndims(ksp) - 1)..., 1]
     shift_kwargs = (
         shifted_kspace_dims = info.shifted_kspace_dims,
@@ -158,10 +246,13 @@ function _coil_fused_encoding_operator(
             )
         end
     )
-    per_coil = [
-        single_coil_fourier() * DiagOp(copy(selectdim(plain_smaps, nd + 1, c)); threaded = false)
-            for c in 1:ncoils
-    ]
+    per_coil = if threaded
+        [single_coil_fourier() * DiagOp(coil_maps[c]; threaded = false) for c in 1:ncoils]
+    else
+        # A serial batch applies one coil at a time, so there its coils can share one.
+        shared = single_coil_fourier()
+        [shared * DiagOp(coil_maps[c]; threaded = false) for c in 1:ncoils]
+    end
     codomain_rank = length(size(first(per_coil), 1))
     mask = (ntuple(_ -> :_, nd)..., :s) => (ntuple(_ -> :_, codomain_rank)..., :s)
     𝒞 = BatchOp(
@@ -175,6 +266,13 @@ function _coil_fused_encoding_operator(
     op = 𝒞 * ℬ
     _has_dimnames(ksp) || return op
     return NamedDimsOp{get_image_dims(info), dimnames(ksp)}(op)
+end
+
+function _coil_maps(info::CartesianAcquisitionInfo)
+    smaps = info.sensitivity_maps
+    plain_smaps = smaps isa NamedDimsArray ? unname(smaps) : smaps
+    nd = length(info.image_size)
+    return [copy(selectdim(plain_smaps, nd + 1, c)) for c in axes(plain_smaps, nd + 1)]
 end
 
 _unwrap_named(op::NamedDimsOp) = op.L

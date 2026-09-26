@@ -826,3 +826,44 @@ end
         @test A * x ≈ get_encoding_operator(acq; threaded = true, fast_planning = true) * x
     end
 end
+
+@testitem "frame-batched coil-fused encoding operator matches the chain" tags = [:encoding, :operators] begin
+    using Test
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, CartesianAcquisitionInfo, NamedDimsOp
+    using MriReconstructionToolbox.AbstractOperators: get_normal_op
+    using NamedDims
+    using Random
+
+    # A cine with its own ky mask per frame and maps shared by every frame. With threads the
+    # default build batches one coil-fused operator per frame; `fast_planning` keeps the chain.
+    Random.seed!(0)
+    n, nc, nt, ns = 32, 4, 5, 12
+    subs = [
+        (
+            :, begin
+                m = falses(n); m[randperm(n)[1:ns]] .= true; m
+            end,
+        ) for _ in 1:nt
+    ]
+    smaps = randn(ComplexF32, n, n, nc)
+    ksp = randn(ComplexF32, n, ns, nc, nt)
+    acq = CartesianAcquisitionInfo(ksp; is3D = false, image_size = (n, n), subsampling = subs, sensitivity_maps = smaps)
+    A = get_encoding_operator(acq)
+    chain = get_encoding_operator(acq; fast_planning = true)
+    Threads.nthreads() > 1 && @test occursin("SpreadingBatchOp", string(nameof(typeof(A))))
+    x = randn(ComplexF32, size(A, 2))
+    y = randn(ComplexF32, size(A, 1))
+    @test A * x ≈ chain * x
+    @test A' * y ≈ chain' * y
+    @test get_normal_op(A) * x ≈ get_normal_op(chain) * x
+
+    # Named k-space keeps its dimension names through the batch over frames.
+    acq_named = CartesianAcquisitionInfo(
+        NamedDimsArray{(:kx, :ky, :coil, :time)}(ksp); is3D = false, image_size = (n, n),
+        subsampling = subs, sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps)
+    )
+    A_named = get_encoding_operator(acq_named)
+    @test A_named isa NamedDimsOp
+    @test unname(A_named * NamedDimsArray{(:x, :y, :time)}(x)) ≈ chain * x
+end
