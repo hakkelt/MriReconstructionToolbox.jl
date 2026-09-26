@@ -109,17 +109,23 @@ end
 
 The accuracy race's NRMSE target for `method` on `c`: `race_target` from the case's λ file (the
 worst toolkit's best converged NRMSE × 1.10, so every toolkit can reach it), else `default`.
+
+The rows of one penalty share a target: the ADMM row and the PDHG row of a TV ([`penalty_of`](@ref))
+both race to the larger of their two targets, so their times are to the same accuracy and compare
+directly.
 """
 function load_race_target(c::BenchCase, method::Symbol, default::Real)
+    siblings = [String(m) for m in METHODS if penalty_of(m) === penalty_of(method)]
     for id in unique((c.id, c.analogue))
         path = joinpath(LAMBDA_DIR, "$id.json")
         isfile(path) || continue
-        t = try
-            get(get(JSON.parsefile(path), "race_target", Dict()), String(method), nothing)
+        tbl = try
+            get(JSON.parsefile(path), "race_target", Dict())
         catch
-            nothing
+            Dict()
         end
-        t isa Real && isfinite(t) && return Float64(t)
+        ts = [Float64(t) for t in (get(tbl, m, nothing) for m in siblings) if t isa Real && isfinite(t)]
+        isempty(ts) || return maximum(ts)
     end
     return Float64(default)
 end

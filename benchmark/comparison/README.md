@@ -145,8 +145,10 @@ SigPy's 3D TV (about 20 minutes a point) and radial cine rows (about 7) were cal
 decade, and its 3D PDHG TV by λ share.
 
 Results go to `results/lambda/<case id>.json`, together with `race_target`: the worst toolkit's best
-NRMSE × 1.10, the target `run_accuracy_race.jl` races to. `load_lambda` falls back from a case to its
-synthetic analogue, then to the pre-catalog `results/lambda_calibration.json`, then to the default
+NRMSE × 1.10, the target `run_accuracy_race.jl` races to. The ADMM and PDHG rows of one TV race to
+the larger of their two targets, so their times are to the same accuracy. `load_lambda` falls back
+from a case to its synthetic analogue, then to the pre-catalog `results/lambda_calibration.json`,
+then to the default
 in `benchmark/utils/mrt_methods.jl`. Under `MRT_BENCH_SMALL=1` the files go to `results/lambda_small/`
 (gitignored) instead. Rerun calibration for a case whose problem or regularization changed. It
 takes one SLURM array task per case:
