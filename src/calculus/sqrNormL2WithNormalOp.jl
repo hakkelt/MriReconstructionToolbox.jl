@@ -254,6 +254,11 @@ moving it.
 """
 normal_op_worthwhile(L::AbstractOperator) =
     is_linear(L) && !is_eye(L) && _total_length(size(L, 2)) <= _total_length(size(L, 1))
+function normal_op_worthwhile(L::AbstractOperators.HCAT)
+    inner = _drop_zero_blocks(L)
+    inner === L || return normal_op_worthwhile(inner)
+    return is_linear(L) && !is_eye(L) && _total_length(size(L, 2)) <= _total_length(size(L, 1))
+end
 
 """
     normal_op_fuses(L::AbstractOperator)
@@ -278,6 +283,8 @@ normal_op_fuses(L::AbstractOperator) = _product_fuses(_adjoint_type(typeof(L)), 
 # The normal operator of an `HCAT` is the block Gram `[Lᵢᴴ Lⱼ]`; it is only worth assembling
 # when *every* one of the N² block products fuses (see `fused_normal_op(::HCAT)`).
 function normal_op_fuses(L::AbstractOperators.HCAT)
+    inner = _drop_zero_blocks(L)
+    inner === L || return normal_op_fuses(inner)
     types = map(typeof, L.A)
     return all(_product_fuses(_adjoint_type(Ti), Tj) for Ti in types, Tj in types)
 end
@@ -299,6 +306,7 @@ function normal_op_applicable(f::SqrNormL2, op::AbstractOperator, disp, λ)
     (λ isa Real && f.lambda isa Real) || return false
     has_disp = !(disp isa Number && iszero(disp))
     (has_disp && !(disp isa AbstractArray)) && return false
+    op = _drop_zero_blocks(op)
     # Same shortcut as `fused_normal_op`, and it has to be here too: this is the predicate the
     # parser scores formulations with, so without it an operator that advertises an optimized
     # normal operator is never even considered for the fold. Both remaining tests reject it --
@@ -339,6 +347,44 @@ reuses_optimized_normalop(op) = AbstractOperators.has_optimized_normalop(op) && 
 _total_length(size_::Tuple{Vararg{Int}}) = prod(size_)
 _total_length(size_::Tuple) = sum(_total_length, size_)
 
+"""
+    _drop_zero_blocks(L)
+
+The one block of an `HCAT` that is not a `Zeros`, when all the others are, and `L` itself
+otherwise.
+
+A term that does not mention every variable of the problem is padded with a `Zeros` block per
+variable it leaves out (`expand`), so a least-squares term on the image alone becomes
+`HCAT(A, Zeros)` once another variable joins the problem. The padding contributes nothing to
+`LᴴL` -- every block product that involves it is zero -- so whether the normal operator fuses,
+whether it is worthwhile and what it costs are all questions about the remaining block. Asking
+them of the padded `HCAT` instead would reject an `A` that qualifies alone: a product with an
+optimized normal operator stays a `Compose`, and the padding widens the domain.
+
+Decided from the types of the blocks, so it constructs nothing.
+"""
+_drop_zero_blocks(L) = L
+function _drop_zero_blocks(L::AbstractOperators.HCAT)
+    keep = _nonzero_blocks(L.A)
+    return length(keep) == 1 ? only(keep) : L
+end
+_nonzero_blocks(::Tuple{}) = ()
+_nonzero_blocks(t::Tuple) = first(t) isa AbstractOperators.Zeros ?
+    _nonzero_blocks(Base.tail(t)) : (first(t), _nonzero_blocks(Base.tail(t))...)
+
+# `N`, the normal operator of the one block of `L` that is not a `Zeros`, placed on the
+# diagonal of `L`'s block Gram, with a `Zeros` block everywhere else.
+_embed_normal_op(L, ::Nothing) = nothing
+function _embed_normal_op(L::AbstractOperators.HCAT, N::AbstractOperator)
+    k = findfirst(A -> !(A isa AbstractOperators.Zeros), L.A)
+    block(i, j) = i == j == k ? N : AbstractOperators.Zeros(
+        AbstractOperators.domain_type(L.A[j]), size(L.A[j], 2),
+        AbstractOperators.domain_type(L.A[i]), size(L.A[i], 2),
+    )
+    rows = ntuple(i -> AbstractOperators.HCAT(ntuple(j -> block(i, j), length(L.A))...), length(L.A))
+    return AbstractOperators.VCAT(rows...)
+end
+
 # The normal operator of an `HCAT` is the block Gram `[Lᵢᴴ Lⱼ]`, assembled as a `VCAT` of
 # `HCAT` rows so that it maps the joint `ArrayPartition` domain onto itself. `Lᴴ * L` does
 # not fuse this on its own, which is why multi-variable terms would otherwise never qualify
@@ -347,8 +393,13 @@ _total_length(size_::Tuple) = sum(_total_length, size_)
 # Only worth it when *every* one of the N² block products fuses: the block form costs N²
 # applications against the 2N of applying the `HCAT` and its adjoint in turn, so a single
 # block left as a `Compose` already makes it the more expensive of the two.
+#
+# A block that is a `Zeros` (see `_drop_zero_blocks`) is left out of both tests, and the
+# normal operator of the block that remains is embedded in the block Gram.
 function fused_normal_op(L::AbstractOperators.HCAT)
     reuses_optimized_normalop(L) && return L' * L
+    inner = _drop_zero_blocks(L)
+    inner === L || return _embed_normal_op(L, fused_normal_op(inner))
     normal_op_worthwhile(L) || return nothing
     rows = ()
     for Li in L.A

@@ -142,7 +142,11 @@ keeps_exact_prox(op, f) = is_aac_diagonal(op) || (f isa IndPoint && _matrix_of(o
 # regardless of shape. See [`reuses_optimized_normalop`](@ref) for why the bypass is not taken
 # on the strength of `has_optimized_normalop` alone.
 normal_op_cost(op, n, m) = n / m
-normal_op_cost(op::AbstractOperators.HCAT, n, m) = reuses_optimized_normalop(op) ? 1.0 : n / m
+function normal_op_cost(op::AbstractOperators.HCAT, n, m)
+    reuses_optimized_normalop(op) && return 1.0
+    inner = _drop_zero_blocks(op)
+    return inner === op ? n / m : normal_op_cost(inner, _total_length(size(inner, 2)), m)
+end
 
 """
     best_formulation(op, f, disp, λ, needs = :any) -> (kind::Symbol, cost::Float64)

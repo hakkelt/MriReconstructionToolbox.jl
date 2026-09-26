@@ -106,6 +106,26 @@ end
         @test g isa SO2.SqrNormL2WithNormalOp
     end
 
+    # A term on one variable of a two-variable problem is padded with a `Zeros` block for the
+    # other. The block that remains decides, so an operator that is overdetermined on its own
+    # variable still qualifies although the padded joint domain is larger than its codomain.
+    @testset "multiple variables, term on one of them" begin
+        x, w = Variable(16), Variable(40)
+        t = ls(randn(24, 16) * x - randn(24))
+        op = SO2.extract_operators((x, w), t)
+        @test op isa AbstractOperators.HCAT
+        @test SO2._drop_zero_blocks(op) === op.A[1]
+        @test SO2._total_length(size(op, 2)) > SO2._total_length(size(op, 1))
+        @test SO2.normal_op_worthwhile(op)
+        @test SO2.best_formulation(op, t.f, SO2.displacement(t), t.lambda)[1] === :normal_op
+        N = SO2.fused_normal_op(op)
+        @test N isa AbstractOperators.VCAT
+        v = ArrayPartition(randn(16), randn(40))
+        @test N * v ≈ op' * (op * v)
+        g = check_against_precompose(op, t.f, SO2.displacement(t), t.lambda, v)
+        @test g isa SO2.SqrNormL2WithNormalOp
+    end
+
     # Only a squared L2 norm is rewritten, only when the normal operator actually fuses,
     # and only when the normal operator is the cheaper of the two formulations.
     @testset "declined" begin
