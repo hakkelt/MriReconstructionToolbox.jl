@@ -379,6 +379,15 @@ end
             @test_throws ArgumentError FixedScaling(-1.0)
 
             scale = MriReconstructionToolbox.get_scale(BartScaling(), acq_with_data, img_true)
+            # The selection-based quantiles are Statistics' `quantile`, to the bit.
+            let quantile = MriReconstructionToolbox.quantile, a = abs.(vec(img_true)),
+                    (m, p, mx) = quantile(a, [0.5, 0.9, 1.0])
+                @test scale == (((mx - p) < 2 * (p - m)) ? p : mx)
+                for n in (1, 2, 7, 1000), q in (0.0, 0.5, 0.9, 1.0)
+                    v = rand(Float32, n)
+                    @test MriReconstructionToolbox._quantile_select!(copy(v), q) == quantile(v, q)
+                end
+            end
             # Only the output shape is checked here, so a single iteration is enough -- 20 iterations
             # bought no extra coverage, just a slower test.
             img_fixed = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 1, reltol = 0.0); scaling = FixedScaling(scale), verbosity = Silent()))

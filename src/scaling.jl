@@ -62,8 +62,24 @@ function get_scale(::NoScaling, acq_data::AcquisitionInfo, x₀)
 end
 
 function get_scale(::BartScaling, acq_data::AcquisitionInfo, x₀)
-    median, p90, max = quantile(abs.(vec(x₀)), [0.5, 0.9, 1.0])
+    v = abs.(vec(x₀))
+    max = maximum(v)
+    median = _quantile_select!(v, 0.5)
+    p90 = _quantile_select!(v, 0.9)
     return ((max - p90) < 2 * (p90 - median)) ? p90 : max
+end
+
+# `quantile(v, p)` (Statistics' default definition, linear interpolation between order statistics)
+# by selecting the two order statistics it interpolates, which is linear in `length(v)`, instead of
+# sorting the range between the smallest and largest `p` asked for. `v` is reordered.
+function _quantile_select!(v::AbstractVector, p::Real)
+    n = length(v)
+    n == 1 && return v[1]
+    h = fma(n, p, oftype(p, 1 - p))
+    j = clamp(trunc(Int, h), 1, n - 1)
+    γ = clamp(h - j, 0, 1)
+    a, b = partialsort!(v, j:(j + 1))
+    return (isfinite(a) && isfinite(b) && a ≈ b) ? a + γ * (b - a) : (1 - γ) * a + γ * b
 end
 
 function get_scale(::MeasurementBasedScaling, acquisition_data::AcquisitionInfo, x₀)
