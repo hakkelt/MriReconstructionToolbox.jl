@@ -32,7 +32,8 @@ L1-wavelet runs FISTA, so only its λ was calibrated (NRMSE 0.279).
 """
 const RADIAL_ADMM_RHO = 2.0e-3
 const RADIAL_LAMBDA = Dict(
-    :tv => 1.0e-3, :wavelet => 3.0e-3, :tgv => 1.0e-3, :lowrank => 3.0e-2, :llr => 3.0e-3, :ttv => 1.0e-3,
+    :tv => 1.0e-3, :atv => 1.0e-3, :wavelet => 3.0e-3, :tgv => 1.0e-3, :lowrank => 3.0e-2, :llr => 3.0e-3,
+    :ttv => 1.0e-3,
 )
 
 """
@@ -43,7 +44,8 @@ const RADIAL_LAMBDA = Dict(
 and its NRMSE are comparable across checkouts regardless of later recalibration.
 """
 const DEFAULT_LAMBDA = Dict(
-    :tv => 0.01, :wavelet => 0.005, :tgv => 0.003, :lowrank => 0.01, :llr => 0.01, :ttv => 0.01,
+    :tv => 0.01, :atv => 0.01, :wavelet => 0.005, :tgv => 0.003, :lowrank => 0.01, :llr => 0.01,
+    :ttv => 0.01,
 )
 
 """
@@ -71,10 +73,15 @@ const WAVELET_LEVELS = parse(Int, get(ENV, "CMP_WAVELET_LEVELS", "3"))
 
 """
     mrt_regularizer(c::BenchCase, method, λ)
+
+`:tv` is the isotropic `λ Σ ‖∇x‖₂` (per voxel), `:atv` the anisotropic `λ Σᵢ ‖Δⁱx‖₁`. They are
+different problems with different optima: on `shepp_logan_3d_8ch_cartesian` the isotropic one
+reaches NRMSE 0.008 where the anisotropic one reaches 0.0033.
 """
 function mrt_regularizer(c::BenchCase, method::Symbol, λ::Real)
     vol = c.family === :volume
     method === :tv && return vol ? TotalVariation3D(λ) : TotalVariation2D(λ)
+    method === :atv && return vol ? AnisotropicTotalVariation3D(λ) : AnisotropicTotalVariation2D(λ)
     method === :wavelet && return vol ?
         L1Wavelet3D(λ; wavelet = MriReconstructionToolbox.WT.db2, levels = WAVELET_LEVELS) :
         L1Wavelet2D(λ; wavelet = MriReconstructionToolbox.WT.db2, levels = WAVELET_LEVELS)

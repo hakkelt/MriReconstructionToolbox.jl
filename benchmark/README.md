@@ -40,8 +40,9 @@ per id. The 3D volume and the cines are **heavy**: one warm-up and one timed run
 case takes the minimum of three runs.
 
 `applicable_methods(case)` lists what is run on a case: the adjoint (or the DCF-weighted gridding
-for radial data) and CG-SENSE for every case, then TV, L1-wavelet and TGV for the static
-Cartesian ones (TV and wavelet for the volume, TV for radial), and global low rank, locally low
+for radial data) and CG-SENSE for every case, then TV (isotropic `tv` and anisotropic `atv`),
+L1-wavelet and TGV for the static Cartesian ones (TV and wavelet for the volume, TV for radial),
+and global low rank, locally low
 rank and temporal TV for the cines. Iteration counts, λ and the ADMM ρ are fixed
 (`utils/mrt_methods.jl`, `CMP_OUTER` / `CMP_CG_ITERS` to override).
 

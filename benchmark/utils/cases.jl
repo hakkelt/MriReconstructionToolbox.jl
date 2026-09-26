@@ -390,14 +390,14 @@ end
 
 Every method name the harness and the comparison suite know, in run order.
 """
-const METHODS = (:adjoint, :gridding, :cgsense, :tv, :wavelet, :tgv, :lowrank, :llr, :ttv)
+const METHODS = (:adjoint, :gridding, :cgsense, :tv, :atv, :wavelet, :tgv, :lowrank, :llr, :ttv)
 
 """
     applicable_methods(c::BenchCase) -> Vector{Symbol}
 
 The methods that make sense for case `c`: a direct reconstruction (adjoint for Cartesian, DCF
-gridding for radial), CG-SENSE where there is more than one coil, spatial sparsity (TV, L1-wavelet,
-TGV) for static images, and temporal priors (global and locally low rank, temporal TV) for cine.
+gridding for radial), CG-SENSE where there is more than one coil, spatial sparsity (isotropic and
+anisotropic TV, L1-wavelet, TGV) for static images, and temporal priors (global and locally low rank, temporal TV) for cine.
 TGV is 2D-only here (the 3D variant costs an order of magnitude more per iteration than anything
 else in the catalog).
 """
@@ -407,11 +407,11 @@ function applicable_methods(c::BenchCase)
     if c.family === :cine
         append!(ms, (:lowrank, :llr, :ttv))
     elseif c.trajectory === :noncartesian
-        push!(ms, :tv)
+        append!(ms, (:tv, :atv))
     elseif c.family === :volume
-        append!(ms, (:tv, :wavelet))
+        append!(ms, (:tv, :atv, :wavelet))
     else
-        append!(ms, (:tv, :wavelet, :tgv))
+        append!(ms, (:tv, :atv, :wavelet, :tgv))
     end
     return ms
 end

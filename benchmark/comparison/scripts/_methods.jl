@@ -11,7 +11,7 @@ The row label of each method (`method` column of a result).
 """
 const METHOD_LABEL = Dict(
     :adjoint => "Adjoint", :gridding => "DCF Adjoint (Gridding)", :cgsense => "CG-SENSE",
-    :tv => "Total Variation", :wavelet => "L1-Wavelet", :tgv => "TGV",
+    :tv => "Total Variation", :atv => "Anisotropic TV", :wavelet => "L1-Wavelet", :tgv => "TGV",
     :lowrank => "Global Low-Rank", :llr => "Locally Low-Rank", :ttv => "Temporal TV",
 )
 

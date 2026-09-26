@@ -12,9 +12,9 @@
 #     inner iterations, so at ρ = 0.05 `-i 20` buys 18 outer iterations whose x-update never runs
 #     and an NRMSE of 0.096, where MRT's 20 genuine iterations reach 0.003. Neither number is
 #     wrong; they are answers to different questions.
-#   * The four TV functionals differ (MRT isotropic + mirrored boundary, SigPy anisotropic +
-#     circular, MRIReco `GradientOp` anisotropic + truncated, BART joint), so no single λ is
-#     comparable and each toolkit needs its own.
+#   * Even the TV rows that share a penalty (isotropic: MRT, BART, SigPy; anisotropic: MRT, BART,
+#     SigPy, MRIReco) differ at the boundary (MRT mirrored, SigPy circular, MRIReco `GradientOp`
+#     truncated), so no single λ is comparable and each toolkit needs its own.
 #   * BART and MRIReco additionally pay one-off Lipschitz estimates on their FISTA paths (`-e` is
 #     30 `𝒜ᴴ𝒜`; `power_iterations` is 2–30) that a per-iteration accounting hides.
 #

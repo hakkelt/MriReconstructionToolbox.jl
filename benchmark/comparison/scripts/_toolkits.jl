@@ -236,7 +236,7 @@ end
     mrireco(method, mkacq, smaps, reconSize; λ, iterations, ρ) -> (time_ms, image)
 
 A static (2D or 3D) reconstruction of the acquisition `mkacq()` builds, with maps `smaps`
-(`(x, y, [z,] coil)`). `method ∈ (:cgsense, :tv, :wavelet, :nuclear, :llr)`. TGV / temporal-TV are
+(`(x, y, [z,] coil)`). `method ∈ (:cgsense, :atv, :wavelet, :nuclear, :llr)`. TGV / temporal-TV are
 unsupported (throw). The acquisition is built inside the timed region, as `reconstruction`'s input.
 Runs with `vary_rho = :none`, `iterationsCG = CMP_CG_ITERS` and zero tolerances so the full
 iteration budget is spent (`RegularizedLeastSquares.filterKwargs` drops the keys a given solver
@@ -255,7 +255,12 @@ function mrireco(
     # `regTrafo` stays `opEye` for everything except TV — see the TV branch.
     reg, solver, sparse, regTrafo = if method === :cgsense
         (L2Regularization(0.0), MR_CGNR, nothing, nothing)
-    elseif method === :tv
+    elseif method === :atv
+        # RegularizedLeastSquares' TV is anisotropic in every form: `L1Regularization` of
+        # `GradientOp`, and `TVRegularization`, whose dual projection clips each difference on its
+        # own (`tv_restrictMagnitude!`). `L21Regularization` groups `x[i:n:end]` of the stacked
+        # differences, which are not the differences of one pixel, so isotropic TV has no row.
+        #
         # RegularizedLeastSquares' own `ADMM` docstring (`src/ADMM.jl:74`) is explicit: "for a TV
         # penalty, you should NOT set `reg=TVRegularization`, but instead use
         # `reg=L1Regularization(λ), regTrafo=GradientOp(...)`". Passing `TVRegularization` as `reg`
@@ -370,12 +375,43 @@ _sp_rev(a) = parent(permutedims(CMP_CTYPE.(a), ndims(a):-1:1))
 _sp_k(ksp) = _sp_rev(ksp)
 _sp_s(smaps) = _sp_rev(smaps)
 
+# Isotropic TV in SigPy. SigPy ships only the anisotropic one (`TotalVariationRecon`: an `L1Reg`
+# prox on `FiniteDifference`, whose output stacks the per-axis differences along axis 0) and no
+# joint (group) threshold. `_IsoTVRecon` is `TotalVariationRecon` with that prox replaced by the
+# joint soft threshold over axis 0, the prox of `λ Σ ‖∇x‖₂`; data weighting, operator and solver
+# are built exactly as `TotalVariationRecon` builds them.
+py"""
+import numpy as np
+import sigpy as sp
+import sigpy.mri as spm
+from sigpy.mri.app import _estimate_weights
+
+class _JointL1(sp.prox.Prox):
+    '''Soft thresholding of the l2 norm over axis 0: the prox of lamda * sum ||x[:, i]||_2.'''
+    def __init__(self, shape, lamda):
+        self.lamda = lamda
+        super().__init__(shape)
+
+    def _prox(self, alpha, input):
+        n = np.sqrt(np.sum(np.abs(input) ** 2, axis=0, keepdims=True))
+        return input * np.maximum(1 - alpha * self.lamda / np.maximum(n, 1e-30), 0)
+
+def _IsoTVRecon(y, mps, lamda, coord=None, **kwargs):
+    weights = _estimate_weights(y, None, coord)
+    if weights is not None:
+        y = y * weights ** 0.5
+    A = spm.linop.Sense(mps, coord=coord, weights=weights)
+    G = sp.linop.FiniteDifference(A.ishape)
+    return sp.app.LinearLeastSquares(A, y, proxg=_JointL1(G.oshape, lamda), G=G, **kwargs)
+"""
+
 """
     sigpy_recon(method, ksp, smaps; λ, iterations) -> (time_ms, image)
 
 `ksp` is a zero-filled Cartesian `(kx, ky, coil)` or `(kx, ky, kz, coil)` array and `smaps` the
 matching maps; SigPy's apps are dimension-agnostic, so the 3D volume goes through the same calls.
-`method ∈ (:adjoint, :cgsense, :tv, :wavelet)`. TGV / low-rank unsupported here (throw).
+`method ∈ (:adjoint, :cgsense, :tv, :atv, :wavelet)`: `:atv` is SigPy's `TotalVariationRecon`,
+`:tv` the isotropic `_IsoTVRecon`. TGV / low-rank unsupported here (throw).
 Only **TV** is forced onto ADMM (`rho = ρ`, `max_cg_iter = CMP_CG_ITERS`) — matching the
 ADMM the other toolkits use for TV; SigPy would otherwise default to PDHG. **L1-wavelet** keeps
 SigPy's natural proximal-gradient solver (FISTA-like), as MRT / MRIReco / BART also use FISTA for
@@ -388,8 +424,9 @@ function sigpy_recon(method::Symbol, ksp3, smaps3; λ = 0.0, iterations = 10, ρ
         () -> S.H(y)
     elseif method === :cgsense
         () -> sp_app.SenseRecon(y, mps; max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
-    elseif method === :tv
-        () -> sp_app.TotalVariationRecon(
+    elseif method in (:tv, :atv)
+        tv = method === :tv ? py"_IsoTVRecon" : sp_app.TotalVariationRecon
+        () -> tv(
             y, mps, λ; solver = "ADMM", rho = ρ,
             max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
         ).run()
@@ -748,14 +785,17 @@ trajectories of its family.
 | toolkit | static (2D, per slice, 3D) | cine |
 |---|---|---|
 | BART | everything | everything |
-| SigPy | adjoint / gridding, CG-SENSE, TV, L1-wavelet | adjoint / gridding, CG-SENSE, global low-rank, temporal TV |
-| MRIReco | adjoint / gridding, CG-SENSE, TV, L1-wavelet | adjoint / gridding, CG-SENSE, global / locally low-rank |
+| SigPy | adjoint / gridding, CG-SENSE, isotropic / anisotropic TV, L1-wavelet | adjoint / gridding, CG-SENSE, global low-rank, temporal TV |
+| MRIReco | adjoint / gridding, CG-SENSE, anisotropic TV, L1-wavelet | adjoint / gridding, CG-SENSE, global / locally low-rank |
 | MIRT | adjoint / gridding, CG-SENSE | adjoint / gridding, CG-SENSE, global low-rank |
 
 What is absent and why: TGV exists only in BART and MRT. SigPy and MIRT have no locally low-rank
 prox, and building one here would compare this file's block convention rather than the toolkits
 (see the low-rank section). MRIReco applies a regularizer's transform per frame, so it cannot express
-temporal TV (see `mrireco_dynamic`). MIRT ships neither a TV nor a wavelet prox.
+temporal TV (see `mrireco_dynamic`). MIRT ships neither a TV nor a wavelet prox. Every TV of
+RegularizedLeastSquares is anisotropic, so MRIReco has no isotropic TV row (see `mrireco`); BART's
+anisotropic row sums one `-R T` term per axis, and SigPy's isotropic one replaces the prox of its
+`TotalVariationRecon` with a joint threshold (`_IsoTVRecon`).
 """
 function supports(tk::Symbol, c::BenchCase, m::Symbol)
     m in applicable_methods(c) || return false
@@ -763,13 +803,13 @@ function supports(tk::Symbol, c::BenchCase, m::Symbol)
     fam = c.family
     if tk === :bart
         cart && return true
-        return fam === :cine || m in (:gridding, :cgsense, :tv)
+        return fam === :cine || m in (:gridding, :cgsense, :tv, :atv)
     elseif tk === :sigpy
         fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank, :ttv)
-        return m in (:adjoint, :gridding, :cgsense, :tv, :wavelet)
+        return m in (:adjoint, :gridding, :cgsense, :tv, :atv, :wavelet)
     elseif tk === :mrireco
         fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank, :llr)
-        return m in (:adjoint, :gridding, :cgsense, :tv, :wavelet)
+        return m in (:adjoint, :gridding, :cgsense, :atv, :wavelet)
     elseif tk === :mirt
         fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank)
         return m in (:adjoint, :gridding, :cgsense)
@@ -785,11 +825,11 @@ whether a ρ is a parameter of its row. L1-wavelet runs FISTA everywhere, CG-SEN
 only regularized row POGM.
 """
 function uses_admm(tk::Symbol, c::BenchCase, m::Symbol)
-    m in (:tv, :tgv, :lowrank, :llr, :ttv) || return false
+    m in (:tv, :atv, :tgv, :lowrank, :llr, :ttv) || return false
     tk === :mrt && return true
     tk === :bart && return true
-    tk === :sigpy && return m in (:tv, :lowrank, :ttv)
-    tk === :mrireco && return m in (:tv, :lowrank, :llr)
+    tk === :sigpy && return m in (:tv, :atv, :lowrank, :ttv)
+    tk === :mrireco && return m in (:atv, :lowrank, :llr)
     return false
 end
 
@@ -848,6 +888,10 @@ function bart_cmd(
     admm = "-F -i $budget -u $ρ -C $CMP_CG_ITERS"
     m === :cgsense && return "pics -S -w 1 -i $maxit"
     m === :tv && return "pics -S -w 1 $admm -R T:$sp:0:$λ"
+    # `-R T` thresholds jointly over its gradient axis (`src/grecon/optreg.c`), so it is isotropic
+    # over the axes of its flags; one term per axis leaves a size-1 gradient axis, whose joint
+    # threshold is the plain L1 of that axis' differences.
+    m === :atv && return "pics -S -w 1 $admm " * join(("-R T:$(1 << (d - 1)):0:$λ" for d in 1:(c.family === :volume ? 3 : 2)), " ")
     m === :wavelet && return "pics -S -w 1 -e -i $maxit -R W:$sp:0:$λ"
     m === :tgv && return "pics -S -w 1 $admm -R G:3:0:$λ"
     m === :lowrank && return "pics -S -w 1 -m $admm -n -b $(maximum(c.image_size)) -R L:3:3:$λ"
@@ -943,7 +987,8 @@ end
     sigpy_noncartesian(method, c; λ, iterations) -> (time_ms, image)
 
 SigPy's NUFFT path for a single-slice non-Cartesian case, on `_sp_coord(c)`. `:gridding` is
-`Sense(mps, coord)ᴴ (dcf · y)`; `:cgsense` and `:tv` are the SigPy apps given `coord`.
+`Sense(mps, coord)ᴴ (dcf · y)`; `:cgsense`, `:atv` and `:tv` are the apps of `sigpy_recon` given
+`coord`.
 """
 function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = CMP_RHO)
     ns, nsp = size(c.traj, 2), size(c.traj, 3)
@@ -957,8 +1002,9 @@ function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, 
         () -> S.H(yw)
     elseif m === :cgsense
         () -> sp_app.SenseRecon(y, mps; coord, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
-    elseif m === :tv
-        () -> sp_app.TotalVariationRecon(
+    elseif m in (:tv, :atv)
+        tv = m === :tv ? py"_IsoTVRecon" : sp_app.TotalVariationRecon
+        () -> tv(
             y, mps, λ; coord, solver = "ADMM", rho = ρ,
             max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
         ).run()
