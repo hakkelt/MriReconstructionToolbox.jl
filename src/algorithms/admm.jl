@@ -46,6 +46,8 @@ See also: [`ADMM`](@ref).
 - `b=nothing`: measurement vector. If `A` is provided, `b` must also be provided.
 - `AHA=nothing`: the normal operator `AᴴA`, if the caller already holds one. Left `nothing`,
   it is built from `A`; passing one that is not `A' * A` solves a different problem.
+- `AHb=nothing`: `Aᴴb`, if the caller already holds it. Left `nothing`, it is computed as
+  `A' * b`.
 - `g=()`: tuple of proximable regularization functions
 - `B=()`: tuple of regularization operators
 - `P=nothing`: preconditioner for CG (optional)
@@ -83,6 +85,7 @@ function ADMMIteration(;
 	A=nothing,
 	b=nothing,
 	AHA=nothing,
+	AHb=nothing,
 	g=(),
 	B=nothing,
 	rho=nothing,
@@ -118,7 +121,10 @@ function ADMMIteration(;
 	end
 	y0, z0 = prepare_initial_duals(Val(length(g)), B, x0, y0, z0)
 
-	AHb = isnothing(A) ? nothing : A' * b
+	if !isnothing(AHb) && isnothing(A)
+		throw(ArgumentError("AHb was given without A"))
+	end
+	AHb = isnothing(A) ? nothing : isnothing(AHb) ? A' * b : AHb
 	if !isnothing(AHb) && size(AHb) != size(x0)
 		throw(ArgumentError("A'b must have the same size as x0"))
 	end
@@ -563,7 +569,7 @@ end
 
 function get_assumptions(::Type{<:ADMMIteration})
 	AssumptionGroup(
-		LeastSquaresTerm(:A => (is_linear,), :b, :AHA),
+		LeastSquaresTerm(:A => (is_linear,), :b, :AHA, :AHb),
 		RepeatedOperatorTerm(:g => (is_proximable,), :B => (is_linear,)),
 	)
 end

@@ -181,4 +181,27 @@ using Random
         @test xp_aha == xp
         @test xp ≈ x
     end
+
+    @testset "CGNR with a caller-supplied Aᴴb" begin
+        Random.seed!(0)
+        A = randn(ComplexF64, 80, 50)
+        b = rand(ComplexF64, 80)
+        x0 = zeros(ComplexF64, 50)
+        AHb = A' * b
+        @test ProximalAlgorithms.CGNRIteration(; x0, A, b, AHb).b === AHb
+
+        x, it = ProximalAlgorithms.CGNR(; x0, A, b, maxit = 100, tol = 0.0)()
+        x_ahb, it_ahb = ProximalAlgorithms.CGNR(; x0, A, b, AHb, maxit = 100, tol = 0.0)()
+        @test x_ahb == x
+        @test it_ahb == it
+        # The supplied vector is the right-hand side actually solved for, not `A' * b`.
+        x_zero, _ = ProximalAlgorithms.CGNR(; x0, A, b, AHb = zero(AHb), maxit = 100, tol = 0.0)()
+        @test iszero(x_zero)
+
+        P = Diagonal(diag(A' * A))
+        xp, _ = ProximalAlgorithms.CGNR(; x0, A, b, P, maxit = 100, tol = 0.0)()
+        xp_ahb, _ = ProximalAlgorithms.CGNR(; x0, A, b, AHb, P, maxit = 100, tol = 0.0)()
+        @test ProximalAlgorithms.PCGNRIteration(; x0, A, b, AHb, P).b === AHb
+        @test xp_ahb == xp
+    end
 end

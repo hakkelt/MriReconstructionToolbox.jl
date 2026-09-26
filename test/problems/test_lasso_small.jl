@@ -317,6 +317,12 @@ using ProximalAlgorithms:
             x_aha, it_aha = solver_aha(; x0, A, b, g, AHA = A' * A)
             @test x_aha ≈ x_admm
             @test it_aha == it_admm
+
+            # Likewise for `Aᴴb`.
+            solver_ahb = ProximalAlgorithms.ADMM(tol = 1e-5, maxit=500, penalty_sequence = ps)
+            x_ahb, it_ahb = solver_ahb(; x0, A, b, g, AHb = A' * b)
+            @test x_ahb ≈ x_admm
+            @test it_ahb == it_admm
         end
     end
 
