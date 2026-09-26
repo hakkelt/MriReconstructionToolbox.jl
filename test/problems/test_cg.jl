@@ -23,6 +23,23 @@ using Random
         @test norm(A*x - b) < 1e-6
     end
     
+    # A caller may hand the state's own iterate in as `x0` to warm-start in place, as ADMM's
+    # x-update does; the reset then leaves it where it is instead of copying it onto itself.
+    @testset "x0 is the state's own iterate" begin
+        n = 50
+        A = rand(n, n)
+        A = A'A + I
+        b = rand(n)
+        for P in (nothing, Diagonal(diag(A)))
+            state = isnothing(P) ? ProximalAlgorithms.CGState(zeros(n), b) : ProximalAlgorithms.PCGState(zeros(n), b)
+            state.x .= 1.0
+            kw = isnothing(P) ? (;) : (; P)
+            x, _ = ProximalAlgorithms.CG(; x0 = state.x, A, b, state, kw...)()
+            @test x === state.x
+            @test norm(A * x - b) < 1e-6
+        end
+    end
+
     @testset "Complex inputs" begin
         n = 100
         A = rand(ComplexF64, n,n)
