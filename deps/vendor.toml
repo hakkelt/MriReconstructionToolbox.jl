@@ -276,6 +276,13 @@ branch = "perf/wavelet-threads"
 parent = "unified-threading"
 pr = ""
 
+# The Toeplitz normal operator of an `NFFTOp` plans its FFT with the NFFT plan's own planner rigor
+# instead of always `ESTIMATE`. `unified-threading` owns the code and is frozen.
+[[AbstractOperators.stack]]
+branch = "perf/nfft-planner-flags"
+parent = "unified-threading"
+pr = ""
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
