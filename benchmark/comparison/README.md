@@ -8,10 +8,13 @@ harness's job (`benchmark/run.jl`), not this suite's.
 ## Python toolkits
 
 SigPy and MRpro run in-process through PyCall, in the one interpreter PyCall was built against,
-which needs Python ≥ 3.10 (MRpro's floor). A CPU-only environment:
+which needs Python ≥ 3.10 (MRpro's floor). PyCall loads that interpreter's `libpython`, so on a
+cluster it must exist on the compute nodes too: a system Python of the login node may not. A
+standalone build on shared storage is. A CPU-only environment:
 
 ```sh
-uv venv -p python3.12 /path/to/venvs/py312
+UV_PYTHON_INSTALL_DIR=/path/to/uv-python uv python install 3.12
+uv venv -p /path/to/uv-python/cpython-3.12.*/bin/python3.12 /path/to/venvs/py312
 uv pip install -p /path/to/venvs/py312 "numpy<2" sigpy numba scipy
 uv pip install -p /path/to/venvs/py312 torch torchvision --index-url https://download.pytorch.org/whl/cpu
 uv pip install -p /path/to/venvs/py312 mrpro
