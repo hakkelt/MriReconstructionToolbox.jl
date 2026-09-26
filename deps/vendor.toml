@@ -283,6 +283,13 @@ branch = "perf/nfft-planner-flags"
 parent = "unified-threading"
 pr = ""
 
+# `is_AAc_diagonal`/`is_AcA_diagonal` of a `MatrixOp` reject on a sample of row (column) pairs
+# before forming the Gram matrix, with a device method in `GpuExt`.
+[[AbstractOperators.stack]]
+branch = "perf/matrixop-gram-diagonal-sample"
+parent = "gpu-safe-operator-metadata"
+pr = ""
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
@@ -424,6 +431,13 @@ branch = "feat/affine-assumptions"
 parent = "master"
 pr = ""
 
+# CG's reset skips the copy when `x0` is its state's own iterate (ADMM's warm start), which a
+# device backend may reject as overlapping. `master` owns the code and is frozen.
+[[ProximalAlgorithms.stack]]
+branch = "fix/cg-self-copy"
+parent = "master"
+pr = ""
+
 # `pogm-algorithm` is deliberately absent: it added POGM as a `pogm::Bool` variant of
 # `FastForwardBackward`, and `master` (#100) supersedes it with a `src/algorithms/pogm.jl` of its
 # own. Merging it would only re-add the old path. The branch is still on the fork, unmerged.
@@ -467,5 +481,12 @@ pr = ""
 # its normal operator by the block it does mention.
 [[StructuredOptimization.stack]]
 branch = "perf/padded-normal-op"
+parent = "master"
+pr = ""
+
+# The parser asks `AbstractOperators.is_AAc_diagonal` directly; its own sampled wrapper moved
+# there (AbstractOperators `perf/matrixop-gram-diagonal-sample`).
+[[StructuredOptimization.stack]]
+branch = "refactor/aac-diagonal-in-ao"
 parent = "master"
 pr = ""
