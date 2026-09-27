@@ -15,7 +15,7 @@ of in the image itself.
   a high-quality image of the same anatomy is already available: a previous time frame or contrast, a fully
   sampled pre-contrast scan, or a temporal average of a dynamic series.
 - The reference must be in the same units and scaling as the reconstructed image. When automatic data
-  scaling is used (see [`BartScaling`](@ref) and friends), the reference is rescaled together with the
+  scaling is used (see [`QuantileScaling`](@ref) and friends), the reference is rescaled together with the
   regularization parameter.
 - Because the reference has the size of the full image, this term blocks
   [task splitting](../high-level/task_splitting.md) over batch dimensions.

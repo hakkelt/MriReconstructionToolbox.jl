@@ -457,7 +457,7 @@ depending on `λ` at all. Multiplying the penalty by `‖𝒜‖²` makes a give
 thing for every encoding.
 
 Solving the normalized problem `𝒜/‖𝒜‖`, `y/‖𝒜‖` instead is the same thing in other coordinates:
-with `BartScaling` recomputed on the normalized data it has the same effective `λ`, and its
+with the data scaling recomputed on the normalized data it has the same effective `λ`, and its
 fixed-`ρ` iterates are these. Measured on radial cine (low rank, locally low rank; 17, 34 and 68
 spokes) and on 2D radial and Cartesian TV, 20 iterations, the two agree to four digits of NRMSE
 at every `λ`, so the cheaper of the two is the one kept.

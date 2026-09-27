@@ -520,7 +520,7 @@ end
     using MriReconstructionToolbox: NonCartesianAcquisitionInfo
 
     # Multiplying the sensitivity maps and the data by `c` multiplies the encoding by `c` and
-    # leaves the problem unchanged, once `BartScaling` is recomputed. A penalty relative to the
+    # leaves the problem unchanged, once the data scaling is recomputed. A penalty relative to the
     # curvature makes ADMM's iterates unchanged too; an absolute one does not, which is how a
     # radial NFFT encoding (curvature ~10⁶) used to make the result independent of `λ`.
     nx, ny = 32, 32

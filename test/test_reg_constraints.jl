@@ -94,9 +94,11 @@ end
     data = add_noise(simulate_acquisition(x_true, acq); noise_std = 0.08f0)
 
     nrmse(rec) = norm(rec .- x_true) / norm(x_true)
+    # 3e-2 under `BartScaling`, in the default `QuantileScaling`'s units for this data.
+    λ = 2.34f-2
 
     tv_only = reconstruct(
-        data, IterativeReconstruction(TotalVariation2D(3.0f-2); algorithm = ADMM(maxit = 50));
+        data, IterativeReconstruction(TotalVariation2D(λ); algorithm = ADMM(maxit = 50));
         verbosity = Silent(),
     )
     @test minimum(real.(tv_only)) < 0  # TV alone overshoots negative -- the premise this test checks
@@ -106,7 +108,7 @@ end
     tv_plus_nn = reconstruct(
         data,
         IterativeReconstruction(
-            TotalVariation2D(3.0f-2), NonNegative(; complex_handling = :real);
+            TotalVariation2D(λ), NonNegative(; complex_handling = :real);
             algorithm = ADMM(maxit = 50), on_iteration = cb,
         );
         verbosity = Silent(),

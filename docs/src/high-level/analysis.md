@@ -22,4 +22,4 @@ g_factor_map = res.g_factor
 ```
 
 > [!IMPORTANT]
-> `pseudo_replica` requires `scaling = FixedScaling(...)` or `scaling = NoScaling()`. Data-dependent percentile scaling (`BartScaling()`) rescales each noisy replica independently by its own noise quantile, distorting inter-replica variance.
+> `pseudo_replica` requires `scaling = FixedScaling(...)` or `scaling = NoScaling()`. Data-dependent scaling (the default `QuantileScaling()`, or `BartScaling()`) rescales each noisy replica independently by its own noise quantile, distorting inter-replica variance.

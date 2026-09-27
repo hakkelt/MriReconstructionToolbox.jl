@@ -70,7 +70,8 @@ export Tikhonov, LLR
 export build_model, reconstruct, ReconstructionConfig, SequentialExecutor, MultiThreadingExecutor
 export Silent, ProgressBar, Verbose
 export IterationTrace
-export BartScaling, FixedScaling, MeasurementBasedScaling, NoScaling
+export BartScaling, FixedScaling, KSpaceNormScaling, MaxScaling, MeasurementBasedScaling, NoiseLevelScaling
+export NoScaling, QuantileScaling, StdScaling, SystemMatrixBasedScaling
 export ISTA, FISTA, POGM, ADMM, DouglasRachford, CG, CGNR, ChambollePock
 # Established second name for `ChambollePock` (NAMING.md rule 2.1)
 export PDHG

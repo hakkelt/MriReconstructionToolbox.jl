@@ -86,6 +86,14 @@ end
     @test_opt target_modules = (MRT,) BartScaling()
     @test_opt target_modules = (MRT,) MeasurementBasedScaling()
     @test_opt target_modules = (MRT,) NoScaling()
+    @test_opt target_modules = (MRT,) QuantileScaling()
+    @test_opt target_modules = (MRT,) KSpaceNormScaling()
+    for s in (
+            QuantileScaling(), BartScaling(), MaxScaling(), StdScaling(), NoiseLevelScaling(),
+            MeasurementBasedScaling(), KSpaceNormScaling(),
+        )
+        @test_opt target_modules = (MRT,) MriReconstructionToolbox.get_scale(s, cart_info, img)
+    end
 end
 
 @testitem "JET exported API @test_call" tags = [:quality, :jet] begin
@@ -139,6 +147,12 @@ end
     @test_call target_modules = (MRT,) BartScaling()
     @test_call target_modules = (MRT,) MeasurementBasedScaling()
     @test_call target_modules = (MRT,) NoScaling()
+    @test_call target_modules = (MRT,) QuantileScaling(0.95)
+    @test_call target_modules = (MRT,) KSpaceNormScaling(10)
+    @test_call target_modules = (MRT,) MaxScaling()
+    @test_call target_modules = (MRT,) StdScaling()
+    @test_call target_modules = (MRT,) NoiseLevelScaling()
+    @test_call target_modules = (MRT,) SystemMatrixBasedScaling()
 end
 
 @testitem "Benchmark case catalog smoke test" tags = [:quality] begin

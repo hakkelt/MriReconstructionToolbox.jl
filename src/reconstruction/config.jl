@@ -9,7 +9,9 @@ algorithm — belongs on that method's constructor instead, not here. `Reconstru
 keywords rather than silently ignoring them.
 
 Fields (with defaults):
-- `scaling::Scaling = BartScaling()` — scaling applied to operators/data (see also `NoScaling`, `MeasurementBasedScaling`, `FixedScaling`)
+- `scaling::Scaling = QuantileScaling()` — scaling applied to operators/data (see also `NoScaling`,
+  `BartScaling`, `MaxScaling`, `StdScaling`, `NoiseLevelScaling`, `MeasurementBasedScaling`,
+  `KSpaceNormScaling`, `SystemMatrixBasedScaling`, `FixedScaling`)
 - `verbosity::Verbosity = Silent()` — output mode: `Silent()`, `ProgressBar()` or `Verbose()`
 - `threaded::Bool = (Threads.nthreads() > 1)` — enable threaded execution when available
 - `task_executor::Union{Nothing,ReconstructionExecutor} = nothing` — override executor for task splitting
@@ -54,7 +56,7 @@ struct ReconstructionConfig
     slice_id::Union{Nothing, String}
 
     function ReconstructionConfig(;
-            scaling::Scaling = BartScaling(),
+            scaling::Scaling = QuantileScaling(),
             verbosity = Silent(),
             threaded::Bool = nthreads() > 1,
             task_executor::Union{Nothing, ReconstructionExecutor} = nothing,

@@ -107,7 +107,7 @@ nothing # hide
 
 ```@example recon
 # Method 2: a ReconstructionConfig object, reusable across methods
-config = ReconstructionConfig(; verbosity = Silent(), scaling = BartScaling())
+config = ReconstructionConfig(; verbosity = Silent(), scaling = QuantileScaling())
 x2 = reconstruct(data, IterativeReconstruction(L2Image(0.01); maxit = 50, reltol = 1e-5); config = config)
 nothing # hide
 ```
@@ -160,16 +160,67 @@ Verbose
 
 #### Scaling
 
+The k-space data are divided by a scale `s` before the solve and the image is multiplied by it
+afterwards, so a regularization weight `λ` acts on data of a fixed intensity. For a positively
+homogeneous penalty (every norm-based regularizer) dividing the data by `s` is the same problem as
+multiplying `λ` by `s`, so each rule below is equally a rule for the effective `λ`. Every rule but
+`SystemMatrixBasedScaling`, `FixedScaling` and `NoScaling` is proportional to the data, which is
+what makes the result independent of the data's intensity: `reconstruct` of `c·y` is `c` times
+`reconstruct` of `y`.
+
+| scaling | `s` | source | robust to a few hot voxels |
+|---|---|---|---|
+| [`QuantileScaling`](@ref) (default) | 99th percentile of `\|𝒜ᴴy\|` | percentile normalization | yes, to about 1 % of the voxels |
+| [`BartScaling`](@ref) | 90th percentile of `\|𝒜ᴴy\|`, or its maximum when the spread is large | BART `pics` | no when it selects the maximum |
+| [`MaxScaling`](@ref) | maximum of `\|𝒜ᴴy\|` | fastMRI | no |
+| [`StdScaling`](@ref) | standard deviation of `𝒜ᴴy` | fastMRI baselines | partly |
+| [`NoiseLevelScaling`](@ref) | noise level of `𝒜ᴴy` (MAD of the finest Haar details) | Donoho and Johnstone 1994 | yes |
+| [`MeasurementBasedScaling`](@ref) | mean `\|y\|` | RegularizedLeastSquares.jl | yes |
+| [`KSpaceNormScaling`](@ref) | `‖y‖₂ / 100` | BART `nlinv` | yes |
+| [`SystemMatrixBasedScaling`](@ref) | `trace(𝒜ᴴ𝒜) / N` | RegularizedLeastSquares.jl | not data-dependent |
+| [`FixedScaling`](@ref) | a given number | | |
+| [`NoScaling`](@ref) | 1 | | |
+
+The default was chosen on the benchmark harness, whose synthetic cases span 1- and 8-coil 2D,
+radial, 3D and multi-slice Cartesian, and Cartesian and radial cine. For each penalty one `λ` was
+used for all cases, and the NRMSE it reached was compared with each case's own best `λ`:
+
+| scaling | mean excess NRMSE | worst excess NRMSE | cost on a 128³ × 8 coil volume |
+|---|---|---|---|
+| `QuantileScaling` | 9.9 % | 45 % | 1.9 ms |
+| `StdScaling` | 9.0 % | 54 % | 2.9 ms |
+| `MaxScaling` | 11.5 % | 74 % | 2.1 ms |
+| `BartScaling` | 12.0 % | 95 % | 5.4 ms |
+| `NoiseLevelScaling` | 21 % | 166 % | 4.3 ms |
+| `SystemMatrixBasedScaling` | 35 % | 202 % | 543 ms |
+| `MeasurementBasedScaling` | 490 % | 6500 % | 2.7 ms |
+| `KSpaceNormScaling` | 630 % | 7200 % | 2.2 ms |
+
+`QuantileScaling`, `StdScaling`, `MaxScaling` and `BartScaling` are close on these cases, which
+share one noise model. `QuantileScaling` is the default because it keeps that accuracy while a
+single hot voxel moves `MaxScaling`, and `BartScaling` whenever it selects the maximum, by the
+voxel's own factor. The rules that read only the k-space or only the operator do not see the gain
+between k-space and image, which differs between a Cartesian and a radial encoding by six orders of
+magnitude (`‖𝒜‖² ≈ 1` against `≈ 2·10⁶`).
+
 ```@docs
-NoScaling
+QuantileScaling
 BartScaling
+MaxScaling
+StdScaling
+NoiseLevelScaling
 MeasurementBasedScaling
+KSpaceNormScaling
+SystemMatrixBasedScaling
+FixedScaling
+NoScaling
 ```
 
 ```@example recon
 # Data scaling strategies
-config_bart = ReconstructionConfig(scaling=BartScaling())
-config_none = ReconstructionConfig(scaling=NoScaling())
+config_default = ReconstructionConfig(scaling = QuantileScaling())
+config_bart = ReconstructionConfig(scaling = BartScaling())
+config_none = ReconstructionConfig(scaling = NoScaling())
 nothing # hide
 ```
 

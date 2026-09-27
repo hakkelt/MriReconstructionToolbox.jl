@@ -143,7 +143,7 @@ multiplied by it (the Rayleigh quotient above, or $L^2$ where $L$ was estimated)
 is seven orders of magnitude too small for radial data: $\rho/\|\mathcal{A}\|^2$ falls below
 `Float32` rounding, the proximal steps never reach $x$, and the image stops depending on `λ`
 (measured on radial cine with a low-rank prior: bit-identical images for `λ` from $10^{-4}$ to 1).
-This is the same as solving the normalized problem $\mathcal{A}/L$, $y/L$ with `BartScaling`
+This is the same as solving the normalized problem $\mathcal{A}/L$, $y/L$ with the data scaling
 recomputed — which leaves the effective `λ` unchanged — and measured the same to four digits of
 NRMSE, radial and Cartesian, at every `λ` tried. ADMM's default adaptive penalty, used when no
 `rho` is given, starts from 1 and adapts to the problem's scale by itself; starting it from

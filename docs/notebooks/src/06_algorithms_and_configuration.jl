@@ -507,14 +507,16 @@ println(length(messages), " messages captured; first: ", first(messages))
 # The stopping tolerance, by contrast, is already scale-free: it is relative to
 # `maximum(abs, x₀)` (§3), so it needs no help from the scaling.
 #
-# `BartScaling` divides by a high quantile of the direct reconstruction (the convention BART
+# `QuantileScaling`, the default, divides by the 99th percentile of the direct reconstruction's
+# magnitude; `BartScaling` divides by its 90th percentile or its maximum (the convention BART
 # uses), `MeasurementBasedScaling` derives the factor from the measurements,
-# `FixedScaling` takes a number you supply, and `NoScaling` leaves the data alone. The output is
+# `FixedScaling` takes a number you supply, and `NoScaling` leaves the data alone. The
+# reconstruction guide lists the others and how they compare. The output is
 # scaled back unless you ask otherwise, so the choice does not change the units you get out — it
 # changes the units the solver works in, and therefore what λ means.
 
 # %%
-for scaling in (NoScaling(), BartScaling(), MeasurementBasedScaling())
+for scaling in (NoScaling(), QuantileScaling(), BartScaling(), MeasurementBasedScaling())
     x̂ = reconstruct(
         data, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40);
         scaling = scaling
@@ -529,13 +531,13 @@ end
 # The spread is small here because the simulated data is already close to unit scale, so there
 # is little for a scaling to fix. Multiply the k-space by 1000 — the kind of factor that
 # separates one scanner's raw units from another's — and point 1 becomes unmissable: with
-# `NoScaling` the same λ now under-regularizes badly, while `BartScaling` returns bit-for-bit the
-# reconstruction it gave on the original data.
+# `NoScaling` the same λ now under-regularizes badly, while `QuantileScaling` returns bit-for-bit
+# the reconstruction it gave on the original data.
 
 # %%
 for factor in (1.0f0, 1.0f3)
     data_scaled = AcquisitionInfo(data; kspace_data = data.kspace_data .* factor)
-    for scaling in (NoScaling(), BartScaling())
+    for scaling in (NoScaling(), QuantileScaling())
         x̂ = reconstruct(
             data_scaled, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40);
             scaling = scaling
@@ -1019,7 +1021,7 @@ plot!(
 # | field | default | section |
 # |---|---|---|
 # | `verbosity` | `Silent()` | §4 |
-# | `scaling` | `BartScaling()` | §5 |
+# | `scaling` | `QuantileScaling()` | §5 |
 # | `disable_inverse_scale_output` | `false` | §5 |
 # | `threaded` | `Threads.nthreads() > 1` | §8 |
 # | `task_executor` | `nothing` (chosen from the problem size) | §8 |
@@ -1033,7 +1035,7 @@ plot!(
 # %%
 config = ReconstructionConfig(;
     verbosity = Silent(),
-    scaling = BartScaling(),
+    scaling = QuantileScaling(),
     task_executor = SequentialExecutor(),
 )
 

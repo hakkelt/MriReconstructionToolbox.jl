@@ -13,7 +13,7 @@ Performs MRI reconstruction from k-space data using the specified reconstruction
 # Keyword arguments
 - `x₀::Union{Nothing,AbstractArray,Tuple,NamedTuple}=nothing`: Optional initial guess for the image (default is 𝒜' * y).
 - `config::ReconstructionConfig`: an existing [`ReconstructionConfig`](@ref) to extend; the keywords below override its fields.
-- `scaling::Scaling = BartScaling()`: scaling applied to operators/data (see also `NoScaling`, `MeasurementBasedScaling`, `FixedScaling`)
+- `scaling::Scaling = QuantileScaling()`: scaling applied to operators/data (see [`ReconstructionConfig`](@ref) for the others)
 - `verbosity::Verbosity = Silent()`: output mode — [`Silent`](@ref), [`ProgressBar`](@ref) or [`Verbose`](@ref)
 - `threaded::Bool = (Threads.nthreads() > 1)`: enable threaded execution when available
 - `task_executor::Union{Nothing,ReconstructionExecutor} = nothing`: override executor for task splitting
