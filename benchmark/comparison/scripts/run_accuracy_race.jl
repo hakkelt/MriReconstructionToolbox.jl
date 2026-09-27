@@ -42,7 +42,16 @@ const LADDER_HEAVY = [5, 10, 20, 40]
 const LADDER_BART_ADMM = [10, 20, 40, 80, 150, 300]
 const LADDER_BART_ADMM_HEAVY = [20, 50, 100, 200, 400]
 
+# A PDHG iteration applies the operator about once, where an ADMM iteration applies it once per
+# inner CG step (see `PDHG_ITERATIONS`), so a PDHG row climbs the longer ladder of normal-operator
+# budgets that BART's rows already use. Every toolkit gets it: on the 50-iteration ladder no PDHG
+# row but MRpro's reached the target, while BART's reached it on this one.
+const LADDER_PDHG = LADDER_BART_ADMM
+const LADDER_PDHG_HEAVY = LADDER_BART_ADMM_HEAVY
+
 ladder(c::BenchCase) = c.heavy ? LADDER_HEAVY : LADDER
+ladder(c::BenchCase, method::Symbol) =
+    haskey(PDHG_METHODS, method) ? (c.heavy ? LADDER_PDHG_HEAVY : LADDER_PDHG) : ladder(c)
 bart_admm(m::Symbol) = m !== :wavelet
 
 """
@@ -92,13 +101,13 @@ for c in section_cases(_ -> true), method in race_methods(c)
     mrt_run = mrt_race_run(c, method, load_lambda(c, method, "MRT", λ_default), mrt_rho)
     target = load_race_target(c, method, NaN)
     if isnan(target)
-        _, x = mrt_run(last(ladder(c)))
+        _, x = mrt_run(last(ladder(c, method)))
         target = 1.1 * mag_nrmse(_score_image(c, method, x), c.reference)
-        @warn "$(c.id) $method has no calibrated race target; using 1.10 × MRT's NRMSE at $(last(ladder(c))) it" target
+        @warn "$(c.id) $method has no calibrated race target; using 1.10 × MRT's NRMSE at $(last(ladder(c, method))) it" target
     end
     println("--> $(c.id): $(METHOD_LABEL[method])  (target NRMSE ≤ $(round(target; sigdigits = 4)))")
 
-    addrow!(c, method, target, FW, race("MRT $(c.id) $method", c, method, ladder(c), target, mrt_run))
+    addrow!(c, method, target, FW, race("MRT $(c.id) $method", c, method, ladder(c, method), target, mrt_run))
 
     for tk in COMPETITORS
         fw = framework_label(tk)
@@ -113,7 +122,7 @@ for c in section_cases(_ -> true), method in race_methods(c)
             )
         else
             race(
-                "$fw $(c.id) $method", c, method, ladder(c), target,
+                "$fw $(c.id) $method", c, method, ladder(c, method), target,
                 it -> toolkit_run(tk, c, method; λ, ρ, maxit = it),
             )
         end
