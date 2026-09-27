@@ -29,11 +29,15 @@ NRMSE falls steadily as ρ decreases down to about 0.005. Below that the cine me
 (ttv is best at 0.01, within 5% at 0.002) while the 2D ones keep improving, so `0.002` is within 5%
 of each method's best and at least matches MRT's default adaptive penalty on every method. At 0.002 the NRMSE is tv 0.035, tgv 0.034, llr 0.087, lowrank 0.107 and ttv 0.067.
 L1-wavelet runs FISTA, so only its λ was calibrated (NRMSE 0.279).
+
+The calibration ran under `BartScaling`. The values are in `QuantileScaling` units, converted as
+`λ · s_bart / s_quantile` on the calibration case (0.8435 for the 2D case, 0.7890 for the cine),
+which leaves the effective regularization weight unchanged.
 """
 const RADIAL_ADMM_RHO = 2.0e-3
 const RADIAL_LAMBDA = Dict(
-    :tv => 1.0e-3, :atv => 1.0e-3, :wavelet => 3.0e-3, :tgv => 1.0e-3, :lowrank => 3.0e-2, :llr => 3.0e-3,
-    :ttv => 1.0e-3,
+    :tv => 8.43e-4, :atv => 8.43e-4, :wavelet => 2.53e-3, :tgv => 8.43e-4, :lowrank => 2.37e-2, :llr => 2.37e-3,
+    :ttv => 7.89e-4,
 )
 
 """
@@ -42,10 +46,15 @@ const RADIAL_LAMBDA = Dict(
 λ per method for Cartesian cases when no calibrated value is asked for; radial cases use
 `RADIAL_LAMBDA`. The harness always uses these (through [`default_lambda`](@ref)), so a timing
 and its NRMSE are comparable across checkouts regardless of later recalibration.
+
+They were set under `BartScaling` (tv 0.01, wavelet 0.005, tgv 0.003, lowrank 0.01) and are now in
+`QuantileScaling` units: the spatial penalties are multiplied by 1.636, the geometric mean of
+`s_bart / s_quantile` over the Cartesian 2D, 3D and multi-slice cases (1.25–1.97), and the temporal
+ones by 0.669, its value on the Cartesian cine.
 """
 const DEFAULT_LAMBDA = Dict(
-    :tv => 0.01, :atv => 0.01, :wavelet => 0.005, :tgv => 0.003, :lowrank => 0.01, :llr => 0.01,
-    :ttv => 0.01,
+    :tv => 0.0164, :atv => 0.0164, :wavelet => 0.0082, :tgv => 0.0049, :lowrank => 0.00669, :llr => 0.00669,
+    :ttv => 0.00669,
 )
 
 """
