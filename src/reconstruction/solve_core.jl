@@ -221,7 +221,7 @@ operator-norm estimate.
 function _iteration_hook(on_iteration, select, present::Function, scale, slice_id)
     t₀ = time_ns()
     return function (k, alg, iter, state)
-        raw = select(alg.solution(iter, state))
+        raw = select(_primal_solution(iter, alg.solution(iter, state)))
         x = present(isnothing(scale) ? _copy_iterate(raw) : _inv_scale(raw, scale))
         base = (; iteration = k, x = x, elapsed_ns = time_ns() - t₀)
         info = merge(base, _iteration_metrics(iter, state))
@@ -229,6 +229,11 @@ function _iteration_hook(on_iteration, select, present::Function, scale, slice_i
         return nothing
     end
 end
+
+# The primal part of what a solver's `solution` returns: the primal-dual family returns the pair
+# `(x, y)`, every other algorithm the primal iterate alone.
+_primal_solution(iter, sol) = sol
+_primal_solution(::ProximalAlgorithms.AFBAIteration, sol::Tuple) = first(sol)
 
 _copy_iterate(x::AbstractArray) = copy(x)
 _copy_iterate(xs::Tuple) = map(copy, xs)

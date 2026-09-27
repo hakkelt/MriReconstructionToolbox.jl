@@ -52,6 +52,8 @@ end
             DouglasRachford(), (L1Image(0.01),), HardConsistency(),
             (:objective, :smooth_value, :nonsmooth_value, :fixed_point_residual),
         ),
+        # A primal-dual solver's `solution` is the pair `(x, y)`; the callback gets `x`.
+        (ChambollePock(), (TotalVariation2D(0.01),), L2Loss(), ()),
     )
 
     @testset "$(nameof(typeof(algorithm)))" for (algorithm, regs, fidelity, metric_keys) in cases
