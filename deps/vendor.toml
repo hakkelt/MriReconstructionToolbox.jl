@@ -438,6 +438,13 @@ branch = "fix/cg-self-copy"
 parent = "master"
 pr = ""
 
+# AFBA's dual starts at zero instead of `L * x0`, which discarded a good primal warm start on the
+# first step. `master` owns the code and is frozen.
+[[ProximalAlgorithms.stack]]
+branch = "fix/afba-zero-dual-start"
+parent = "master"
+pr = ""
+
 # `pogm-algorithm` is deliberately absent: it added POGM as a `pogm::Bool` variant of
 # `FastForwardBackward`, and `master` (#100) supersedes it with a `src/algorithms/pogm.jl` of its
 # own. Merging it would only re-add the old path. The branch is still on the fork, unmerged.
