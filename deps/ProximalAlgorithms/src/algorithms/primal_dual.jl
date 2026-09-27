@@ -52,7 +52,9 @@ See also: [`AFBA`](@ref).
 
 # Arguments
 - `x0`: initial primal point.
-- `y0`: initial dual point.
+- `y0`: initial dual point, zero by default. The dual lives in the codomain of `L` but is not
+  `L * x0`: for `h` a norm it is a point of the dual-norm ball, and starting it at `L * x0` makes
+  the first primal step subtract `γ₁ L'L x0`, which discards a good `x0`.
 - `f=Zero()`: smooth objective term.
 - `g=Zero()`: proximable objective term.
 - `h=Zero()`: proximable objective term.
@@ -82,7 +84,7 @@ Base.@kwdef struct AFBAIteration{R,Tx,Ty,Tf,Tg,Th,Tl,TL,Tbetaf,Tbetal,Ttheta,Tmu
         I
     end
     x0::Tx
-    y0::Ty = L * x0
+    y0::Ty = zero(L * x0)
     beta_f::Tbetaf = if isa(f, Zero)
         real(eltype(x0))(0)
     else
