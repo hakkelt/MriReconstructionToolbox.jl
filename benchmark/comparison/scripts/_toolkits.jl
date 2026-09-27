@@ -434,13 +434,13 @@ here (throw).
 Only **TV** is forced onto ADMM (`rho = ρ`, `max_cg_iter = CMP_CG_ITERS`) — matching the
 ADMM the other toolkits use for TV; SigPy would otherwise default to PDHG. **L1-wavelet** keeps
 SigPy's natural proximal-gradient solver (FISTA-like), as MRT / MRIReco / BART also use FISTA for
-wavelet. `tol ≈ 0` so all `iterations` outer steps run. `:adjoint` is `Sense(mps)ᴴ y`.
+wavelet. `tol ≈ 0` so all `iterations` outer steps run. `:adjoint` is `Sense(mps)ᴴ y`, with the
+`Sense` operator built inside the timed region, as every app builds its own.
 """
 function sigpy_recon(method::Symbol, ksp3, smaps3; λ = 0.0, iterations = 10, ρ = CMP_RHO)
     y, mps = _sp_k(ksp3), _sp_s(smaps3)
     app = if method === :adjoint
-        S = sp_mri.linop.Sense(mps)
-        () -> S.H(y)
+        () -> sp_mri.linop.Sense(mps).H(y)
     elseif method === :cgsense
         () -> sp_app.SenseRecon(y, mps; max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
     elseif method in (:tv, :atv)
@@ -489,21 +489,34 @@ _mirt_samp(ksp) = dropdims(any(!iszero, ksp; dims = ndims(ksp)); dims = ndims(ks
 _mirt_y(ksp, samp) = reduce(hcat, [ComplexF32.(selectdim(ksp, ndims(ksp), c))[samp] for c in axes(ksp, ndims(ksp))])
 
 """
-    mirt_system(ksp, smaps) -> (A, y)
+    mirt_problem(ksp, smaps) -> (build, y)
 
-`Asense` for the sampling pattern implied by the zero-filled `ksp` (`(nx, ny, [nz,] coil)`), plus
-the sampled data in the layout that operator produces.
+A function `build()` returning `Asense` for the sampling pattern implied by the zero-filled `ksp`
+(`(nx, ny, [nz,] coil)`), plus the sampled data in the layout that operator produces. The rows call
+`build` inside their timed region: MRT, MRIReco, MRpro and BART all build their operator inside
+theirs.
 """
-function mirt_system(ksp, smaps)
+function mirt_problem(ksp, smaps)
     samp = _mirt_samp(ksp)
-    A = MIRT.Asense(samp, ComplexF32.(smaps))
-    return A, _mirt_y(ksp, samp)
+    maps = ComplexF32.(smaps)
+    return () -> MIRT.Asense(samp, maps), _mirt_y(ksp, samp)
 end
 
 """
-    mirt_system(c::BenchCase) -> (A, y)
+    mirt_system(args...) -> (A, y)
 
-The SENSE system of a single-slice, volume or cine case as one `LinearMapAA` and its data:
+[`mirt_problem`](@ref) with the operator built.
+"""
+function mirt_system(args...)
+    build, y = mirt_problem(args...)
+    return build(), y
+end
+
+"""
+    mirt_problem(c::BenchCase) -> (build, y)
+
+The SENSE system of a single-slice, volume or cine case as one `LinearMapAA` (built by `build()`)
+and its data:
 
   * Cartesian: `Asense`, one per frame for a cine, since each frame has its own sampling pattern;
   * non-Cartesian: `Anufft` on the trajectory composed with the maps (`_mirt_sense_nufft`), the
@@ -512,15 +525,18 @@ The SENSE system of a single-slice, volume or cine case as one `LinearMapAA` and
 A cine's frames are stacked into one block-diagonal operator over `(nx, ny, time)`
 (`_mirt_frames`), so that its CG-SENSE is one CG over all frames, as MRT and BART solve it.
 """
-function mirt_system(c::BenchCase)
+function mirt_problem(c::BenchCase)
     if c.trajectory === :cartesian
-        c.family === :cine || return mirt_system(c.kspace, c.family === :volume ? c.smaps : cart_maps(c))
-        frames = [mirt_system(c.kspace[:, :, :, t], c.smaps) for t in axes(c.kspace, 4)]
-        return _mirt_frames(first.(frames)), reduce(vcat, vec.(last.(frames)))
+        c.family === :cine || return mirt_problem(c.kspace, c.family === :volume ? c.smaps : cart_maps(c))
+        frames = [mirt_problem(c.kspace[:, :, :, t], c.smaps) for t in axes(c.kspace, 4)]
+        builds = first.(frames)
+        return () -> _mirt_frames([b() for b in builds]), reduce(vcat, vec.(last.(frames)))
     end
-    A = _mirt_sense_nufft(reshape(c.traj, 2, :), c.smaps, c.image_size)
-    c.family === :cine || return A, ComplexF32.(reshape(c.kspace, :, ncoils(c)))
-    return _mirt_frames(fill(A, size(c.kspace, 4))), ComplexF32.(vec(c.kspace))
+    traj = reshape(c.traj, 2, :)
+    build = () -> _mirt_sense_nufft(traj, c.smaps, c.image_size)
+    c.family === :cine || return build, ComplexF32.(reshape(c.kspace, :, ncoils(c)))
+    nt = size(c.kspace, 4)
+    return () -> _mirt_frames(fill(build(), nt)), ComplexF32.(vec(c.kspace))
 end
 
 # MRT's `(dim, k)` trajectory in cycles/sample as MIRT's `(k, dim)` in radians. Kept in Float64 and
@@ -598,17 +614,21 @@ function _mirt_frames(ops)
 end
 
 """
-    mirt_recon(method, A, y; iterations) -> (time_ms, image)
+    mirt_recon(method, build, y; iterations) -> (time_ms, image)
 
-`method ∈ (:adjoint, :cgsense)` on the system `A` (a `LinearMapAA`, see `mirt_system`) and data
-`y`; anything else throws so the caller drops the row. The image has `A`'s input shape.
+`method ∈ (:adjoint, :cgsense)` on the system `build()` (a `LinearMapAA`, see `mirt_problem`) and
+data `y`; anything else throws so the caller drops the row. The image has the system's input
+shape. The timed region includes building the system.
 """
-function mirt_recon(method::Symbol, A, y; iterations::Int = 10)
+function mirt_recon(method::Symbol, build, y; iterations::Int = 10)
     f = if method === :adjoint
-        () -> A' * y
+        () -> build()' * y
     elseif method === :cgsense
-        x0 = zeros(ComplexF32, A._idim)
-        () -> first(MIRT.ncg([A], [v -> v - y], [v -> 1.0f0], x0; niter = iterations))
+        function ()
+            A = build()
+            x0 = zeros(ComplexF32, A._idim)
+            return first(MIRT.ncg([A], [v -> v - y], [v -> 1.0f0], x0; niter = iterations))
+        end
     else
         error("MIRT has no $method here")
     end
@@ -620,16 +640,18 @@ end
     mirt_gridding(c) -> (time_ms, image)
 
 Density-compensated non-Cartesian adjoint of case `c`: `Anufft` per coil (and frame), weighted by
-the case's `dcf`, combined with the conjugate sensitivities.
+the case's `dcf`, combined with the conjugate sensitivities. The timed region includes planning the
+NUFFT.
 """
 function mirt_gridding(c::BenchCase)
-    A = _mirt_nufft(reshape(c.traj, 2, :), c.image_size)
+    traj = reshape(c.traj, 2, :)
     w = Float32.(vec(c.dcf))
     nc = ncoils(c)
     nt = c.family === :cine ? size(c.kspace, 4) : 1
     kd = ComplexF32.(reshape(c.kspace, :, nc, nt))
     smap = ComplexF32.(c.smaps)
     function grid()
+        A = _mirt_nufft(traj, c.image_size)
         acc = zeros(ComplexF32, c.image_size..., nt)
         for t in 1:nt, j in 1:nc
             acc[:, :, t] .+= (A' * (w .* @view kd[:, j, t])) .* conj.(@view smap[:, :, j])
@@ -799,29 +821,33 @@ function _svt(x::AbstractArray{<:Complex, 3}, τ::Real)
 end
 
 """
-    mirt_lowrank(A, y; λ, iterations) -> (time_ms, image)
+    mirt_lowrank(build, y; λ, iterations) -> (time_ms, image)
 
-Global low-rank reconstruction with MIRT on a cine's joint system `A` over `(nx, ny, time)` and its
-data `y` (`mirt_system`): POGM with adaptive restart as the solver, and the Casorati SVT as its
+Global low-rank reconstruction with MIRT on a cine's joint system `build()` over `(nx, ny, time)`
+and its data `y` (`mirt_problem`), the system built inside the timed region: POGM with adaptive
+restart as the solver, and the Casorati SVT as its
 prox. POGM needs a step size rather than the ρ the ADMM rows take; `f_L` comes from
 [`_mirt_lipschitz`](@ref), which is an *upper* bound on `ρ(A'A)` and has to be — see its docstring.
 
 `iterations` is a proximal-gradient count, so callers pass [`proxgrad_budget`](@ref) of the outer
 count the ADMM rows use, not the outer count itself.
 """
-function mirt_lowrank(A, y; λ = 0.0, iterations = 10)
-    x0 = zeros(ComplexF32, A._idim)
-    f_grad = x -> A' * (A * x - y)
+function mirt_lowrank(build, y; λ = 0.0, iterations = 10)
     # The SVD runs at the working precision, as SigPy's `_MrtSVT` and MRT's own prox do — promoting
     # to `ComplexF64` here would give MIRT a more accurate prox than the row it is compared against.
     g_prox = (z, c) -> _svt(z, λ * c)
     # `_mirt_lipschitz` is inside the timed closure, for the reason given on `CMP_FISTA_RHO_MRIRECO`:
     # the step size is part of what a solve costs, and MRT pays `estimate_opnorm` in its own timing.
-    run = () -> first(
-        MIRT.pogm_restart(
-            x0, _ -> 0.0, f_grad, _mirt_lipschitz(A); niter = iterations, g_prox
+    function run()
+        A = build()
+        x0 = zeros(ComplexF32, A._idim)
+        f_grad = x -> A' * (A * x - y)
+        return first(
+            MIRT.pogm_restart(
+                x0, _ -> 0.0, f_grad, _mirt_lipschitz(A); niter = iterations, g_prox
+            )
         )
-    )
+    end
     t, _, img = time_reconstruction(run)
     return t * 1000, Array{ComplexF64}(img)
 end
@@ -1067,7 +1093,8 @@ end
     sigpy_noncartesian(method, c; λ, iterations) -> (time_ms, image)
 
 SigPy's NUFFT path for a single-slice non-Cartesian case, on `_sp_coord(c)`. `:gridding` is
-`Sense(mps, coord)ᴴ (dcf · y)`; `:cgsense` and the TV rows are the apps of `sigpy_recon` given
+`Sense(mps, coord)ᴴ (dcf · y)`, the operator built inside the timed region; `:cgsense` and the TV
+rows are the apps of `sigpy_recon` given
 `coord`.
 """
 function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = CMP_RHO)
@@ -1077,10 +1104,9 @@ function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, 
     y = _np(yj)
     mps = _sp_s(c.smaps)
     app = if m === :gridding
-        S = sp_mri.linop.Sense(mps; coord)
         w = reshape(permutedims(c.dcf, (2, 1)), 1, nsp, ns)
         yw = _np(yj .* w)
-        () -> S.H(yw)
+        () -> sp_mri.linop.Sense(mps; coord).H(yw)
     elseif m === :cgsense
         () -> sp_app.SenseRecon(y, mps; coord, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
     elseif m in (:tv, :atv)
@@ -1319,9 +1345,9 @@ end
 mirt_run(c::BenchCase, m::Symbol; λ, maxit) = with_mirt_fftw(() -> _mirt_run(c, m; λ, maxit))
 
 function _mirt_run(c::BenchCase, m::Symbol; λ, maxit)
-    c.family === :multislice && return per_slice((k, s) -> mirt_recon(m, mirt_system(k, s)...; iterations = maxit), c)
+    c.family === :multislice && return per_slice((k, s) -> mirt_recon(m, mirt_problem(k, s)...; iterations = maxit), c)
     m === :gridding && return mirt_gridding(c)
-    A, y = mirt_system(c)
-    m === :lowrank && return mirt_lowrank(A, y; λ, iterations = proxgrad_budget(maxit))
-    return mirt_recon(m, A, y; iterations = maxit)
+    build, y = mirt_problem(c)
+    m === :lowrank && return mirt_lowrank(build, y; λ, iterations = proxgrad_budget(maxit))
+    return mirt_recon(m, build, y; iterations = maxit)
 end
