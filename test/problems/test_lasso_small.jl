@@ -241,6 +241,15 @@ using ProximalAlgorithms:
         @test x0 == x0_backup
     end
 
+    @testset "AFBA dual start" begin
+        # The dual starts at zero, not at `L * x0`: a warm start at the solution stays close to it
+        # after one iteration instead of being pulled towards zero.
+        iter = ProximalAlgorithms.AFBAIteration(x0 = copy(x_star), f = fA_autodiff, h = g, beta_f = opnorm(A)^2)
+        @test iszero(iter.y0)
+        state, _ = iterate(iter)
+        @test norm(state.x - x_star) < norm(x_star) / 10
+    end
+
     @testset "AFBA" begin
         x0 = zeros(T, n)
         x0_backup = copy(x0)
