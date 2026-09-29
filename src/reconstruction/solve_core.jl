@@ -75,10 +75,12 @@ function _iterative_reconstruct_core(
         Lf = should_estimate_L ? R_type(_n_vars(vars) * L^2) : nothing
         algorithm = patch_algorithm_with_default_values(selected_algorithm, Lf; eltype_real = R_type)
         algorithm = _scale_admm_penalty(
-            algorithm, 𝒜, x₀_or_x₀s, acq_data, L, method, config;
+            algorithm, 𝒜, x₀_or_x₀s, acq_data, isnothing(L) ? prior.L : L, method, config;
             eltype_real = R_type, curvature = prior.curvature,
         )
-        algorithm = _hand_over_normal_rhs(algorithm, prior.AHy, scale, vars, auxiliaries, method)
+        algorithm = _hand_over_normal_rhs(
+            algorithm, x₀_or_x₀s, prior.warm_start_divisor, vars, auxiliaries, method
+        )
         # Only add `hook` to the keyword set when a callback was actually supplied: leaving it out
         # keeps the algorithm's `hook` field `Nothing`-typed, and `ProximalAlgorithms._run_hook`
         # then compiles to nothing at all inside the iteration loop.
@@ -386,19 +388,21 @@ function _scale_default_warm_start(𝒜, x̂, y, method::IterativeReconstruction
 end
 
 """
-    _warm_start_prior(x̂, L, curvature)
+    _warm_start_prior(L, curvature)
 
 What forming the default warm start `x̂ = 𝒜'y` learned about the solve, for
 [`_iterative_reconstruct_core`](@ref) to reuse rather than recompute: the operator norm `L` (or
-`nothing`), the curvature `‖𝒜‖²` estimate that scaled the warm start (or `nothing`), and `𝒜'y`
-itself, before any scaling.
+`nothing`), the curvature `‖𝒜‖²` estimate that scaled the warm start (or `nothing`), and the
+divisor `x̂` was put on the image's scale with (`L²`, the curvature, or 1). The warm start times
+that divisor is `𝒜'y` again, so `𝒜'y` itself is not kept alive through the solve.
 
 `curvature` is the Rayleigh quotient of `𝒜'𝒜` at `x̂`, which is unchanged by the scaling of the
 warm start and of the data, so it is the quotient ADMM's penalty scaling would compute again at the
 scaled warm start. `_NO_PRIOR` is the value when the warm start was not the default one.
 """
-_warm_start_prior(x̂, L, curvature) = (; L, curvature, AHy = x̂)
-const _NO_PRIOR = (; L = nothing, curvature = nothing, AHy = nothing)
+_warm_start_prior(L, curvature) =
+    (; L, curvature, warm_start_divisor = isnothing(L) ? something(curvature, 1) : L^2)
+const _NO_PRIOR = (; L = nothing, curvature = nothing, warm_start_divisor = nothing)
 
 """
 	_warm_start_scale_proxy(𝒜, x̂, config, y = nothing) -> Real
@@ -500,28 +504,29 @@ function _scale_admm_penalty(
 end
 
 """
-    _hand_over_normal_rhs(algorithm, AHy, scale, vars, auxiliaries, method) -> algorithm
+    _hand_over_normal_rhs(algorithm, x₀, divisor, vars, auxiliaries, method) -> algorithm
 
 Give CGNR, PCGNR or ADMM the right-hand side `𝒜'y` of its normal equations, which forming the
-default warm start already computed (`AHy`, before scaling), instead of letting the algorithm
-apply `𝒜'` to the measurement once more. The model's data term is `½‖𝒜x - y/scale‖²`, so the
-right-hand side is `AHy / scale`.
+default warm start already computed, instead of letting the algorithm apply `𝒜'` to the
+measurement once more. `x₀` is that warm start in the solver's units, `𝒜'y / (divisor·scale)`
+(see [`_warm_start_prior`](@ref)), and the model's data term is `½‖𝒜x - y/scale‖²`, so the
+right-hand side is `x₀ · divisor`.
 
 Only for the plain least-squares data term (`L2Loss`) over the image alone: an auxiliary variable
 (total generalized variation) or a component tuple makes the data term's operator act on more than
 the image, and its right-hand side is then not `𝒜'y`.
 """
-_hand_over_normal_rhs(algorithm, AHy, scale, vars, auxiliaries, method) = algorithm
+_hand_over_normal_rhs(algorithm, x₀, divisor, vars, auxiliaries, method) = algorithm
 
 function _hand_over_normal_rhs(
         algorithm::ProximalAlgorithms.IterativeAlgorithm{
             <:Union{ProximalAlgorithms.CGNRIteration, ProximalAlgorithms.PCGNRIteration, ProximalAlgorithms.ADMMIteration},
         },
-        AHy::AbstractArray, scale, vars::Variable, auxiliaries, method::IterativeReconstruction,
+        x₀::AbstractArray, divisor::Real, vars::Variable, auxiliaries, method::IterativeReconstruction,
     )
     (method.fidelity isa L2Loss && isempty(auxiliaries)) || return algorithm
     haskey(algorithm.kwargs, :AHb) && return algorithm
-    AHb = scale == 1 ? unname(AHy) : _scale_x0(unname(AHy), scale)
+    AHb = unname(x₀) .* real(eltype(x₀))(divisor)
     return ProximalAlgorithms.override_parameters(algorithm; AHb)
 end
 
