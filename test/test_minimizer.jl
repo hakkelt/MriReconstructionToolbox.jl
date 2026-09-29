@@ -498,7 +498,7 @@ end
 
     method = IterativeReconstruction(; regularization = TotalVariation2D(0.01))
     config = ReconstructionConfig()
-    scaled(alg; m = method) = _scale_admm_penalty(alg, nothing, nothing, nothing, 2.0, m, config; eltype_real = Float32)
+    scaled(alg; m = method) = _scale_admm_penalty(alg, nothing, nothing, 2.0, m, config; eltype_real = Float32)
 
     # `L = 2`, so every given penalty is multiplied by `L² = 4`, which ADMM applies as `rho_scale`.
     for alg in (ADMM(; rho = 0.05f0), ADMM(; rho = (0.05f0, 1.0f0)), ADMM(; penalty_sequence = PA.FixedPenalty([0.1f0])))

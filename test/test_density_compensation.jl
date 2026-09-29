@@ -51,6 +51,33 @@ end
     @test dimnames(acq_named_dcf.dcf) == (:kx, :ky)
 end
 
+@testitem "Warm-start curvature is the Rayleigh quotient with and without a dcf" tags = [:reconstruction, :nfft] begin
+    using MriReconstructionToolbox: NonCartesianAcquisitionInfo, get_encoding_operator, ReconstructionConfig,
+        _adjoint_measurement, _warm_start_scale_proxy
+    using LinearAlgebra: dot
+    using Random: Xoshiro
+
+    nsamp, nspokes = 32, 16
+    traj = zeros(Float32, 2, nsamp, nspokes)
+    for s in 1:nspokes, k in 1:nsamp
+        θ = Float32((s - 1) * π / nspokes)
+        r = Float32((k - 1 - nsamp / 2) / nsamp * 0.99)
+        traj[1, k, s] = r * cos(θ)
+        traj[2, k, s] = r * sin(θ)
+    end
+    ksp = randn(Xoshiro(4), ComplexF32, nsamp, nspokes)
+    acq = NonCartesianAcquisitionInfo(ksp; trajectory = traj, image_size = (32, 32))
+    config = ReconstructionConfig()
+    for a in (acq, density_compensation(acq))
+        𝒜 = get_encoding_operator(a; threaded = false)
+        x̂ = 𝒜' * a.kspace_data
+        rayleigh = real(dot(x̂, 𝒜' * (𝒜 * x̂))) / real(dot(x̂, x̂))
+        @test _warm_start_scale_proxy(𝒜, x̂, config, _adjoint_measurement(a)) ≈ rayleigh rtol = 1.0e-3
+    end
+    # With a dcf, `𝒜'` is not a multiple of the adjoint, so the one-application form is not used.
+    @test isnothing(_adjoint_measurement(density_compensation(acq)))
+end
+
 @testitem "VoronoiDCF density compensation" tags = [:acquisition] begin
     using Test
     using MriReconstructionToolbox

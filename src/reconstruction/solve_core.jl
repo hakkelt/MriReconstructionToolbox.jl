@@ -75,7 +75,7 @@ function _iterative_reconstruct_core(
         Lf = should_estimate_L ? R_type(_n_vars(vars) * L^2) : nothing
         algorithm = patch_algorithm_with_default_values(selected_algorithm, Lf; eltype_real = R_type)
         algorithm = _scale_admm_penalty(
-            algorithm, 𝒜, x₀_or_x₀s, acq_data, isnothing(L) ? prior.L : L, method, config;
+            algorithm, 𝒜, acq_data, isnothing(L) ? prior.L : L, method, config;
             eltype_real = R_type, curvature = prior.curvature,
         )
         algorithm = _hand_over_normal_rhs(
@@ -197,7 +197,7 @@ function _image_selector(model, vars, auxiliaries)
     order = StructuredOptimization.extract_variables(terms)
     positions = map(v -> findfirst(u -> u === v, order), ensure_tuple(vars))
     return function (raw)
-        parts = (raw isa Tuple ? first(raw) : raw).x
+        parts = raw.x
         picked = map(i -> parts[i], positions)
         return vars isa Variable ? only(picked) : picked
     end
@@ -432,7 +432,9 @@ method still runs — an `Lf` hint that is too small costs convergence.
 Given the measurement `y` with `x̂ = 𝒜'y` exactly, the same quotient takes one application of `𝒜`
 and none of `𝒜'`. `𝒜'` is the adjoint of `𝒜` up to a positive scalar `c` (`c = 1` for an NFFT,
 `1/N` for a `BACKWARD`-normalized DFT): `⟨u, 𝒜'v⟩ = c⟨𝒜u, v⟩`. So `⟨x̂, 𝒜'𝒜x̂⟩ = c‖𝒜x̂‖²`, and
-`‖x̂‖² = ⟨x̂, 𝒜'y⟩ = c⟨𝒜x̂, y⟩`, and the quotient is `‖𝒜x̂‖² / Re⟨𝒜x̂, y⟩`, whatever `c` is.
+`‖x̂‖² = ⟨x̂, 𝒜'y⟩ = c⟨𝒜x̂, y⟩`, and the quotient is `‖𝒜x̂‖² / Re⟨𝒜x̂, y⟩`, whatever `c` is. A
+density-compensated NFFT's `𝒜'` is `𝒜ᴴW`, not a multiple of the adjoint, so there `y` is
+`nothing` (see [`_adjoint_measurement`](@ref)) and both operators are applied.
 """
 function _warm_start_scale_proxy(𝒜, x̂::AbstractArray, config, y = nothing)
     local ρ
@@ -454,7 +456,18 @@ function _warm_start_scale_proxy(𝒜, x̂::AbstractArray, config, y = nothing)
 end
 
 """
-	_scale_admm_penalty(algorithm, 𝒜, x₀, acq_data, L, method, config; eltype_real, curvature = nothing) -> algorithm
+    _adjoint_measurement(acq_data) -> Union{AbstractArray, Nothing}
+
+The measurement `y`, for [`_warm_start_scale_proxy`](@ref) to take its one-application quotient
+with, or `nothing` when the encoding operator's `𝒜'` is not a positive multiple of its adjoint:
+a density compensation function makes it `𝒜ᴴW`.
+"""
+_adjoint_measurement(acq_data) = _measurement(acq_data.kspace_data)
+_adjoint_measurement(acq_data::NonCartesianAcquisitionInfo) =
+    isnothing(acq_data.dcf) ? _measurement(acq_data.kspace_data) : nothing
+
+"""
+	_scale_admm_penalty(algorithm, 𝒜, acq_data, L, method, config; eltype_real, curvature = nothing) -> algorithm
 
 Make a penalty `ρ` given to ADMM relative to the curvature `‖𝒜‖²` of the data term.
 
@@ -475,16 +488,18 @@ Both a fixed `rho` and the initial `rho` of a `penalty_sequence` are scaled. ADM
 adaptive sequence is left to start from 1: it reaches the scale of the problem on its own, and
 starting it from `‖𝒜‖²` measured no better on the same cases.
 
-`‖𝒜‖²` is `L²` when the operator norm was estimated, else the Rayleigh quotient of `𝒜'𝒜` at the
-warm start ([`_warm_start_scale_proxy`](@ref)), or at `𝒜'y` when the warm start is zero. A
-`curvature` the warm start already computed is that quotient and is used as it is. An explicit
-`disable_operator_normalization = true` leaves the penalty as given.
+`‖𝒜‖²` is `L²` when the operator norm was estimated, else the Rayleigh quotient of `𝒜'𝒜` at
+`𝒜'y` ([`_warm_start_scale_proxy`](@ref)). A `curvature` the default warm start already computed
+is that quotient and is used as it is. A warm start the caller supplied is not used for it: the
+quotient is only close to `‖𝒜‖²` at a vector in the operator's dominant subspace, and the penalty
+would otherwise depend on the initial guess. An explicit `disable_operator_normalization = true`
+leaves the penalty as given.
 """
-_scale_admm_penalty(algorithm, 𝒜, x₀, acq_data, L, method, config; eltype_real, curvature = nothing) = algorithm
+_scale_admm_penalty(algorithm, 𝒜, acq_data, L, method, config; eltype_real, curvature = nothing) = algorithm
 
 function _scale_admm_penalty(
         algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.ADMMIteration},
-        𝒜, x₀, acq_data, L, method::IterativeReconstruction, config; eltype_real, curvature = nothing,
+        𝒜, acq_data, L, method::IterativeReconstruction, config; eltype_real, curvature = nothing,
     )
     method.disable_operator_normalization === true && return algorithm
     kwargs = algorithm.kwargs
@@ -493,7 +508,7 @@ function _scale_admm_penalty(
     given || return algorithm
     s = eltype_real(
         !isnothing(L) ? L^2 :
-            !isnothing(curvature) ? curvature : _admm_curvature(𝒜, x₀, acq_data, config)
+            !isnothing(curvature) ? curvature : _admm_curvature(𝒜, acq_data, config)
     )
     return ProximalAlgorithms.override_parameters(algorithm; rho_scale = s)
 end
@@ -525,11 +540,8 @@ function _hand_over_normal_rhs(
     return ProximalAlgorithms.override_parameters(algorithm; AHb)
 end
 
-function _admm_curvature(𝒜, x₀_or_x₀s, acq_data, config)
-    x₀_or_x₀s isa AbstractArray && !iszero(x₀_or_x₀s) && return _warm_start_scale_proxy(𝒜, x₀_or_x₀s, config)
-    y = _measurement(acq_data.kspace_data)
-    return _warm_start_scale_proxy(𝒜, 𝒜' * y, config, y)
-end
+_admm_curvature(𝒜, acq_data, config) =
+    _warm_start_scale_proxy(𝒜, 𝒜' * _measurement(acq_data.kspace_data), config, _adjoint_measurement(acq_data))
 
 # `‖𝒜‖`, for use as `Lf = n‖𝒜‖²` and/or to scale-correct the default warm start.
 #

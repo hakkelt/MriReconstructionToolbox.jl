@@ -4,7 +4,7 @@ function _direct_reconstruct_components(𝒜, acq_data, method::ReconstructionMe
     end
     scale = _resolve_scale(𝒜, x̂, acq_data, method, config, scale_override)
     # Computed from the pre-rescale `x̂`, so `scale` above stays exactly as before.
-    x̂s, L, curvature = _scale_default_warm_start(𝒜, x̂, _measurement(acq_data.kspace_data), method, config)
+    x̂s, L, curvature = _scale_default_warm_start(𝒜, x̂, _adjoint_measurement(acq_data), method, config)
     return x̂s, scale, _warm_start_prior(L, curvature)
 end
 
@@ -271,6 +271,6 @@ function _direct_reconstruct(𝒜, acq_data, x₀, method::ReconstructionMethod,
     # caller-supplied x₀, and not a pure direct method's own reconstruction, which is already
     # correctly scaled.
     is_default_iterative_adjoint || return x₀, scale, _NO_PRIOR
-    x̂, L, curvature = _scale_default_warm_start(𝒜, x₀, _measurement(acq_data.kspace_data), method, config)
+    x̂, L, curvature = _scale_default_warm_start(𝒜, x₀, _adjoint_measurement(acq_data), method, config)
     return x̂, scale, _warm_start_prior(L, curvature)
 end
