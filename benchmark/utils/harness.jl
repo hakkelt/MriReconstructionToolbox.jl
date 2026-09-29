@@ -1,24 +1,33 @@
 # Timing and provenance for the MRT harness and the comparison suite.
 
 """
-    time_run(f; warmup = 1, runs = 3) -> (min_s, median_s, result)
+    time_run(f; warmup = 1, runs = 3, cold_fft = true) -> (min_s, median_s, result)
 
-Call `f()` `warmup` times untimed (compilation, FFTW planning, first-touch allocation), then `runs`
-times timed; return the minimum and median wall time in seconds and the last result.
+Call `f()` `warmup` times untimed (compilation, first-touch allocation), then `runs` times timed;
+return the minimum and median wall time in seconds and the last result.
+
+With `cold_fft`, FFTW's accumulated wisdom is dropped before every call, so each timed run plans
+its FFTs from scratch as a fresh process would. FFTW keeps what a `MEASURE` plan learned for the
+lifetime of the process and answers a later plan of the same size from it in microseconds, which
+would otherwise take a 128³ × 8-coil `MEASURE` plan from about 1 s in the warm-up to 0.1 ms in
+every timed run, and would also hand an `ESTIMATE` plan the measured one. The wisdom is
+process-wide, so this covers every in-process toolkit on FFTW.jl (MRT, MIRT, MRIReco).
 
 BenchmarkTools' sampling is built for microsecond kernels; these are reconstructions of seconds to
 minutes, where a handful of runs and their minimum is the robust estimate (noise on a shared node
 only ever adds time). The median is kept alongside, as the spread (`median / min`) says whether the
 minimum can be trusted.
 """
-function time_run(f; warmup::Integer = 1, runs::Integer = 3)
+function time_run(f; warmup::Integer = 1, runs::Integer = 3, cold_fft::Bool = true)
     runs >= 1 || throw(ArgumentError("runs must be at least 1"))
     res = nothing
     for _ in 1:warmup
+        cold_fft && FFTW.forget_wisdom()
         res = f()
     end
     times = Float64[]
     for _ in 1:runs
+        cold_fft && FFTW.forget_wisdom()
         t0 = time_ns()
         res = f()
         push!(times, (time_ns() - t0) / 1.0e9)

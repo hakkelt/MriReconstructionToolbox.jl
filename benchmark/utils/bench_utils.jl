@@ -15,7 +15,7 @@ suite's own bridges.
 module BenchUtils
 
 using Dates: Dates, now, @dateformat_str
-using FFTW: fft, ifft, fftshift, ifftshift
+using FFTW: FFTW, fft, ifft, fftshift, ifftshift
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, create_torso_phantom, MRISheppLoganIntensities,
     generate_cardiac_signals, generate_respiratory_signal
 using JSON: JSON
