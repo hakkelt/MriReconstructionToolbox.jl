@@ -123,6 +123,7 @@ end
 
 @testset "Utilities" begin
     include("test_symmetricpacked.jl")
+    include("test_mixed_precision.jl")
     include("test_factorization_threads.jl")
 end
 
@@ -177,6 +178,14 @@ end
 
 @testset "Preallocation" begin
     include("test_preallocate.jl")
+end
+
+@testset "Threading" begin
+    include("test_threading.jl")
+end
+
+@testset "GPU" begin
+    include("test_gpu.jl")
 end
 
 include("test_optimality_conditions.jl")

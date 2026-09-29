@@ -103,3 +103,66 @@ for T in [Float32, Float64]
         y = similar(x)
     end
 end
+
+# ---------------------------------------------------------------------------
+# Threading
+#
+# The groups above run at sizes where every operator is below its threshold and
+# therefore serial -- which is the right thing for them to measure, since a
+# serial regression is the one this change must not cause. These add the other
+# half: sizes above the threshold, where the threaded and serial paths differ,
+# with both built explicitly so a comparison is possible without restarting
+# Julia at a different thread count.
+#
+# Run with threads, e.g. `julia --project=benchmark -t 8 benchmark/benchmarks.jl`.
+# At `-t 1` the two entries measure the same code and should agree.
+
+k = "threading"
+SUITE[k] = BenchmarkGroup(["threading"])
+for (name, build) in [
+    ("NormL1", th -> NormL1(0.3; threaded = th)),                     # arithmetic
+    ("SqrNormL2", th -> SqrNormL2(0.7; threaded = th)),               # memory bound
+    ("LogBarrier", th -> LogBarrier(1.0, 0.0, 1.0; threaded = th)),   # transcendental
+]
+    for T in [Float32, Float64], n in [2^12, 2^16, 2^20], threaded in [false, true]
+        SUITE[k][(name, T, n, threaded)] = @benchmarkable prox!(y, f, x, $(T(0.7))) setup = begin
+            Random.seed!(0)
+            f = $build($threaded)
+            # LogBarrier needs a positive argument; the others do not care
+            x = abs.(randn($T, $n)) .+ $T(0.5)
+            y = similar(x)
+        end
+    end
+end
+
+# ---------------------------------------------------------------------------
+# Device storage
+#
+# `JLArray` executes on the CPU, so these numbers are not a GPU measurement and
+# must not be read as one. What they do measure is the *dispatch*: that a device
+# array takes the broadcast kernels and the bisection algorithms rather than the
+# scalar loops, and that neither path regresses. A real device measurement needs
+# a real device.
+
+k = "device"
+SUITE[k] = BenchmarkGroup(["device"])
+let jl = Base.get_extension(ProximalOperators, :GpuExt) === nothing ? nothing : nothing
+    # JLArrays is a benchmark-only dependency; skip the group when it is absent
+    if isdefined(Main, :JLArrays) || (Base.find_package("JLArrays") !== nothing)
+        @eval using JLArrays
+        for (name, build) in [
+            ("NormL1", () -> NormL1(0.3)),
+            ("IndSimplex", () -> IndSimplex(1.0)),   # bisection rather than Condat
+            ("IndBallL1", () -> IndBallL1(1.0)),     # bisection rather than Condat
+        ]
+            for n in [2^12, 2^16]
+                SUITE[k][(name, n)] = @benchmarkable prox!(y, f, x, 0.7) setup = begin
+                    Random.seed!(0)
+                    f = $build()
+                    x = JLArray(randn($n))
+                    y = similar(x)
+                end
+            end
+        end
+    end
+end

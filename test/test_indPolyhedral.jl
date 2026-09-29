@@ -4,6 +4,12 @@ using Test
 
 @testset "IndPolyhedral" begin
 
+# If the extension has not loaded, every `solver=:osqp` case below fails with a confusing
+# `MethodError`, or -- when the cause is a stale precompile cache -- the process aborts
+# during `using` and takes the rest of the suite with it. Assert it here so the failure
+# names itself and stays contained to this file.
+@test Base.get_extension(ProximalOperators, :ProximalOperatorsOSQPExt) !== nothing
+
 # set dimensions
 
 m, n = 25, 10

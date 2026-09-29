@@ -10,6 +10,8 @@ makedocs(
         "Functions" => "functions.md",
         "Calculus rules" => "calculus.md",
         "Prox and gradient" => "operators.md",
+        "Multithreading" => "threading.md",
+        "GPU support" => "gpu.md",
         "Demos" => "demos.md"
     ],
     checkdocs=:none,

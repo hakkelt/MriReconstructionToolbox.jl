@@ -32,13 +32,16 @@ and can be efficiently computed for many functions ``f`` used in applications.
 
 ProximalOperators allows to pick function ``f`` from a [library of commonly used functions](functions.md), and to modify and combine them using [calculus rules](calculus.md) to obtain new ones. The proximal mapping of ``f`` is then provided through the [`prox`](@ref) and [`prox!`](@ref) methods, as described [here](operators.md).
 
+The same operators run multithreaded on large CPU arrays and natively on GPU arrays; see
+[Multithreading](threading.md) and [GPU support](gpu.md).
+
 For example, one can create the L1-norm as follows.
 
 ```jldoctest quickex1
 julia> using ProximalOperators
 
 julia> f = NormL1(3.5)
-NormL1{Float64, Nothing}(3.5, nothing)
+NormL1(3.5)
 ```
 
 Functions created this way are, of course, callable.
