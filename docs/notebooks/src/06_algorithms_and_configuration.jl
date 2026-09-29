@@ -922,6 +922,12 @@ end
 #   `--cpus-per-task` to match, plus an explicit `--mem`).
 # - `export KMP_BLOCKTIME=0` **before** starting Julia, if you use MKL. It cannot be set from
 #   inside Julia, and without it MKL's spinning worker threads crowd out the reconstruction.
+#
+# FFTW plans each transform before its first use, either instantly from a heuristic or by timing
+# candidate algorithms (0.1–0.2 s per 2D transform), whose plans run up to several times faster.
+# MRT picks one from the problem size, algorithm and iteration count; when you will reconstruct
+# the same acquisition many times — this notebook does — `fft_planning = :measure` pays the
+# timing once and every later reconstruction reuses the plans.
 
 # %%
 using LinearAlgebra: BLAS
@@ -1026,6 +1032,7 @@ plot!(
 # | `threaded` | `Threads.nthreads() > 1` | §8 |
 # | `task_executor` | `nothing` (chosen from the problem size) | §8 |
 # | `disable_task_splitting` | `false` | §8 |
+# | `fft_planning` | `:auto` (`:measure` pays off when the same acquisition is reconstructed many times) | §8 |
 #
 # The method-owned parameters stay on the method and are deliberately *rejected* here rather
 # than ignored: `maxit`, `reltol`, `algorithm`, `on_iteration` (§3, §9), and the operator-norm

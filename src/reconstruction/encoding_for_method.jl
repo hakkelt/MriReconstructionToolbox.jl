@@ -180,41 +180,108 @@ function build_encoding_operator(
 end
 
 """
-    _fast_planning(method, acq) -> Bool
+    _fast_planning(method, acq, config; threaded = config.threaded) -> Bool
 
 Whether `method`'s encoding operator plans its FFTs with `FFTW.ESTIMATE` (`true`) rather than
-`FFTW.MEASURE`. `MEASURE` times candidate algorithms on the real arrays: its plans run 1.5–10×
-faster, but planning one costs 0.1–0.3 s for a 2D grid and about 1 s for a 128³ one, per plan
-and per direction, and a solve pays it again in every new process. `MEASURE` is used only where
-that pays back: an iterative solve of at least `MEASURE_MIN_ITERATIONS` iterations over at least
-`MEASURE_MIN_POINTS` transformed points (grid points times coils and every other batch axis).
-
-Measured with no cached plans, 4 threads (EPYC 7352), whole reconstruction, `MEASURE` / `ESTIMATE`:
-
-| case                          | iterations | `MEASURE` | `ESTIMATE` |
-|-------------------------------|-----------:|----------:|-----------:|
-| 2D 128², 8 coils, CG-SENSE    |         10 |   0.30 s  |   0.016 s  |
-| 2D 128², 8 coils, CG-SENSE    |        300 |   0.48 s  |   0.28 s   |
-| 2D 128², 8 coils, TV (PDHG)   |        300 |   1.01 s  |   0.70 s   |
-| 3D 128³, 8 coils, CG-SENSE    |         10 |   4.29 s  |   2.42 s   |
-| 3D 128³, 8 coils, CG-SENSE    |        100 |  13.6 s   |  14.6 s    |
-| cine 128², 8 coils, 30 frames |        100 |   2.41 s  |   3.07 s   |
-| radial 128², 8 coils          |        100 |   1.31 s  |   2.21 s   |
+`FFTW.MEASURE`, as `config.fft_planning` asks: `:estimate` and `:measure` force the choice,
+`:auto` takes `MEASURE` when [`_measure_score`](@ref) is not negative. Under a provider other
+than FFTW itself (MKL) the planner flags do nothing, and `ESTIMATE` is returned.
 """
-_fast_planning(::ReconstructionMethod, acq::AcquisitionInfo) = true
-function _fast_planning(method::IterativeReconstruction, acq::AcquisitionInfo)
-    something(method.maxit, MEASURE_MIN_ITERATIONS) >= MEASURE_MIN_ITERATIONS || return true
-    return _fft_points(acq) < MEASURE_MIN_POINTS
+function _fast_planning(method::ReconstructionMethod, acq::AcquisitionInfo, config; threaded::Bool = config.threaded)
+    config.fft_planning === :auto || return config.fft_planning === :estimate
+    FFTW.fftw_provider == "fftw" || return true
+    return _measure_score(method, acq; threaded) < 0
 end
 
-const MEASURE_MIN_ITERATIONS = 64
-const MEASURE_MIN_POINTS = 2^19
+"""
+    _measure_score(method, acq; threaded) -> Float64
 
-# Points one application of the encoding's FFTs transforms: the image grid (oversampled twice per
-# axis for a non-uniform transform) times every axis after the sample axes.
-function _fft_points(acq::AcquisitionInfo)
-    ksp = acq.kspace_data
+Whether planning the encoding's FFTs with `FFTW.MEASURE` pays for itself, as a sum of `log2`
+scores; `MEASURE` is chosen when the sum is not negative. `MEASURE` times candidate algorithms
+on the real arrays, which costs about 0.1–0.2 s per 2D transform and 1–1.5 s per 3D one, whatever
+the batch, and pays back at every later transform by running faster than the plan `ESTIMATE`
+guesses. It pays when
+
+    transforms × batch × gain(grid, threads) ≥ plans × cost(grid)
+
+and the score is that inequality taken in `log2`, one term per factor:
+
+- `log2` of the transforms the reconstruction runs per batch member ([`_fft_transforms`](@ref):
+  iterations × operator applications per iteration × 2 for an iterative method, 1 for a direct
+  one);
+- `log2` of the batch, every axis after the sample axes (coils, frames, …);
+- the grid's score, `log2(gain / cost)` for one transform of the grid on one thread, which rises
+  steeply with the grid: `ESTIMATE` is within 2× of `MEASURE` below about 2¹⁴ points, and 7–9×
+  slower from 2¹⁶ on, a 256² grid (the 2× oversampled grid of a 128² non-Cartesian image)
+  included;
+- the thread score: every doubling of FFTW's threads shrinks the gap between the two plans;
+- a constant for the transforms planned per operator (forward, adjoint, and the normal
+  operator's pair).
+
+The grid and thread scores were fitted to single FFT timings, and checked against whole
+reconstructions planned from scratch (1, 4 and 16 threads, 2D, radial, 3D and cine, CG-SENSE,
+ADMM and PDHG): of those 36, the score picks the faster planner in all 35 that are not a tie; see "Performance & Threading" in
+the manual.
+"""
+function _measure_score(method::ReconstructionMethod, acq::AcquisitionInfo; threaded::Bool)
+    points, batch = _fft_grid_and_batch(acq)
+    nthreads = threaded ? Threads.nthreads() : 1
+    return log2(_fft_transforms(method)) + log2(batch) + _grid_score(points) -
+        MEASURE_THREAD_SCORE * log2(nthreads) - MEASURE_PLANS_SCORE
+end
+
+# Per doubling of FFTW's threads; see `_measure_score`.
+const MEASURE_THREAD_SCORE = 1.25
+# `log2` of the transforms one operator plans, less the one for the two transforms an operator
+# application runs.
+const MEASURE_PLANS_SCORE = 1.0
+
+# `log2(gain / cost)` of one transform of a `points`-point grid on one thread: the time `MEASURE`'s
+# plan saves over `ESTIMATE`'s per transform, over what planning it costs. -12 up to 2¹⁴ points,
+# -7 at 2¹⁶, linear in `log2(points)` between, and rising slowly beyond (-6.25 at a 128³ grid).
+_grid_score(points::Real) = max(-12.0, min(-12 + 2.5 * (log2(points) - 14), -7 + 0.15 * (log2(points) - 16)))
+
+# The transform size and the batch of the encoding's FFTs: the image grid (oversampled twice per
+# axis for a non-uniform transform, as its Toeplitz normal operator is) and the product of every
+# axis after the sample axes.
+function _fft_grid_and_batch(acq::AcquisitionInfo)
     grid = prod(acq.image_size)
     acq isa NonCartesianAcquisitionInfo && (grid *= 2^length(acq.image_size))
-    return grid * prod(_ksp_trailing_size(ksp, _get_sample_dims_count(acq) + 1); init = 1)
+    batch = prod(_ksp_trailing_size(acq.kspace_data, _get_sample_dims_count(acq) + 1); init = 1)
+    return grid, batch
 end
+
+"""
+    _fft_transforms(method) -> Int
+
+How many times a reconstruction with `method` transforms each batch member: once for a direct
+reconstruction, and for an iterative one twice (forward and adjoint) per operator application,
+times the applications per iteration ([`_applications_per_iteration`](@ref)), times the
+iterations, `method.maxit` or else the algorithm's own.
+"""
+_fft_transforms(::ReconstructionMethod) = 1
+function _fft_transforms(method::IterativeReconstruction)
+    maxit = something(method.maxit, _algorithm_maxit(method.algorithm))
+    return 2 * max(1, maxit) * _applications_per_iteration(method.algorithm)
+end
+
+_algorithm_maxit(alg::ProximalAlgorithms.IterativeAlgorithm) = alg.maxit
+_algorithm_maxit(algs::Tuple) = minimum(_algorithm_maxit, algs)
+_algorithm_maxit(_) = 100
+
+"""
+    _applications_per_iteration(algorithm) -> Int
+
+Operator applications (forward and adjoint pairs) per iteration of `algorithm`: one for CG, the
+forward-backward family and the primal-dual family, and one per inner CG step plus the right-hand
+side for ADMM, whose inner CG is counted up to `ADMM_COUNTED_CG_STEPS` steps, since it stops at
+its tolerance long before a large `cg_maxit`. A tuple of candidates, resolved only once the model
+is built, counts as its cheapest member.
+"""
+_applications_per_iteration(_) = 1
+_applications_per_iteration(algs::Tuple) = minimum(_applications_per_iteration, algs)
+function _applications_per_iteration(alg::ProximalAlgorithms.IterativeAlgorithm{<:ProximalAlgorithms.ADMMIteration})
+    return min(get(alg.kwargs, :cg_maxit, ADMM_COUNTED_CG_STEPS), ADMM_COUNTED_CG_STEPS) + 1
+end
+
+const ADMM_COUNTED_CG_STEPS = 20

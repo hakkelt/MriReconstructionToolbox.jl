@@ -50,16 +50,93 @@ the same way here; this is not a bug in either.
 - **Spreads slices of a task-split problem over threads when there are enough of them**, and then
   runs the work *inside* a slice sequentially, because the slice loop is already using every
   thread. With a `SequentialExecutor` the threads are free and the inside threads as usual.
-- **Chooses how carefully to plan FFTs.** FFTW's `MEASURE` planning times candidate algorithms
-  and finds plans 1.5–10× faster than its `ESTIMATE` heuristic. But one plan costs 0.1–0.3 s for
-  a 2D grid and about 1 s for a 128³ one, and every new Julia process pays it again. MRT plans
-  with `ESTIMATE` unless the solve is long (`maxit ≥ 64`) and the transform is large (at least
-  2¹⁹ points, counting coils and frames). With no cached plans, that made a 10-iteration
-  CG-SENSE of a 128², 8-coil slice 19× faster (0.30 s → 0.016 s), and one of a 128³, 8-coil
-  volume 1.8× faster.
+- **Chooses how carefully to plan FFTs**, from the size of the problem, the algorithm and the
+  iteration count (see [Planning FFTs](@ref) below).
 - **Remembers measured FFT plans across sessions.** What FFTW learns while measuring a plan (its
   "wisdom") is saved to a file per machine, and later sessions load it before planning, so even
   an `ESTIMATE` plan of a problem measured before comes out measured (see below).
+
+## Planning FFTs
+
+Before its first transform, FFTW makes a *plan*. With `ESTIMATE` it guesses one from a heuristic
+in microseconds; with `MEASURE` it times candidate algorithms on the actual arrays, which costs
+about 0.1–0.2 s per 2D transform and 1–1.5 s per 3D one, whatever the number of coils or frames.
+An operator plans about four transforms (forward, adjoint, and the normal operator's pair), so a
+cold `MEASURE` build costs 0.5–0.8 s for a 2D problem.
+
+What `MEASURE` buys back depends mostly on the grid. Single transforms, one thread, planning cost
+/ run time per batch of 8 coils:
+
+| grid | `ESTIMATE` | `MEASURE` | `ESTIMATE` is slower by |
+|------|-----------:|----------:|------------------------:|
+| 128² | 0 ms / 0.46 ms | 123 ms / 0.25 ms | 1.8× |
+| 256² | 1 ms / 13.6 ms | 185 ms / 1.5 ms  | 9× |
+| 128³ | 0 ms / 161 ms  | 910 ms / 62 ms   | 2.6× |
+
+A 256² grid is what a 128² non-Cartesian image is interpolated to, so radial and spiral
+reconstructions are where `ESTIMATE` hurts most: on one thread, a radial cine low-rank solve took
+158 s with `ESTIMATE` plans and 25 s with `MEASURE` ones. More FFTW threads shrink the gap: at 16 threads the
+128² transform runs equally fast either way.
+
+### The automatic choice
+
+`fft_planning = :auto` (the default) adds up a score, each term the `log2` of one factor of
+"does the time saved pay for the planning":
+
+- **the transforms the reconstruction will run**: iterations × operator applications per
+  iteration × 2 (forward and adjoint). An ADMM iteration counts one application per inner CG
+  step plus one; CG, FISTA, POGM and PDHG count one. A direct reconstruction counts a single
+  transform;
+- **the batch**: coils × frames × every other axis transformed together;
+- **the grid**: a larger grid gains more from a measured plan per unit of planning time, steeply
+  so between 128² and 256²;
+- **the threads**: every doubling of FFTW's threads counts against `MEASURE`;
+- **a constant** for the four transforms each operator plans.
+
+`MEASURE` is used when the sum is not negative. Checked against 36 whole reconstructions
+planned from scratch (2D Cartesian and radial, 3D, Cartesian and radial cine; CG-SENSE, ADMM
+and PDHG; 1, 4 and 16 threads), it picked the faster planner in every one that was not a tie:
+
+| case | `ESTIMATE` | `MEASURE` | chosen |
+|------|-----------:|----------:|--------|
+| 2D 128², 8 coils, CG-SENSE 10 it, 1 thread | 0.014 s | 0.24 s | `ESTIMATE` |
+| 2D radial, 8 coils, CG-SENSE 10 it, 1 thread | 0.30 s | 0.84 s | `ESTIMATE` |
+| 2D radial, 8 coils, TV (ADMM) 20 it, 1 thread | 5.46 s | 1.64 s | `MEASURE` |
+| 2D radial, 8 coils, TV (ADMM) 20 it, 16 threads | 0.86 s | 1.00 s | `ESTIMATE` |
+| 3D 128³, 8 coils, TV (ADMM) 20 it, 4 threads | 31.3 s | 22.5 s | `MEASURE` |
+| cine 128², 8 coils, 30 frames, low-rank 20 it, 16 threads | 2.74 s | 2.95 s | `ESTIMATE` |
+| radial cine, 8 coils, 30 frames, low-rank 20 it, 16 threads | 14.3 s | 4.96 s | `MEASURE` |
+
+The timings are from one node; FFTW's heuristic differs between CPUs, so the margins will too.
+
+### Choosing yourself: `fft_planning`
+
+The automatic choice looks at one reconstruction in a fresh process. It cannot know that you are
+about to run the same acquisition again — a λ sweep, several regularizers, a direct
+reconstruction for a preview followed by an iterative one. Once any plan of a transform has been
+measured, every later plan of the same transform in the session reuses it, including an
+`ESTIMATE` one, and it is saved to the wisdom cache for later sessions. So for repeated work,
+measure once:
+
+```julia
+config = ReconstructionConfig(; fft_planning = :measure)
+x̂₀ = reconstruct(acq, DirectReconstruction(); config)   # pays for the measured plans
+x̂s = map((1e-4, 3e-4, 1e-3)) do λ                         # reuse them: plan in microseconds
+    reconstruct(acq, IterativeReconstruction(TotalVariation2D(λ)); config)
+end
+```
+
+Even a single direct reconstruction is worth measuring this way when it will be repeated: on a
+256² grid, a measured plan saves about 12 ms per transform of 8 coils, so it has paid for itself
+after about 15 transforms.
+
+`fft_planning = :estimate` does the opposite: it never measures, for a one-off script where
+start-up time matters more than the solve. `fft_planning` has no effect under FFTW.jl's `mkl`
+provider: MKL's FFTW interface ignores planner flags, keeps no wisdom, and plans quickly anyway.
+
+Planning the same transform with `MEASURE` again does not find a better plan: FFTW times the same
+candidates each time, and five fresh `MEASURE` plans of each grid above ran equally fast. A
+more thorough search is `PATIENT`, below.
 
 ### The FFT wisdom cache
 
@@ -86,9 +163,13 @@ using MriReconstructionToolbox
 plan_fft_wisdom(acq; rigor = :patient)   # 10–35 s per 2D transform, minutes per 3D one
 ```
 
-At 4 threads `PATIENT` found plans 10–20 % faster than `MEASURE` (256²×8: 0.78 against 0.99 ms
-per transform; 128³×8: 35 against 40 ms); the gain matters for
-long solves and for problems reconstructed many times. The environment variable
+`PATIENT` searches more candidates than `MEASURE`, and the gain depends on the transform: at 4
+threads it found plans 10–20 % faster for 256²×8 (0.78 against 0.99 ms per transform) and 128³×8
+(35 against 40 ms), while on another node it was 15–20 % faster for 256²×8 and no faster for
+128²×8 or 128²×8×30. It pays only for long solves and for problems reconstructed many times.
+Capping its planning time (FFTW's `timelimit`) does not help: with 0.1 s it falls back to plans
+as slow as `ESTIMATE`'s, with 0.5 s it matches `MEASURE` in 2D but not in 3D, and with 2 s it
+matches `MEASURE` at several times the planning cost. The environment variable
 `MRT_FFTW_WISDOM` turns the cache off (`off`) or moves it (a directory); the benchmark harness
 turns it off, so that every timing plans from scratch.
 

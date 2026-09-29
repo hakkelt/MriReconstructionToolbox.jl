@@ -17,6 +17,14 @@ Fields (with defaults):
 - `task_executor::Union{Nothing,ReconstructionExecutor} = nothing` — override executor for task splitting
 - `disable_inverse_scale_output::Bool = false` — skip rescaling the final output
 - `disable_task_splitting::Bool = false` — disable automatic task splitting
+- `fft_planning::Symbol = :auto` — how carefully FFTW plans the encoding operator's FFTs:
+  `:measure` times candidate algorithms and finds faster plans at a planning cost of about
+  0.1–0.3 s per 2D transform and 1–1.5 s per 3D one; `:estimate` plans instantly from a
+  heuristic whose plans can run several times slower; `:auto` weighs the one against the other
+  for the reconstruction at hand (see "Performance & Threading" in the manual). A measured plan
+  is remembered for the rest of the session and in the on-disk wisdom cache, so `:measure` also
+  pays off when the same acquisition is reconstructed many times, even by short or direct
+  reconstructions. Has no effect under FFTW.jl's `mkl` provider, which ignores planner flags.
 - `slice_id::Union{Nothing, String} = nothing` — set by the task-splitting machinery to name the
   slab currently being solved, and surfaced to an `on_iteration` callback as its `slice` field.
   Not meant to be passed by hand.
@@ -39,6 +47,9 @@ conf = ReconstructionConfig()
 conf = ReconstructionConfig(; verbosity = ProgressBar())
 conf = ReconstructionConfig(; verbosity = Verbose())
 
+# Measure FFT plans once for a series of reconstructions of the same acquisition
+conf = ReconstructionConfig(; fft_planning = :measure)
+
 # Extend an existing config
 conf2 = ReconstructionConfig(conf; disable_task_splitting = true)
 
@@ -46,6 +57,8 @@ conf2 = ReconstructionConfig(conf; disable_task_splitting = true)
 x̂ = reconstruct(acq, IterativeReconstruction(reg; maxit = 50, reltol = 1e-6); config = conf2)
 ```
 """
+const FFT_PLANNING_MODES = (:auto, :estimate, :measure)
+
 struct ReconstructionConfig
     scaling::Scaling
     verbosity::Verbosity
@@ -53,6 +66,7 @@ struct ReconstructionConfig
     task_executor::Union{Nothing, ReconstructionExecutor}
     disable_inverse_scale_output::Bool
     disable_task_splitting::Bool
+    fft_planning::Symbol
     slice_id::Union{Nothing, String}
 
     function ReconstructionConfig(;
@@ -62,8 +76,10 @@ struct ReconstructionConfig
             task_executor::Union{Nothing, ReconstructionExecutor} = nothing,
             disable_inverse_scale_output::Bool = false,
             disable_task_splitting::Bool = false,
+            fft_planning::Symbol = :auto,
             slice_id::Union{Nothing, AbstractString} = nothing,
         )
+        @argcheck fft_planning in FFT_PLANNING_MODES "fft_planning must be one of $FFT_PLANNING_MODES"
         return new(
             scaling,
             as_verbosity(verbosity),
@@ -71,6 +87,7 @@ struct ReconstructionConfig
             task_executor,
             disable_inverse_scale_output,
             disable_task_splitting,
+            fft_planning,
             isnothing(slice_id) ? nothing : String(slice_id),
         )
     end

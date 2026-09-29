@@ -93,8 +93,9 @@ one question: *does it mean anything without knowing the method?*
 
 - **Method parameters** — `maxit`, `reltol`, `algorithm`, and everything else only a particular
   method can act on — go to that method's constructor. They are keyword-only there.
-- **Run settings** — scaling, output, threading, task splitting — go to `ReconstructionConfig`, or
-  straight to `reconstruct` as keywords.
+- **Run settings** — scaling, output, threading, task splitting, FFT planning (`fft_planning`,
+  see [Planning FFTs](@ref)) — go to `ReconstructionConfig`, or straight to `reconstruct` as
+  keywords.
 
 Passing `maxit`, `reltol` or `algorithm` to `reconstruct` throws rather than being silently
 ignored, which is what happened before this split.

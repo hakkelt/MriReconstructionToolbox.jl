@@ -96,7 +96,7 @@ function _reconstruct_dispatch_plain(acq_data, method::ReconstructionMethod, x�
                     𝒜 = build_encoding_operator(
                         local_acq, method;
                         threaded = local_conf.threaded,
-                        fast_planning = _fast_planning(method, local_acq),
+                        fast_planning = _fast_planning(method, local_acq, local_conf),
                     )
                     slice_result = _reconstruct(local_acq, method, local_x₀, local_conf; 𝒜)
                     AbstractOperators.recycle!(pool, 𝒜)
@@ -122,7 +122,7 @@ function _reconstruct(
         acq_data, method::ReconstructionMethod, x₀, config;
         scale_override = nothing, 𝒜 = nothing, prior = nothing,
     )
-    fast_planning = _fast_planning(method, acq_data)
+    fast_planning = _fast_planning(method, acq_data, config)
     if isnothing(𝒜)
         @step "Constructing encoding operator" config begin
             𝒜 = build_encoding_operator(
@@ -219,7 +219,7 @@ function _reconstruct_components(
     if isnothing(𝒜)
         @step "Constructing encoding operator" config begin
             𝒜 = build_encoding_operator(
-                acq_data, method; threaded = config.threaded, fast_planning = _fast_planning(method, acq_data)
+                acq_data, method; threaded = config.threaded, fast_planning = _fast_planning(method, acq_data, config)
             )
         end
     end
