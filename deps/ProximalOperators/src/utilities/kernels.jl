@@ -26,11 +26,12 @@ as a broadcast plus a `mapreduce` on the GPU. Threading follows [`should_thread`
     _map_reduce_prox!(execution_strategy(f, x), y, h, g, x)
 
 @inline function _map_reduce_prox!(strategy::Strategy, y, h::H, g::G, x) where {H, G}
-    acc = real(eltype(y))(0)
+    R = real(eltype(y))
+    acc = R(0)
     @elementwise_loop strategy reduction = ((+, acc),) for i in eachindex(x, y)
-        yi = h(x[i])
+        yi = convert(eltype(y), h(x[i]))
         y[i] = yi
-        acc += g(yi)
+        acc += R(g(yi))
     end
     return acc
 end
@@ -46,11 +47,12 @@ or an `IndBox` whose bounds come from `get_kth_elem`.
     _map_reduce_prox_idx!(execution_strategy(f, x), y, h, g, x)
 
 @inline function _map_reduce_prox_idx!(strategy::Strategy, y, h::H, g::G, x) where {H, G}
-    acc = real(eltype(y))(0)
+    R = real(eltype(y))
+    acc = R(0)
     @elementwise_loop strategy reduction = ((+, acc),) for i in eachindex(x, y)
-        yi = h(i, x[i])
+        yi = convert(eltype(y), h(i, x[i]))
         y[i] = yi
-        acc += g(i, yi)
+        acc += R(g(i, yi))
     end
     return acc
 end
@@ -87,9 +89,10 @@ Return `sum(g, x)`. The call-operator counterpart of [`map_reduce_prox!`](@ref).
 @inline reduce_call(f, g::G, x) where {G} = _reduce_call(execution_strategy(f, x), g, x)
 
 @inline function _reduce_call(strategy::Strategy, g::G, x) where {G}
-    acc = real(eltype(x))(0)
+    R = real(eltype(x))
+    acc = R(0)
     @elementwise_loop strategy reduction = ((+, acc),) for i in eachindex(x)
-        acc += g(x[i])
+        acc += R(g(x[i]))
     end
     return acc
 end
@@ -98,9 +101,10 @@ end
     _reduce_call_idx(execution_strategy(f, x), g, x)
 
 @inline function _reduce_call_idx(strategy::Strategy, g::G, x) where {G}
-    acc = real(eltype(x))(0)
+    R = real(eltype(x))
+    acc = R(0)
     @elementwise_loop strategy reduction = ((+, acc),) for i in eachindex(x)
-        acc += g(i, x[i])
+        acc += R(g(i, x[i]))
     end
     return acc
 end
@@ -154,10 +158,10 @@ are separate anyway, which is why the GPU method is allowed to be two `mapreduce
     acc1 = R(0)
     acc2 = R(0)
     @elementwise_loop strategy reduction = ((+, acc1), (+, acc2)) for i in eachindex(x, y)
-        yi = h(x[i])
+        yi = convert(eltype(y), h(x[i]))
         y[i] = yi
-        acc1 += g1(yi)
-        acc2 += g2(yi)
+        acc1 += R(g1(yi))
+        acc2 += R(g2(yi))
     end
     return acc1, acc2
 end
@@ -170,10 +174,10 @@ end
     acc1 = R(0)
     acc2 = R(0)
     @elementwise_loop strategy reduction = ((+, acc1), (+, acc2)) for i in eachindex(x, y)
-        yi = h(i, x[i])
+        yi = convert(eltype(y), h(i, x[i]))
         y[i] = yi
-        acc1 += g1(yi)
-        acc2 += g2(yi)
+        acc1 += R(g1(yi))
+        acc2 += R(g2(yi))
     end
     return acc1, acc2
 end
