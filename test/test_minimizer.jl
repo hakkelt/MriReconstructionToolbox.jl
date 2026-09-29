@@ -500,19 +500,22 @@ end
     config = ReconstructionConfig()
     scaled(alg; m = method) = _scale_admm_penalty(alg, nothing, nothing, nothing, 2.0, m, config; eltype_real = Float32)
 
-    # `L = 2`, so every penalty is multiplied by `L² = 4`.
-    @test scaled(ADMM(; rho = 0.05f0)).kwargs[:rho] ≈ 0.2f0
-    @test scaled(ADMM(; rho = (0.05f0, 1.0f0))).kwargs[:rho] == (0.2f0, 4.0f0)
-    ps = scaled(ADMM(; penalty_sequence = PA.FixedPenalty([0.1f0]))).kwargs[:penalty_sequence]
-    @test ps isa PA.FixedPenalty && ps.rho ≈ [0.4f0]
+    # `L = 2`, so every given penalty is multiplied by `L² = 4`, which ADMM applies as `rho_scale`.
+    for alg in (ADMM(; rho = 0.05f0), ADMM(; rho = (0.05f0, 1.0f0)), ADMM(; penalty_sequence = PA.FixedPenalty([0.1f0])))
+        @test scaled(alg).kwargs[:rho_scale] ≈ 4.0f0
+    end
+    kw = scaled(ADMM(; rho = 0.05f0)).kwargs
+    g = MriReconstructionToolbox.ProximalOperators.NormL1(0.1f0)
+    iter = PA.ADMMIteration(; x0 = zeros(Float32, 3), A = randn(Float32, 4, 3), b = randn(Float32, 4), g, rho = kw[:rho], rho_scale = kw[:rho_scale])
+    @test iter.penalty_sequence.rho ≈ [0.2f0]
     # A penalty that was not given -- the default adaptive sequence, or a sequence without an
     # initial value -- is left to ADMM, and so are other algorithms and an explicit opt-out.
     @test scaled(ADMM(; maxit = 3)).kwargs == ADMM(; maxit = 3).kwargs
     alg = scaled(ADMM(; penalty_sequence = PA.ResidualBalancingPenalty()))
-    @test !haskey(alg.kwargs, :rho)
+    @test !haskey(alg.kwargs, :rho_scale)
     @test scaled(FISTA(; maxit = 3)).kwargs == FISTA(; maxit = 3).kwargs
     opt_out = IterativeReconstruction(; regularization = TotalVariation2D(0.01), disable_operator_normalization = true)
-    @test scaled(ADMM(; rho = 0.05f0); m = opt_out).kwargs[:rho] == 0.05f0
+    @test !haskey(scaled(ADMM(; rho = 0.05f0); m = opt_out).kwargs, :rho_scale)
 end
 
 @testitem "Fixed-penalty ADMM does not depend on the scale of the encoding" tags = [:minimizer, :reconstruction, :nfft] begin

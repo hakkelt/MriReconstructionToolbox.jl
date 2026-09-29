@@ -495,12 +495,7 @@ function _scale_admm_penalty(
         !isnothing(L) ? L^2 :
             !isnothing(curvature) ? curvature : _admm_curvature(𝒜, x₀, acq_data, config)
     )
-    if haskey(kwargs, :rho)
-        return ProximalAlgorithms.override_parameters(algorithm; rho = kwargs[:rho] .* s)
-    end
-    ps = kwargs[:penalty_sequence]
-    scaled = ProximalAlgorithms.reinstantiate_penalty_sequence(ps, eltype_real, ps.rho .* s)
-    return ProximalAlgorithms.override_parameters(algorithm; penalty_sequence = scaled)
+    return ProximalAlgorithms.override_parameters(algorithm; rho_scale = s)
 end
 
 """
