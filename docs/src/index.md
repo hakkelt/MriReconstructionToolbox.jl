@@ -6,21 +6,12 @@ MriReconstructionToolbox.jl provides everything you need to reconstruct images f
 
 ## Installation
 
-**Note:** This package is not yet registered in the Julia General registry because it needs enhancements to upstream packages. These changes are currently under pull requests, and hopefully will be merged soon. Installation requires adding dependencies from GitHub repositories:
+**Note:** This package is not yet registered in the Julia General registry. The versions of AbstractOperators, OperatorCore, ProximalOperators, ProximalAlgorithms and StructuredOptimization it needs are still under review upstream, so they ship inside the package; only NestedThreading has to be added from GitHub first:
 
 ```julia
 using Pkg
 
-# Add the package from GitHub
-Pkg.add(url="https://github.com/hakkelt/AbstractOperators.jl")
-Pkg.add(url="https://github.com/hakkelt/AbstractOperators.jl", subdir="FFTWOperators")
-Pkg.add(url="https://github.com/hakkelt/AbstractOperators.jl", subdir="DSPOperators")
-Pkg.add(url="https://github.com/hakkelt/AbstractOperators.jl", subdir="NFFTOperators")
-Pkg.add(url="https://github.com/hakkelt/AbstractOperators.jl", subdir="WaveletOperators")
-Pkg.add(url="https://github.com/hakkelt/ProximalCore.jl")
-Pkg.add(url="https://github.com/hakkelt/ProximalOperators.jl")
-Pkg.add(url="https://github.com/hakkelt/ProximalAlgorithms.jl")
-Pkg.add(url="https://github.com/hakkelt/StructuredOptimization.jl")
+Pkg.add(url="https://github.com/hakkelt/NestedThreading.jl", rev="perf/thread-grants")
 Pkg.add(url="https://github.com/hakkelt/MriReconstructionToolbox.jl")
 ```
 
