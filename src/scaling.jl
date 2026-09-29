@@ -160,6 +160,8 @@ Computes the scaling factor based on the chosen scaling strategy.
 get_scale(::NoScaling, acq_data::AcquisitionInfo, x₀, 𝒜) = 1.0
 
 function get_scale(scaling::QuantileScaling, acq_data::AcquisitionInfo, x₀, 𝒜)
+    # The subsample's maximum is not the image's.
+    scaling.p == 1 && return _max_abs(x₀)
     v = _abs_subsample(x₀)
     return _quantile_select!(v, scaling.p)
 end
@@ -226,18 +228,19 @@ const SYSTEM_MATRIX_PROBES = 4
 
 get_scale(scaling::FixedScaling, acq_data::AcquisitionInfo, x₀, 𝒜) = scaling.scale
 
-# The subsample the quantile rules read: at most `SCALING_SUBSAMPLE` elements at a prime stride.
-# A power-of-two stride aliases with a power-of-two grid and samples a few planes of it (on a 128³
-# volume, stride 32 visits four readout positions and put the 99th percentile 40 % high); a prime
-# stride visits every residue of every axis.
+# The subsample the quantile rules read: at most `SCALING_SUBSAMPLE` elements at a prime stride
+# that does not divide the length. A stride sharing a factor with an axis aliases with it and
+# samples a few planes of the grid (on a 128³ volume, stride 32 visits four readout positions and
+# put the 99th percentile 40 % high); a prime that divides none of the axes visits every residue of
+# every axis.
 const SCALING_SUBSAMPLE = 2^18
 
-_subsample_indices(n::Int) = 1:(n <= SCALING_SUBSAMPLE ? 1 : _next_prime(cld(n, SCALING_SUBSAMPLE))):n
+_subsample_indices(n::Int) = 1:(n <= SCALING_SUBSAMPLE ? 1 : _coprime_prime_stride(cld(n, SCALING_SUBSAMPLE), n)):n
 
-function _next_prime(k::Int)
-    k <= 2 && return 2
-    p = isodd(k) ? k : k + 1
-    while !_is_odd_prime(p)
+# The smallest odd prime at least `k` that does not divide `n`.
+function _coprime_prime_stride(k::Int, n::Int)
+    p = max(3, isodd(k) ? k : k + 1)
+    while !_is_odd_prime(p) || n % p == 0
         p += 2
     end
     return p

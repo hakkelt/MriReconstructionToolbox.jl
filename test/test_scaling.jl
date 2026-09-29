@@ -57,7 +57,12 @@
         hot[randperm(Xoshiro(3), length(v))[1:(length(v) ÷ 1000)]] .= 100 * maximum(v)
         @test get_scale(QuantileScaling(), acq, hot, nothing) ≈ q rtol = 0.02
         @test get_scale(MaxScaling(), acq, hot, nothing) > 50 * q
-        @test MriReconstructionToolbox._next_prime.(0:12) == [2, 2, 2, 3, 5, 5, 7, 7, 11, 11, 11, 11, 13]
+        stride(k, n) = MriReconstructionToolbox._coprime_prime_stride(k, n)
+        @test stride.(0:12, 1) == [3, 3, 3, 3, 5, 5, 7, 7, 11, 11, 11, 11, 13]
+        # Never a factor of the length, so it never aliases with an axis: 192 = 2⁶·3, 385 = 5·7·11.
+        @test stride(2, 192 * 192 * 8) == 5
+        @test stride(5, 385) == 13
+        @test get_scale(QuantileScaling(1), acq, hot, nothing) == maximum(hot)
     end
 
     @testset "reconstruction is equivariant to the data's intensity under the default" begin
