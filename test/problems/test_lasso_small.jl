@@ -333,6 +333,20 @@ using ProximalAlgorithms:
             @test x_ahb ≈ x_admm
             @test it_ahb == it_admm
         end
+
+        # `rho_scale` multiplies a given `rho`, wherever it was given, and leaves the default
+        # sequence's starting value alone.
+        R = real(T)
+        @testset "rho_scale" begin
+            it(; kw...) = ProximalAlgorithms.ADMMIteration(; x0, A, b, g, kw...)
+            @test it(rho = 0.5, rho_scale = 4).penalty_sequence.rho == [R(2)]
+            @test it(penalty_sequence = ProximalAlgorithms.SpectralRadiusBoundPenalty(rho = 0.5), rho_scale = 4).penalty_sequence.rho ==
+                it(penalty_sequence = ProximalAlgorithms.SpectralRadiusBoundPenalty(rho = 2.0)).penalty_sequence.rho
+            @test it(rho_scale = 4).penalty_sequence.rho == it().penalty_sequence.rho
+            x_scaled, _ = ProximalAlgorithms.ADMM(tol = 1e-5, maxit = 500, rho = 0.25, rho_scale = 4)(; x0, A, b, g)
+            x_plain, _ = ProximalAlgorithms.ADMM(tol = 1e-5, maxit = 500, rho = 1.0)(; x0, A, b, g)
+            @test x_scaled ≈ x_plain
+        end
     end
 
 end

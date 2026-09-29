@@ -64,6 +64,10 @@ See also: [`ADMM`](@ref).
   - `SpectralRadiusBoundPenalty(rho; tau=10.0, eta=100.0)`: adaptive penalty sequence based on spectral radius bounds [3]
   - `SpectralRadiusApproximationPenalty(rho; tau=10.0)`: adaptive penalty sequence based on spectral radius approximation [4]
   Note: rho can be specified either as the `rho` parameter or within the penalty sequence constructor, but not both.
+- `rho_scale=1`: factor applied to a given `rho` (the parameter or the penalty sequence's own),
+  for a caller that states `rho` relative to a scale of the problem, such as the curvature
+  `‖A‖²` of the data term, and would otherwise have to rebuild the penalty sequence. The
+  default sequence's starting `rho` of 1 is not scaled.
 - `threaded=true`: run the per-regularizer loops (the adjoint accumulation of the x-update and
   the whole z/y-update) over `Threads.@threads`. Set it to `false` from a caller that is
   already threading at a coarser level — nested threading regions oversubscribe rather than
@@ -96,6 +100,7 @@ function ADMMIteration(;
 	y0=nothing,
 	z0=nothing,
 	penalty_sequence=nothing,
+	rho_scale=1,
 	threaded=true,
 )
 	if isnothing(A) && !isnothing(b)
@@ -137,7 +142,7 @@ function ADMMIteration(;
 		reinstantiate_penalty_sequence(SpectralRadiusApproximationPenalty(), R, ones(R, length(g)))
 	elseif isnothing(penalty_sequence)
 		# Only rho provided, create FixedPenalty
-		reinstantiate_penalty_sequence(FixedPenalty(rho), R, collect(R.(rho)))
+		reinstantiate_penalty_sequence(FixedPenalty(rho), R, collect(R.(rho)) .* R(rho_scale))
 	else
 		# Check for ambiguous rho specification
 		if !isnothing(rho) && !isnothing(penalty_sequence.rho)
@@ -150,11 +155,11 @@ function ADMMIteration(;
 
 		# Determine final rho: use penalty_sequence.rho if non-empty, otherwise use constructor rho
 		final_rho = if isnothing(penalty_sequence.rho)
-			isnothing(rho) ? ones(R, length(g)) : collect(R.(rho))
+			isnothing(rho) ? ones(R, length(g)) : collect(R.(rho)) .* R(rho_scale)
 		elseif penalty_sequence.rho isa Number
-			fill(R(penalty_sequence.rho), length(g))  # Convert single value to tuple
+			fill(R(penalty_sequence.rho) * R(rho_scale), length(g))  # Convert single value to tuple
 		else
-			collect(R.(penalty_sequence.rho))  # Ensure it's a tuple of the right type
+			collect(R.(penalty_sequence.rho)) .* R(rho_scale)  # Ensure it's a tuple of the right type
 		end
 
 		# Convert all non-integer fields to match the precision of x0 and set rho if needed
