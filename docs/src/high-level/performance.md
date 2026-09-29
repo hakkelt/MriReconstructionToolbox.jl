@@ -50,6 +50,13 @@ the same way here; this is not a bug in either.
 - **Spreads slices of a task-split problem over threads when there are enough of them**, and then
   runs the work *inside* a slice sequentially, because the slice loop is already using every
   thread. With a `SequentialExecutor` the threads are free and the inside threads as usual.
+- **Chooses how carefully to plan FFTs.** FFTW's `MEASURE` planning times candidate algorithms
+  and finds plans 1.5–10× faster than its `ESTIMATE` heuristic. But one plan costs 0.1–0.3 s for
+  a 2D grid and about 1 s for a 128³ one, and every new Julia process pays it again. MRT plans
+  with `ESTIMATE` unless the solve is long (`maxit ≥ 64`) and the transform is large (at least
+  2¹⁹ points, counting coils and frames). With no cached plans, that made a 10-iteration
+  CG-SENSE of a 128², 8-coil slice 19× faster (0.30 s → 0.016 s), and one of a 128³, 8-coil
+  volume 1.8× faster.
 
 Earlier versions narrowed every pool for the duration of any sub-16-MiB solve. That is gone: it
 was measured against a `Polyester`/`Threads.@threads` interference cost that `NestedThreading`

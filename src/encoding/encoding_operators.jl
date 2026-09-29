@@ -129,7 +129,7 @@ The cost is one FFT plan per coil instead of one batched plan, paid once when th
 built. `fast_planning` is forwarded unchanged, so a caller that cares keeps its existing control.
 
 Axes after the coil axis in k-space (frames, say) are batched over, one per-frame operator of
-this form each, unless `fast_planning` is set; see [`_frame_batched_coil_fused_operator`](@ref).
+this form each; see [`_frame_batched_coil_fused_operator`](@ref).
 
 Returns `nothing` unless the acquisition is Cartesian with sensitivity maps whose last axis is
 `:coil` and that are shared by every frame, more than one coil, at most
@@ -153,12 +153,11 @@ function _coil_fused_encoding_operator(
     nsample = _get_sample_dims_count(info)
     _has_dimnames(ksp) && dimnames(ksp)[nsample + 1] !== :coil && return nothing
     ndims(ksp) == nsample + 1 && return _coil_fused_frame_operator(info; threaded, fast_planning)
-    fast_planning && return nothing
-    return _frame_batched_coil_fused_operator(info, nsample; threaded)
+    return _frame_batched_coil_fused_operator(info, nsample; threaded, fast_planning)
 end
 
 """
-	_frame_batched_coil_fused_operator(info, nsample; threaded)
+	_frame_batched_coil_fused_operator(info, nsample; threaded, fast_planning)
 
 The coil-fused operator of an acquisition with axes after the coil axis (frames of a cine,
 say), one per-frame coil-fused operator per trailing index, batched over them; or `nothing` when
@@ -180,12 +179,14 @@ Measured on the comparison benchmark's Cartesian cine (128×128, 8 coils, 30 fra
 | build           |  4.7 ms  | 19.0 ms       |
 
 The build is the price: one operator per frame and coil, and one FFT plan per frame (the coils
-of a frame share one, as its batch over coils is serial). That pays back after about three
-applies, so it is not built under `fast_planning`, which asks for the operator that is cheapest
-to set up — what a direct reconstruction applies once.
+of a frame share one, as its batch over coils is serial). The table's build had the plans cached.
+Planned from scratch at 4 threads, the frame-batched build takes 11–17 ms with
+`fast_planning` against 8.8 ms for the chain, and its first adjoint 13 ms against 28 ms, so it is
+the faster choice even for a direct reconstruction's single adjoint. `MEASURE` planning
+(`fast_planning = false`) costs about 250 ms for the 30 frames.
 """
 function _frame_batched_coil_fused_operator(
-        info::CartesianAcquisitionInfo, nsample::Int; threaded::Bool
+        info::CartesianAcquisitionInfo, nsample::Int; threaded::Bool, fast_planning::Bool
     )
     ksp = info.kspace_data
     frame_dims = Tuple((nsample + 2):ndims(ksp))
@@ -194,7 +195,7 @@ function _frame_batched_coil_fused_operator(
     per_frame = map(zip(frames, _ksp_eachslice(ksp, frame_dims))) do (idx, ksp_frame)
         subsampling = slice_subsampling(info.subsampling, ksp, frame_dims, idx)
         frame_info = CartesianAcquisitionInfo(info; kspace_data = ksp_frame, subsampling)
-        op = _coil_fused_frame_operator(frame_info; threaded = false, fast_planning = false, coil_maps)
+        op = _coil_fused_frame_operator(frame_info; threaded = false, fast_planning, coil_maps)
         return _unwrap_named(op)
     end
     codomain = size(first(per_frame), 1)

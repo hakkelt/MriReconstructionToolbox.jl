@@ -174,3 +174,43 @@ function build_encoding_operator(
     model = method isa IterativeReconstruction ? method.signal_model : nothing
     return model_encoding_operator(model, acq; threaded, fast_planning)
 end
+
+"""
+    _fast_planning(method, acq) -> Bool
+
+Whether `method`'s encoding operator plans its FFTs with `FFTW.ESTIMATE` (`true`) rather than
+`FFTW.MEASURE`. `MEASURE` times candidate algorithms on the real arrays: its plans run 1.5–10×
+faster, but planning one costs 0.1–0.3 s for a 2D grid and about 1 s for a 128³ one, per plan
+and per direction, and a solve pays it again in every new process. `MEASURE` is used only where
+that pays back: an iterative solve of at least `MEASURE_MIN_ITERATIONS` iterations over at least
+`MEASURE_MIN_POINTS` transformed points (grid points times coils and every other batch axis).
+
+Measured with no cached plans, 4 threads (EPYC 7352), whole reconstruction, `MEASURE` / `ESTIMATE`:
+
+| case                          | iterations | `MEASURE` | `ESTIMATE` |
+|-------------------------------|-----------:|----------:|-----------:|
+| 2D 128², 8 coils, CG-SENSE    |         10 |   0.30 s  |   0.016 s  |
+| 2D 128², 8 coils, CG-SENSE    |        300 |   0.48 s  |   0.28 s   |
+| 2D 128², 8 coils, TV (PDHG)   |        300 |   1.01 s  |   0.70 s   |
+| 3D 128³, 8 coils, CG-SENSE    |         10 |   4.29 s  |   2.42 s   |
+| 3D 128³, 8 coils, CG-SENSE    |        100 |  13.6 s   |  14.6 s    |
+| cine 128², 8 coils, 30 frames |        100 |   2.41 s  |   3.07 s   |
+| radial 128², 8 coils          |        100 |   1.31 s  |   2.21 s   |
+"""
+_fast_planning(::ReconstructionMethod, acq::AcquisitionInfo) = true
+function _fast_planning(method::IterativeReconstruction, acq::AcquisitionInfo)
+    something(method.maxit, MEASURE_MIN_ITERATIONS) >= MEASURE_MIN_ITERATIONS || return true
+    return _fft_points(acq) < MEASURE_MIN_POINTS
+end
+
+const MEASURE_MIN_ITERATIONS = 64
+const MEASURE_MIN_POINTS = 2^19
+
+# Points one application of the encoding's FFTs transforms: the image grid (oversampled twice per
+# axis for a non-uniform transform) times every axis after the sample axes.
+function _fft_points(acq::AcquisitionInfo)
+    ksp = acq.kspace_data
+    grid = prod(acq.image_size)
+    acq isa NonCartesianAcquisitionInfo && (grid *= 2^length(acq.image_size))
+    return grid * prod(_ksp_trailing_size(ksp, _get_sample_dims_count(acq) + 1); init = 1)
+end

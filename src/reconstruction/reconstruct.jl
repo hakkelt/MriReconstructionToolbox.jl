@@ -96,7 +96,7 @@ function _reconstruct_dispatch_plain(acq_data, method::ReconstructionMethod, x�
                     𝒜 = build_encoding_operator(
                         local_acq, method;
                         threaded = local_conf.threaded,
-                        fast_planning = method isa DirectReconstruction,
+                        fast_planning = _fast_planning(method, local_acq),
                     )
                     slice_result = _reconstruct(local_acq, method, local_x₀, local_conf; 𝒜)
                     AbstractOperators.recycle!(pool, 𝒜)
@@ -122,7 +122,7 @@ function _reconstruct(
         acq_data, method::ReconstructionMethod, x₀, config;
         scale_override = nothing, 𝒜 = nothing, prior = nothing,
     )
-    fast_planning = method isa DirectReconstruction
+    fast_planning = _fast_planning(method, acq_data)
     if isnothing(𝒜)
         @step "Constructing encoding operator" config begin
             𝒜 = build_encoding_operator(
@@ -218,7 +218,9 @@ function _reconstruct_components(
     components = bind_dimensions(method.regularization, get_image_dims(acq_data))
     if isnothing(𝒜)
         @step "Constructing encoding operator" config begin
-            𝒜 = build_encoding_operator(acq_data, method; threaded = config.threaded, fast_planning = false)
+            𝒜 = build_encoding_operator(
+                acq_data, method; threaded = config.threaded, fast_planning = _fast_planning(method, acq_data)
+            )
         end
     end
     # `x₀s` lets a caller that has already formed the per-component initial guesses skip the adjoint
