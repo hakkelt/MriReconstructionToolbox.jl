@@ -50,8 +50,8 @@ const CPU_STR = join(PINNED_CPUS, ",")
 @info "Julia threads pinned" CPU_STR
 
 BART_AVAILABLE && (ENV["TOOLBOX_PATH"] = BART_BINARY)
-# BART_USE_FFTW_WISDOM=1 was measured to *hurt* (6x): it forces FFTW_MEASURE on every fresh
-# `bart` process and the wisdom file is never persisted, so MEASURE planning is never amortised.
+# No FFTW wisdom files: BART would read and write them under `$TOOLBOX_PATH/save/fftw/`, which
+# carries plans from one timed `bart` process to the next.
 ENV["BART_USE_FFTW_WISDOM"] = "0"
 ENV["OMP_NUM_THREADS"] = string(NUM_THREADS)
 ENV["OPENBLAS_NUM_THREADS"] = string(NUM_THREADS)
@@ -237,15 +237,13 @@ function bart_overhead(inputs...; reps = 5)
 end
 
 """
-    time_bart(cmd, inputs...; nout = 1, num_runs = 3, heavy_threshold = 5.0)
-        -> (t_min_s, t_med_s, result)
+    time_bart(cmd, inputs...; nout = 1, num_runs = 3) -> (t_min_s, t_med_s, result)
 
 Run BART `cmd` on `inputs`, timed `num_runs` times after a warm-up, with `bart_overhead(inputs...)`
-subtracted. `BART_USE_FFTW_WISDOM` is enabled for this recon only if the warm-up solver time
-exceeds `heavy_threshold` seconds — i.e. only when the one-off `FFTW_MEASURE` planning is small
-against the recon's own compute (per the user's ">5 s" rule).
+subtracted. Every call is a fresh `bart` process with `BART_USE_FFTW_WISDOM=0`, so each timed run
+plans its FFTs from scratch, as [`time_run`](@ref) makes the in-process toolkits do.
 """
-function time_bart(cmd::AbstractString, inputs...; nout::Int = 1, num_runs::Int = RUNS[], heavy_threshold::Real = 5.0)
+function time_bart(cmd::AbstractString, inputs...; nout::Int = 1, num_runs::Int = RUNS[])
     if WARMUP[] == 0         # images only (calibration): one untimed-for-the-record run
         t0 = time_ns()
         res = run_bart(nout, cmd, inputs...)
@@ -253,18 +251,14 @@ function time_bart(cmd::AbstractString, inputs...; nout::Int = 1, num_runs::Int 
         return t, t, res
     end
     ovh = bart_overhead(inputs...)
-    t0 = time_ns()
     res = run_bart(nout, cmd, inputs...)
-    warm = (time_ns() - t0) / 1.0e9 - ovh
-    wis = warm > heavy_threshold
-    wis && run_bart(nout, cmd, inputs...; wisdom = true)   # build the measured plan once
     times = Float64[]
     for _ in 1:num_runs
         t0 = time_ns()
-        res = run_bart(nout, cmd, inputs...; wisdom = wis)
+        res = run_bart(nout, cmd, inputs...)
         push!(times, (time_ns() - t0) / 1.0e9)
     end
-    @info @sprintf("BART '%s': overhead %.1f ms, wisdom %s", first(split(cmd)), ovh * 1000, wis)
+    @info @sprintf("BART '%s': overhead %.1f ms", first(split(cmd)), ovh * 1000)
     return max(1.0e-5, minimum(times) - ovh), max(1.0e-5, median(times) - ovh), res
 end
 
