@@ -36,6 +36,7 @@ using .ContourletOperators: ContourletOp, NSCTOp, ContourletParams, parabolic_le
 using .FFTWOperators: FFTWOperators, DFT, fftshift_op, ifftshift_op, alternate_sign!
 using RecursiveArrayTools: ArrayPartition
 using FFTW: FFTW, fft, ifft, fftshift, ifftshift
+import Scratch
 using ArgCheck: @argcheck
 using Printf: @sprintf
 using Statistics: quantile, median, mean, std
@@ -68,6 +69,7 @@ export Tikhonov, LLR
 
 # Top-level entry points and configuration
 export build_model, reconstruct, ReconstructionConfig, SequentialExecutor, MultiThreadingExecutor
+export plan_fft_wisdom
 export Silent, ProgressBar, Verbose
 export IterationTrace
 export BartScaling, FixedScaling, KSpaceNormScaling, MaxScaling, MeasurementBasedScaling, NoiseLevelScaling
@@ -126,6 +128,7 @@ public DensityCompensation, CoilCompression, SensitivityEstimation, GradientDela
 public get_operator, materialize, materialize_with_auxiliaries, materialize_all
 public get_affected_dims, scale_regularization, bind_dimensions, calculate
 public check_applicable
+public fftw_wisdom_path
 public get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator
 public build_encoding_operator, signal_model_operator, NamedDimsOp, DFT, DEFAULT_ALGORITHMS
 
@@ -149,6 +152,7 @@ include("threading_utils.jl")
 
 include("encoding/named_dims_op.jl")
 include("encoding/contourlet_stack_op.jl")
+include("encoding/fftw_wisdom.jl")
 include("encoding/fourier_operators.jl")
 include("encoding/sensitivity_map_operators.jl")
 include("encoding/subsampling_operators.jl")
@@ -215,6 +219,7 @@ include("simulation/trajectories.jl")
 
 function __init__()
     _init_serial_blas_threshold!()
+    atexit(_save_fftw_wisdom)
     return nothing
 end
 

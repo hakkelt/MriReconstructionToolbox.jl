@@ -172,7 +172,11 @@ function build_encoding_operator(
         fast_planning::Bool = false,
     )
     model = method isa IterativeReconstruction ? method.signal_model : nothing
-    return model_encoding_operator(model, acq; threaded, fast_planning)
+    𝒜 = model_encoding_operator(model, acq; threaded, fast_planning)
+    # What the measured plans learned is saved now, not only at exit, so a session that is
+    # killed does not plan them again next time.
+    fast_planning || _save_fftw_wisdom()
+    return 𝒜
 end
 
 """

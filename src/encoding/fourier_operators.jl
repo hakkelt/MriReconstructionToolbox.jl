@@ -122,7 +122,7 @@ function get_fourier_operator(
         threaded::Bool = true,
         fast_planning::Bool = false,
     )
-    flags = fast_planning ? FFTW.ESTIMATE : FFTW.MEASURE
+    flags = _fftw_flags(fast_planning)
     ksp_dims = is3D ? (1, 2, 3) : (1, 2)
     ℱ = DFT(ksp, ksp_dims; normalization = FFTWOperators.BACKWARD, flags, threaded)
     shifted_kspace_dims = _normalize_shifted_dims(
@@ -321,7 +321,7 @@ function _nfft_operating_point_kwargs(m, sigma, precompute, fast_planning::Bool)
         m = isnothing(m) ? DEFAULT_NFFT_M : m,
         σ = isnothing(sigma) ? DEFAULT_NFFT_SIGMA : sigma,
         precompute = isnothing(precompute) ? DEFAULT_NFFT_PRECOMPUTE : precompute,
-        fftflags = fast_planning ? FFTW.ESTIMATE : FFTW.MEASURE,
+        fftflags = _fftw_flags(fast_planning),
     )
 end
 
@@ -338,7 +338,7 @@ function _axis_dft_op(
         template::AbstractArray, dims::Tuple;
         kspace_shift::Bool = false, threaded::Bool = true, fast_planning::Bool = false,
     )
-    flags = fast_planning ? FFTW.ESTIMATE : FFTW.MEASURE
+    flags = _fftw_flags(fast_planning)
     ℱ = DFT(template, dims; normalization = FFTWOperators.BACKWARD, flags, threaded)
     return kspace_shift ? fftshift_op(ℱ; codomain_shifts = dims) : ℱ
 end

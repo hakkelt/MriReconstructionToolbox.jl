@@ -57,6 +57,40 @@ the same way here; this is not a bug in either.
   2¹⁹ points, counting coils and frames). With no cached plans, that made a 10-iteration
   CG-SENSE of a 128², 8-coil slice 19× faster (0.30 s → 0.016 s), and one of a 128³, 8-coil
   volume 1.8× faster.
+- **Remembers measured FFT plans across sessions.** What FFTW learns while measuring a plan (its
+  "wisdom") is saved to a file per machine, and later sessions load it before planning, so even
+  an `ESTIMATE` plan of a problem measured before comes out measured (see below).
+
+### The FFT wisdom cache
+
+The cache lives in MRT's scratch space (`~/.julia/scratchspaces/<uuid>/fftw_wisdom/`), or under
+`$XDG_CACHE_HOME` (else `~/.cache`) when that is not writable. A binary built with JuliaC (without
+`--trim`; FFTW.jl does not pass trimming) resolves the same scratch space under `~/.julia` with no
+Julia installed, so its first run on a machine creates the cache. The file is
+named after the CPU model and the FFTW version, since wisdom from one CPU does not carry over to
+another, and machines sharing a home directory keep separate files.
+
+Wisdom holds for one exact transform — grid size, coil and frame count, and the number of FFTW
+threads. Entries for different thread counts sit side by side in the file, but each session only
+benefits from the ones made with its own. That also rules out making wisdom while a package
+precompiles: precompilation runs on one thread, and timing a multithreaded plan there picks one
+for serial execution.
+
+To plan a recurring problem more carefully than MRT does on its own, run
+[`plan_fft_wisdom`](@ref) once per machine, with the thread count reconstructions will use and on
+an acquisition shaped like theirs:
+
+```julia
+# julia -t 16
+using MriReconstructionToolbox
+plan_fft_wisdom(acq; rigor = :patient)   # 10–35 s per 2D transform, minutes per 3D one
+```
+
+At 4 threads `PATIENT` found plans 10–20 % faster than `MEASURE` (256²×8: 0.78 against 0.99 ms
+per transform; 128³×8: 35 against 40 ms); the gain matters for
+long solves and for problems reconstructed many times. The environment variable
+`MRT_FFTW_WISDOM` turns the cache off (`off`) or moves it (a directory); the benchmark harness
+turns it off, so that every timing plans from scratch.
 
 Earlier versions narrowed every pool for the duration of any sub-16-MiB solve. That is gone: it
 was measured against a `Polyester`/`Threads.@threads` interference cost that `NestedThreading`
@@ -251,6 +285,8 @@ or go back to the old high-accuracy default with `m = 5, sigma = 2.0`.
 ## API
 
 ```@docs
+plan_fft_wisdom
+MriReconstructionToolbox.fftw_wisdom_path
 MriReconstructionToolbox.with_serial_blas
 MriReconstructionToolbox.serial_blas_threshold_bytes
 MriReconstructionToolbox.set_serial_blas_threshold_bytes!

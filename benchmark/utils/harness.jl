@@ -1,5 +1,10 @@
 # Timing and provenance for the MRT harness and the comparison suite.
 
+# MRT keeps FFTW wisdom on disk between sessions (`MriReconstructionToolbox.fftw_wisdom_path`); a
+# timed run would then reuse plans an earlier run measured, which none of the other toolkits do.
+# Every timing here plans from scratch (see `time_run`), so the cache is off.
+ENV["MRT_FFTW_WISDOM"] = "off"
+
 """
     time_run(f; warmup = 1, runs = 3, cold_fft = true) -> (min_s, median_s, result)
 
