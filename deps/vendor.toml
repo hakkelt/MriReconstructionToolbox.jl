@@ -445,6 +445,13 @@ branch = "fix/afba-zero-dual-start"
 parent = "master"
 pr = ""
 
+# ADMM's `rho_scale` multiplies a given `rho`, so a caller stating `rho` relative to `‖A‖²` need
+# not rebuild the penalty sequence. Stacked on `perf/reuse-ahb`, which last touched the keywords.
+[[ProximalAlgorithms.stack]]
+branch = "feat/admm-rho-scale"
+parent = "perf/reuse-ahb"
+pr = ""
+
 # `pogm-algorithm` is deliberately absent: it added POGM as a `pogm::Bool` variant of
 # `FastForwardBackward`, and `master` (#100) supersedes it with a `src/algorithms/pogm.jl` of its
 # own. Merging it would only re-add the old path. The branch is still on the fork, unmerged.
