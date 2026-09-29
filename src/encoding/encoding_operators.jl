@@ -154,11 +154,11 @@ function _coil_fused_encoding_operator(
     _has_dimnames(ksp) && dimnames(ksp)[nsample + 1] !== :coil && return nothing
     ndims(ksp) == nsample + 1 && return _coil_fused_frame_operator(info; threaded, fast_planning)
     fast_planning && return nothing
-    return _frame_batched_coil_fused_operator(info, nsample; threaded, fast_planning)
+    return _frame_batched_coil_fused_operator(info, nsample; threaded)
 end
 
 """
-	_frame_batched_coil_fused_operator(info, nsample; threaded, fast_planning)
+	_frame_batched_coil_fused_operator(info, nsample; threaded)
 
 The coil-fused operator of an acquisition with axes after the coil axis (frames of a cine,
 say), one per-frame coil-fused operator per trailing index, batched over them; or `nothing` when
@@ -185,7 +185,7 @@ applies, so it is not built under `fast_planning`, which asks for the operator t
 to set up — what a direct reconstruction applies once.
 """
 function _frame_batched_coil_fused_operator(
-        info::CartesianAcquisitionInfo, nsample::Int; threaded::Bool, fast_planning::Bool
+        info::CartesianAcquisitionInfo, nsample::Int; threaded::Bool
     )
     ksp = info.kspace_data
     frame_dims = Tuple((nsample + 2):ndims(ksp))
@@ -194,7 +194,7 @@ function _frame_batched_coil_fused_operator(
     per_frame = map(zip(frames, _ksp_eachslice(ksp, frame_dims))) do (idx, ksp_frame)
         subsampling = slice_subsampling(info.subsampling, ksp, frame_dims, idx)
         frame_info = CartesianAcquisitionInfo(info; kspace_data = ksp_frame, subsampling)
-        op = _coil_fused_frame_operator(frame_info; threaded = false, fast_planning, coil_maps)
+        op = _coil_fused_frame_operator(frame_info; threaded = false, fast_planning = false, coil_maps)
         return _unwrap_named(op)
     end
     codomain = size(first(per_frame), 1)
@@ -246,13 +246,9 @@ function _coil_fused_frame_operator(
             )
         end
     )
-    per_coil = if threaded
-        [single_coil_fourier() * DiagOp(coil_maps[c]; threaded = false) for c in 1:ncoils]
-    else
-        # A serial batch applies one coil at a time, so there its coils can share one.
-        shared = single_coil_fourier()
-        [shared * DiagOp(coil_maps[c]; threaded = false) for c in 1:ncoils]
-    end
+    # A serial batch applies one coil at a time, so there its coils can share one.
+    fourier = threaded ? single_coil_fourier : Returns(single_coil_fourier())
+    per_coil = [fourier() * DiagOp(coil_maps[c]; threaded = false) for c in 1:ncoils]
     codomain_rank = length(size(first(per_coil), 1))
     mask = (ntuple(_ -> :_, nd)..., :s) => (ntuple(_ -> :_, codomain_rank)..., :s)
     𝒞 = BatchOp(
@@ -270,7 +266,7 @@ end
 
 function _coil_maps(info::CartesianAcquisitionInfo)
     smaps = info.sensitivity_maps
-    plain_smaps = smaps isa NamedDimsArray ? unname(smaps) : smaps
+    plain_smaps = unname(smaps)
     nd = length(info.image_size)
     return [copy(selectdim(plain_smaps, nd + 1, c)) for c in axes(plain_smaps, nd + 1)]
 end
@@ -325,7 +321,7 @@ function _compose_with_sensitivity(ℱ, info::AcquisitionInfo; threaded::Bool)
         𝒮 = get_sensitivity_map_operator(smaps; batch_dims, threaded)
         ℱ * 𝒮
     else
-        plain_smaps = smaps isa NamedDimsArray ? unname(smaps) : smaps
+        plain_smaps = unname(smaps)
         batch_dims_start = ndims(plain_smaps) + 1
         batch_dims = size(ℱ, 2)[batch_dims_start:end]
         𝒮 = get_sensitivity_map_operator(plain_smaps, info.is3D; batch_dims, threaded)

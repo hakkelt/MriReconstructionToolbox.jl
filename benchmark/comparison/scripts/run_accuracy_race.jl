@@ -46,12 +46,9 @@ const LADDER_BART_ADMM_HEAVY = [20, 50, 100, 200, 400]
 # inner CG step (see `PDHG_ITERATIONS`), so a PDHG row climbs the longer ladder of normal-operator
 # budgets that BART's rows already use. Every toolkit gets it: on the 50-iteration ladder no PDHG
 # row but MRpro's reached the target, while BART's reached it on this one.
-const LADDER_PDHG = LADDER_BART_ADMM
-const LADDER_PDHG_HEAVY = LADDER_BART_ADMM_HEAVY
-
 ladder(c::BenchCase) = c.heavy ? LADDER_HEAVY : LADDER
-ladder(c::BenchCase, method::Symbol) =
-    haskey(PDHG_METHODS, method) ? (c.heavy ? LADDER_PDHG_HEAVY : LADDER_PDHG) : ladder(c)
+long_ladder(c::BenchCase) = c.heavy ? LADDER_BART_ADMM_HEAVY : LADDER_BART_ADMM
+ladder(c::BenchCase, method::Symbol) = haskey(PDHG_METHODS, method) ? long_ladder(c) : ladder(c)
 bart_admm(m::Symbol) = m !== :wavelet
 
 """
@@ -115,9 +112,8 @@ for c in section_cases(_ -> true), method in race_methods(c)
         λ = load_lambda(c, method, toolkit_key(tk), λ_default)
         ρ = load_rho(c, method, toolkit_key(tk))
         r = if tk === :bart && bart_admm(method)
-            steps = c.heavy ? LADDER_BART_ADMM_HEAVY : LADDER_BART_ADMM
             race(
-                "$fw $(c.id) $method", c, method, steps, target,
+                "$fw $(c.id) $method", c, method, long_ladder(c), target,
                 it -> (RUNS[] = timed_runs(c); bart_run(c, method; λ, maxit = it, budget = it, ρ = something(ρ, CMP_RHO))),
             )
         else

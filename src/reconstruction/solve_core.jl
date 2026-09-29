@@ -521,16 +521,12 @@ function _hand_over_normal_rhs(
     )
     (method.fidelity isa L2Loss && isempty(auxiliaries)) || return algorithm
     haskey(algorithm.kwargs, :AHb) && return algorithm
-    AHb = scale == 1 ? unname(AHy) : unname(AHy) ./ scale
+    AHb = scale == 1 ? unname(AHy) : _scale_x0(unname(AHy), scale)
     return ProximalAlgorithms.override_parameters(algorithm; AHb)
 end
 
-function _admm_curvature(𝒜, x₀::AbstractArray, acq_data, config)
-    iszero(x₀) || return _warm_start_scale_proxy(𝒜, x₀, config)
-    y = _measurement(acq_data.kspace_data)
-    return _warm_start_scale_proxy(𝒜, 𝒜' * y, config, y)
-end
-function _admm_curvature(𝒜, x₀s::Tuple, acq_data, config)
+function _admm_curvature(𝒜, x₀_or_x₀s, acq_data, config)
+    x₀_or_x₀s isa AbstractArray && !iszero(x₀_or_x₀s) && return _warm_start_scale_proxy(𝒜, x₀_or_x₀s, config)
     y = _measurement(acq_data.kspace_data)
     return _warm_start_scale_proxy(𝒜, 𝒜' * y, config, y)
 end

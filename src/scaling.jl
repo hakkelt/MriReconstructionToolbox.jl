@@ -144,7 +144,7 @@ struct FixedScaling <: Scaling
 end
 
 """
-    get_scale(scaling::Scaling, acq_data::AcquisitionInfo, x₀[, 𝒜])
+    get_scale(scaling::Scaling, acq_data::AcquisitionInfo, x₀, 𝒜)
 
 Computes the scaling factor based on the chosen scaling strategy.
 
@@ -157,36 +157,26 @@ Computes the scaling factor based on the chosen scaling strategy.
 # Returns
 - `scale::Float64`: The computed scaling factor.
 """
-get_scale(scaling::Scaling, acq_data::AcquisitionInfo, x₀, 𝒜) = get_scale(scaling, acq_data, x₀)
+get_scale(::NoScaling, acq_data::AcquisitionInfo, x₀, 𝒜) = 1.0
 
-function get_scale(::NoScaling, acq_data::AcquisitionInfo, x₀)
-    return 1.0
-end
-
-function get_scale(scaling::QuantileScaling, acq_data::AcquisitionInfo, x₀)
+function get_scale(scaling::QuantileScaling, acq_data::AcquisitionInfo, x₀, 𝒜)
     v = _abs_subsample(x₀)
     return _quantile_select!(v, scaling.p)
 end
 
-function get_scale(::BartScaling, acq_data::AcquisitionInfo, x₀)
+function get_scale(::BartScaling, acq_data::AcquisitionInfo, x₀, 𝒜)
     v = _abs_subsample(x₀)
-    max = _max_abs_value(x₀)
+    max = _max_abs(x₀)
     median = _quantile_select!(v, 0.5)
     p90 = _quantile_select!(v, 0.9)
     return ((max - p90) < 2 * (p90 - median)) ? p90 : max
 end
 
-get_scale(::MaxScaling, acq_data::AcquisitionInfo, x₀) = _max_abs_value(x₀)
+get_scale(::MaxScaling, acq_data::AcquisitionInfo, x₀, 𝒜) = _max_abs(x₀)
 
-function get_scale(::StdScaling, acq_data::AcquisitionInfo, x₀)
-    x = vec(unname(x₀))
-    n = length(x)
-    n > 1 || return zero(real(eltype(x)))
-    μ = sum(x) / n
-    return sqrt(sum(z -> abs2(z - μ), x) / (n - 1))
-end
+get_scale(::StdScaling, acq_data::AcquisitionInfo, x₀, 𝒜) = std(vec(unname(x₀)))
 
-get_scale(::NoiseLevelScaling, acq_data::AcquisitionInfo, x₀) = _noise_level(unname(x₀))
+get_scale(::NoiseLevelScaling, acq_data::AcquisitionInfo, x₀, 𝒜) = _noise_level(unname(x₀))
 
 _noise_level(x::AbstractArray) = _noise_level(Array(x))
 
@@ -208,34 +198,33 @@ function _noise_level(x::Array)
     return _quantile_select!(parts, 0.5) / 0.6745
 end
 
-function get_scale(::MeasurementBasedScaling, acquisition_data::AcquisitionInfo, x₀)
+function get_scale(::MeasurementBasedScaling, acquisition_data::AcquisitionInfo, x₀, 𝒜)
     return norm(acquisition_data.kspace_data, 1) / length(acquisition_data.kspace_data)
 end
 
-function get_scale(scaling::KSpaceNormScaling, acquisition_data::AcquisitionInfo, x₀)
+function get_scale(scaling::KSpaceNormScaling, acquisition_data::AcquisitionInfo, x₀, 𝒜)
     return norm(acquisition_data.kspace_data) / scaling.target
 end
 
-get_scale(::SystemMatrixBasedScaling, acq_data::AcquisitionInfo, x₀) =
-    throw(ArgumentError("SystemMatrixBasedScaling needs the encoding operator: call get_scale(scaling, acq_data, x₀, 𝒜)"))
-
+# `𝒜'` is `𝒜`'s inverse where its Fourier transform is unnormalized, not its adjoint, so the probe
+# applies it rather than reading `‖𝒜z‖²`. A ±1 probe has `‖z‖² = N`.
 function get_scale(::SystemMatrixBasedScaling, acq_data::AcquisitionInfo, x₀, 𝒜)
     x = unname(x₀)
     rng = Random.Xoshiro(0x0005ca1e)
     R = real(eltype(x))
+    signs = Array{R}(undef, size(x))
+    z = similar(x)
     total = zero(R)
-    nprobes = 4
-    for _ in 1:nprobes
-        z = similar(x)
-        copyto!(z, rand(rng, (-one(R), one(R)), size(x)))
-        total += real(dot(z, unname(𝒜' * (𝒜 * z)))) / real(dot(z, z))
+    for _ in 1:SYSTEM_MATRIX_PROBES
+        copyto!(z, Random.rand!(rng, signs, (-one(R), one(R))))
+        total += real(dot(z, unname(𝒜' * (𝒜 * z))))
     end
-    return total / nprobes
+    return total / (SYSTEM_MATRIX_PROBES * length(x))
 end
 
-function get_scale(scaling::FixedScaling, acq_data::AcquisitionInfo, x₀)
-    return scaling.scale
-end
+const SYSTEM_MATRIX_PROBES = 4
+
+get_scale(scaling::FixedScaling, acq_data::AcquisitionInfo, x₀, 𝒜) = scaling.scale
 
 # The subsample the quantile rules read: at most `SCALING_SUBSAMPLE` elements at a prime stride.
 # A power-of-two stride aliases with a power-of-two grid and samples a few planes of it (on a 128³
@@ -264,10 +253,8 @@ end
 # `|x|` at the subsample indices, on the CPU.
 function _abs_subsample(x₀)
     x = vec(unname(x₀))
-    return Array(abs.(view(x, _subsample_indices(length(x)))))
+    return convert(Array, abs.(view(x, _subsample_indices(length(x)))))
 end
-
-_max_abs_value(x₀) = maximum(abs, unname(x₀))
 
 # `quantile(v, p)` (Statistics' default definition, linear interpolation between order statistics)
 # by selecting the two order statistics it interpolates, which is linear in `length(v)`, instead of

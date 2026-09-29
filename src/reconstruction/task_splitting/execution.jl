@@ -113,11 +113,12 @@ function execute_regularized_components(plan, acq_data, config, method::Iterativ
 end
 
 # Shared skeleton of the two-phase scheme described above. `prepare(idx, local_acq, local_conf)` returns
-# `(warm_start, scale, 𝒜, L)` for one slice -- `𝒜` is the fully-planned encoding operator phase 1
+# `(warm_start, scale, 𝒜, prior)` for one slice -- `𝒜` is the fully-planned encoding operator phase 1
 # already had to build to get the warm start, cached here so phase 2 does not plan an equivalent
-# one again; `L` is what phase 1 computed while forming that warm start (`_warm_start_prior`: the
-# operator-norm estimate, the curvature, `𝒜'y`), cached the same way so phase 2 does not repeat
-# it. `solve(local_acq, warm_start, ratio, global_scale, local_conf, 𝒜, L)` solves that slice under
+# one again; `prior` is what phase 1 computed while forming that warm start (`_warm_start_prior`:
+# the operator-norm estimate, the curvature, `𝒜'y`), cached the same way so phase 2 does not repeat
+# it; the `L` locals below hold it. `solve(local_acq, warm_start, ratio, global_scale, local_conf,
+# 𝒜, prior)` solves that slice under
 # the shared scale, with its regularization compensated by `ratio`, reusing both.
 function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Function)
     executor = suggest_executor(plan, acq_data, config)

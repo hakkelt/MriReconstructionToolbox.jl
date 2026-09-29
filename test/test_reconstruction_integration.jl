@@ -374,11 +374,11 @@ end
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
             acq_with_data = simulate_acquisition(img_true, acq)
 
-            @test MriReconstructionToolbox.get_scale(FixedScaling(2.5), acq_with_data, nothing) == 2.5
+            @test MriReconstructionToolbox.get_scale(FixedScaling(2.5), acq_with_data, nothing, nothing) == 2.5
             @test_throws ArgumentError FixedScaling(0.0)
             @test_throws ArgumentError FixedScaling(-1.0)
 
-            scale = MriReconstructionToolbox.get_scale(BartScaling(), acq_with_data, img_true)
+            scale = MriReconstructionToolbox.get_scale(BartScaling(), acq_with_data, img_true, nothing)
             # The selection-based quantiles are Statistics' `quantile`, to the bit.
             let quantile = MriReconstructionToolbox.quantile, a = abs.(vec(img_true)),
                     (m, p, mx) = quantile(a, [0.5, 0.9, 1.0])

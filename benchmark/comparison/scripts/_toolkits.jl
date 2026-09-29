@@ -503,16 +503,6 @@ function mirt_problem(ksp, smaps)
 end
 
 """
-    mirt_system(args...) -> (A, y)
-
-[`mirt_problem`](@ref) with the operator built.
-"""
-function mirt_system(args...)
-    build, y = mirt_problem(args...)
-    return build(), y
-end
-
-"""
     mirt_problem(c::BenchCase) -> (build, y)
 
 The SENSE system of a single-slice, volume or cine case as one `LinearMapAA` (built by `build()`)

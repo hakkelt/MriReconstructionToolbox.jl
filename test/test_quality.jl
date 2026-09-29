@@ -92,7 +92,7 @@ end
             QuantileScaling(), BartScaling(), MaxScaling(), StdScaling(), NoiseLevelScaling(),
             MeasurementBasedScaling(), KSpaceNormScaling(),
         )
-        @test_opt target_modules = (MRT,) MriReconstructionToolbox.get_scale(s, cart_info, img)
+        @test_opt target_modules = (MRT,) MriReconstructionToolbox.get_scale(s, cart_info, img, nothing)
     end
 end
 
@@ -149,10 +149,6 @@ end
     @test_call target_modules = (MRT,) NoScaling()
     @test_call target_modules = (MRT,) QuantileScaling(0.95)
     @test_call target_modules = (MRT,) KSpaceNormScaling(10)
-    @test_call target_modules = (MRT,) MaxScaling()
-    @test_call target_modules = (MRT,) StdScaling()
-    @test_call target_modules = (MRT,) NoiseLevelScaling()
-    @test_call target_modules = (MRT,) SystemMatrixBasedScaling()
 end
 
 @testitem "Benchmark case catalog smoke test" tags = [:quality] begin

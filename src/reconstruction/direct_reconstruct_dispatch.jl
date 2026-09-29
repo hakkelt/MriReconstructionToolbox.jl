@@ -2,7 +2,7 @@ function _direct_reconstruct_components(𝒜, acq_data, method::ReconstructionMe
     @step "Getting initial estimate" config begin
         x̂ = 𝒜' * _measurement(acq_data.kspace_data)
     end
-    scale = _resolve_scale(acq_data, _scale_input(𝒜, x̂, acq_data, method, config)..., config, scale_override)
+    scale = _resolve_scale(𝒜, x̂, acq_data, method, config, scale_override)
     # Computed from the pre-rescale `x̂`, so `scale` above stays exactly as before.
     x̂s, L, curvature = _scale_default_warm_start(𝒜, x̂, _measurement(acq_data.kspace_data), method, config)
     return x̂s, scale, _warm_start_prior(x̂, L, curvature)
@@ -11,13 +11,13 @@ end
 # The scale is either imposed by the caller (task splitting uses one shared scale for every slice),
 # derived from the direct estimate, or absent; a zero estimate would blow up the scaled problem, so it
 # falls back to no scaling. `𝒜` is the operator `x̂` was formed with.
-function _resolve_scale(acq_data, x̂, 𝒜, config, scale_override)
+function _resolve_scale(𝒜, x̂, acq_data, method, config, scale_override)
     if !isnothing(scale_override)
         scale = scale_override
         log_message(config.verbosity, @sprintf("Using scaling factor: %g", scale))
     elseif config.scaling != NoScaling()
         @step "Computing scaling factor" config begin
-            scale = get_scale(config.scaling, acq_data, x̂, 𝒜)
+            scale = get_scale(config.scaling, acq_data, _scale_input(𝒜, x̂, acq_data, method, config)...)
         end
         if scale == 0
             log_message(config.verbosity, "Warning: Computed scale is zero, defaulting to scale=1.0")
@@ -266,7 +266,7 @@ function _direct_reconstruct(𝒜, acq_data, x₀, method::ReconstructionMethod,
             end
         end
     end
-    scale = _resolve_scale(acq_data, _scale_input(𝒜, x₀, acq_data, method, config)..., config, scale_override)
+    scale = _resolve_scale(𝒜, x₀, acq_data, method, config, scale_override)
     # Only the case that actually produced a fresh default adjoint here is rescaled: not a
     # caller-supplied x₀, and not a pure direct method's own reconstruction, which is already
     # correctly scaled.
