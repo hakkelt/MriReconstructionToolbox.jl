@@ -41,6 +41,23 @@ end
     end
 end
 
+@testitem "FFTW wisdom cache: an unreadable file is replaced" tags = [:encoding] begin
+    using MriReconstructionToolbox: fftw_wisdom_path, get_fourier_operator, _save_fftw_wisdom, _WISDOM_DIRTY
+    import FFTW
+
+    dir = mktempdir()
+    withenv("MRT_FFTW_WISDOM" => dir) do
+        path = fftw_wisdom_path()
+        write(path, "not wisdom")
+        get_fourier_operator(zeros(ComplexF32, 36, 30, 2), false; fast_planning = false, threaded = false)
+        @test _WISDOM_DIRTY[]
+        _save_fftw_wisdom()
+        @test !_WISDOM_DIRTY[]
+        FFTW.import_wisdom(path)
+        @test readdir(dir) == [basename(path)]
+    end
+end
+
 @testitem "plan_fft_wisdom fills the cache for an acquisition" tags = [:encoding] begin
     import FFTW
 

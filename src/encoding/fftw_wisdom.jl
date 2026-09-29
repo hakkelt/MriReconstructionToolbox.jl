@@ -44,7 +44,7 @@ Only the `fftw` provider of FFTW.jl has wisdom; under another provider the cache
 function fftw_wisdom_path()
     setting = get(ENV, "MRT_FFTW_WISDOM", "")
     lowercase(setting) in ("off", "0", "false", "no") && return nothing
-    FFTW.get_provider() == "fftw" || return nothing
+    FFTW.fftw_provider == "fftw" || return nothing
     dir = isempty(setting) ? _default_wisdom_dir() : setting
     isnothing(dir) && return nothing
     return joinpath(dir, "wisdom-" * _machine_key() * ".fftw")
@@ -110,20 +110,37 @@ end
 
 Write the process's FFTW wisdom to [`fftw_wisdom_path`](@ref), after merging in whatever another
 process saved there meanwhile. The file is replaced by a rename, so a concurrent reader never sees
-it half written. A no-op until a plan that measures has been made, and whenever the cache is off
-or its directory is not writable.
+it half written, and a file that cannot be read is overwritten rather than kept. A no-op unless a
+plan that measures has been made since the last save, and whenever the cache is off or its
+directory is not writable.
 """
 function _save_fftw_wisdom()
     _WISDOM_DIRTY[] || return nothing
     path = fftw_wisdom_path()
     isnothing(path) && return nothing
     lock(_WISDOM_LOCK) do
+        # Cleared before the export, so a plan measured meanwhile marks the next save as needed.
+        _WISDOM_DIRTY[] = false
+        if isfile(path)
+            try
+                FFTW.import_wisdom(path)
+            catch err
+                @debug "FFTW wisdom file unreadable, overwriting it" path exception = err
+            end
+        else
+            try
+                mkpath(dirname(path))
+            catch err
+                @debug "FFTW wisdom not saved" path exception = err
+                return
+            end
+        end
+        tmp = string(path, ".", getpid(), ".tmp")
         try
-            isfile(path) ? FFTW.import_wisdom(path) : mkpath(dirname(path))
-            tmp = string(path, ".", getpid(), ".tmp")
             FFTW.export_wisdom(tmp)
             mv(tmp, path; force = true)
         catch err
+            rm(tmp; force = true)
             @debug "FFTW wisdom not saved" path exception = err
         end
     end
