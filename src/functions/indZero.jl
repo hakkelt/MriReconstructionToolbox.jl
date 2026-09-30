@@ -28,8 +28,8 @@ function (f::IndZero)(x)
 end
 
 function prox!(y, f::IndZero, x, gamma)
-    T = eltype(y)
-    map_prox!(f, y, _ -> T(0), x)
+    z = zero(eltype(y))
+    map_prox!(f, y, _ -> z, x)
     return real(eltype(x))(0)
 end
 

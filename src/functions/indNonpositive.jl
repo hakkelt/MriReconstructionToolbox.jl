@@ -30,7 +30,7 @@ end
 
 function prox!(y, f::IndNonpositive, x, gamma)
     R = eltype(x)
-    map_prox!(f, y, xk -> min(xk, R(0)), x)
+    map_prox!(f, y, xk -> min(xk, zero(xk)), x)
     return R(0)
 end
 
