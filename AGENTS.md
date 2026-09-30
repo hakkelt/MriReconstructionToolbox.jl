@@ -171,7 +171,12 @@ Add a `test/test_reg_<name>.jl` (`@testitem`, `tags = [:regularization]`) and a 
   have several); keep begin/end nesting shallow.
 - Tags in use: `:encoding`, `:regularization`, `:reconstruction`, `:acquisition`, `:simulation`,
   `:minimizer`, `:components`, `:integration`, `:nfft`, `:quality` (+ `:aqua`, `:jet`),
-  `:operators`. Combine as needed.
+  `:operators`, `:gpu`. Combine as needed.
+- Device coverage lives in the existing items, not in separate ones: an item that builds a case
+  adds `setup = [GpuEnvSetup, GpuHelpers]`, the `:gpu` tag, and a `test_on_devices(f, args...)`
+  call after its host assertions (`test/test_snippets.jl`). `GpuEnvSetup` loads every backend
+  GPUEnv finds; cases with an FFT run on `fft_backends()` (a real device), FFT-free ones on
+  `all_backends()`, which includes JLArrays and is what CI without a GPU exercises.
 - Full suite: `julia --project=test test/runtests.jl`
 - Filtered:
   ```sh

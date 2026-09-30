@@ -49,6 +49,8 @@ img = reconstruct(acq, IterativeReconstruction(regularization))
 - No batch dimensions exist
 - Regularization couples batch dimensions (e.g., temporal regularization)
 - Explicitly disabled
+- The k-space is in GPU memory and `disable_task_splitting` is left at its default (see
+  [GPU Reconstruction](gpu.md#gpu-task-splitting))
 
 ## Understanding Batch Dimensions
 
