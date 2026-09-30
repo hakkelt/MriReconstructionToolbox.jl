@@ -400,7 +400,8 @@ has_fast_opnorm(::NoOperatorBroadCast) = true
 has_fast_opnorm(R::OperatorBroadCast{T, N, M, false}) where {T, N, M} = has_fast_opnorm(R.A)
 has_fast_opnorm(R::OperatorBroadCast{T, N, M, true}) where {T, N, M} = has_fast_opnorm(R.A[1])
 function LinearAlgebra.opnorm(R::NoOperatorBroadCast{T, N, M}) where {T, N, M}
-    return real(T)(sqrt(prod(R.dim_out[d] for d in 1:M if R.dim_out[d] != R.reshaped_dim_in[d])))
+    # No replicated dimension (a single coil, say) makes it the identity.
+    return real(T)(sqrt(prod((R.dim_out[d] for d in 1:M if R.dim_out[d] != R.reshaped_dim_in[d]); init = 1)))
 end
 function LinearAlgebra.opnorm(R::OperatorBroadCast{T, N, M, false}) where {T, N, M}
     return _replication_factor(R) * LinearAlgebra.opnorm(R.A)

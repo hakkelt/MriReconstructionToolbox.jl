@@ -70,6 +70,13 @@ end
         BroadCast(Eye(ComplexF64, (nx, ny)), (nx, ny, nc))
     @test opnorm_bound(scalar) ≈ 2 * sqrt(nc)
     @test opnorm_bound(scalar) ≥ powerit(scalar; maxit = 2000, rel_margin = 1.0e-14)
+
+    # A single copy (one coil) replicates nothing: the broadcast is the identity, and the pair
+    # is just the diagonal.
+    one_coil = DiagOp(w[:, :, 1:1]) * BroadCast(Eye(ComplexF64, (nx, ny)), (nx, ny, 1))
+    @test opnorm(BroadCast(Eye(ComplexF64, (nx, ny)), (nx, ny, 1))) == 1
+    @test opnorm_bound(one_coil) ≈ maximum(abs, w[:, :, 1])
+    @test opnorm_bound(one_coil) ≥ powerit(one_coil; maxit = 2000, rel_margin = 1.0e-14)
 end
 
 @testitem "opnorm_bound: batched diagonals over BroadCast" tags = [:calculus, :OpnormBound] begin
