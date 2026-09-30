@@ -70,7 +70,7 @@ index f4f1a34..14d33b3 100644
  convert(::Type{Expression}, x::Variable) =
      Expression((x,), Eye(~x))
 diff --git a/deps/StructuredOptimization/src/syntax/terms/term.jl b/deps/StructuredOptimization/src/syntax/terms/term.jl
-index bab7a6e..e2eafce 100644
+index 71b8cda..31a30c1 100644
 --- a/deps/StructuredOptimization/src/syntax/terms/term.jl
 +++ b/deps/StructuredOptimization/src/syntax/terms/term.jl
 @@ -185,7 +185,7 @@ is_op_f = [
