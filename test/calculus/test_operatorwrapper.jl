@@ -102,6 +102,11 @@ end
         ref = zeros(Float32, n)
         mul!(ref, op', collect(r))
         @test collect(z) ≈ ref
+
+        # Rebuilding the wrapper keeps the outer storage it reports.
+        stripped = remove_displacement(wrapper)
+        @test domain_array_type(stripped) <: backend.array_type
+        @test codomain_array_type(stripped) <: backend.array_type
     end
 end
 

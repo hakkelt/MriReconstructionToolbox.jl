@@ -82,3 +82,29 @@
     show(io, H)
     @test occursin("𝓗", String(take!(io)))
 end
+
+@testitem "Hankel (GPU)" tags = [:gpu, :linearoperator, :Hankel] setup = [TestUtils, GpuEnvSetup] begin
+    using Random, AbstractOperators, GPUEnv, LinearAlgebra
+
+    for backend in gpu_backends()
+        Random.seed!(0)
+        for (T, gridsize, ksize, nchannels) in (
+                (Float32, (9,), (4,), 1),
+                (ComplexF32, (8, 7), (3, 2), 1),
+                (ComplexF32, (8, 6), (3, 2), 4),
+                (ComplexF32, (6, 5, 4), (2, 2, 2), 2),
+            )
+            H = Hankel(T, gridsize, ksize; nchannels)
+            Hd = Hankel(T, gridsize, ksize; nchannels, array_type = backend.array_type{T})
+            u = randn(T, size(H, 2)...)
+            v = randn(T, size(H, 1)...)
+            yd = gpu_zeros(backend, T, size(H, 1)...)
+            mul!(yd, Hd, to_gpu(backend, u))
+            @test collect(yd) ≈ H * u
+            bd = gpu_zeros(backend, T, size(H, 2)...)
+            mul!(bd, Hd', to_gpu(backend, v))
+            @test collect(bd) ≈ H' * v
+            @test collect(AbstractOperators.get_normal_op(Hd) * to_gpu(backend, u)) ≈ H' * (H * u)
+        end
+    end
+end
