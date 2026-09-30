@@ -128,6 +128,14 @@ using ProximalAlgorithms:
         @test x0 == x0_backup
     end
 
+    @testset "POGM restart test off Array storage" begin
+        w, z, x = randn(T, n), randn(T, n), randn(T, n)
+        for (a, b, c) in ((w, z, x), (z, w, x), (x, z, w))
+            expected = ProximalAlgorithms._pogm_restart(a, b, c)
+            @test ProximalAlgorithms._pogm_restart(view(a, :), view(b, :), view(c, :)) == expected
+        end
+    end
+
     @testset "FastForwardBackward (custom extrapolation)" begin
         x0 = zeros(T, n)
         x0_backup = copy(x0)
