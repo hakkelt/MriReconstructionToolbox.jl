@@ -441,13 +441,16 @@ function _warm_start_scale_proxy(𝒜, x̂::AbstractArray, config, y = nothing)
     # `@printing_step`, not `@step`, for the same reason as `_operator_norm_for_stepsize`.
     @printing_step "Estimating the warm-start scale" config begin
         R = real(eltype(x̂))
+        # Unnamed: `dot` of two `NamedDimsArray`s is the generic element loop, scalar indexing on
+        # a device array.
+        u = unname(x̂)
         if isnothing(y)
-            denom = real(dot(x̂, x̂))
-            num = denom > 0 ? real(dot(x̂, 𝒜' * (𝒜 * x̂))) : zero(denom)
+            denom = real(dot(u, u))
+            num = denom > 0 ? real(dot(u, unname(𝒜' * (𝒜 * x̂)))) : zero(denom)
         else
-            v = 𝒜 * x̂
+            v = unname(𝒜 * x̂)
             num = real(dot(v, v))
-            denom = real(dot(v, y))
+            denom = real(dot(v, unname(y)))
         end
         # A zero (or numerically degenerate) warm start needs no correction.
         ρ = num > 0 && denom > 0 ? R(num / denom) : one(R)
