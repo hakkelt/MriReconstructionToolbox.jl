@@ -221,3 +221,24 @@ end
     end
     @test results[1] ≈ results[2]
 end
+
+@testitem "NfftNormalOp (GPU)" tags = [:gpu, :nfft, :NfftNormalOp] setup = [TestUtils, GpuEnvSetup] begin
+    using AbstractOperators, NFFTOperators, NFFT, GPUEnv, LinearAlgebra, Random
+    using AbstractOperators: get_normal_op
+
+    for backend in gpu_backends(; include_jlarrays = false, supports_fftw = true)
+        Random.seed!(0)
+        traj = Float32.(rand(2, 64, 20) .- 0.5)
+        dcf = rand(Float32, 64, 20)
+        x = randn(ComplexF32, 32, 32)
+        x_gpu = to_gpu(backend, x)
+
+        host = get_normal_op(NFFTOp((32, 32), traj, dcf)) * x
+        op = NFFTOp((32, 32), traj, dcf; array_type = typeof(to_gpu(backend, dcf)))
+        N = get_normal_op(op)
+        y = N * x_gpu
+        @test y isa typeof(x_gpu)
+        @test collect(y) ≈ host rtol = 1.0e-4
+        @test collect(y) ≈ collect(op' * (op * x_gpu)) rtol = 1.0e-4
+    end
+end
