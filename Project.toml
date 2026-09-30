@@ -9,6 +9,7 @@ projects = ["benchmark", "docs", "examples", "test"]
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 AbstractFFTs = "621f4979-c628-5d54-868e-fcf4e3e8185c"
+Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 ArgCheck = "dce04be8-c92d-5529-be00-80e4d2c0e197"
 Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
 Contourlets = "4d443f37-8914-48d3-9d0d-9e555eaf7273"
@@ -50,6 +51,7 @@ MriReconstructionToolboxMRIBaseExt = "MRIBase"
 [compat]
 ADTypes = "1.5"
 AbstractFFTs = "1.5"
+Adapt = "4"
 ArgCheck = "2.5"
 Combinatorics = "1"
 Contourlets = "0.1"

@@ -1,10 +1,10 @@
 module NFFTOperatorsGPUArraysExt
 
-using NFFTOperators
-import NFFTOperators: _nfft_plan, _nfft_adapt, NFFTOp, _get_normal_op, NfftNormalOp
-import NFFTOperators.NFFT: NFFT
-import NFFTOperators: FFTW
-import NFFTOperators.AbstractOperators: allocate_in_domain, domain_array_type
+using ..NFFTOperators
+import ..NFFTOperators: _nfft_plan, _nfft_adapt, NFFTOp, _get_normal_op, NfftNormalOp
+import ..NFFTOperators.NFFT: NFFT
+import ..NFFTOperators: FFTW
+import ..NFFTOperators.AbstractOperators: allocate_in_domain, domain_array_type
 using GPUArrays
 using Adapt
 using LinearAlgebra: mul!

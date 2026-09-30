@@ -20,8 +20,8 @@ module GpuExt
 using GPUArrays: AbstractGPUArray
 using KernelAbstractions
 
-using ProximalOperators
-using ProximalOperators: Strategy
+using ..ProximalOperators
+using ..ProximalOperators: Strategy
 
 include("properties.jl")
 include("kernels.jl")

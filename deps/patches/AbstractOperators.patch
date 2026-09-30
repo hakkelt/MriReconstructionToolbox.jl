@@ -40,6 +40,23 @@ index 19f6080..6e93c88 100644
      domain_type,
      codomain_type,
      check,
+diff --git a/deps/AbstractOperators/FFTWOperators/ext/GpuExt/GpuExt.jl b/deps/AbstractOperators/FFTWOperators/ext/GpuExt/GpuExt.jl
+index beed1a1..f25edce 100644
+--- a/deps/AbstractOperators/FFTWOperators/ext/GpuExt/GpuExt.jl
++++ b/deps/AbstractOperators/FFTWOperators/ext/GpuExt/GpuExt.jl
+@@ -3,9 +3,9 @@ module GpuExt
+ using AbstractFFTs: plan_fft, plan_bfft
+ using FFTW: FFTW
+ using GPUArrays
+-using AbstractOperators: check
+-using FFTWOperators
+-import FFTWOperators: DFT, Normalization, UNNORMALIZED, _dft_scaling, SignAlternation
++using ..AbstractOperators: check
++using ..FFTWOperators
++import ..FFTWOperators: DFT, Normalization, UNNORMALIZED, _dft_scaling, SignAlternation
+ import LinearAlgebra: mul!
+ 
+ # GPU constructor for DFT with real input — avoids FFTW-specific `flags`/`timelimit`/`num_threads` kwargs
 diff --git a/deps/AbstractOperators/FFTWOperators/src/FFTWOperators.jl b/deps/AbstractOperators/FFTWOperators/src/FFTWOperators.jl
 index fd2546a..f21a74b 100644
 --- a/deps/AbstractOperators/FFTWOperators/src/FFTWOperators.jl
@@ -68,6 +85,26 @@ index fd2546a..f21a74b 100644
      allocate_in_domain,
      allocate_in_codomain,
      domain_array_type,
+diff --git a/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl b/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl
+index 9b4461e..1e83e9c 100644
+--- a/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl
++++ b/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl
+@@ -1,10 +1,10 @@
+ module NFFTOperatorsGPUArraysExt
+ 
+-using NFFTOperators
+-import NFFTOperators: _nfft_plan, _nfft_adapt, NFFTOp, _get_normal_op, NfftNormalOp
+-import NFFTOperators.NFFT: NFFT
+-import NFFTOperators: FFTW
+-import NFFTOperators.AbstractOperators: allocate_in_domain, domain_array_type
++using ..NFFTOperators
++import ..NFFTOperators: _nfft_plan, _nfft_adapt, NFFTOp, _get_normal_op, NfftNormalOp
++import ..NFFTOperators.NFFT: NFFT
++import ..NFFTOperators: FFTW
++import ..NFFTOperators.AbstractOperators: allocate_in_domain, domain_array_type
+ using GPUArrays
+ using Adapt
+ using LinearAlgebra: mul!
 diff --git a/deps/AbstractOperators/NFFTOperators/src/NFFTOperators.jl b/deps/AbstractOperators/NFFTOperators/src/NFFTOperators.jl
 index f3125af..2775185 100644
 --- a/deps/AbstractOperators/NFFTOperators/src/NFFTOperators.jl
@@ -124,8 +161,24 @@ index 11c8bb1..333beeb 100644
      is_AcA_diagonal,
      is_AAc_diagonal,
      diag_AcA,
+diff --git a/deps/AbstractOperators/ext/GpuExt/GpuExt.jl b/deps/AbstractOperators/ext/GpuExt/GpuExt.jl
+index 1309ec5..80020ce 100644
+--- a/deps/AbstractOperators/ext/GpuExt/GpuExt.jl
++++ b/deps/AbstractOperators/ext/GpuExt/GpuExt.jl
+@@ -2,9 +2,9 @@ module GpuExt
+ 
+ using GPUArrays
+ using KernelAbstractions
+-using AbstractOperators
++using ..AbstractOperators
+ import LinearAlgebra: mul!, isdiag
+-import AbstractOperators:
++import ..AbstractOperators:
+     _should_thread, array_type_display_string, check,
+     AdjointOperator, Variation, NoOperatorBroadCast,
+     domain_type, allocate_in_domain, allocate_in_codomain,
 diff --git a/deps/AbstractOperators/src/AbstractOperators.jl b/deps/AbstractOperators/src/AbstractOperators.jl
-index 9cce82d..7171a2f 100644
+index 3545768..3d40e38 100644
 --- a/deps/AbstractOperators/src/AbstractOperators.jl
 +++ b/deps/AbstractOperators/src/AbstractOperators.jl
 @@ -18,7 +18,7 @@ import LinearAlgebra: mul!

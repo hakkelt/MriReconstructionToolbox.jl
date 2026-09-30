@@ -1,5 +1,5 @@
 diff --git a/deps/ProximalOperators/Project.toml b/deps/ProximalOperators/Project.toml
-index 35d555d..ad80887 100644
+index 571e1d6..0f2f785 100644
 --- a/deps/ProximalOperators/Project.toml
 +++ b/deps/ProximalOperators/Project.toml
 @@ -19,12 +19,10 @@ TSVD = "9449cd9e-2762-5aa3-a617-5413e99d722e"
@@ -23,11 +23,26 @@ index 35d555d..ad80887 100644
  Polyester = "0.7"
  ProximalCore = "0.2.0"
  RecursiveArrayTools = "2, 3"
+diff --git a/deps/ProximalOperators/ext/GpuExt/GpuExt.jl b/deps/ProximalOperators/ext/GpuExt/GpuExt.jl
+index febf512..e379637 100644
+--- a/deps/ProximalOperators/ext/GpuExt/GpuExt.jl
++++ b/deps/ProximalOperators/ext/GpuExt/GpuExt.jl
+@@ -20,8 +20,8 @@ module GpuExt
+ using GPUArrays: AbstractGPUArray
+ using KernelAbstractions
+ 
+-using ProximalOperators
+-using ProximalOperators: Strategy
++using ..ProximalOperators
++using ..ProximalOperators: Strategy
+ 
+ include("properties.jl")
+ include("kernels.jl")
 diff --git a/deps/ProximalOperators/src/ProximalOperators.jl b/deps/ProximalOperators/src/ProximalOperators.jl
-index bda1479..ce30b25 100644
+index c49f3b9..5ac9fbc 100644
 --- a/deps/ProximalOperators/src/ProximalOperators.jl
 +++ b/deps/ProximalOperators/src/ProximalOperators.jl
-@@ -70,7 +70,6 @@ include("functions/indNonnegative.jl")
+@@ -74,7 +74,6 @@ include("functions/indNonnegative.jl")
  include("functions/indRealNonnegative.jl")
  include("functions/indNonpositive.jl")
  include("functions/indPoint.jl")
@@ -35,7 +50,7 @@ index bda1479..ce30b25 100644
  include("functions/indPSD.jl")
  include("functions/indSimplex.jl")
  include("functions/indSOC.jl")
-@@ -116,6 +115,11 @@ include("calculus/sum.jl")
+@@ -120,6 +119,11 @@ include("calculus/sum.jl")
  include("calculus/pointwiseMinimum.jl")
  include("calculus/proximalAverage.jl")
  

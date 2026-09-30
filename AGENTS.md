@@ -66,10 +66,14 @@ They are inlined as **submodules** of `MriReconstructionToolbox` (see the `inclu
   vendored extension provides is either inlined into `src/` by hand, as `ProximalOperators`'
   `RecursiveArrayToolsExt` is (`deps/ProximalOperators/src/recursive_array_tools.jl`), or dropped
   when MRT does not need it — OSQP, and with it `IndPolyhedral`, is not vendored for that reason.
+  The GPU extensions (AbstractOperators', FFTWOperators' and ProximalOperators' `ext/GpuExt`,
+  NFFTOperators' `NFFTOperatorsGPUArraysExt`) are the third case: they stay under `deps/` and
+  `ext/MriReconstructionToolboxGPUExt.jl` `include`s each one into a module of its own.
 
 Only what MRT compiles is vendored. Each package's own `test/`, `docs/`, `benchmark/`, CI config
-and `ext/` are pruned on every sync (`prune` in `deps/vendor.toml`); they belong to the fork and
-run there. `deps/` is therefore absent from MRT's own test run as well (`JuliaTestItems.toml`).
+and every `ext/` except the GPU ones are pruned on every sync (`prune` in `deps/vendor.toml`);
+they belong to the fork and run there. `git subtree pull` only carries changes, so a file that
+stops being pruned has to be restored from the fork's `integration` branch once by hand. `deps/` is therefore absent from MRT's own test run as well (`JuliaTestItems.toml`).
 
 MRT is **ahead of** its upstreams in places (its own fixes are pushed there as branches), so a sync
 is a merge, not a copy: check whether the vendored side is the newer one before overwriting it.

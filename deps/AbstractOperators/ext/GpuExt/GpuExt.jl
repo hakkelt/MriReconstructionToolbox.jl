@@ -2,9 +2,9 @@ module GpuExt
 
 using GPUArrays
 using KernelAbstractions
-using AbstractOperators
+using ..AbstractOperators
 import LinearAlgebra: mul!, isdiag
-import AbstractOperators:
+import ..AbstractOperators:
     _should_thread, array_type_display_string, check,
     AdjointOperator, Variation, NoOperatorBroadCast,
     domain_type, allocate_in_domain, allocate_in_codomain,

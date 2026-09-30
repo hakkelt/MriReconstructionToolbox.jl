@@ -3,9 +3,9 @@ module GpuExt
 using AbstractFFTs: plan_fft, plan_bfft
 using FFTW: FFTW
 using GPUArrays
-using AbstractOperators: check
-using FFTWOperators
-import FFTWOperators: DFT, Normalization, UNNORMALIZED, _dft_scaling, SignAlternation
+using ..AbstractOperators: check
+using ..FFTWOperators
+import ..FFTWOperators: DFT, Normalization, UNNORMALIZED, _dft_scaling, SignAlternation
 import LinearAlgebra: mul!
 
 # GPU constructor for DFT with real input — avoids FFTW-specific `flags`/`timelimit`/`num_threads` kwargs
