@@ -146,6 +146,25 @@ gpu_gradient_cases() = Any[
     ("Postcompose", Postcompose(SqrNormL2(0.4), 2.0), randn(25)),
 ]
 
+# The sweep above runs on vectors, where a flat index range and the array have the same
+# shape; an indexed kernel must also hold for a multidimensional array.
+@testset "gpu: indexed kernels on a multidimensional array" begin
+    x = randn(6, 5, 3)
+    for (name, f) in (
+            ("IndBox", IndBox(-0.5, 0.5)),
+            ("NormL1 weighted", NormL1(rand(6, 5, 3) .+ 0.1)),
+            ("SqrNormL2 weighted", SqrNormL2(rand(6, 5, 3) .+ 0.1)),
+        )
+        @testset "$name" begin
+            xd = to_device(x)
+            yd, yh = similar(xd), similar(x)
+            @test same(prox!(yd, f, xd, 0.7), prox!(yh, f, x, 0.7))
+            @test same(to_host(yd), yh)
+            @test same(f(xd), f(x))
+        end
+    end
+end
+
 @testset "gpu: gradients run on device arrays" begin
     for (name, f, x) in gpu_gradient_cases()
         @testset "$name" begin

@@ -13,10 +13,12 @@
     return sum(g, y)
 end
 
+# The indexed kernels broadcast `LinearIndices(x)`, not `eachindex(x)`: a device array's
+# `eachindex` is a flat range, which does not broadcast against a multidimensional `x`.
 @inline function ProximalOperators._map_reduce_prox_idx!(
     ::Strategy, y::AbstractGPUArray, h::H, g::G, x::AbstractGPUArray
 ) where {H, G}
-    idx = eachindex(x)
+    idx = LinearIndices(x)
     y .= h.(idx, x)
     return sum(g.(idx, y))
 end
@@ -31,7 +33,7 @@ end
 @inline function ProximalOperators._map_prox_idx!(
     ::Strategy, y::AbstractGPUArray, h::H, x::AbstractGPUArray
 ) where {H}
-    y .= h.(eachindex(x), x)
+    y .= h.(LinearIndices(x), x)
     return y
 end
 
@@ -39,7 +41,7 @@ end
     sum(g, x)
 
 @inline ProximalOperators._reduce_call_idx(::Strategy, g::G, x::AbstractGPUArray) where {G} =
-    sum(g.(eachindex(x), x))
+    sum(g.(LinearIndices(x), x))
 
 # `all` over a device array is a reduction, which is exactly why the early-exit loops in the
 # indicator functions were rewritten as predicates in the first place.
@@ -47,7 +49,7 @@ end
     all(p, x)
 
 @inline ProximalOperators._all_satisfy_idx(::Strategy, p::P, x::AbstractGPUArray) where {P} =
-    all(p.(eachindex(x), x))
+    all(p.(LinearIndices(x), x))
 
 @inline function ProximalOperators._map_reduce2_prox!(
     ::Strategy, y::AbstractGPUArray, h::H, g1::G1, g2::G2, x::AbstractGPUArray
@@ -59,6 +61,6 @@ end
 @inline function ProximalOperators._map_reduce2_prox_idx!(
     ::Strategy, y::AbstractGPUArray, h::H, g1::G1, g2::G2, x::AbstractGPUArray
 ) where {H, G1, G2}
-    y .= h.(eachindex(x), x)
+    y .= h.(LinearIndices(x), x)
     return sum(g1, y), sum(g2, y)
 end
