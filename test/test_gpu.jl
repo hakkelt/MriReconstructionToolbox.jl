@@ -41,6 +41,23 @@ for backend in gpu_backends(; include_jlarrays = true)
             @test t_gpu.f(vg) ≈ t_cpu.f(v) rtol = 1.0e-8
         end
 
+        @testset "a term missing a variable is padded on the device" begin
+            c = randn(4)
+            cg = to_gpu(backend, c)
+            x_cpu, y_cpu = Variable(5), Variable(4)
+            solve(
+                problem(ls(A * x_cpu - b) + ls(y_cpu - c) + 0.05 * norm(x_cpu, 1)),
+                FastForwardBackward(; tol = 1.0e-8),
+            )
+            x_gpu, y_gpu = Variable(gpu_zeros(backend, Float64, 5)), Variable(gpu_zeros(backend, Float64, 4))
+            solve(
+                problem(ls(Ag * x_gpu - bg) + ls(y_gpu - cg) + 0.05 * norm(x_gpu, 1)),
+                FastForwardBackward(; tol = 1.0e-8),
+            )
+            @test Array(~x_gpu) ≈ ~x_cpu rtol = 1.0e-3
+            @test Array(~y_gpu) ≈ ~y_cpu rtol = 1.0e-3
+        end
+
         @testset "bare Variable round trip" begin
             xg = Variable(to_gpu(backend, zeros(5)))
             @test typeof(~xg) == typeof(to_gpu(backend, zeros(5)))

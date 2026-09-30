@@ -377,10 +377,12 @@ _nonzero_blocks(t::Tuple) = first(t) isa AbstractOperators.Zeros ?
 _embed_normal_op(L, ::Nothing) = nothing
 function _embed_normal_op(L::AbstractOperators.HCAT, N::AbstractOperator)
     k = findfirst(A -> !(A isa AbstractOperators.Zeros), L.A)
+    # A zero block lives where the variable it reads does.
     block(i, j) = i == j == k ? N : AbstractOperators.Zeros(
-        AbstractOperators.domain_type(L.A[j]), size(L.A[j], 2),
-        AbstractOperators.domain_type(L.A[i]), size(L.A[i], 2),
-    )
+            AbstractOperators.domain_type(L.A[j]), size(L.A[j], 2),
+            AbstractOperators.domain_type(L.A[i]), size(L.A[i], 2);
+            array_type = AbstractOperators.domain_array_type(L.A[j]),
+        )
     rows = ntuple(i -> AbstractOperators.HCAT(ntuple(j -> block(i, j), length(L.A))...), length(L.A))
     return AbstractOperators.VCAT(rows...)
 end

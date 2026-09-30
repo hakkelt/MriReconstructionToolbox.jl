@@ -162,7 +162,14 @@ function add_missing_vars(old_vars, op, vars)
     if isempty(missing_vars)
         return old_vars, op
     end
-    dummy_ops = [AbstractOperators.Zeros(eltype(~var), size(~var), AbstractOperators.codomain_type(op), size(op, 1)) for var in missing_vars]
+    # Each padding block lives where its variable does, so a device variable is not handed a
+    # host `Zeros`.
+    dummy_ops = [
+        AbstractOperators.Zeros(
+            eltype(~var), size(~var), AbstractOperators.codomain_type(op), size(op, 1);
+            array_type = typeof(~var),
+        ) for var in missing_vars
+    ]
     new_vars = (old_vars..., missing_vars...)
     new_op = AbstractOperators.HCAT(op, dummy_ops...)
     return new_vars, new_op
