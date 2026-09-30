@@ -123,7 +123,8 @@ is_positive_semidefinite(A::OperatorWrapper) = is_positive_semidefinite(A.op)
 is_thread_safe(::OperatorWrapper) = false
 
 displacement(A::OperatorWrapper) = displacement(A.op)
-remove_displacement(A::OperatorWrapper) = OperatorWrapper(remove_displacement(A.op))
+remove_displacement(A::OperatorWrapper{Op, DB, CB, DS}) where {Op, DB, CB, DS} =
+    OperatorWrapper(remove_displacement(A.op); array_type = DS)
 
 function _copy_operator_impl(
         A::OperatorWrapper{Op, DB, CB, DS, CS}; storage_type = nothing, threaded = nothing

@@ -177,11 +177,15 @@ function _hankel_diag(L::Hankel{T, N, C}) where {T, N, C}
     return d
 end
 
+# The multiplicity diagonal in the operator's own storage, so that its normal operator runs where
+# the operator does.
+_hankel_diag_in_domain(L::Hankel) = copyto!(allocate_in_domain(L), _hankel_diag(L))
+
 is_AcA_diagonal(::Hankel) = true
-diag_AcA(L::Hankel) = _hankel_diag(L)
+diag_AcA(L::Hankel) = _hankel_diag_in_domain(L)
 
 has_optimized_normalop(::Hankel) = true
-get_normal_op(L::Hankel) = DiagOp(_hankel_diag(L))
+get_normal_op(L::Hankel) = DiagOp(_hankel_diag_in_domain(L))
 
 is_full_column_rank(::Hankel) = true
 
