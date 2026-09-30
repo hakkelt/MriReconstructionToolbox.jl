@@ -44,22 +44,19 @@ IndRealBox(lb, ub) =
 
 function (f::IndRealBox)(x::AbstractArray{<:Complex})
     R = real(eltype(x))
-    for k in eachindex(x)
-        xk = x[k]
-        if imag(xk) != 0 || real(xk) < get_kth_elem(f.lb, k) || real(xk) > get_kth_elem(f.ub, k)
-            return R(Inf)
-        end
-    end
-    return R(0)
+    lb, ub = f.lb, f.ub
+    inside = all_satisfy_idx(
+        f, (k, xk) -> iszero(imag(xk)) & (get_kth_elem(lb, k) <= real(xk) <= get_kth_elem(ub, k)), x
+    )
+    return inside ? R(0) : R(Inf)
 end
 
 function prox!(y, f::IndRealBox, x::AbstractArray{<:Complex}, gamma)
-    R = real(eltype(x))
-    for k in eachindex(x)
-        r = clamp(real(x[k]), get_kth_elem(f.lb, k), get_kth_elem(f.ub, k))
-        y[k] = complex(r, R(0))
-    end
-    return R(0)
+    lb, ub = f.lb, f.ub
+    map_prox_idx!(
+        f, y, (k, xk) -> complex(clamp(real(xk), get_kth_elem(lb, k), get_kth_elem(ub, k)), zero(real(xk))), x
+    )
+    return real(eltype(x))(0)
 end
 
 function prox_naive(f::IndRealBox, x::AbstractArray{<:Complex}, gamma)
