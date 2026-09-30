@@ -13,10 +13,15 @@ Fields (with defaults):
   `BartScaling`, `MaxScaling`, `StdScaling`, `NoiseLevelScaling`, `MeasurementBasedScaling`,
   `KSpaceNormScaling`, `SystemMatrixBasedScaling`, `FixedScaling`)
 - `verbosity::Verbosity = Silent()` — output mode: `Silent()`, `ProgressBar()` or `Verbose()`
-- `threaded::Bool = (Threads.nthreads() > 1)` — enable threaded execution when available
-- `task_executor::Union{Nothing,ReconstructionExecutor} = nothing` — override executor for task splitting
+- `threaded::Bool = (Threads.nthreads() > 1)` — enable threaded execution when available. A
+  reconstruction whose k-space is in device (GPU) memory never threads: the device kernels are
+  the parallelism.
+- `task_executor::Union{Nothing,ReconstructionExecutor} = nothing` — override executor for task
+  splitting. `MultiThreadingExecutor` is rejected for a device reconstruction.
 - `disable_inverse_scale_output::Bool = false` — skip rescaling the final output
-- `disable_task_splitting::Bool = false` — disable automatic task splitting
+- `disable_task_splitting::Union{Nothing,Bool} = nothing` — disable automatic task splitting.
+  `nothing` picks the default for where the k-space lives: splitting on the host,
+  [`DEVICE_DISABLES_TASK_SPLITTING`](@ref) on a device.
 - `fft_planning::Symbol = :auto` — how carefully FFTW plans the encoding operator's FFTs:
   `:measure` times candidate algorithms and finds faster plans at a planning cost of about
   0.1–0.3 s per 2D transform and 1–1.5 s per 3D one; `:estimate` plans instantly from a
@@ -65,7 +70,7 @@ struct ReconstructionConfig
     threaded::Bool
     task_executor::Union{Nothing, ReconstructionExecutor}
     disable_inverse_scale_output::Bool
-    disable_task_splitting::Bool
+    disable_task_splitting::Union{Nothing, Bool}
     fft_planning::Symbol
     slice_id::Union{Nothing, String}
 
@@ -75,7 +80,7 @@ struct ReconstructionConfig
             threaded::Bool = nthreads() > 1,
             task_executor::Union{Nothing, ReconstructionExecutor} = nothing,
             disable_inverse_scale_output::Bool = false,
-            disable_task_splitting::Bool = false,
+            disable_task_splitting::Union{Nothing, Bool} = nothing,
             fft_planning::Symbol = :auto,
             slice_id::Union{Nothing, AbstractString} = nothing,
         )
@@ -104,6 +109,43 @@ function ReconstructionConfig(config::ReconstructionConfig; kwargs...)
     end
     return ReconstructionConfig(; new_kwargs...)
 end
+
+"""
+    DEVICE_DISABLES_TASK_SPLITTING
+
+The `disable_task_splitting` a device (GPU) reconstruction gets when the caller leaves it at
+`nothing`. Slices run one after another on a device, so splitting only pays where a smaller
+problem is cheaper per element, which a device kernel is not: each slice pays its own kernel
+launches, operator build and scaling pass.
+"""
+const DEVICE_DISABLES_TASK_SPLITTING = true
+
+"""
+    resolve_config(config, acq_data) -> ReconstructionConfig
+
+`config` with the settings that depend on where the k-space lives made concrete: on a device
+`threaded` is off and `disable_task_splitting = nothing` becomes
+[`DEVICE_DISABLES_TASK_SPLITTING`](@ref); on the host `nothing` becomes `false`.
+"""
+function resolve_config(config::ReconstructionConfig, acq_data)
+    device = _is_device(acq_data)
+    if device && config.task_executor isa MultiThreadingExecutor
+        throw(
+            ArgumentError(
+                "MultiThreadingExecutor cannot run a reconstruction whose k-space is in device memory " *
+                    "($(nameof(_array_type_of(acq_data)))); its slices would share one device. " *
+                    "Use SequentialExecutor() or leave `task_executor` unset."
+            )
+        )
+    end
+    disable_task_splitting = _task_splitting_disabled(config, acq_data)
+    threaded = config.threaded && !device
+    disable_task_splitting === config.disable_task_splitting && threaded == config.threaded && return config
+    return ReconstructionConfig(config; disable_task_splitting, threaded)
+end
+
+_task_splitting_disabled(config::ReconstructionConfig, acq_data) =
+    something(config.disable_task_splitting, _is_device(acq_data) && DEVICE_DISABLES_TASK_SPLITTING)
 
 function construct_config(kwargs)
     if haskey(kwargs, :config)

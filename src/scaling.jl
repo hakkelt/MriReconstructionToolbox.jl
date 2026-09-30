@@ -180,7 +180,17 @@ get_scale(::StdScaling, acq_data::AcquisitionInfo, x₀, 𝒜) = std(vec(unname(
 
 get_scale(::NoiseLevelScaling, acq_data::AcquisitionInfo, x₀, 𝒜) = _noise_level(unname(x₀))
 
-_noise_level(x::AbstractArray) = _noise_level(Array(x))
+# Any other storage (a device array): the neighbour differences are formed where `x` lives, and
+# only the subsample the median reads is copied to the host. Same subsample, same median as below.
+function _noise_level(x::AbstractArray)
+    h = size(x, 1) ÷ 2
+    h >= 1 || return zero(real(eltype(x)))
+    a = reshape(x, size(x, 1), :)
+    d = vec(view(a, 2:2:(2h), :) .- view(a, 1:2:(2h - 1), :))
+    sub = Array(view(d, _subsample_indices(length(d))))
+    parts = vcat(abs.(real.(sub)), abs.(imag.(sub)))
+    return _quantile_select!(parts, 0.5) / 0.6745
+end
 
 function _noise_level(x::Array)
     h = size(x, 1) ÷ 2

@@ -244,6 +244,12 @@ end
 function _nfft_operator(ksp, image_size, trajectory, nframe::Int; dcf, threaded, m, sigma, precompute, fast_planning)
     fourier_dims = ndims(trajectory) - 1 - nframe
     nfft_kwargs = _nfft_operating_point_kwargs(m, sigma, precompute, fast_planning)
+    if _is_device(ksp)
+        # The device plan's FFT is not FFTW's, so it takes no FFTW flags; the trajectory (and a
+        # host `dcf`) stay on the host, `NFFTOp` moves what it needs.
+        nfft_kwargs = (; Base.structdiff(nfft_kwargs, NamedTuple{(:fftflags,)})..., array_type = _array_type_of(ksp))
+        dcf = dcf isa AbstractArray ? _adapt_any(Array, dcf) : dcf
+    end
     if nframe > 0
         return _per_frame_nfft_operator(ksp, image_size, trajectory, nframe, fourier_dims; dcf, threaded, nfft_kwargs)
     end

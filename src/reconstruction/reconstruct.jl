@@ -18,7 +18,14 @@ Performs MRI reconstruction from k-space data using the specified reconstruction
 - `threaded::Bool = (Threads.nthreads() > 1)`: enable threaded execution when available
 - `task_executor::Union{Nothing,ReconstructionExecutor} = nothing`: override executor for task splitting
 - `disable_inverse_scale_output::Bool = false`: skip rescaling the final output
-- `disable_task_splitting::Bool = false`: disable automatic task splitting
+- `disable_task_splitting::Union{Nothing,Bool} = nothing`: disable automatic task splitting;
+  `nothing` splits on the host and follows `DEVICE_DISABLES_TASK_SPLITTING` on a device
+
+# Where it runs
+The reconstruction runs where `acq_data`'s k-space lives. Move an acquisition to a GPU with
+`Adapt.adapt(CuArray, acq)` (or any other device array type); the result is then a device array
+too. `x₀`, if given, must be in the same memory as the k-space. See the "GPU reconstruction"
+page of the manual for what runs on the device and what is staged through the host.
 
 Iteration control is *not* accepted here: `maxit`, `reltol` and `algorithm` are properties of the
 method and are passed to its constructor, e.g.
@@ -34,7 +41,12 @@ function reconstruct(
         x₀::Union{Nothing, AbstractArray, Tuple, NamedTuple} = nothing,
         kwargs...,
     )
-    config = construct_config(kwargs)
+    config = resolve_config(construct_config(kwargs), acq_data)
+    _check_x₀_storage(x₀, acq_data)
+    if _is_device(acq_data) && _runs_on_host(method)
+        host_x = reconstruct(Adapt.adapt(Array, acq_data), method; x₀ = _adapt_any(Array, x₀), kwargs...)
+        return _to_storage_of(acq_data, host_x)
+    end
     t_start = time()
     method = lower(method, acq_data)
     check_applicable(method, acq_data)
@@ -42,6 +54,27 @@ function reconstruct(
     t_end = time()
     log_message(config.verbosity, "Total time: ", format_time(t_end - t_start))
     return x
+end
+
+"""
+    _runs_on_host(method::ReconstructionMethod) -> Bool
+
+Whether `method` has no device implementation, so that a device acquisition is reconstructed on
+a host copy and the image moved back (GRAPPA's and SPIRiT's kernels are scalar convolutions).
+"""
+_runs_on_host(::ReconstructionMethod) = false
+
+# An initial guess must live where the k-space does: the solver's iterates start as copies of it.
+_check_x₀_storage(::Nothing, acq_data) = nothing
+_check_x₀_storage(x₀::Union{Tuple, NamedTuple}, acq_data) = foreach(x -> _check_x₀_storage(x, acq_data), x₀)
+function _check_x₀_storage(x₀::AbstractArray, acq_data)
+    _is_device(x₀) == _is_device(acq_data) && return nothing
+    throw(
+        ArgumentError(
+            "x₀ ($(nameof(_array_type_of(x₀)))) and the k-space ($(nameof(_array_type_of(acq_data)))) " *
+                "must both be in host memory or both in device memory; move x₀ with `Adapt.adapt`."
+        )
+    )
 end
 
 function _reconstruct_dispatch(acq_data, method::ReconstructionMethod, x₀, config)

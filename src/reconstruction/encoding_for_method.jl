@@ -42,14 +42,16 @@ function signal_model_operator(model::TemporalBasis, acq::AcquisitionInfo; threa
 
     coeff_size = ntuple(i -> i == time_dim_idx ? K : img_size[i], length(img_size))
     T = complex(eltype(model.Φ))
+    at = _array_type_of(acq)
+    Φᵀ = _to_storage_of(acq, Matrix(transpose(model.Φ)))
 
     # Construct matrix multiplication operator along time_dim
     # For trailing time_dim, flat spatial dimension is prod(img_size[1:end-1])
     if time_dim_idx == length(img_size)
         N_spatial = prod(img_size[1:(end - 1)])
-        R_in = Reshape(Eye(T, (N_spatial, K)), coeff_size...)
-        L = LMatrixOp(T, (N_spatial, K), Matrix(transpose(model.Φ)); threaded)
-        R_out = Reshape(Eye(T, (N_spatial, Nt)), img_size...)
+        R_in = Reshape(Eye(T, (N_spatial, K); array_type = at), coeff_size...)
+        L = LMatrixOp(T, (N_spatial, K), Φᵀ; threaded)
+        R_out = Reshape(Eye(T, (N_spatial, Nt); array_type = at), img_size...)
         ℳ = R_out * (L * R_in')
     else
         # General case via PermuteDims to trailing axis, LMatrixOp, and permute back.
@@ -63,11 +65,11 @@ function signal_model_operator(model::TemporalBasis, acq::AcquisitionInfo; threa
         perm_coeff_size = ntuple(i -> coeff_size[perm[i]], length(coeff_size))
 
         N_spatial = prod(perm_img_size[1:(end - 1)])
-        P_in = PermuteDims(T, coeff_size, perm)
-        R_in = Reshape(Eye(T, (N_spatial, K)), perm_coeff_size...)
-        L = LMatrixOp(T, (N_spatial, K), Matrix(transpose(model.Φ)); threaded)
-        R_out = Reshape(Eye(T, (N_spatial, Nt)), perm_img_size...)
-        P_out = PermuteDims(T, perm_img_size, inv_perm)
+        P_in = PermuteDims(T, coeff_size, perm; array_type = at)
+        R_in = Reshape(Eye(T, (N_spatial, K); array_type = at), perm_coeff_size...)
+        L = LMatrixOp(T, (N_spatial, K), Φᵀ; threaded)
+        R_out = Reshape(Eye(T, (N_spatial, Nt); array_type = at), perm_img_size...)
+        P_out = PermuteDims(T, perm_img_size, inv_perm; array_type = at)
         ℳ = P_out * R_out * L * R_in' * P_in
     end
 
@@ -140,7 +142,7 @@ end
 function model_encoding_operator(::KSpaceToImage, acq::AcquisitionInfo; threaded::Bool, fast_planning::Bool)
     isnothing(acq.subsampling) || return get_subsampling_operator(acq; threaded)
     raw = unname(acq.kspace_data)
-    P = Eye(eltype(raw), size(raw)...)
+    P = Eye(eltype(raw), size(raw)...; array_type = _array_type_of(raw))
     return _has_dimnames(acq.kspace_data) ?
         NamedDimsOp{dimnames(acq.kspace_data), dimnames(acq.kspace_data)}(P) : P
 end

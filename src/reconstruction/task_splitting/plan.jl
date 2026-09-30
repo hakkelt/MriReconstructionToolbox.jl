@@ -15,7 +15,7 @@ struct TaskSplittingPlan{N, M, K <: Tuple, L}
 end
 
 function get_task_splitting_plan(acq_data, method::ReconstructionMethod, config)
-    if config.disable_task_splitting
+    if _task_splitting_disabled(config, acq_data)
         return nothing
     elseif acq_data isa NonCartesianAcquisitionInfo
         return nothing

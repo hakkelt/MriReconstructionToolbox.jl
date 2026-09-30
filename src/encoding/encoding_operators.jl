@@ -131,7 +131,7 @@ built. `fast_planning` is forwarded unchanged, so a caller that cares keeps its 
 Axes after the coil axis in k-space (frames, say) are batched over, one per-frame operator of
 this form each; see [`_frame_batched_coil_fused_operator`](@ref).
 
-Returns `nothing` unless the acquisition is Cartesian with sensitivity maps whose last axis is
+Returns `nothing` unless the acquisition is Cartesian, on the host, with sensitivity maps whose last axis is
 `:coil` and that are shared by every frame, more than one coil, at most
 [`COIL_FUSED_MAX_VOXELS`](@ref) voxels per frame, and threading actually available: the fused
 form is not faster serially, and the generic chain stays the only path a single-threaded run
@@ -143,6 +143,7 @@ function _coil_fused_encoding_operator(
     smaps = info.sensitivity_maps
     (threaded && !isnothing(smaps) && Threads.nthreads() > 1) || return nothing
     ksp = info.kspace_data
+    _is_device(ksp) && return nothing
     image_size = info.image_size
     prod(image_size) <= COIL_FUSED_MAX_VOXELS || return nothing
     nd = length(image_size)
