@@ -44,7 +44,14 @@ function (f::IndBallRank)(x)
     if maxr <= f.r
         return R(0)
     end
-    U, S, V = tsvd(x, f.r + 1)
+    if is_cpu_storage(typeof(x))
+        U, S, V = tsvd(x, f.r + 1)
+    else
+        # `tsvd` has no device path, so a device matrix takes a full SVD where its backend
+        # has one and the host otherwise; only the leading `r + 1` values are read, on the host.
+        runs_natively(svdvals!, x) || return host_call(f, x)
+        S = Array(svdvals(x))[1:(f.r + 1)]
+    end
     # the tolerance in the following line should be customizable
     if S[end] / S[1] <= 1.0e-7
         return R(0)
@@ -61,11 +68,18 @@ function prox!(y, f::IndBallRank, x, gamma)
         return R(0)
     end
     b = get_buffers(f, x)
-    U, S, V = tsvd(x, f.r)
     # TODO: the order of the following matrix products should depend on the shape of x
     M = b.M
-    M .= S .* V'
-    mul!(y, U, M)
+    if is_cpu_storage(typeof(x))
+        U, S, V = tsvd(x, f.r)
+        M .= S .* V'
+        mul!(y, U, M)
+    else
+        runs_natively(svd!, x) || return host_prox!(y, f, x, gamma)
+        F = svd!(copy(x))
+        M .= view(F.S, 1:f.r) .* view(F.Vt, 1:f.r, :)
+        mul!(y, view(F.U, :, 1:f.r), M)
+    end
     return R(0)
 end
 
