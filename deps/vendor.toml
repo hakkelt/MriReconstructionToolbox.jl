@@ -14,8 +14,10 @@
 #   prefix    where the package is vendored inside this repository
 #   prune     globs deleted from the vendored copy after every sync: everything MRT does not
 #             compile. A vendored package's tests, docs, benchmarks and CI belong to the fork and
-#             run there; `ext/` cannot load at all for a package included as a submodule, so what
-#             an extension provides is inlined into `src/` by the patch instead.
+#             run there. `ext/` cannot load at all for a package included as a submodule, so an
+#             extension is either inlined into `src/` by the patch, pruned, or -- the GPU
+#             extensions -- kept and `include`d by MRT's own `MriReconstructionToolboxGPUExt`,
+#             which is why those `ext/` entries name what is dropped rather than the directory.
 #
 # Then one `[[<package>.stack]]` entry per branch, in merge order: a branch always appears after
 # the branch it is stacked on. `parent` is the branch this one is based on, empty for a branch
@@ -63,7 +65,10 @@ base = "upstream/master"
 prefix = "deps/AbstractOperators"
 prune = [
     "test", "*/test", "docs", "*/docs", "benchmark", "*/benchmark",
-    "ext", "*/ext", ".github", ".claude", ".temp", "logo",
+    "ext/LinearMapsExt.jl", "ext/GpuExt/AGENTS.md", "ext/GpuExt/CLAUDE.md",
+    "FFTWOperators/ext/AcceleratedDCTsExt.jl", "DSPOperators/ext",
+    "ContourletOperators/ext", "WaveletOperators/ext",
+    ".github", ".claude", ".temp", "logo",
     "AGENTS.md", "CLAUDE.md", "Manifest.toml", "*/Manifest.toml",
 ]
 
@@ -290,13 +295,21 @@ branch = "perf/matrixop-gram-diagonal-sample"
 parent = "gpu-safe-operator-metadata"
 pr = ""
 
+# The Toeplitz normal operator of a device `NFFTOp` is planned with the device's own FFT and NFFT
+# plans (`NFFTOperatorsGPUArraysExt`). `unified-threading` owns the code and is frozen.
+[[AbstractOperators.stack]]
+branch = "feat/gpu-nfft-toeplitz"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#31"
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
 base = "upstream/master"
 prefix = "deps/ProximalOperators"
 prune = [
-    "test", "docs", "benchmark", "demos", "ext", ".github", ".claude", "logo",
+    "test", "docs", "benchmark", "demos", "ext/ProximalOperatorsOSQPExt.jl",
+    "ext/RecursiveArrayToolsExt.jl", ".github", ".claude", "logo",
     "AGENTS.md", "CLAUDE.md", "Manifest.toml", "codecov.yml",
 ]
 
@@ -451,6 +464,13 @@ pr = ""
 branch = "feat/admm-rho-scale"
 parent = "perf/reuse-ahb"
 pr = ""
+
+# POGM's restart test reduces a lazy broadcast off `Array` storage instead of indexing scalars,
+# so it runs on a device. `master` owns the code and is frozen.
+[[ProximalAlgorithms.stack]]
+branch = "fix/pogm-restart-device"
+parent = "master"
+pr = "hakkelt/ProximalAlgorithms.jl#5"
 
 # `pogm-algorithm` is deliberately absent: it added POGM as a `pogm::Bool` variant of
 # `FastForwardBackward`, and `master` (#100) supersedes it with a `src/algorithms/pogm.jl` of its
