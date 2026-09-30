@@ -68,11 +68,14 @@ function _iterative_reconstruct_core(
             solver_kwargs = (; solver_kwargs..., stop)
         end
         # For n variables sharing the same operator 𝒜, the data term is ‖𝒜*(x₁+…+xₙ) - y‖², whose
-        # gradient has Lipschitz constant ‖[𝒜 … 𝒜]‖² = n‖𝒜‖², since ‖[𝒜 … 𝒜]‖ = √n‖𝒜‖. When the
-        # norm was not estimated (`disable_operator_normalization`), let the algorithm derive its
-        # own step size instead of overriding it.
+        # gradient has Lipschitz constant ‖[𝒜 … 𝒜]‖² = n‖𝒜‖², since ‖[𝒜 … 𝒜]‖ = √n‖𝒜‖. A smooth
+        # regularization term lands in the same smooth part, so its own constant is added on top.
+        # When the norm was not estimated (`disable_operator_normalization`), let the algorithm
+        # derive its own step size instead of overriding it.
         R_type = real(eltype(_first_x0(x₀_or_x₀s)))
-        Lf = should_estimate_L ? R_type(_n_vars(vars) * L^2) : nothing
+        Lf = should_estimate_L ?
+            R_type(_n_vars(vars) * L^2 + _smooth_regularization_lipschitz(model, method.fidelity)) :
+            nothing
         algorithm = patch_algorithm_with_default_values(selected_algorithm, Lf; eltype_real = R_type)
         algorithm = _scale_admm_penalty(
             algorithm, 𝒜, acq_data, isnothing(L) ? prior.L : L, method, config;
@@ -567,3 +570,36 @@ function _operator_norm_for_stepsize(𝒜, method::IterativeReconstruction, conf
     @argcheck L != 0 "Cannot reconstruct with an encoding operator of zero norm"
     return L
 end
+
+# The Lipschitz constant of the gradient of every smooth regularization term, summed.
+#
+# The parser puts every smooth term into the algorithm's smooth part together with the data term,
+# so the step size has to cover their curvature as well: `λ⋅f(K x)` contributes `λ⋅L_f⋅‖K‖²`.
+# Leaving it out is harmless while it is small next to `‖𝒜‖²`, but an edge-preserving roughness
+# term at its default `δ` has about twenty times the data term's curvature, and the solve then
+# oscillates. Summing over terms of different variables overstates the constant of the joint
+# gradient (whose Hessian is block diagonal), which only costs step length.
+#
+# `build_model`/`build_model_with_variables` put the least-squares data term first.
+_smooth_regularization_lipschitz(model, fidelity) =
+    sum(_term_gradient_lipschitz, _regularization_terms(model, fidelity); init = 0.0)
+
+_regularization_terms(model::StructuredOptimization.Term, fidelity) =
+    fidelity isa L2Loss ? () : (model,)
+_regularization_terms(model::StructuredOptimization.TermSet, fidelity) =
+    fidelity isa L2Loss ? Base.tail(model.terms) : model.terms
+
+function _term_gradient_lipschitz(t::StructuredOptimization.Term)
+    StructuredOptimization.is_smooth(t) || return 0.0
+    L_f = _gradient_lipschitz(t.f)
+    iszero(L_f) && return 0.0
+    K = StructuredOptimization.operator(t)
+    return Float64(t.lambda * L_f * AbstractOperators.estimate_opnorm(K)^2)
+end
+
+# Lipschitz constant of `∇f`. A smooth function this does not know contributes nothing, which is
+# what every smooth term contributed before the constant was taken into account at all.
+_gradient_lipschitz(f::SqrNormL2) = Float64(maximum(f.lambda))
+_gradient_lipschitz(f::SeparableHuberLoss) = Float64(maximum(f.mu))
+_gradient_lipschitz(f::HuberLoss) = Float64(f.mu)
+_gradient_lipschitz(::Any) = 0.0

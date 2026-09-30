@@ -139,3 +139,37 @@ end
     nz = MriReconstructionToolbox.materialize(EdgePreservingRoughness2D(0.1), x; threaded = false)
     @test nz.f isa MriReconstructionToolbox.ProximalOperators.SeparableHuberLoss
 end
+
+@testitem "EdgePreservingRoughness at the default δ converges" tags = [:regularization, :reconstruction] begin
+    using Test
+    using LinearAlgebra
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox.StructuredOptimization
+
+    # Regression: the step size counted only the data term's curvature ‖𝒜‖², while the Huber term
+    # adds λ/δ⋅‖∇‖², about twenty times as much at the default δ. The iterates then alternated between
+    # two points with a growing objective instead of converging.
+    img = zeros(ComplexF32, 16, 16)
+    img[4:12, 4:12] .= 1
+    img[6:8, 6:8] .= 2
+    acq = simulate_acquisition(img, AcquisitionInfo(is3D = false, image_size = (16, 16)))
+    reg = EdgePreservingRoughness2D(0.02f0)
+    recon(maxit) = reconstruct(acq, IterativeReconstruction(reg; maxit); verbosity = Silent())
+    x30, x31 = recon(30), recon(31)
+    @test norm(x31 - x30) / norm(x30) < 1.0e-3
+    @test norm(x31 - img) / norm(img) < 0.05
+
+    x = Variable(zeros(ComplexF32, 16, 16))
+    λ, δ = 0.02, 0.01
+    term = MriReconstructionToolbox.materialize(reg, x; threaded = false)
+    ∇ = MriReconstructionToolbox.get_operator(reg, ~x; threaded = false)
+    L = MriReconstructionToolbox._term_gradient_lipschitz(term)
+    @test L >= λ / δ * opnorm(∇)^2 * (1 - 1.0e-4)
+    @test L ≈ λ / δ * opnorm(∇)^2 rtol = 0.05
+    @test MriReconstructionToolbox._term_gradient_lipschitz(
+        MriReconstructionToolbox.materialize(L1Image(0.02f0), x; threaded = false)
+    ) == 0
+    @test MriReconstructionToolbox._term_gradient_lipschitz(
+        MriReconstructionToolbox.materialize(L2Image(0.1f0), x; threaded = false)
+    ) ≈ 2 * 0.1^2 rtol = 1.0e-5
+end

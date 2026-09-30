@@ -87,7 +87,12 @@ A proximal algorithm needs the Lipschitz constant of $\nabla f$, not an operator
 MRT estimates $L = \|\mathcal{A}\|$ and passes $L_f = n L^2$ as the step-size hint ($n$ = number of
 optimization variables sharing $\mathcal{A}$; the data term is
 $\tfrac12\|\mathcal{A}(x_1 + \dots + x_n) - y\|^2$, whose gradient has Lipschitz constant
-$\|[\mathcal{A} \dots \mathcal{A}]\|^2 = n\|\mathcal{A}\|^2$). The problem solved is
+$\|[\mathcal{A} \dots \mathcal{A}]\|^2 = n\|\mathcal{A}\|^2$). A smooth regularizer
+([`L2Image`](@ref), [`EdgePreservingRoughness2D`](@ref)) is differentiated together with the data
+term, so its own constant is added: $L_g\|K\|^2$ for a term $g(Kx)$ whose gradient $\nabla g$ is
+$L_g$-Lipschitz. For the edge-preserving roughness that is $\lambda/\delta\,\|\nabla\|^2$, about
+twenty times the data term's at the default $\delta$ on a unit-norm Cartesian operator; a step
+that ignores it makes the iterates oscillate. The problem solved is
 
 ```math
 \tfrac{1}{2}\|\mathcal{A}x - y\|_2^2 + \mathcal{R}(x)

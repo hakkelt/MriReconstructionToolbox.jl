@@ -87,9 +87,7 @@ using TestItems
             AnisotropicTotalVariation2D(0.02f0),
             SecondOrderTotalVariation2D(0.02f0),
             TotalGeneralizedVariation2D(0.02f0),
-            # The step size counts only the data term's curvature, so a Huber curvature λ/δ⋅‖∇‖²
-            # well above it (the default δ gives 16) makes the solve oscillate on either side.
-            EdgePreservingRoughness2D(0.02f0; δ = 0.5f0),
+            EdgePreservingRoughness2D(0.02f0),
             L1Wavelet2D(0.02f0),
             L0Wavelet2D(; threshold = 1.0e-3),
             L0Image(; threshold = 1.0e-3),
