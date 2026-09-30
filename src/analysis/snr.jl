@@ -157,9 +157,9 @@ function _corner_boxes(sz::Dims, box, corners)
     end
     return [
         ntuple(
-                d -> ((c - 1) >> (d - 1)) & 1 == 0 ? (1:sides[d]) : (sz[d] - sides[d] + 1):sz[d],
-                n,
-            ) for c in unique(selected)
+            d -> ((c - 1) >> (d - 1)) & 1 == 0 ? (1:sides[d]) : (sz[d] - sides[d] + 1):sz[d],
+            n,
+        ) for c in unique(selected)
     ]
 end
 
