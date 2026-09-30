@@ -39,10 +39,10 @@ index febf512..e379637 100644
  include("properties.jl")
  include("kernels.jl")
 diff --git a/deps/ProximalOperators/src/ProximalOperators.jl b/deps/ProximalOperators/src/ProximalOperators.jl
-index c49f3b9..5ac9fbc 100644
+index 3c89b64..abb5e18 100644
 --- a/deps/ProximalOperators/src/ProximalOperators.jl
 +++ b/deps/ProximalOperators/src/ProximalOperators.jl
-@@ -74,7 +74,6 @@ include("functions/indNonnegative.jl")
+@@ -70,7 +70,6 @@ include("functions/indNonnegative.jl")
  include("functions/indRealNonnegative.jl")
  include("functions/indNonpositive.jl")
  include("functions/indPoint.jl")
@@ -50,7 +50,7 @@ index c49f3b9..5ac9fbc 100644
  include("functions/indPSD.jl")
  include("functions/indSimplex.jl")
  include("functions/indSOC.jl")
-@@ -120,6 +119,11 @@ include("calculus/sum.jl")
+@@ -116,6 +115,11 @@ include("calculus/sum.jl")
  include("calculus/pointwiseMinimum.jl")
  include("calculus/proximalAverage.jl")
  
