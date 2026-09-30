@@ -264,6 +264,7 @@ function lower(method::SPIRiT, acq::CartesianAcquisitionInfo)
 end
 
 progress_total(method::SPIRiT, acq_data) = method.maxit
+_runs_on_host(::SPIRiT) = true
 
 function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::SPIRiT; progress = nothing)
     raw_ksp = _get_full_kspace(acq)

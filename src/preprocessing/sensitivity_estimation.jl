@@ -104,6 +104,7 @@ function estimate_sensitivities(
         acq::CartesianAcquisitionInfo;
         method::SensitivityEstimation = SelfCalibrating(),
     )
+    _is_device(acq) && return _to_storage_of(acq, estimate_sensitivities(Adapt.adapt(Array, acq); method))
     _reject_partitioned(acq.kspace_data, "sensitivity estimation")
     is3D = acq.is3D
     sens = estimate_sensitivities(
@@ -125,6 +126,12 @@ function estimate_sensitivities(
         average_dims = (:time,),
         threaded::Bool = true,
     )
+    if _is_device(acq)
+        host = estimate_sensitivities(
+            Adapt.adapt(Array, acq); method, dcf = _adapt_any(Array, dcf), average_dims, threaded
+        )
+        return _to_storage_of(acq, host)
+    end
     @argcheck !isnothing(acq.kspace_data) "sensitivity estimation needs k-space data, and this NonCartesianAcquisitionInfo carries none"
     _reject_partitioned(acq.kspace_data, "sensitivity estimation")
     @argcheck !isnothing(dcf) "gridding for sensitivity estimation needs density compensation: pass `dcf = :auto` to estimate it, or attach one with `density_compensation`"
@@ -252,6 +259,8 @@ function estimate_sensitivities(
         coil_dim = nothing,
         image_size = nothing,
     )
+    _is_device(kspace) &&
+        return _on_host(k -> estimate_sensitivities(k; method, is3D, coil_dim, image_size), kspace, kspace)
     c_idx = _resolve_coil_dim(kspace, coil_dim; fallback = is3D ? 4 : 3)
 
     raw_ksp = unname(kspace)

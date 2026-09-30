@@ -108,6 +108,10 @@ function compress_coils(
         method::CoilCompression = SVDCompression(),
         coil_dim = nothing,
     )
+    if _is_device(acq)
+        host_acq, C = compress_coils(Adapt.adapt(Array, acq), n_virtual; method, coil_dim)
+        return _to_storage_of(acq, host_acq), C
+    end
     _reject_partitioned(acq.kspace_data, "coil compression")
     compressed_ksp, C = compress_coils(acq.kspace_data, n_virtual; method, coil_dim)
     compressed_sens = if !isnothing(acq.sensitivity_maps)
@@ -124,6 +128,10 @@ function compress_coils(
         method::CoilCompression = SVDCompression(),
         coil_dim = nothing,
     )
+    if _is_device(data)
+        compressed, C = compress_coils(_adapt_any(Array, data), n_virtual; method, coil_dim)
+        return _to_storage_of(data, compressed), C
+    end
     c_idx = _resolve_coil_dim(data, coil_dim)
 
     Nc = size(data, c_idx)
@@ -175,7 +183,14 @@ function compress_coils(
     end
 end
 
+# Device data is compressed on the host and moved back; `C` is returned as it was given.
+function _compress_on_host(data, C, coil_dim)
+    compressed = first(compress_coils_with_matrix(_adapt_any(Array, data), _to_host(C); coil_dim))
+    return _to_storage_of(data, compressed), C
+end
+
 function compress_coils_with_matrix(data::AbstractArray, C::AbstractMatrix; coil_dim = nothing)
+    _is_device(data) && return _compress_on_host(data, C, coil_dim)
     c_idx = _resolve_coil_dim(data, coil_dim)
 
     Nc = size(data, c_idx)
@@ -198,6 +213,7 @@ end
 
 function compress_coils_with_matrix(data::AbstractArray, C::AbstractArray; coil_dim = nothing)
     @argcheck ndims(C) == 3 "Slice-wise compression matrix must have 3 dimensions (n_virtual, n_coils, n_readout)"
+    _is_device(data) && return _compress_on_host(data, C, coil_dim)
     c_idx = _resolve_coil_dim(data, coil_dim)
 
     Nc = size(data, c_idx)

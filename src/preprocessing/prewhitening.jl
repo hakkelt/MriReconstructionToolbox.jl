@@ -50,7 +50,8 @@ function prewhiten(data::AbstractArray, Ψ::AbstractMatrix; coil_dim = nothing)
 
     perm_data = permutedims(unname(data), perm)
     flat_data = reshape(perm_data, Nc, :)
-    whitened_flat = L \ flat_data
+    # On a device the small coil-by-coil inverse is formed on the host and applied as one product.
+    whitened_flat = _is_device(data) ? _to_storage_of(data, Matrix(inv(L))) * flat_data : L \ flat_data
     whitened_perm = reshape(whitened_flat, size(perm_data))
     whitened_data = permutedims(whitened_perm, inv_perm)
 

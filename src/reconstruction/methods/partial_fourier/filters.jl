@@ -117,14 +117,16 @@ function _get_full_kspace(acq::CartesianAcquisitionInfo)
     else
         size(raw_ksp)[3:end]
     end
-    full_ksp = zeros(eltype(raw_ksp), spatial_sz..., trailing_dims...)
+    full_ksp = fill!(similar(raw_ksp, spatial_sz..., trailing_dims...), zero(eltype(raw_ksp)))
 
+    # Integer indices, moved to where the k-space lives, index a device array too.
     if size(raw_ksp, 1) == count(mask)
         full_ksp_flat = reshape(full_ksp, prod(spatial_sz), :)
-        full_ksp_flat[vec(mask), :] .= reshape(raw_ksp, count(mask), :)
+        sampled = _to_storage_of(raw_ksp, findall(vec(mask)))
+        view(full_ksp_flat, sampled, :) .= reshape(raw_ksp, count(mask), :)
     elseif ndims(raw_ksp) >= 2 && size(raw_ksp, 2) == count(any(mask; dims = 1)) && size(raw_ksp, 1) == spatial_sz[1]
-        acq_y = findall(vec(any(mask; dims = 1)))
-        full_ksp[:, acq_y, :] .= reshape(raw_ksp, spatial_sz[1], length(acq_y), :)
+        acq_y = _to_storage_of(raw_ksp, findall(vec(any(mask; dims = 1))))
+        view(full_ksp, :, acq_y, :) .= reshape(raw_ksp, spatial_sz[1], length(acq_y), :)
     else
         full_ksp = copy(raw_ksp)
     end

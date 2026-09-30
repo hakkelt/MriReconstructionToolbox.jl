@@ -42,6 +42,7 @@ end
 # One tick per ky line of the synthesis loop below; already-acquired lines tick too, so the bar
 # is over the full ky extent rather than only the missing lines.
 progress_total(::GRAPPA, acq_data) = get_image_size(acq_data)[2]
+_runs_on_host(::GRAPPA) = true
 
 """
     _grappa_ky_pattern(acq::CartesianAcquisitionInfo)

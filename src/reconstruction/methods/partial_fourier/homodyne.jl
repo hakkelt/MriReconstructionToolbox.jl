@@ -59,8 +59,8 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::Homodyne; pr
     W_sym[sym_range] .= 1.0f0
 
     w_shape = ntuple(i -> i == dim ? N : 1, ndims(ksp))
-    W_mat = reshape(W_1d, w_shape)
-    W_sym_mat = reshape(W_sym, w_shape)
+    W_mat = _to_storage_of(ksp, reshape(W_1d, w_shape))
+    W_sym_mat = _to_storage_of(ksp, reshape(W_sym, w_shape))
 
     c_dim = _pf_coil_dim(acq)
     coil_reduced = !isnothing(acq.sensitivity_maps)

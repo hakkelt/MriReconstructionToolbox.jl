@@ -43,10 +43,10 @@ function _direct_reconstruct(
     W_sym = zeros(R, N)
     W_sym[band.symmetric_range] .= one(R)
     w_shape = ntuple(i -> i == band.dim ? N : 1, ndims(ksp))
-    eiϕ = cis.(angle.(_direct_ifft(ℱ, ksp .* reshape(W_sym, w_shape))))
+    eiϕ = cis.(angle.(_direct_ifft(ℱ, ksp .* _to_storage_of(ksp, reshape(W_sym, w_shape)))))
 
     mask = to_displayable_mask(acq.subsampling, spatial_sz)
-    mask_nd = reshape(mask, size(mask)..., ntuple(_ -> 1, ndims(ksp) - 2)...)
+    mask_nd = _to_storage_of(ksp, reshape(mask, size(mask)..., ntuple(_ -> 1, ndims(ksp) - 2)...))
 
     c_dim = _pf_coil_dim(acq)
     has_sens = !isnothing(acq.sensitivity_maps)

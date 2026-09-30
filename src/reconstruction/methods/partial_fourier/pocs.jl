@@ -39,7 +39,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::POCS; progre
     W_sym = zeros(Float32, N)
     W_sym[sym_range] .= 1.0f0
     w_shape = ntuple(i -> i == dim ? N : 1, ndims(ksp))
-    ksp_sym = ksp .* reshape(W_sym, w_shape)
+    ksp_sym = ksp .* _to_storage_of(ksp, reshape(W_sym, w_shape))
 
     # Initial phase estimate from symmetric ACS
     lowres_coil = _direct_ifft(ℱ, ksp_sym)
@@ -48,7 +48,7 @@ function _direct_reconstruct(acq::CartesianAcquisitionInfo, method::POCS; progre
     # POCS iteration on multi-coil k-space
     ksp_pocs = copy(ksp)
     mask = to_displayable_mask(acq.subsampling, spatial_sz)
-    mask_nd = reshape(mask, size(mask)..., fill(1, ndims(ksp) - 2)...)
+    mask_nd = _to_storage_of(ksp, reshape(mask, size(mask)..., fill(1, ndims(ksp) - 2)...))
 
     ref_norm = sqrt(sum(abs2, ksp_pocs))
     for _ in 1:(method.maxit)

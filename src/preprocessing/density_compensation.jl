@@ -63,6 +63,7 @@ function density_compensation(
         acq::NonCartesianAcquisitionInfo;
         method::DensityCompensation = PipeMenonDCF(),
     )
+    _is_device(acq) && return _to_storage_of(acq, density_compensation(Adapt.adapt(Array, acq); method))
     nframe = _trajectory_frame_dims_count(acq.trajectory, acq.kspace_data)
     dcf = if nframe == 0
         compute_dcf(acq.trajectory, acq.image_size, method)
