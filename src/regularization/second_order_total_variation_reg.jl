@@ -73,9 +73,7 @@ function get_operator(
         threaded = threaded && isempty(batch_size)
     )
     if !isempty(batch_size)
-        input_dims = (ntuple(_ -> :_, n_spatial)..., fill(:b, length(batch_size))...)
-        image_dims = (:_, fill(:b, length(batch_size))..., :_)
-        Δ2 = BatchOp(Δ2, batch_size, input_dims => image_dims; threaded)
+        Δ2 = _batch_gradient(Δ2, x, n_spatial, batch_size; threaded)
     end
     Δ2 = reshape(Δ2, spatial_size..., size(Δ2, 1)[2:end]...)
     composed = Δ2 * inner

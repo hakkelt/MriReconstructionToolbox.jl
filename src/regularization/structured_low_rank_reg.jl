@@ -55,7 +55,7 @@ function (f::HankelLowRankProx{RANK})(x) where {RANK}
     R = real(eltype(x))
     value = R(0)
     for b in 1:f.nbatch
-        σ = svdvals!(f.H * _hlrp_lift(f.w, selectdim(xr, ndims(xr), b)))
+        σ = _to_host(svdvals!(f.H * _hlrp_lift(f.w, selectdim(xr, ndims(xr), b))))
         if RANK
             # Indicator of {k : rank(𝓗 k) ≤ max_rank}: 0 inside the set, Inf outside. The
             # Cadzow prox below is a projection of the *lifted* matrix, not of `k` itself
@@ -94,7 +94,7 @@ end
 # The ALOHA lift `w ⊙ k` for one slab, always as a fresh array: the prox reuses it as the scratch
 # its adjoint writes into, so it must not alias the input. `nothing` is the unweighted
 # SAKE / LORAKS-C case, which is the only one that has to pay a copy for that.
-_hlrp_lift(::Nothing, xb) = collect(xb)
+_hlrp_lift(::Nothing, xb) = copy(xb)
 _hlrp_lift(w, xb) = w .* xb
 
 # `keep` marks the samples the weighted term does not constrain (`w == 0`), where the prox is the
@@ -113,9 +113,7 @@ function _hlrp_prox_slab!(yr, xr, f::HankelLowRankProx, b::Int, threshold, ::Val
     F = ProximalOperators.with_factorization_threads(() -> svd!(M), M)
     if RANK
         r = min(f.max_rank, length(F.S))
-        @inbounds for i in (r + 1):length(F.S)
-            F.S[i] = 0
-        end
+        fill!(view(F.S, (r + 1):length(F.S)), 0)
         nucval = sum(@view F.S[1:r])
     else
         F.S .= max.(R(0), F.S .- threshold)
@@ -321,8 +319,8 @@ end
 
 function _build_hankel_prox(reg::StructuredLowRank{T0, N}, x_val, ::Type{T}) where {T0, N, T}
     gridsize, nchannels, nbatch = _slr_geometry(reg, x_val)
-    H = Hankel(T, gridsize, reg.window; nchannels, channels = true)
-    invmult = one(real(T)) ./ real(T).(AbstractOperators.diag_AcA(H))
+    H = Hankel(T, gridsize, reg.window; nchannels, channels = true, array_type = _array_type_of(x_val))
+    invmult = _to_storage_of(x_val, one(real(T)) ./ real(T).(_to_host(AbstractOperators.diag_AcA(H))))
     return H, invmult, nbatch
 end
 
@@ -400,7 +398,7 @@ function materialize(reg::StructuredLowRank, x::Variable{T}; threaded::Bool) whe
     λ = penalty ? R(reg.λ) : one(R)
     max_rank = penalty ? 0 : reg.max_rank
     form = Val(!penalty)
-    ws = _slr_weights(reg, H.gridsize, T)
+    ws = _to_storage_of(~x, _slr_weights(reg, H.gridsize, T))
     if ws === nothing
         f = _hankel_low_rank_prox(form, λ, max_rank, H, invmult, nbatch, threaded, nothing, nothing)
         repr = penalty ?
@@ -409,9 +407,9 @@ function materialize(reg::StructuredLowRank, x::Variable{T}; threaded::Bool) whe
     else
         fs = Tuple(
             begin
-                    factor, keep = _slr_weighted_factors(w, invmult, T)
-                    _hankel_low_rank_prox(form, λ, max_rank, H, factor, nbatch, threaded, w, keep)
-                end for w in ws
+                factor, keep = _slr_weighted_factors(w, invmult, T)
+                _hankel_low_rank_prox(form, λ, max_rank, H, factor, nbatch, threaded, w, keep)
+            end for w in ws
         )
         # Explicit `R` weights rather than `ProximalAverage(fs...)`: that constructor's uniform
         # weights are `Float64`, which would widen a `Float32` term's objective value.
@@ -442,7 +440,7 @@ function _materialize_loraks(reg::StructuredLowRank{T0, N}, x::Variable{T}; thre
     form = Val(reg.structure)
     lift = LoraksLift(gridsize, reg.window, nchannels, reg.structure; center = reg.kspace_center)
     R = real(T)
-    invmult = one(R) ./ _loraks_multiplicity(R, lift, form)
+    invmult = _to_storage_of(~x, one(R) ./ _loraks_multiplicity(R, lift, form))
     penalty = reg.λ !== nothing
     λ = penalty ? R(reg.λ) : one(R)
     max_rank = penalty ? 0 : reg.max_rank

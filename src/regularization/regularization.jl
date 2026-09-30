@@ -149,6 +149,27 @@ identity_operator(x::AbstractArray) = Eye(x)
 identity_operator(x::NamedDimsArray) = NamedDimsOp{dimnames(x), dimnames(x)}(Eye(parent(x)))
 
 """
+	_batch_gradient(Δ, x, n_spatial, batch_size; threaded)
+
+The gradient `Δ`, which maps one spatial grid to `(voxels, directions)`, applied to every batch
+index of `x`: the result is `(voxels, batch..., directions)`. On a device the batch axes go last
+on both sides, because a device kernel only takes contiguous slices, and the direction axis is
+moved back behind them afterwards.
+"""
+function _batch_gradient(Δ, x::AbstractArray, n_spatial::Int, batch_size::Tuple; threaded::Bool)
+    nb = length(batch_size)
+    input_dims = (ntuple(_ -> :_, n_spatial)..., fill(:b, nb)...)
+    _is_device(x) || return BatchOp(Δ, batch_size, input_dims => (:_, fill(:b, nb)..., :_); threaded)
+    M, ndir = size(Δ, 1)
+    batched = BatchOp(Δ, batch_size, input_dims => (:_, :_, fill(:b, nb)...); threaded)
+    to_direction_last = PermuteDims(
+        codomain_type(Δ), (M, ndir, batch_size...), (1, ntuple(i -> i + 2, nb)..., 2);
+        array_type = _array_type_of(x),
+    )
+    return to_direction_last * batched
+end
+
+"""
 	_collapse_direction_axes(op, x, n_components)
 
 Collapse the trailing direction axes of `op`'s codomain into a single one, giving the

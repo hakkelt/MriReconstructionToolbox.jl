@@ -302,7 +302,7 @@ _llrp_form(::LoraksLowRankProx{RANK, STRUCT}) where {RANK, STRUCT} = Val(STRUCT)
 
 function _llrp_matrix(f::LoraksLowRankProx, xb::AbstractArray)
     form = _llrp_form(f)
-    M = Array{real(eltype(xb))}(undef, _loraks_matrix_size(f.lift, form)...)
+    M = similar(xb, real(eltype(xb)), _loraks_matrix_size(f.lift, form)...)
     return _loraks_lift!(M, f.lift, xb, form)
 end
 
@@ -311,7 +311,7 @@ function (f::LoraksLowRankProx{RANK})(x) where {RANK}
     R = real(eltype(x))
     value = R(0)
     for b in 1:f.nbatch
-        σ = svdvals!(_llrp_matrix(f, selectdim(xr, ndims(xr), b)))
+        σ = _to_host(svdvals!(_llrp_matrix(f, selectdim(xr, ndims(xr), b))))
         if RANK
             # Indicator of {k : rank(L k) ≤ max_rank}, with the same yardstick as
             # `HankelLowRankProx`: the lifted matrix is normally infeasible after a Cadzow
@@ -352,9 +352,7 @@ function _llrp_prox_slab!(yr, xr, f::LoraksLowRankProx, b::Int, threshold, ::Val
     F = ProximalOperators.with_factorization_threads(() -> svd!(M), M)
     if RANK
         r = min(f.max_rank, length(F.S))
-        @inbounds for i in (r + 1):length(F.S)
-            F.S[i] = 0
-        end
+        fill!(view(F.S, (r + 1):length(F.S)), 0)
         nucval = sum(@view F.S[1:r])
     else
         F.S .= max.(R(0), F.S .- threshold)

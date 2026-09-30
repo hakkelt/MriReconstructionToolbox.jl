@@ -35,6 +35,7 @@ end
 
 function get_operator(reg::L1Contourlet, x::AbstractArray{T}; threaded::Bool = true) where {T}
     @argcheck ndims(x) >= 2 "L1Contourlet requires at least 2 dimensions in the input variable"
+    _is_device(x) && return _host_staged(t -> get_operator(reg, t; threaded), x)
     ximg = x isa NamedDimsArray ? parent(x) : x
     img_2D_size = size(ximg)[1:2]
     Td = T <: Complex ? ComplexF64 : Float64

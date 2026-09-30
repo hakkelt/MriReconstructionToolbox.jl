@@ -122,16 +122,18 @@ unfolded into `(voxels_per_slice, N, batch)`, the operator applied per slice, an
 Folding the batch into a spatial extent instead would be wrong: the differences would then run across slice
 boundaries. The codomain has `N(N+1)/2` components — the independent entries of the symmetric matrix `ℰw`.
 """
-function _tgv_symmetrized_operator(::Type{T}, spatial_size::NTuple{N, Int}, batch::Int; threaded::Bool) where {T, N}
+function _tgv_symmetrized_operator(
+        ::Type{T}, spatial_size::NTuple{N, Int}, batch::Int; threaded::Bool, array_type::Type = Array{T}
+    ) where {T, N}
     M = prod(spatial_size)
     C = N * (N + 1) ÷ 2
-    ℰ = SymmetrizedVariation(T, spatial_size; threaded = threaded && batch == 1)
+    ℰ = SymmetrizedVariation(T, spatial_size; threaded = threaded && batch == 1, array_type)
     # Without batch dimensions the flat layout is already what the operator wants.
     batch == 1 && return ℰ
-    unfold = Reshape(Eye(T, (M * batch, N)), M, batch, N)
-    to_slices = PermuteDims(T, (M, batch, N), (1, 3, 2))
+    unfold = Reshape(Eye(T, (M * batch, N); array_type), M, batch, N)
+    to_slices = PermuteDims(T, (M, batch, N), (1, 3, 2); array_type)
     ℰ_batched = BatchOp(ℰ, (batch,), (:_, :_, :b) => (:_, :_, :b); threaded)
-    from_slices = PermuteDims(T, (M, C, batch), (1, 3, 2))
+    from_slices = PermuteDims(T, (M, C, batch), (1, 3, 2); array_type)
     return Reshape(from_slices * ℰ_batched * to_slices * unfold, M * batch, C)
 end
 
@@ -150,9 +152,10 @@ function _tgv_materialize(reg::_TGV, x::Variable{T}, ::Val{N}; threaded::Bool) w
     spatial_size = ntuple(d -> size(x_val, d), Val(N))
     # The auxiliary field has one vector per voxel of the *whole* array (batch dimensions included), laid out
     # the way `Variation` lays out its output, so that `∇x - w` is a plain difference of two matrices.
-    w = Variable(zeros(T, length(x_val), N))
+    template = _storage_template(x_val)
+    w = Variable(fill!(similar(template, T, length(x_val), N), zero(T)))
     batch = length(x_val) ÷ prod(spatial_size)
-    ℰ = _tgv_symmetrized_operator(T, spatial_size, batch; threaded)
+    ℰ = _tgv_symmetrized_operator(T, spatial_size, batch; threaded, array_type = _array_type_of(template))
     R = real(T)
     λ = R(reg.λ)
     λ₀ = R(reg.λ * reg.ratio)

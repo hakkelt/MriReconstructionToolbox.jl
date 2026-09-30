@@ -18,9 +18,7 @@ function get_operator(::TotalVariation2D, x::AbstractArray; threaded::Bool = tru
         threaded = threaded && ndims(x) == 2
     )
     if ndims(x) > 2
-        input_dims = (:_, :_, fill(:b, ndims(x) - 2)...)
-        image_dims = (:_, fill(:b, ndims(x) - 2)..., :_)
-        Δ = BatchOp(Δ, size(x)[3:end], input_dims => image_dims; threaded)
+        Δ = _batch_gradient(Δ, x, 2, size(x)[3:end]; threaded)
     end
     Δ = reshape(Δ, size(x)[1:2]..., size(Δ, 1)[2:end]...) # not necessary but gives an output shape easier to understand
     if x isa NamedDimsArray
@@ -60,9 +58,7 @@ function get_operator(::TotalVariation3D, x::AbstractArray; threaded::Bool = tru
         threaded = threaded && ndims(x) == 3
     )
     if ndims(x) > 3
-        input_dims = (:_, :_, :_, fill(:b, ndims(x) - 3)...)
-        image_dims = (:_, fill(:b, ndims(x) - 3)..., :_)
-        Δ = BatchOp(Δ, size(x)[4:end], input_dims => image_dims; threaded)
+        Δ = _batch_gradient(Δ, x, 3, size(x)[4:end]; threaded)
     end
     Δ = reshape(Δ, size(x)[1:3]..., size(Δ, 1)[2:end]...) # not necessary but gives an output shape easier to interpret
     if x isa NamedDimsArray

@@ -96,6 +96,7 @@ function _block_matrix(f::BlockNuclearNorm, ::Type{T}, ranges) where {T}
 end
 
 function (f::BlockNuclearNorm)(x)
+    _is_device(x) && return f.λ * _batched_nuclear_norm(_to_block_stack(f, x))
     xr = _reshaped(f, x)
     R = real(eltype(x))
     value = R(0)
@@ -116,6 +117,12 @@ function ProximalCore.prox!(y, f::BlockNuclearNorm, x, gamma)
     # A new grid origin per call is what makes the block artifacts of a single fixed tiling average out
     # over the iterations; it also makes the objective non-stationary (see `LocallyLowRank`).
     f.shift === :random && (f.offset[] = _draw_offset(f.rng, f.block_size))
+    if _is_device(x)
+        blocks = _to_block_stack(f, x)
+        value = _batched_svt!(blocks, threshold)
+        _from_block_stack!(y, f, blocks)
+        return f.λ * value
+    end
     nblocks = length(f.blocks)
     # One task per (block, batch slice) pair; every task writes into a disjoint part of `y`.
     partial = zeros(R, nblocks * f.num_batch)
@@ -147,6 +154,79 @@ function _prox_block!(yr, xr, f::BlockNuclearNorm, k::Int, nblocks::Int, thresho
     _scatter_block!(yr, M, idx, batch)
     return sum(σ)
 end
+
+# Device path: every block's Casorati matrix at once, as the slices of one `m × frames × nblocks`
+# array built by array operations only (a shift, a zero pad, a reshape and a permutation), so
+# that one batched singular value operation handles them all. Zero rows leave a matrix's
+# singular values and its singular value thresholding unchanged, so padding a partial edge block
+# is exact.
+
+_padded_spatial_size(f::BlockNuclearNorm) = cld.(f.spatial_size, f.block_size) .* f.block_size
+
+function _to_block_stack(f::BlockNuclearNorm{<:Real, N}, x) where {N}
+    xr = _reshaped(f, x)
+    offset = f.offset[]
+    all(iszero, offset) || (xr = circshift(xr, (map(-, offset)..., 0, 0)))
+    padded = _padded_spatial_size(f)
+    if padded != f.spatial_size
+        xp = fill!(similar(xr, padded..., f.num_frames, f.num_batch), zero(eltype(xr)))
+        copyto!(view(xp, map(Base.OneTo, f.spatial_size)..., :, :), xr)
+        xr = xp
+    end
+    nb = padded .÷ f.block_size
+    split = reshape(xr, _interleave(f.block_size, nb)..., f.num_frames, f.num_batch)
+    stacked = permutedims(split, _block_stack_perm(Val(N)))
+    return reshape(stacked, prod(f.block_size), f.num_frames, :)
+end
+
+function _from_block_stack!(y, f::BlockNuclearNorm{<:Real, N}, blocks) where {N}
+    padded = _padded_spatial_size(f)
+    nb = padded .÷ f.block_size
+    stacked = reshape(blocks, f.block_size..., f.num_frames, nb..., f.num_batch)
+    split = permutedims(stacked, invperm(_block_stack_perm(Val(N))))
+    xr = reshape(split, padded..., f.num_frames, f.num_batch)
+    if padded != f.spatial_size
+        xr = xr[map(Base.OneTo, f.spatial_size)..., :, :]
+    end
+    offset = f.offset[]
+    all(iszero, offset) || (xr = circshift(xr, (offset..., 0, 0)))
+    copyto!(_reshaped(f, y), xr)
+    return y
+end
+
+_interleave(a::NTuple{N, Int}, b::NTuple{N, Int}) where {N} = ntuple(i -> isodd(i) ? a[cld(i, 2)] : b[i ÷ 2], Val(2N))
+
+# `(b₁, n₁, …, b_N, n_N, frames, batch)` to `(b₁, …, b_N, frames, n₁, …, n_N, batch)`.
+_block_stack_perm(::Val{N}) where {N} =
+    (ntuple(i -> 2i - 1, Val(N))..., 2N + 1, ntuple(i -> 2i, Val(N))..., 2N + 2)
+
+"""
+    _batched_svt!(A::AbstractArray{T,3}, τ) -> Real
+
+Replace every `A[:, :, k]` with its singular value thresholding at `τ` (soft-threshold the
+singular values, keep the vectors) and return the sum of the thresholded singular values.
+The generic method loops over the slices; the GPU extension provides one batched over them.
+"""
+function _batched_svt!(A::AbstractArray{T, 3}, τ) where {T}
+    R = real(T)
+    total = zero(R)
+    for k in axes(A, 3)
+        M = view(A, :, :, k)
+        F = svd!(Matrix(M))
+        σ = max.(zero(R), F.S .- R(τ))
+        copyto!(M, F.U * Diagonal(σ) * F.Vt)
+        total += sum(σ)
+    end
+    return total
+end
+
+"""
+    _batched_nuclear_norm(A::AbstractArray{T,3}) -> Real
+
+`∑ₖ ‖A[:, :, k]‖_*`; batched over the slices in the GPU extension.
+"""
+_batched_nuclear_norm(A::AbstractArray{T, 3}) where {T} =
+    sum(k -> sum(svdvals!(Matrix(view(A, :, :, k)))), axes(A, 3); init = zero(real(T)))
 
 """
 	LocallyLowRank(λ; block_size, time_dim=nothing, shift=:none, rng=Random.default_rng())
