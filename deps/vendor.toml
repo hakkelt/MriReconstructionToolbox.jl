@@ -302,6 +302,13 @@ branch = "feat/gpu-nfft-toeplitz"
 parent = "unified-threading"
 pr = "hakkelt/AbstractOperators.jl#31"
 
+# `remove_displacement` of an `OperatorWrapper` keeps the device storage it reports, so a
+# host-only operator wrapped for a device reconstruction survives the solver's rebuild.
+[[AbstractOperators.stack]]
+branch = "fix/operator-wrapper-storage"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#32"
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
