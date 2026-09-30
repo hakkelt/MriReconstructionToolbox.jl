@@ -105,6 +105,8 @@ struct NonCartesianAcquisitionInfo{K, T, D, S, I, SD, ID} <: AcquisitionInfo
             end
         end
 
+        _check_same_storage(ksp, smaps, "sensitivity maps")
+        _check_same_storage(ksp, dcf, "dcf")
         return new{typeof(ksp), typeof(traj), typeof(dcf), typeof(smaps), typeof(img_size), typeof(sK), typeof(sI)}(
             ksp, traj, dcf, smaps, img_size, sK, sI, is3D
         )

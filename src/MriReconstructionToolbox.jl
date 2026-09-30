@@ -38,6 +38,7 @@ using RecursiveArrayTools: ArrayPartition
 using FFTW: FFTW, fft, ifft, fftshift, ifftshift
 import Scratch
 using ArgCheck: @argcheck
+import Adapt
 using Printf: @sprintf
 using Statistics: quantile, median, mean, std
 using Base.Threads: @threads, @spawn, nthreads
@@ -131,6 +132,7 @@ public check_applicable
 public fftw_wisdom_path
 public get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator
 public build_encoding_operator, signal_model_operator, NamedDimsOp, DFT, DEFAULT_ALGORITHMS
+public DEVICE_DISABLES_TASK_SPLITTING
 
 include("acquisition_data/partitioned_kspace.jl")
 include("acquisition_data/acquisition_info.jl")
@@ -138,6 +140,7 @@ include("acquisition_data/cartesian_acquisition_info.jl")
 include("acquisition_data/noncartesian_acquisition_info.jl")
 include("acquisition_data/acquisition_info_copy.jl")
 include("acquisition_data/dimension_utils.jl")
+include("acquisition_data/adapt.jl")
 
 include("preprocessing/density_compensation.jl")
 include("preprocessing/prewhitening.jl")
@@ -151,6 +154,7 @@ include("utils.jl")
 include("threading_utils.jl")
 
 include("encoding/named_dims_op.jl")
+include("encoding/host_staging.jl")
 include("encoding/contourlet_stack_op.jl")
 include("encoding/fftw_wisdom.jl")
 include("encoding/fourier_operators.jl")

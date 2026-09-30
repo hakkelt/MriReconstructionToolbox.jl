@@ -33,6 +33,10 @@ the encoding operator's adjoint the true adjoint; see [`NonCartesianAcquisitionI
 `kspace_data` is normally an `AbstractArray` (plain or `NamedDimsArray`). For a Cartesian
 acquisition whose frames select *different numbers of samples* it is a [`PartitionedKSpace`](@ref)
 instead, one array per frame — a dense array cannot hold a ragged sample axis.
+
+The k-space, the sensitivity maps and `dcf` may be device (GPU) arrays, all of them or none:
+`Adapt.adapt(CuArray, acq)` moves an acquisition, and a reconstruction then runs on the device.
+The subsampling pattern and the trajectory stay host arrays. See "GPU Reconstruction" in the manual.
 """
 function AcquisitionInfo(
         kspace_data = nothing;
@@ -66,5 +70,18 @@ function AcquisitionInfo(
         image_size,
         shifted_kspace_dims,
         shifted_image_dims,
+    )
+end
+
+# The k-space and the arrays reconstructed against it must all be in host memory or all in device
+# memory: every operator built from them runs where the k-space lives.
+function _check_same_storage(ksp, x, what::AbstractString)
+    (isnothing(ksp) || isnothing(x) || x isa Symbol) && return nothing
+    _is_device(ksp) == _is_device(x) && return nothing
+    throw(
+        ArgumentError(
+            "k-space ($(nameof(_array_type_of(ksp)))) and $what ($(nameof(_array_type_of(x)))) must both " *
+                "be in host memory or both in device memory; move them together with `Adapt.adapt`."
+        )
     )
 end

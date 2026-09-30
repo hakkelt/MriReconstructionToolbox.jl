@@ -64,6 +64,7 @@ struct CartesianAcquisitionInfo{K, I, S, Sub, SD, ID} <: AcquisitionInfo
 
         if !isnothing(smaps)
             _check_smaps(smaps, ksp, subs, is3D, img_size)
+            _check_same_storage(ksp, smaps, "sensitivity maps")
         end
 
         if sK != ()
