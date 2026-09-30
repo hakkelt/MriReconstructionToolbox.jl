@@ -1,6 +1,6 @@
 using TestItems
 
-@testitem "Regularization terms in reconstruction" tags = [:regularization, :integration] setup = [TestHelpers] begin
+@testitem "Regularization terms in reconstruction" tags = [:regularization, :integration, :gpu] setup = [TestHelpers, GpuEnvSetup, GpuHelpers] begin
     using Test
     using LinearAlgebra
     using MriReconstructionToolbox
@@ -74,5 +74,36 @@ using TestItems
         img_recon = reconstruct(acq, IterativeReconstruction(components...; maxit = 100); verbosity = Silent())
         @test img_recon isa DecomposedImage
         @test relerr(img_recon) < 0.2
+    end
+
+    @testset "on a device: $(nameof(typeof(reg)))" for reg in (
+            LocallyLowRank(0.02f0; block_size = 4, time_dim = 3),
+            MultiScaleLowRank(0.02f0; block_sizes = (2, 4), time_dim = 3),
+            LowRank(0.02f0; time_dim = 3),
+            TemporalTotalVariation(0.02f0; time_dim = 3),
+            L1TemporalFourier(0.02f0; time_dim = 3),
+            JointSparsity(0.02f0; dim = 3),
+            TotalVariation2D(0.02f0),
+            AnisotropicTotalVariation2D(0.02f0),
+            SecondOrderTotalVariation2D(0.02f0),
+            TotalGeneralizedVariation2D(0.02f0),
+            EdgePreservingRoughness2D(0.02f0),
+            L1Wavelet2D(0.02f0),
+            L0Wavelet2D(; threshold = 1.0e-3),
+            L0Image(; threshold = 1.0e-3),
+            NonNegative(; complex_handling = :real),
+        )
+        # Unsplit on both sides: the host would otherwise split a spatial term over the frames,
+        # and each frame's own scale changes the problem it solves.
+        test_on_devices(acq; rtol = 1.0e-3) do a
+            reconstruct(a, IterativeReconstruction(reg; maxit = 30); disable_task_splitting = true, verbosity = Silent())
+        end
+    end
+    # A rank projection of a nearly degenerate spectrum is not continuous in its input, so the
+    # device's full SVD and the host's truncated one part ways by more than rounding.
+    @testset "on a device: RankLimit" begin
+        test_on_devices(acq; rtol = 5.0e-2) do a
+            reconstruct(a, IterativeReconstruction(RankLimit(3; time_dim = 3); maxit = 30); disable_task_splitting = true, verbosity = Silent())
+        end
     end
 end

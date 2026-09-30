@@ -1,4 +1,4 @@
-@testitem "2D Reconstruction Pipeline" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
+@testitem "2D Reconstruction Pipeline" tags = [:reconstruction, :integration, :gpu] setup = [TestHelpers, GpuEnvSetup, GpuHelpers] begin
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
@@ -92,6 +92,10 @@
             # Tight enough to catch a sign-flipped solution (which lands at ≈2.0); measured ≈0.02.
             # The sampling pattern is drawn randomly per run, so the bound keeps a wide margin.
             @test error_norm < 0.3
+
+            test_on_devices(acq_with_data; rtol = 1.0e-3) do a
+                reconstruct(a, IterativeReconstruction(L1Wavelet2D(0.003), TotalVariation2D(0.001); maxit = 100); verbosity = Silent())
+            end
         end
 
         @testset "Different algorithms" begin
@@ -119,6 +123,16 @@
             error_admm = norm(img_admm - img_true) / norm(img_true)
             # A sign error in the ADMM data term lands at ≈2.0; measured ≈0.06 at 50 iterations.
             @test error_admm < 0.3
+
+            # CG stops on its tolerance, and rounding moves that stop by tens of iterations, so its
+            # comparison stays short of it.
+            for method in (
+                    IterativeReconstruction(L2Image(0.001); maxit = 30),
+                    IterativeReconstruction(L1Wavelet2D(0.003); algorithm = ADMM(), maxit = 50),
+                    IterativeReconstruction(L1Wavelet2D(0.003); algorithm = POGM(), maxit = 50),
+                )
+                test_on_devices(a -> reconstruct(a, method; verbosity = Silent()), acq_with_data; rtol = 1.0e-3)
+            end
         end
 
         @testset "With initial guess" begin
@@ -141,11 +155,15 @@
 
             error_norm = norm(img_recon - img_true) / norm(img_true)
             @test error_norm < 0.5
+
+            test_on_devices(acq_with_data, x_init; rtol = 1.0e-3) do a, x
+                reconstruct(a, IterativeReconstruction(L1Wavelet2D(0.005); maxit = 30); x₀ = x, verbosity = Silent())
+            end
         end
     end
 end
 
-@testitem "3D Reconstruction Pipeline" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
+@testitem "3D Reconstruction Pipeline" tags = [:reconstruction, :integration, :gpu] setup = [TestHelpers, GpuEnvSetup, GpuHelpers] begin
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
@@ -182,11 +200,15 @@ end
 
             error_norm = norm(img_recon - img_true) / norm(img_true)
             @test error_norm < 0.7
+
+            test_on_devices(acq_with_data; rtol = 1.0e-3) do a
+                reconstruct(a, IterativeReconstruction(L1Wavelet3D(0.005); maxit = 30); verbosity = Silent())
+            end
         end
     end
 end
 
-@testitem "Multi-slice 2D Reconstruction" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
+@testitem "Multi-slice 2D Reconstruction" tags = [:reconstruction, :integration, :gpu] setup = [TestHelpers, GpuEnvSetup, GpuHelpers] begin
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
@@ -268,6 +290,13 @@ end
                     for s in eachindex(intensities)
             ]
             @test maximum(rel_errors) / minimum(rel_errors) < 1.1
+
+            # Split and unsplit solves on a device, each against the same on the host.
+            for disable_task_splitting in (true, false)
+                test_on_devices(acq_ms; rtol = 1.0e-3) do a
+                    reconstruct(a, IterativeReconstruction(L2Image(0.05); maxit = 20); disable_task_splitting, verbosity = Silent())
+                end
+            end
         end
 
         @testset "Regularized task splitting with an all-zero slice" begin

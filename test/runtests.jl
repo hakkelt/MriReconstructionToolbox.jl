@@ -12,6 +12,6 @@ using MriReconstructionToolbox
 #                 :reconstruction, :integration, :nfft,
 #                 :quality, :aqua, :jet, :acquisition, :simulation,
 #                 :components, :operators, :preprocessing,
-#                 :acquisition_info, :analysis, :fourier, :sensitivity_maps
+#                 :acquisition_info, :analysis, :fourier, :sensitivity_maps, :gpu
 
 TestItemRunner.run_tests(pkgdir(MriReconstructionToolbox))

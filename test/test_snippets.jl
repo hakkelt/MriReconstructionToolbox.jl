@@ -149,3 +149,58 @@ end
         return f(op * xval)
     end
 end
+
+@testmodule GpuEnvSetup begin
+    # Loads every GPU backend the machine has (JLArrays always, CUDA and friends where a device
+    # is present) into this test process, which makes `MriReconstructionToolboxGPUExt` load too.
+    using GPUEnv
+    GPUEnv.activate(; include_jlarrays = true, persist = true)
+end
+
+@testsnippet GpuHelpers begin
+    using GPUEnv: gpu_backends
+    using MriReconstructionToolbox: AcquisitionInfo, _is_device
+    using NamedDims: NamedDimsArray, unname
+    using LinearAlgebra: norm
+    const Adapt = MriReconstructionToolbox.Adapt
+
+    # The backends a case can run on: anything with an FFT (and an NFFT) needs a real device, as
+    # JLArrays has no FFT; the rest runs on JLArrays too, which is also what CI has.
+    fft_backends() = gpu_backends(; include_jlarrays = false, supports_fftw = true)
+    all_backends() = gpu_backends(; include_jlarrays = true)
+
+    to_device(backend, x) = Adapt.adapt(backend.array_type, x)
+
+    _values(x::AbstractArray) = Array(unname(x))
+    _values(x::AcquisitionInfo) = (_values(x.kspace_data), isnothing(x.sensitivity_maps) ? nothing : _values(x.sensitivity_maps))
+    _values(x::Tuple) = map(_values, x)
+    _values(::Nothing) = nothing
+    _values(x::Number) = x
+
+    _relerr(a::AbstractArray, b::AbstractArray) = norm(a - b) / norm(b)
+    _relerr(a::Tuple, b::Tuple) = maximum(map(_relerr, a, b))
+    _relerr(::Nothing, ::Nothing) = 0.0
+    _relerr(a::Number, b::Number) = abs(a - b) / abs(b)
+
+    _on_device(x::AbstractArray) = _is_device(x)
+    _on_device(x::AcquisitionInfo) = _is_device(x)
+    _on_device(x::Tuple) = _on_device(first(x))
+
+    """
+        test_on_devices(f, args...; rtol, backends = fft_backends())
+
+    `f(args...)` on the host and on every backend's device copy of `args`: the device result must
+    be on the device and agree with the host one to `rtol`.
+    """
+    function test_on_devices(f, args...; rtol = 1.0e-4, backends = fft_backends())
+        ref = f(args...)
+        for backend in backends
+            @testset "$(backend.name)" begin
+                out = f(map(a -> to_device(backend, a), args)...)
+                @test _on_device(out)
+                @test _relerr(_values(out), _values(ref)) < rtol
+            end
+        end
+        return nothing
+    end
+end

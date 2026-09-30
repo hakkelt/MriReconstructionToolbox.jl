@@ -114,7 +114,7 @@ end
     @test_throws ArgumentError density_compensation(acq_3d; method = VoronoiDCF())
 end
 
-@testitem "DCF radial reconstruction accuracy" tags = [:reconstruction, :nfft, :quality] begin
+@testitem "DCF radial reconstruction accuracy" tags = [:reconstruction, :nfft, :quality, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_encoding_operator, NonCartesianAcquisitionInfo
@@ -164,6 +164,13 @@ end
     corr_vor = abs(dot(vec(rec_vor), vec(img_true))) / (norm(rec_vor) * norm(img_true))
     @test corr_pm > 0.85
     @test corr_vor > 0.5
+
+    # The density compensation is computed on the host, the gridding and the iterative solve run
+    # on the device's NFFT.
+    test_on_devices(a -> reconstruct(density_compensation(a; method = PipeMenonDCF(maxit = 20)); verbosity = Silent()), acq)
+    test_on_devices(acq; rtol = 1.0e-3) do a
+        reconstruct(a, IterativeReconstruction(TotalVariation2D(1.0e-3); maxit = 20); verbosity = Silent())
+    end
 end
 
 @testitem "DCF edge correction" tags = [:acquisition, :nfft] begin
@@ -179,7 +186,7 @@ end
     function edge_deviation(w)
         return [
             let predicted = 2 * Float64(w[6, s]) - Float64(w[7, s])
-                    abs(Float64(w[1, s]) - predicted) / abs(predicted)
+                abs(Float64(w[1, s]) - predicted) / abs(predicted)
             end for s in axes(w, 2)
         ]
     end

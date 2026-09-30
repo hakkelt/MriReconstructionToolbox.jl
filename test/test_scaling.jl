@@ -1,4 +1,4 @@
-@testitem "Scaling rules" tags = [:reconstruction] setup = [TestHelpers] begin
+@testitem "Scaling rules" tags = [:reconstruction, :gpu] setup = [TestHelpers, GpuEnvSetup, GpuHelpers] begin
     using MriReconstructionToolbox
     using MriReconstructionToolbox: get_scale, get_encoding_operator, _measurement, _quantile_select!
     using LinearAlgebra, Random, Statistics
@@ -11,6 +11,21 @@
     acq = simulate_acquisition(img_true, AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern))
     A = get_encoding_operator(acq; threaded = false)
     x̂ = A' * _measurement(acq.kspace_data)
+
+    # Noisy data: on noiseless data the noise level is the FFT's rounding, which differs by library.
+    noisy = AcquisitionInfo(acq; kspace_data = acq.kspace_data .+ 0.05f0 .* randn(Xoshiro(2), ComplexF32, size(acq.kspace_data)))
+    noisy_x̂ = A' * _measurement(noisy.kspace_data)
+    @testset "a device acquisition gets the host's scale: $(backend.name)" for backend in fft_backends()
+        dacq = to_device(backend, noisy)
+        dA = get_encoding_operator(dacq; threaded = false)
+        dx̂ = dA' * _measurement(dacq.kspace_data)
+        for s in (
+                QuantileScaling(), BartScaling(), MaxScaling(), StdScaling(), NoiseLevelScaling(),
+                MeasurementBasedScaling(), KSpaceNormScaling(), SystemMatrixBasedScaling(),
+            )
+            @test get_scale(s, dacq, dx̂, dA) ≈ get_scale(s, noisy, noisy_x̂, A) rtol = 1.0e-4
+        end
+    end
 
     @testset "the default is QuantileScaling" begin
         @test ReconstructionConfig().scaling == QuantileScaling()

@@ -602,3 +602,70 @@ end
     by_mask = CartesianAcquisitionInfo(ksp; is3D = false, image_size = (n, n), subsampling = (:, in(lines).(1:n)))
     @test parent(reconstruct(by_index, method; verbosity = Silent())) ≈ parent(reconstruct(by_mask, method; verbosity = Silent()))
 end
+
+@testitem "Adapt: an acquisition moves to a device and back" tags = [:acquisition, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo, PartitionedKSpace
+    using NamedDims
+
+    ksp = NamedDimsArray{(:kx, :ky, :coil)}(rand(ComplexF32, 8, 6, 2))
+    smaps = NamedDimsArray{(:x, :y, :coil)}(rand(ComplexF32, 8, 8, 2))
+    mask = [isodd(i) || i in (4, 8) for i in 1:8]
+    cart = CartesianAcquisitionInfo(ksp; is3D = false, image_size = (8, 8), sensitivity_maps = smaps, subsampling = (:, mask))
+
+    traj = rand(Float32, 2, 16, 3) .- 0.5f0
+    nc_ksp = rand(ComplexF32, 16, 3, 2)
+    noncart = NonCartesianAcquisitionInfo(nc_ksp; trajectory = traj, image_size = (8, 8), dcf = rand(Float32, 16, 3))
+
+    parts = PartitionedKSpace(
+        [rand(ComplexF32, 8, n, 2) for n in (3, 5)]; ragged_dim = 2, dimnames = (:kx, :ky, :coil, :time)
+    )
+
+    for backend in all_backends()
+        @testset "$(backend.name)" begin
+            d = to_device(backend, cart)
+            @test _is_device(d) && _is_device(d.sensitivity_maps)
+            @test dimnames(d.kspace_data) == dimnames(ksp) && dimnames(d.sensitivity_maps) == dimnames(smaps)
+            # The pattern stays on the host: the sampling operators index with host indices.
+            @test d.subsampling === cart.subsampling
+            back = Adapt.adapt(Array, d)
+            @test !_is_device(back) && parent(back.kspace_data) == parent(ksp)
+
+            dn = to_device(backend, noncart)
+            @test _is_device(dn) && _is_device(dn.dcf)
+            @test dn.trajectory === noncart.trajectory
+
+            dp = Adapt.adapt(backend.array_type, parts)
+            @test _is_device(dp) && all(_is_device, dp.parts)
+            @test dimnames(first(dp.parts)) == (:kx, :ky, :coil)
+        end
+    end
+end
+
+@testitem "Device storage: mismatches and the settings a device run resolves to" tags = [:acquisition, :reconstruction, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: CartesianAcquisitionInfo, resolve_config, DEVICE_DISABLES_TASK_SPLITTING
+    using NamedDims
+
+    ksp = NamedDimsArray{(:kx, :ky, :coil, :z)}(rand(ComplexF32, 8, 8, 2, 3))
+    smaps = NamedDimsArray{(:x, :y, :coil, :z)}(rand(ComplexF32, 8, 8, 2, 3))
+    host = CartesianAcquisitionInfo(ksp; is3D = false, sensitivity_maps = smaps)
+
+    for backend in all_backends()
+        @testset "$(backend.name)" begin
+            dev = to_device(backend, host)
+            # The k-space and the maps must be in the same memory.
+            @test_throws ArgumentError CartesianAcquisitionInfo(dev.kspace_data; is3D = false, sensitivity_maps = smaps)
+            # So must an initial guess.
+            @test_throws ArgumentError reconstruct(dev; x₀ = zeros(ComplexF32, 8, 8, 3), verbosity = Silent())
+            # Slices spread over threads would share one device.
+            @test_throws ArgumentError reconstruct(dev; task_executor = MultiThreadingExecutor(), verbosity = Silent())
+
+            conf = resolve_config(ReconstructionConfig(; threaded = true), dev)
+            @test conf.disable_task_splitting === DEVICE_DISABLES_TASK_SPLITTING
+            @test !conf.threaded
+            @test resolve_config(ReconstructionConfig(; disable_task_splitting = false), dev).disable_task_splitting === false
+        end
+    end
+    @test resolve_config(ReconstructionConfig(), host).disable_task_splitting === false
+end

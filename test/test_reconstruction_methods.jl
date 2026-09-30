@@ -1,4 +1,4 @@
-@testitem "Partial Fourier reconstruction: Homodyne, StepRamp, POCS" tags = [:reconstruction, :acquisition] begin
+@testitem "Partial Fourier reconstruction: Homodyne, StepRamp, POCS" tags = [:reconstruction, :acquisition, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
     using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
@@ -51,9 +51,13 @@
     # 4. Test POCS
     rec_pocs = reconstruct(acq_pf, POCS(maxit = 15); verbosity = Silent())
     @test isapprox(abs.(unname(rec_pocs))[mask_obj], mag[mask_obj]; rtol = 0.08)
+
+    for method in (Homodyne(filter = LinearRamp()), Homodyne(filter = StepRamp()), POCS(maxit = 15))
+        test_on_devices(a -> reconstruct(a, method; verbosity = Silent()), acq_pf)
+    end
 end
 
-@testitem "Parallel imaging: GRAPPA and SPIRiT" tags = [:reconstruction, :acquisition, :encoding] setup = [SyntheticCoils] begin
+@testitem "Parallel imaging: GRAPPA and SPIRiT" tags = [:reconstruction, :acquisition, :encoding, :gpu] setup = [SyntheticCoils, GpuEnvSetup, GpuHelpers] begin
     using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
@@ -109,9 +113,14 @@ end
     # (see the `_spirit_gfft` test item) SPIRiT is accurate here, not merely in the right ballpark.
     spirit_err = norm(abs.(unname(rec_spirit))[mask_obj] .- img[mask_obj]) / norm(img[mask_obj])
     @test spirit_err < 0.03
+
+    # Both run on a host copy of a device acquisition and hand the image back on the device.
+    for method in (GRAPPA(kernel_size = (3, 2), calib_size = (32, 12)), SPIRiT(kernel_size = (5, 5), calib_size = (32, 12), maxit = 20))
+        test_on_devices(a -> reconstruct(a, method; verbosity = Silent()), acq)
+    end
 end
 
-@testitem "Partial Fourier: PhaseConstrained recovers a phased phantom" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
+@testitem "Partial Fourier: PhaseConstrained recovers a phased phantom" tags = [:reconstruction, :acquisition, :gpu] setup = [SyntheticCoils, GpuEnvSetup, GpuHelpers] begin
     using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
@@ -147,6 +156,8 @@ end
     @test dimnames(rec) == (:x, :y)
     obj = abs.(img) .> 0.2
     @test isapprox(abs.(unname(rec))[obj], abs.(img)[obj]; rtol = 0.05)
+
+    test_on_devices(a -> reconstruct(a, PhaseConstrained(); verbosity = Silent()), acq; rtol = 1.0e-3)
 end
 
 @testitem "GRAPPA: arbitrary undersampling factor and default even kernel" tags = [:reconstruction, :acquisition, :encoding] setup = [SyntheticCoils] begin

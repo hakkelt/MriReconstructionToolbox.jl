@@ -255,7 +255,7 @@ using TestItems
     end
 end
 
-@testitem "StructuredLowRank end-to-end calibrationless" tags = [:regularization, :reconstruction, :integration] begin
+@testitem "StructuredLowRank end-to-end calibrationless" tags = [:regularization, :reconstruction, :integration, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
     using MriReconstructionToolbox: CartesianAcquisitionInfo
     using MriReconstructionToolbox
     using LinearAlgebra, NamedDims
@@ -322,9 +322,25 @@ end
     e_rank = nrmse(solve(StructuredLowRank(max_rank = 30, window = (5, 5))), truth)
     @test e_rank < 0.08
     @test e_rank < e_zf
+
+    # The same solves on a device, the phase-constrained LORAKS lifts and an ALOHA weight included.
+    for reg in (
+            StructuredLowRank(λ = 0.03, window = (5, 5)),
+            StructuredLowRank(max_rank = 30, window = (5, 5)),
+            StructuredLowRank(λ = 0.03, window = (5, 5), structure = :s),
+            StructuredLowRank(λ = 0.03, window = (5, 5), structure = :g),
+            StructuredLowRank(λ = 0.03, window = (5, 5), weights = :tv),
+        )
+        test_on_devices(acq; rtol = 1.0e-3) do a
+            reconstruct(
+                a, IterativeReconstruction(reg; signal_model = KSpaceToImage(RootSumSquares()), algorithm = ADMM(), maxit = 20);
+                verbosity = Silent(),
+            )
+        end
+    end
 end
 
-@testitem "LORAKS S- and G-matrix lifts" tags = [:regularization] setup = [RegTestSetup, ProxOf] begin
+@testitem "LORAKS S- and G-matrix lifts" tags = [:regularization, :gpu] setup = [RegTestSetup, ProxOf, GpuEnvSetup, GpuHelpers] begin
     using LinearAlgebra
     using FFTW: fft, fftshift, ifftshift
     import Random
@@ -504,6 +520,17 @@ end
         @test par ≈ seq
         # the Cadzow step truncates the *lifted* matrix, so a generic iterate stays infeasible
         @test calculate(reg, x; threaded = false) == Inf
+    end
+
+    # The device lifts are gathers, the adjoint included, so they must agree with the loops
+    # exactly up to rounding; odd and even grids, and a window that wraps the reflection.
+    @testset "device lifts: $st, $gs" for st in (:s, :g), (gs, ks, nch) in (((13, 11), (4, 3), 2), ((12, 10, 6), (3, 2, 2), 1))
+        lift = MRT.LoraksLift(gs, ks, nch, st)
+        sz = MRT._loraks_matrix_size(lift, Val(st))
+        x = randn(ComplexF32, gs..., nch)
+        M = randn(Float32, sz...)
+        test_on_devices(x -> MRT._loraks_lift!(similar(x, Float32, sz...), lift, x, Val(st)), x; backends = all_backends())
+        test_on_devices(M -> MRT._loraks_unlift!(similar(M, ComplexF32, gs..., nch), lift, M, Val(st)), M; backends = all_backends())
     end
 end
 

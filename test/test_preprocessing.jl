@@ -1,4 +1,4 @@
-@testitem "Prewhitening and noise covariance estimation" tags = [:acquisition, :encoding] begin
+@testitem "Prewhitening and noise covariance estimation" tags = [:acquisition, :encoding, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
     using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
@@ -46,9 +46,11 @@
     @test dimnames(acq_white.kspace_data) == (:kx, :ky, :coil)
     @test acq_white.sensitivity_maps isa NamedDimsArray
     @test dimnames(acq_white.sensitivity_maps) == (:x, :y, :coil)
+
+    test_on_devices(a -> prewhiten(a, Ψ_est), acq_noisy; backends = all_backends())
 end
 
-@testitem "Coil compression with SVDCompression" tags = [:acquisition, :encoding] setup = [SyntheticCoils] begin
+@testitem "Coil compression with SVDCompression" tags = [:acquisition, :encoding, :gpu] setup = [SyntheticCoils, GpuEnvSetup, GpuHelpers] begin
     using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
@@ -88,9 +90,13 @@ end
     @test size(acq_geom.sensitivity_maps, :coil) == Nv
     rec_geom = reconstruct(acq_geom, DirectReconstruction(); verbosity = Silent())
     @test isapprox(rec_geom, rec_orig; rtol = 0.05)
+
+    for method in (SVDCompression(), GeometricCompression())
+        test_on_devices(a -> compress_coils(a, Nv; method), acq_sim; backends = all_backends())
+    end
 end
 
-@testitem "Sensitivity map estimation: SelfCalibrating, AdaptiveCombine, ESPIRiT" tags = [:acquisition, :encoding, :simulation] setup = [SyntheticCoils] begin
+@testitem "Sensitivity map estimation: SelfCalibrating, AdaptiveCombine, ESPIRiT" tags = [:acquisition, :encoding, :simulation, :gpu] setup = [SyntheticCoils, GpuEnvSetup, GpuHelpers] begin
     using MriReconstructionToolbox: CartesianAcquisitionInfo
     using Test
     using MriReconstructionToolbox
@@ -146,6 +152,11 @@ end
     @test isapprox(abs.(unname(rec_selfcal))[mask], abs.(unname(img))[mask]; rtol = 0.15)
     @test isapprox(abs.(unname(rec_adaptive))[mask], abs.(unname(img))[mask]; rtol = 0.15)
     @test isapprox(abs.(unname(rec_espirit))[mask], abs.(unname(img))[mask]; rtol = 0.15)
+
+    # Estimation runs on a host copy of a device acquisition; the maps come back on the device.
+    for method in (SelfCalibrating(calib_size = 16), ESPIRiT(calib_size = 16, kernel_size = 6))
+        test_on_devices(a -> estimate_sensitivities(a; method), acq_sim; backends = all_backends())
+    end
 end
 
 @testitem "Sensitivity estimation: batch dimensions get their own maps" tags = [:preprocessing, :acquisition, :simulation] setup = [SyntheticCoils] begin
@@ -201,7 +212,7 @@ end
     end
 end
 
-@testitem "Sensitivity estimation: non-Cartesian data calibrates through gridding" tags = [:preprocessing, :acquisition, :nfft] setup = [RadialCalibration] begin
+@testitem "Sensitivity estimation: non-Cartesian data calibrates through gridding" tags = [:preprocessing, :acquisition, :nfft, :gpu] setup = [RadialCalibration, GpuEnvSetup, GpuHelpers] begin
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: NonCartesianAcquisitionInfo
@@ -240,6 +251,10 @@ end
     @test !(maps_unnamed isa NamedDimsArray)
     @test size(maps_unnamed) == (case.N, case.N, case.ncoil)
     @test map_alignment(maps_unnamed, case.smaps, case.mask) > 0.99
+
+    # Calibrated on a host copy, then a SENSE reconstruction on the device's NFFT with those maps.
+    test_on_devices(a -> estimate_sensitivities(a; method = ESPIRiT(calib_size = 24, kernel_size = 6)), acq; backends = all_backends())
+    test_on_devices(a -> reconstruct(density_compensation(a); verbosity = Silent()), acq_maps)
 end
 
 @testitem "Sensitivity estimation: non-Cartesian batch dimensions and average_dims" tags = [:preprocessing, :acquisition, :nfft] setup = [RadialCalibration] begin

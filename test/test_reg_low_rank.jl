@@ -101,8 +101,9 @@ end
     end
 end
 
-@testitem "LocallyLowRank regularization" tags = [:regularization] setup = [RegTestSetup, ProxOf] begin
+@testitem "LocallyLowRank regularization" tags = [:regularization, :gpu] setup = [RegTestSetup, ProxOf, GpuEnvSetup, GpuHelpers] begin
     using LinearAlgebra
+    using Random: Xoshiro
 
     function reference_llr(x, λ, block_size, nt)
         value = 0.0
@@ -211,6 +212,21 @@ end
         @test reg.block_size == 4
         @test reg.time_dim == 3
         @test reg.shift == :none
+    end
+
+    # The device prox gathers every block at once and thresholds them in one batch; blocks of
+    # edge 4 do not tile 12 × 10, so the zero-padded edge blocks are covered too.
+    @testset "on a device" begin
+        x = randn(ComplexF32, 12, 10, 6, 2)
+        # Each call builds its own regularizer so that a shifted grid draws the same origin on
+        # the host and on the device.
+        for make_reg in (
+                () -> LocallyLowRank(0.3f0; block_size = 4, time_dim = 3),
+                () -> LocallyLowRank(0.3f0; block_size = (2, 5), time_dim = 3, shift = :fixed, rng = Xoshiro(3)),
+                () -> LocallyLowRank(0.3f0; block_size = 2, time_dim = 3),
+            )
+            test_on_devices(x -> prox_of(make_reg(), x, 0.7f0), x; backends = all_backends())
+        end
     end
 end
 
