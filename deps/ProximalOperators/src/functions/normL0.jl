@@ -32,13 +32,14 @@ NormL0(lambda::R=1; threaded::Bool=true) where R = NormL0{R, threaded}(lambda)
 (f::NormL0)(x) = f.lambda * real(eltype(x))(count(!iszero, x))
 
 function prox!(y, f::NormL0, x, gamma)
-    R = real(eltype(x))
     gl = gamma * f.lambda
     thresh = sqrt(2 * gl)
     # counting the survivors off `y` rather than off a separate flag keeps this in the
-    # single-reduction shape the shared helper expresses, and so gives it a device path
+    # single-reduction shape the shared helper expresses, and so gives it a device path.
+    # The closures build their constants from their argument: a captured type is not a
+    # bits value, and a device kernel cannot take it.
     countnzy = map_reduce_prox!(
-        f, y, xi -> (abs(xi) > thresh) * xi, yi -> iszero(yi) ? R(0) : R(1), x
+        f, y, xi -> (abs(xi) > thresh) * xi, yi -> iszero(yi) ? zero(real(yi)) : one(real(yi)), x
     )
     return f.lambda * countnzy
 end

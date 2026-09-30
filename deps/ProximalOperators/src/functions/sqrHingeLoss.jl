@@ -64,9 +64,9 @@ function gradient!(g, f::SqrHingeLoss, x)
         f, g,
         function (i, xi)
             zz = 1 - fy[i] * xi
-            zz > 0 ? -2 * mu * fy[i] * zz : R(0)
+            zz > 0 ? -2 * mu * fy[i] * zz : zero(zz)
         end,
-        (i, _) -> max(R(0), 1 - fy[i] * x[i])^2,
+        (i, _) -> max(zero(mu), 1 - fy[i] * x[i])^2,
         x,
     )
     return f.mu * acc
