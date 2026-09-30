@@ -162,7 +162,7 @@ index 11c8bb1..333beeb 100644
      is_AAc_diagonal,
      diag_AcA,
 diff --git a/deps/AbstractOperators/ext/GpuExt/GpuExt.jl b/deps/AbstractOperators/ext/GpuExt/GpuExt.jl
-index 1309ec5..80020ce 100644
+index b84871e..8895ff4 100644
 --- a/deps/AbstractOperators/ext/GpuExt/GpuExt.jl
 +++ b/deps/AbstractOperators/ext/GpuExt/GpuExt.jl
 @@ -2,9 +2,9 @@ module GpuExt
@@ -191,7 +191,7 @@ index 3545768..3d40e38 100644
      is_affine,
      is_eye,
 diff --git a/deps/AbstractOperators/src/calculus/OperatorWrapper.jl b/deps/AbstractOperators/src/calculus/OperatorWrapper.jl
-index be0349a..4c3ed33 100644
+index 9118779..ba0db0c 100644
 --- a/deps/AbstractOperators/src/calculus/OperatorWrapper.jl
 +++ b/deps/AbstractOperators/src/calculus/OperatorWrapper.jl
 @@ -97,7 +97,7 @@ domain_array_type(::OperatorWrapper{Op, DB, CB, DS, CS}) where {Op, DB, CB, DS,
