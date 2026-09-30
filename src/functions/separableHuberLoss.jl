@@ -47,44 +47,34 @@ function _huber(f::SeparableHuberLoss, absx::R) where R <: Real
     return absx <= f.rho ? f.mu / R(2) * absx^2 : f.rho * f.mu * (absx - f.rho / R(2))
 end
 
-function (f::SeparableHuberLoss)(x)
-    R = real(eltype(x))
-    v = R(0)
-    for k in eachindex(x)
-        v += _huber(f, R(abs(x[k])))
-    end
-    return v
+(f::SeparableHuberLoss)(x) = reduce_call(f, xk -> _huber(f, abs(xk)), x)
+
+# The gradient of |t| is t/|t|, which extends to complex entries as the phase of t.
+function _huber_gradient(f::SeparableHuberLoss, xk)
+    absx = abs(xk)
+    return absx <= f.rho ? f.mu * xk : (f.mu * f.rho) / absx * xk
+end
+
+# Same shrinkage as HuberLoss, but driven by |t| instead of the norm of the whole array: below the
+# kink the quadratic branch scales by 1/(1+γμ), above it the linear branch subtracts γμρ.
+function _huber_shrink(f::SeparableHuberLoss, mugam, xk)
+    absx = abs(xk)
+    R = typeof(absx)
+    scal = one(R) - min(R(mugam / (1 + mugam)), iszero(absx) ? one(R) : R(mugam * f.rho / absx))
+    return scal * xk
 end
 
 function gradient!(y, f::SeparableHuberLoss, x)
-    R = real(eltype(x))
-    v = R(0)
-    for k in eachindex(x)
-        absx = R(abs(x[k]))
-        if absx <= f.rho
-            y[k] = f.mu * x[k]
-        else
-            # The gradient of |t| is t/|t|, which extends to complex entries as the phase of x[k].
-            y[k] = (f.mu * f.rho) / absx * x[k]
-        end
-        v += _huber(f, absx)
-    end
+    # The value is read before `y` is written, since `y` may alias `x`.
+    v = f(x)
+    map_prox!(f, y, xk -> _huber_gradient(f, xk), x)
     return v
 end
 
 function prox!(y, f::SeparableHuberLoss, x, gamma)
-    R = real(eltype(x))
     mugam = f.mu * gamma
-    v = R(0)
-    for k in eachindex(x)
-        absx = R(abs(x[k]))
-        # Same shrinkage as HuberLoss, but driven by |x[k]| instead of the norm of the whole array: below
-        # the kink the quadratic branch scales by 1/(1+γμ), above it the linear branch subtracts γμρ.
-        scal = R(1) - min(mugam / (R(1) + mugam), iszero(absx) ? R(1) : mugam * f.rho / absx)
-        y[k] = scal * x[k]
-        v += _huber(f, scal * absx)
-    end
-    return v
+    # |y[k]| is the shrunk |x[k]|, so the value is the loss of `y` itself.
+    return map_reduce_prox!(f, y, xk -> _huber_shrink(f, mugam, xk), yk -> _huber(f, abs(yk)), x)
 end
 
 function prox_naive(f::SeparableHuberLoss, x, gamma)

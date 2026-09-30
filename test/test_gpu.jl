@@ -61,6 +61,8 @@ gpu_cases() = begin
         ("IndBallLinf",        IndBallLinf(1.0),                 randn(40), 0.7),
         ("IndNonnegative",     IndNonnegative(),                 randn(40), 0.7),
         ("IndNonpositive",     IndNonpositive(),                 randn(40), 0.7),
+        ("IndRealBox",         IndRealBox(-0.5, 0.5),            randn(ComplexF64, 40), 0.7),
+        ("IndRealNonnegative", IndRealNonnegative(),             randn(ComplexF64, 40), 0.7),
         ("IndZero",            IndZero(),                        randn(40), 0.7),
         ("IndFree",            IndFree(),                        randn(40), 0.7),
         ("IndBinary",          IndBinary(0.0, 1.0),              randn(40), 0.7),
@@ -100,6 +102,8 @@ gpu_cases() = begin
         ("ReshapeInput",       ReshapeInput(NuclearNorm(0.3), (10, 10)), randn(100), 0.7),
         ("SlicedSeparableSum", SlicedSeparableSum((NormL1(0.4), NormL1(0.6)), ((1:10,), (11:20,))), randn(20), 0.7),
         ("SeparableSum",       SeparableSum(NormL1(0.4), NormL1(0.6)), (randn(10), randn(10)), 0.7),
+        ("SeparableHuberLoss", SeparableHuberLoss(0.5, 2.0),     randn(40), 0.7),
+        ("SeparableHuberLoss complex", SeparableHuberLoss(0.5, 2.0), randn(ComplexF64, 40), 0.7),
     ]
 end
 
@@ -132,6 +136,8 @@ gpu_gradient_cases() = Any[
     ("SqrNormL2 weighted", SqrNormL2(rand(40) .+ 0.1), randn(40)),
     ("SqrNormL2 complex", SqrNormL2(0.7), randn(ComplexF64, 40)),
     ("HuberLoss", HuberLoss(1.0, 1.0), randn(40)),
+    ("SeparableHuberLoss", SeparableHuberLoss(0.5, 2.0), randn(40)),
+    ("SeparableHuberLoss complex", SeparableHuberLoss(0.5, 2.0), randn(ComplexF64, 40)),
     ("LogisticLoss", LogisticLoss(randn(40), 1.5), randn(40)),
     ("SqrHingeLoss", SqrHingeLoss(sign.(randn(40))), randn(40)),
     ("Linear", Linear(randn(40)), randn(40)),
