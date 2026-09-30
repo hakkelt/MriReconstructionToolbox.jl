@@ -190,7 +190,7 @@ julia --project=@runic -e 'using Runic; exit(Runic.main(ARGS))' -- --inplace src
   (`type` = `feat`/`fix`/`refactor`/`test`/`docs`/`chore`; `scope` optional).
 - Blank line, then a body wrapped at ~72 chars explaining *what* changed and *why* — bullets for
   multiple distinct changes, naming the files touched.
-- Trailers: attribute the model that wrote the change as co-author, and link the session.
+- Trailers: attribute the model that wrote the change as co-author.
 
 Claude:
 
@@ -200,7 +200,6 @@ Claude:
 <body>
 
 Co-Authored-By: Claude <Model> <noreply@anthropic.com>
-Claude-Session: <session URL>
 ```
 
 `<Model>` is the exact model, e.g. `Opus 5`, `Sonnet 5`, `Fable 5`.
