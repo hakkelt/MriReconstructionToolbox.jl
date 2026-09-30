@@ -228,6 +228,23 @@ end
             test_on_devices(x -> prox_of(make_reg(), x, 0.7f0), x; backends = all_backends())
         end
     end
+
+    # A CUDA device picks its batched solver by slice shape: a full SVD of slices up to 32 × 32,
+    # an eigendecomposition of the short side's Gram matrix when only one side fits, and the
+    # generic device path otherwise. Every shape must agree with the host.
+    @testset "batched singular value thresholding on a device: $(size(A))" for A in (
+            randn(ComplexF32, 16, 6, 5), randn(Float32, 64, 6, 5), randn(ComplexF32, 6, 64, 5),
+            randn(ComplexF32, 40, 36, 2),
+        )
+        # The thresholded slices, then the thresholded and the plain nuclear norms, on A's storage.
+        function svt(A)
+            B = copy(A)
+            thresholded = MriReconstructionToolbox._batched_svt!(B, 1.0f0)
+            nuclear = MriReconstructionToolbox._batched_nuclear_norm(A)
+            return vcat(vec(B), copyto!(similar(B, 2), eltype(A)[thresholded, nuclear]))
+        end
+        test_on_devices(svt, A; backends = all_backends())
+    end
 end
 
 @testitem "LocallyLowRank grid shifts" tags = [:regularization] setup = [RegTestSetup, ProxOf] begin
