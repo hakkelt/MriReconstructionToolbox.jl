@@ -60,3 +60,6 @@ benchmark/comparison/results/runs/
 /test/LocalPreferences.toml
 /benchmark/**/LocalPreferences.toml
 /benchmark/LocalPreferences.toml
+
+# GPUEnv's persisted overlay of the comparison environment (adds CUDA for `--device=cuda` runs).
+/benchmark/comparison/gpu_env/

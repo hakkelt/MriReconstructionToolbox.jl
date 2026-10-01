@@ -86,7 +86,7 @@ end
 
 function mrt_race_run(c::BenchCase, method::Symbol, λ, rho)
     return it -> begin
-        t, _, x = time_run(mrt_reconstructor(c, method; λ, rho, maxit = it); runs = timed_runs(c))
+        t, _, x = time_run(mrt_reconstructor(c, method; λ, rho, maxit = it, device = MRT_DEVICE); runs = timed_runs(c))
         (1000 * t, parent(x))
     end
 end

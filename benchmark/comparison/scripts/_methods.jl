@@ -155,6 +155,14 @@ end
 
 # ---------------------------------------------------------------- the row driver
 
+"""
+    MRT_DEVICE
+
+The array type MRT reconstructs into, passed to `mrt_reconstructor` as `device`: `CuArray` on a
+`--device=cuda` run, `nothing` (the host) otherwise.
+"""
+const MRT_DEVICE = ON_GPU ? CuArray : nothing
+
 # A direct reconstruction returns Σ conj(Sᶜ) xᶜ; it is scored after dividing by Σ|Sᶜ|², the
 # unfolding of a fully sampled acquisition, for every toolkit alike.
 function _score_image(c::BenchCase, method::Symbol, x)
@@ -186,9 +194,10 @@ function run_method_rows!(
     runs = timed_runs(c)
     λ = load_lambda(c, method, "MRT", λ_default)
     rho = something(load_rho(c, method, "MRT"), admm_rho(c))
-    tm, _, xm = time_run(mrt_reconstructor(c, method; λ, rho, maxit); runs)
+    tm, _, xm = time_run(mrt_reconstructor(c, method; λ, rho, maxit, device = MRT_DEVICE); runs)
     xm = _score_image(c, method, parent(xm))
     push!(results, BenchResult(section, label, FW, NUM_THREADS, tm * 1000, mag_nrmse(xm, c.reference), 0.0, c.id, c.source))
+    release_device_memory()
     for tk in toolkits
         fw = framework_label(tk)
         (supports(tk, c, method) && should_run_framework(fw)) || continue
@@ -202,6 +211,7 @@ function run_method_rows!(
         catch err
             @warn "$fw $label on $(c.id) failed" exception = (err, catch_backtrace())
         end
+        release_device_memory()
     end
     flush_results!(lowercase(replace(section, r"[^A-Za-z0-9]+" => "_")))
     return xm

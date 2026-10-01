@@ -10,6 +10,9 @@
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_kspace.jl --threads=N [--use-mkl]
 include(joinpath(@__DIR__, "_setup.jl"))
 
+# GRAPPA runs on a host copy of a device acquisition, so a GPU run has nothing to time here.
+ON_GPU && (@info "kspace: no GPU rows (GRAPPA runs on the host)"; exit())
+
 for id in ("shepp_logan_2d_8ch_cartesian", "shepp_logan_multislice_8ch_cartesian")
     DATA == "real" && break
     should_run_case(id) || continue

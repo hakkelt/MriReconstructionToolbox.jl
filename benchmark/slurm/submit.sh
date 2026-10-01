@@ -8,6 +8,7 @@
 #   benchmark/slurm/submit.sh --production matrix.sh --suite=comparison
 #   benchmark/slurm/submit.sh calibrate.sh --cases=shepp_logan_2d_8ch_cartesian
 #   benchmark/slurm/submit.sh --array=0-6 calibrate.sh
+#   benchmark/slurm/submit.sh comparison_gpu.sh --sections=cgsense
 #
 # The test partition has a one-hour limit, so the script's own `--time` is capped at that there.
 # Production runs occupy a whole node for hours: submit them only when that has been agreed.
@@ -31,6 +32,10 @@ done
 SCRIPT="$1"; shift
 [ -f "$SCRIPT" ] || SCRIPT="benchmark/slurm/$SCRIPT"
 [ -f "$SCRIPT" ] || { echo "### no such script: $SCRIPT" >&2; exit 2; }
+# A production run of a script that asks for a GPU goes to the GPU partition.
+if [ "$PARTITION" = "${SLURM_PRODUCTION_PARTITION:-cpu}" ] && grep -q '^#SBATCH --gres=gpu' "$SCRIPT"; then
+    PARTITION="${SLURM_GPU_PARTITION:-gpu}"
+fi
 
 opts=(--partition="$PARTITION" --output="$BENCH_RESULTS/slurm/%x_%j.txt")
 [ -n "$TIME" ] && opts+=(--time="$TIME")

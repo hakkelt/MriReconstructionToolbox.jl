@@ -136,7 +136,7 @@ function mrt_algorithm(method::Symbol, maxit::Int; rho::Real = ADMM_RHO)
 end
 
 """
-    mrt_reconstructor(c, method; λ = default_lambda(c, method), rho = admm_rho(c), maxit, acq = nothing) -> () -> image
+    mrt_reconstructor(c, method; λ = default_lambda(c, method), rho = admm_rho(c), maxit, acq = nothing, device = nothing) -> () -> image
 
 A zero-argument closure running MRT's reconstruction of `c` by `method`, for `time_run`, with the
 ADMM penalty `rho` (relative to `‖𝒜‖²`; ignored by the methods that do not run ADMM). The
@@ -144,6 +144,10 @@ acquisition is built once, outside the closure; `acq` passes one in (the compari
 it across rows). `maxit` defaults to [`default_maxit`](@ref).
 `maxit` and `reltol = 0` are set on `IterativeReconstruction` as well as on the algorithm: the
 method's values win over the algorithm's, so both must agree to run the full count.
+
+`device`, a GPU array type such as `CuArray`, reconstructs on that device: the closure moves the
+host acquisition there with `adapt` and copies the image back into a host `Array`, so the time is
+from host data to host image, as it is for a toolkit that takes and returns host arrays.
 """
 function mrt_reconstructor(
         c::BenchCase, method::Symbol;
@@ -151,13 +155,16 @@ function mrt_reconstructor(
         rho::Real = admm_rho(c),
         maxit::Int = default_maxit(method),
         acq = nothing,
+        device = nothing,
     )
-    if method === :adjoint || method === :gridding
-        a = something(acq, mrt_acquisition(c; dcf = method === :gridding))
-        return () -> reconstruct(a, DirectReconstruction(); verbosity = Silent())
+    direct = method === :adjoint || method === :gridding
+    a = something(acq, mrt_acquisition(c; dcf = method === :gridding))
+    m = if direct
+        DirectReconstruction()
+    else
+        reg = method === :cgsense ? () : mrt_regularizer(c, method, λ)
+        IterativeReconstruction(; regularization = reg, algorithm = mrt_algorithm(method, maxit; rho), maxit, reltol = 0.0)
     end
-    a = something(acq, mrt_acquisition(c))
-    reg = method === :cgsense ? () : mrt_regularizer(c, method, λ)
-    m = IterativeReconstruction(; regularization = reg, algorithm = mrt_algorithm(method, maxit; rho), maxit, reltol = 0.0)
-    return () -> reconstruct(a, m; verbosity = Silent())
+    device === nothing && return () -> reconstruct(a, m; verbosity = Silent())
+    return () -> Array(parent(reconstruct(MriReconstructionToolbox.Adapt.adapt(device, a), m; verbosity = Silent())))
 end

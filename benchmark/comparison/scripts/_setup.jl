@@ -17,22 +17,58 @@ let i = findfirst(a -> startswith(a, "--threads="), ARGS)
     global const NUM_THREADS = i === nothing ? Threads.nthreads() : parse(Int, split(ARGS[i], "=")[2])
 end
 
+"""
+    DEVICE / ON_GPU
+
+`--device=cpu` (default) or `--device=cuda`. On `cuda` every toolkit that can reconstruct on an
+NVIDIA GPU does so (`gpu_supports` in `_toolkits.jl`), each from host data to a host image: the
+transfers to and from the device are inside the timed region, for every toolkit alike, since BART
+cannot be timed any other way. The host threads still serve whatever a toolkit keeps on the host.
+"""
+const DEVICE = let i = findfirst(a -> startswith(a, "--device="), ARGS)
+    d = i === nothing ? "cpu" : ARGS[i][(length("--device=") + 1):end]
+    d in ("cpu", "cuda") || error("--device=$d: expected cpu or cuda")
+    Symbol(d)
+end
+const ON_GPU = DEVICE === :cuda
+ON_GPU && USE_MKL && error("--use-mkl selects a host BLAS backend; it does not combine with --device=cuda")
+
 # Machine paths (BART builds, SigPy's interpreter, the data cache) come from the environment, filled
 # from the untracked `benchmark/slurm/site.env` for anything not already set.
 include(joinpath(@__DIR__, "..", "..", "utils", "config.jl"))
 load_site_env!()
 
-# Which BART build to time against. Two builds because the comparison is per BLAS backend. With no
-# build configured for this backend, BART is left out of every section (see `should_run_framework`).
+# CUDA.jl comes from a GPUEnv overlay of this environment rather than from its own dependencies, so
+# a CPU run neither resolves nor loads it. Loading it also loads MRT's, NFFT's and
+# RegularizedLeastSquares' GPU extensions.
+if ON_GPU
+    using GPUEnv
+    GPUEnv.activate(; include_jlarrays = false, only_first = true, persist = true)
+    using CUDA
+    CUDA.functional() || error("--device=cuda but CUDA is not functional on $(gethostname())")
+end
+
+# Which BART build to time against: one per BLAS backend, and one for the GPU. With no build
+# configured for this run, BART is left out of every section (see `should_run_framework`).
 if USE_MKL
     @info "Enabling Intel MKL backend via MKL.jl"
     using MKL
 end
-const BART_BINARY = get(ENV, USE_MKL ? "MRT_BENCH_BART_MKL" : "MRT_BENCH_BART_OPENBLAS", "")
+const BART_KEY = ON_GPU ? "MRT_BENCH_BART_CUDA" : USE_MKL ? "MRT_BENCH_BART_MKL" : "MRT_BENCH_BART_OPENBLAS"
+const BART_BINARY = get(ENV, BART_KEY, "")
 const BART_AVAILABLE = !isempty(BART_BINARY) && isfile(BART_BINARY)
-BART_AVAILABLE || @warn "No BART build configured for this backend, so BART rows are skipped" key = USE_MKL ? "MRT_BENCH_BART_MKL" : "MRT_BENCH_BART_OPENBLAS" value = BART_BINARY
-const FW = "MRT ($(USE_MKL ? "MKL" : "OpenBLAS"))"
-const BART_FW = "BART ($(USE_MKL ? "MKL" : "OpenBLAS"))"
+BART_AVAILABLE || @warn "No BART build configured for this backend, so BART rows are skipped" key = BART_KEY value = BART_BINARY
+
+"""
+    BACKEND
+
+What the run is recorded under (`record_run`): `"cuda"`, `"mkl"` or `"openblas"`, and the suffix of
+every framework label.
+"""
+const BACKEND = ON_GPU ? "cuda" : USE_MKL ? "mkl" : "openblas"
+const BACKEND_LABEL = ON_GPU ? "CUDA" : USE_MKL ? "MKL" : "OpenBLAS"
+const FW = "MRT ($BACKEND_LABEL)"
+const BART_FW = "BART ($BACKEND_LABEL)"
 
 using ThreadPinning
 # Threads go only to allowed CPUs that are not SMT siblings: a sibling shares its core with another
@@ -75,7 +111,9 @@ using BartIO
 # finalizes on a thread without the GIL later, on the thread that holds it, which is what makes
 # the multithreaded MRT solves between Python calls safe.
 get!(ENV, "JULIA_CONDAPKG_BACKEND", "Null")
-let py = get(ENV, "MRT_BENCH_SIGPY_PYTHON", "")
+# A GPU run takes the interpreter `MRT_BENCH_GPU_PYTHON` names when one is set: the GPU builds of
+# PyTorch and CuPy are an environment of their own, separate from the CPU-only one.
+let py = get(ENV, ON_GPU && haskey(ENV, "MRT_BENCH_GPU_PYTHON") ? "MRT_BENCH_GPU_PYTHON" : "MRT_BENCH_SIGPY_PYTHON", "")
     isempty(py) || (ENV["JULIA_PYTHONCALL_EXE"] = py)
 end
 using PythonCall
@@ -84,18 +122,35 @@ using MRIReco
 """
     MRPRO_AVAILABLE
 
-Whether MRpro imports in the Python interpreter; its rows are skipped otherwise (see
-`should_run_framework`). PyTorch's intra-op pool is set to `NUM_THREADS` and its inter-op pool to
-one thread before any tensor work; finufft, MRpro's NUFFT, follows `OMP_NUM_THREADS` above.
+Whether MRpro imports in the Python interpreter, and on a GPU run whether its PyTorch sees a CUDA
+device; its rows are skipped otherwise (see `should_run_framework`). PyTorch's intra-op pool is set
+to `NUM_THREADS` and its inter-op pool to one thread before any tensor work; finufft, MRpro's
+NUFFT, follows `OMP_NUM_THREADS` above.
 """
 const MRPRO_AVAILABLE = try
     torch = pyimport("torch")
     torch.set_num_threads(NUM_THREADS)
     torch.set_num_interop_threads(1)
     pyimport("mrpro")
+    ON_GPU && !pyconvert(Bool, torch.cuda.is_available()) && error("PyTorch $(torch.__version__) sees no CUDA device")
     true
 catch err
     @warn "MRpro is unavailable in the Python interpreter, so MRpro rows are skipped" exception = err
+    false
+end
+
+"""
+    SIGPY_AVAILABLE
+
+Whether SigPy can run this backend: always on the CPU, and on a GPU run only when CuPy imports and
+SigPy has enabled it.
+"""
+const SIGPY_AVAILABLE = !ON_GPU || try
+    pyimport("cupy")
+    pyconvert(Bool, pyimport("sigpy").config.cupy_enabled) || error("SigPy did not enable CuPy")
+    true
+catch err
+    @warn "SigPy cannot use the GPU, so SigPy rows are skipped" exception = err
     false
 end
 
@@ -210,6 +265,28 @@ end : NaN
 BART_AVAILABLE && @info @sprintf("BART spawn cost: %.1f ms", BART_SPAWN * 1000)
 
 """
+    BART_GPU_INIT -> seconds
+
+What a `pics -g` process pays to start using the GPU before it solves anything: creating the CUDA
+context and loading cuFFT and cuBLAS. Every BART call is a fresh process and pays it again, while
+an in-process toolkit pays it once, in its warm-up. Measured as the difference between the fastest
+of five `pics -g` and five `pics` calls on an 8×8 single-coil problem, one iteration each, and
+subtracted from every BART GPU timing alongside [`bart_overhead`](@ref). 0 on a CPU run.
+"""
+const BART_GPU_INIT = (ON_GPU && BART_AVAILABLE) ? let
+        k = ones(ComplexF32, 8, 8, 1, 1)
+        s = ones(ComplexF32, 8, 8, 1, 1)
+        best(cmd) = minimum(1:5) do _
+            t0 = time_ns()
+            run_bart(1, cmd, k, s)
+            (time_ns() - t0) / 1.0e9
+    end
+        run_bart(1, "pics -g -S -w 1 -i 1", k, s)                 # the first context also JIT-loads
+        max(0.0, best("pics -g -S -w 1 -i 1") - best("pics -S -w 1 -i 1"))
+end : 0.0
+ON_GPU && BART_AVAILABLE && @info @sprintf("BART GPU initialisation: %.1f ms", BART_GPU_INIT * 1000)
+
+"""
     bart_overhead(inputs...; reps = 5) -> seconds
 
 What a real `pics` call pays outside its solver: one process spawn, reading each input
@@ -240,7 +317,7 @@ end
     time_bart(cmd, inputs...; nout = 1, num_runs = 3) -> (t_min_s, t_med_s, result)
 
 Run BART `cmd` on `inputs`, timed `num_runs` times after a warm-up, with `bart_overhead(inputs...)`
-subtracted. Every call is a fresh `bart` process with `BART_USE_FFTW_WISDOM=0`, so each timed run
+subtracted, and [`BART_GPU_INIT`](@ref) too when `cmd` runs on the GPU (`-g`). Every call is a fresh `bart` process with `BART_USE_FFTW_WISDOM=0`, so each timed run
 plans its FFTs from scratch, as [`time_run`](@ref) makes the in-process toolkits do.
 """
 function time_bart(cmd::AbstractString, inputs...; nout::Int = 1, num_runs::Int = RUNS[])
@@ -250,7 +327,7 @@ function time_bart(cmd::AbstractString, inputs...; nout::Int = 1, num_runs::Int 
         t = (time_ns() - t0) / 1.0e9
         return t, t, res
     end
-    ovh = bart_overhead(inputs...)
+    ovh = bart_overhead(inputs...) + (occursin(r"(^| )-g( |$)", cmd) ? BART_GPU_INIT : 0.0)
     res = run_bart(nout, cmd, inputs...)
     times = Float64[]
     for _ in 1:num_runs
@@ -371,12 +448,14 @@ end
 
 True unless [`FRAMEWORK_FILTER`](@ref) is set and no pattern in it is a substring of `framework`
 (case-insensitive), or `framework` is BART and no BART build is configured for this backend, or
-MRpro and it does not import ([`MRPRO_AVAILABLE`](@ref)). See [`FRAMEWORK_FILTER`](@ref) -- never
+MRpro and it does not import ([`MRPRO_AVAILABLE`](@ref)), or SigPy on a GPU run without CuPy
+([`SIGPY_AVAILABLE`](@ref)). See [`FRAMEWORK_FILTER`](@ref) -- never
 call this for MRT's own row.
 """
 function should_run_framework(framework)
     occursin("bart", lowercase(framework)) && !BART_AVAILABLE && return false
     occursin("mrpro", lowercase(framework)) && !MRPRO_AVAILABLE && return false
+    occursin("sigpy", lowercase(framework)) && !SIGPY_AVAILABLE && return false
     return FRAMEWORK_FILTER === nothing || any(p -> occursin(p, lowercase(framework)), FRAMEWORK_FILTER)
 end
 
@@ -397,14 +476,15 @@ real-data solve, a hung toolkit subprocess -- does not lose the cases that alrea
 function flush_results!(name::AbstractString)
     isempty(results) && return nothing
     path = record_run(
-        name, USE_MKL ? "mkl" : "openblas", NUM_THREADS, results;
+        name, BACKEND, NUM_THREADS, results;
         hostname = gethostname(), julia_version = string(VERSION),
         julia_threads = Threads.nthreads(), blas_vendor = BLAS.get_config().loaded_libs[1].libname,
         use_mkl = USE_MKL, bart_binary = BART_BINARY, pinned_cpus = CPU_STR,
         placement = get(ENV, "MRT_BENCH_PLACEMENT", "isolated"),
         bart_spawn_ms = BART_SPAWN * 1000,
         cases_filter = CASE_FILTER, frameworks_filter = FRAMEWORK_FILTER, data = DATA,
-        small = small_mode(), cine_frames = cine_frames(),
+        small = small_mode(), cine_frames = cine_frames(), device = String(DEVICE),
+        gpu = ON_GPU ? CUDA.name(CUDA.device()) : nothing,
     )
     for r in results
         @printf(
@@ -415,6 +495,22 @@ function flush_results!(name::AbstractString)
     @info "flushed run" path n = length(results) source = ResultsStore.source_tag()
     empty!(results)
     return path
+end
+
+"""
+    release_device_memory()
+
+Return what the toolkits' memory pools hold on the GPU (CUDA.jl's, CuPy's, PyTorch's caching
+allocator) to the device after each toolkit's row, so the next toolkit starts with the whole device
+rather than with what the previous one kept cached. A no-op on a CPU run.
+"""
+function release_device_memory()
+    ON_GPU || return nothing
+    GC.gc()
+    CUDA.reclaim()
+    SIGPY_AVAILABLE && pyimport("cupy").get_default_memory_pool().free_all_blocks()
+    MRPRO_AVAILABLE && pyimport("torch").cuda.empty_cache()
+    return nothing
 end
 
 """Final catch-all flush at the end of a section script -- a no-op if every case already flushed

@@ -216,6 +216,19 @@ unweighted problem up to a constant factor, which λ and ρ absorb.
 const MRIRECO_UNWEIGHTED = (; densityWeighting = false)
 
 """
+    MRIRECO_DEVICE
+
+Parameters that put an MRIReco row on the GPU: `arrayType = CuArray` on a `--device=cuda` run,
+nothing otherwise. MRIReco moves the k-space and the maps to the device itself and returns a host
+array, so the transfers are inside its timed region, as they are for every other toolkit.
+"""
+const MRIRECO_DEVICE = ON_GPU ? (; arrayType = CuArray) : (;)
+
+# The vector type of an operator MRIReco is handed rather than builds itself (the TV row's
+# `regTrafo`): its storage has to match the device the solve runs on.
+const MRIRECO_STORAGE = ON_GPU ? typeof(CuArray{CMP_CTYPE}(undef, 0)) : Vector{CMP_CTYPE}
+
+"""
     _mrireco_normal_operator(acq, senseMaps, reconSize) -> AHA
 
 The normal operator `(W∘E)ᴴ(W∘E)` that `reconstruction_multiCoil` builds internally
@@ -225,8 +238,16 @@ Rebuilt here for one purpose: so a FISTA row can run the same `power_iterations(
 estimate `FISTA`'s constructor would run by itself, and be timed for it. Only the power iteration
 goes inside the timed region — the operator is built here, outside it, because `reconstruction`
 builds its own copy anyway and timing this one would charge MRIReco for the construction twice.
+On a GPU run it is built on the device, as `reconstruction` builds its own there.
 """
 function _mrireco_normal_operator(acq, senseMaps, reconSize)
+    if ON_GPU
+        params = MRIReco.getEncodingOperatorParams(; arrayType = CuArray, S = MRIRECO_STORAGE)
+        E = MRIReco.encodingOps_parallel(acq, reconSize, CuArray(senseMaps); slice = 1, params...)
+        weights = CuArray(MRIReco.samplingDensity(acq, reconSize)[1])
+        W = MRIReco.WeightingOp(CMP_CTYPE; weights, rep = size(senseMaps, ndims(senseMaps)))
+        return MRIReco.normalOperator(∘(W, E[1]); MRIReco.normalOpParams(CuArray)...)
+    end
     E = MRIReco.encodingOps_parallel(acq, reconSize, senseMaps; slice = 1)
     W = MRIReco.WeightingOp(CMP_CTYPE; weights = MRIReco.samplingDensity(acq, reconSize)[1], rep = size(senseMaps, ndims(senseMaps)))
     return MRIReco.normalOperator(∘(W, E[1]))
@@ -272,7 +293,7 @@ function mrireco(
         # what makes the comparison apples-to-apples.
         (
             L1Regularization(λ), MR_ADMM, nothing,
-            RLS.GradientOp(CMP_CTYPE; shape = reconSize, dims = 1:length(reconSize)),
+            RLS.GradientOp(CMP_CTYPE; shape = reconSize, dims = 1:length(reconSize), S = MRIRECO_STORAGE),
         )
     elseif method === :wavelet
         # `rho` is FISTA's step size here, not a penalty — see `CMP_FISTA_RHO_MRIRECO`.
@@ -295,6 +316,7 @@ function mrireco(
             :rho => AHA === nothing ? ρ : 0.95 / RLS.power_iterations(AHA),
             :vary_rho => :none, :iterationsCG => CMP_CG_ITERS,
             :absTol => 0.0, :relTol => 0.0, :tolInner => CMP_TOL_INNER, pairs(MRIRECO_UNWEIGHTED)...,
+            pairs(MRIRECO_DEVICE)...,
         )
         sparse !== nothing && (rp[:sparseTrafo] = sparse)
         regTrafo !== nothing && (rp[:regTrafo] = regTrafo)
@@ -360,6 +382,7 @@ function mrireco_dynamic(
             :solver => solver, :reg => reg, :iterations => iterations, :rho => ρ,
             :vary_rho => :none, :iterationsCG => CMP_CG_ITERS,
             :absTol => 0.0, :relTol => 0.0, :tolInner => CMP_TOL_INNER, pairs(MRIRECO_UNWEIGHTED)...,
+            pairs(MRIRECO_DEVICE)...,
         )
         with_mrireco_blas() do
             MRIReco.reconstruction(acq, rp)
@@ -380,8 +403,9 @@ _np(a::AbstractArray) = np.asarray(a)
 _np(x) = x
 
 # The Python reconstruction `f` with its NumPy result copied into a Julia array of the same shape,
-# inside the timed region, so that a toolkit's time includes handing its image back.
-_jl(f) = () -> pyconvert(Array, f())
+# inside the timed region, so that a toolkit's time includes handing its image back. On a GPU run a
+# CuPy result is first copied to the host, which also waits for the device to finish.
+_jl(f) = () -> pyconvert(Array, ON_GPU ? sigpy.to_device(f(), sigpy.cpu_device) : f())
 
 # --- SigPy (Python) ------------------------------------------------------------------------
 # SigPy wants k-space `(coil, [kz,] ky, kx)` and maps `(coil, [z,] y, x)`, returns `([z,] y, x)`:
@@ -389,6 +413,12 @@ _jl(f) = () -> pyconvert(Array, f())
 _sp_rev(a) = parent(permutedims(CMP_CTYPE.(a), ndims(a):-1:1))
 _sp_k(ksp) = _np(_sp_rev(ksp))
 _sp_s(smaps) = _np(_sp_rev(smaps))
+
+# The device SigPy reconstructs on, and a host array moved there. Every SigPy closure moves its
+# inputs (k-space, maps, trajectory, masks) with `_sp_dev` inside the timed region, so a GPU row
+# holds all of them on the device, as a SigPy user would put them there, and pays for the copy.
+const SP_DEVICE = ON_GPU ? sigpy.Device(0) : sigpy.cpu_device
+_sp_dev(a) = ON_GPU ? sigpy.to_device(a, SP_DEVICE) : a
 
 # Isotropic TV in SigPy. SigPy ships only the anisotropic one (`TotalVariationRecon`: an `L1Reg`
 # prox on `FiniteDifference`, whose output stacks the per-axis differences along axis 0) and no
@@ -409,10 +439,12 @@ pyexec(
             super().__init__(shape)
 
         def _prox(self, alpha, input):
-            n = np.sqrt(np.sum(np.abs(input) ** 2, axis=0, keepdims=True))
-            return input * np.maximum(1 - alpha * self.lamda / np.maximum(n, 1e-30), 0)
+            xp = sp.get_array_module(input)
+            n = xp.sqrt(xp.sum(xp.abs(input) ** 2, axis=0, keepdims=True))
+            return input * xp.maximum(1 - alpha * self.lamda / xp.maximum(n, 1e-30), 0)
 
-    def _IsoTVRecon(y, mps, lamda, coord=None, **kwargs):
+    def _IsoTVRecon(y, mps, lamda, coord=None, device=sp.cpu_device, **kwargs):
+        y = sp.to_device(y, device)
         weights = _estimate_weights(y, None, coord)
         if weights is not None:
             y = y * weights ** 0.5
@@ -438,24 +470,29 @@ wavelet. `tol ≈ 0` so all `iterations` outer steps run. `:adjoint` is `Sense(m
 `Sense` operator built inside the timed region, as every app builds its own.
 """
 function sigpy_recon(method::Symbol, ksp3, smaps3; λ = 0.0, iterations = 10, ρ = CMP_RHO)
-    y, mps = _sp_k(ksp3), _sp_s(smaps3)
+    yh, mpsh = _sp_k(ksp3), _sp_s(smaps3)
+    dev = SP_DEVICE
     app = if method === :adjoint
-        () -> sp_mri.linop.Sense(mps).H(y)
+        () -> sp_mri.linop.Sense(_sp_dev(mpsh)).H(_sp_dev(yh))
     elseif method === :cgsense
-        () -> sp_app.SenseRecon(y, mps; max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
+        () -> sp_app.SenseRecon(_sp_dev(yh), _sp_dev(mpsh); device = dev, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
     elseif method in (:tv, :atv)
         tv = method === :tv ? PY["_IsoTVRecon"] : sp_app.TotalVariationRecon
         () -> tv(
-            y, mps, λ; solver = "ADMM", rho = ρ,
+            _sp_dev(yh), _sp_dev(mpsh), λ; device = dev, solver = "ADMM", rho = ρ,
             max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
         ).run()
     elseif method in (:tv_pd, :atv_pd)
         tv = method === :tv_pd ? PY["_IsoTVRecon"] : sp_app.TotalVariationRecon
         () -> tv(
-            y, mps, λ; solver = "PrimalDualHybridGradient", max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
+            _sp_dev(yh), _sp_dev(mpsh), λ; device = dev, solver = "PrimalDualHybridGradient",
+            max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
         ).run()
     elseif method === :wavelet
-        () -> sp_app.L1WaveletRecon(y, mps, λ; wave_name = CMP_WAVELET_NAME, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
+        () -> sp_app.L1WaveletRecon(
+            _sp_dev(yh), _sp_dev(mpsh), λ; device = dev, wave_name = CMP_WAVELET_NAME,
+            max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
+        ).run()
     else
         error("SigPy has no $method here")
     end
@@ -681,9 +718,10 @@ pyexec(
             super().__init__(shape)
 
         def _prox(self, alpha, input):
+            xp = sp.get_array_module(input)
             m = input.reshape(input.shape[0], -1)
-            u, s, vh = np.linalg.svd(m, full_matrices=False)
-            s = np.maximum(s - alpha * self.lamda, 0)
+            u, s, vh = xp.linalg.svd(m, full_matrices=False)
+            s = xp.maximum(s - alpha * self.lamda, 0)
             return (u @ (s[:, None] * vh)).reshape(input.shape)
     """, PY,
 )
@@ -693,6 +731,8 @@ pyexec(
 
 The SENSE system of cine case `c` over all frames at once: the image is `(time, 1, y, x)`, the data
 `(time, coil, ky, kx)` for a Cartesian case and `(time, coil, spoke, sample)` for a radial one.
+`A` is a function composing the operator, which the rows call inside their timed region: it moves
+the maps, masks and trajectory to [`SP_DEVICE`](@ref).
 
 Built from primitives rather than through `sigpy.mri.linop.Sense`, which cannot express a batched
 SENSE operator: given an explicit `ishape` it sets `img_ndim = len(ishape)` and then transforms
@@ -707,13 +747,21 @@ function _sp_cine_system(c::BenchCase)
     y = parent(permutedims(CMP_CTYPE.(c.kspace), (4, 3, 2, 1)))
     mps = _sp_s(c.smaps)                                                 # (coil, y, x)
     ishape = (size(y, 1), 1, ny, nx)
-    S = sp.linop.Multiply(ishape, mps)
     if c.trajectory === :cartesian
         mask = Float32.(sum(abs, y; dims = 2) .> 0)                      # (time, 1, ky, kx)
-        A = sp.linop.Multiply(S.oshape, _np(mask)) * sp.linop.FFT(S.oshape, axes = (-2, -1)) * S
-        return A, y .* mask, ishape
+        maskn = _np(mask)
+        build = function ()
+            S = sp.linop.Multiply(ishape, _sp_dev(mps))
+            return sp.linop.Multiply(S.oshape, _sp_dev(maskn)) * sp.linop.FFT(S.oshape, axes = (-2, -1)) * S
+        end
+        return build, y .* mask, ishape
     end
-    return sp.linop.NUFFT(S.oshape, _np(_sp_coord(c))) * S, y, ishape
+    coord = _np(_sp_coord(c))
+    build = function ()
+        S = sp.linop.Multiply(ishape, _sp_dev(mps))
+        return sp.linop.NUFFT(S.oshape, _sp_dev(coord)) * S
+    end
+    return build, y, ishape
 end
 
 """
@@ -738,21 +786,21 @@ function sigpy_dynamic(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = 
     admm = (; solver = "ADMM", rho = ρ, max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false)
     yn = _np(y)
     app = if m === :adjoint
-        () -> A.H(yn)
+        () -> A().H(_sp_dev(yn))
     elseif m === :gridding
         yw = _np(y .* reshape(permutedims(c.dcf, (2, 1)), 1, 1, size(c.dcf, 2), size(c.dcf, 1)))
-        () -> A.H(yw)
+        () -> A().H(_sp_dev(yw))
     elseif m === :cgsense
-        () -> sp.app.LinearLeastSquares(A, yn; max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
+        () -> sp.app.LinearLeastSquares(A(), _sp_dev(yn); max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
     elseif m === :lowrank
         prox = PY["_MrtSVT"](ishape, λ)
-        () -> sp.app.LinearLeastSquares(A, yn; proxg = prox, admm...).run()
+        () -> sp.app.LinearLeastSquares(A(), _sp_dev(yn); proxg = prox, admm...).run()
     elseif m in (:ttv, :ttv_pd)
         G = sp.linop.FiniteDifference(ishape; axes = (0,))
         prox = sp.prox.L1Reg(G.oshape, λ)
         solver = m === :ttv ? admm :
             (; solver = "PrimalDualHybridGradient", max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false)
-        () -> sp.app.LinearLeastSquares(A, yn; proxg = prox, G, solver...).run()
+        () -> sp.app.LinearLeastSquares(A(), _sp_dev(yn); proxg = prox, G, solver...).run()
     else
         error("SigPy has no dynamic $m here")
     end
@@ -853,7 +901,7 @@ The toolkits every section compares MRT against, in row order.
 """
 const COMPETITORS = (:bart, :sigpy, :mrireco, :mirt, :mrpro)
 
-framework_label(tk::Symbol) = tk === :bart ? BART_FW : toolkit_key(tk)
+framework_label(tk::Symbol) = tk === :bart ? BART_FW : ON_GPU ? "$(toolkit_key(tk)) ($BACKEND_LABEL)" : toolkit_key(tk)
 toolkit_key(tk::Symbol) =
     tk === :bart ? "BART" : tk === :sigpy ? "SigPy" : tk === :mrireco ? "MRIReco" : tk === :mrpro ? "MRpro" : "MIRT"
 
@@ -885,6 +933,7 @@ no ADMM, so of the TV rows it has only the PDHG ones, and no locally low-rank or
 """
 function supports(tk::Symbol, c::BenchCase, m::Symbol)
     m in applicable_methods(c) || return false
+    ON_GPU && !gpu_supports(tk, c, m) && return false
     cart = c.trajectory === :cartesian
     fam = c.family
     if tk === :bart
@@ -905,6 +954,42 @@ function supports(tk::Symbol, c::BenchCase, m::Symbol)
     end
     return false
 end
+
+"""
+    gpu_supports(tk, c::BenchCase, method) -> Bool
+
+Whether toolkit `tk`'s row of `method` on `c` runs on the GPU, checked by [`supports`](@ref) on a
+`--device=cuda` run on top of what the toolkit covers on the CPU. A row whose solve would stay on
+the host is left out rather than timed as a GPU row.
+
+| toolkit | on the GPU |
+|---|---|
+| BART | every `pics` row (`-g`); not the direct rows, whose `fft` / `nufft` calls are not timed anyway |
+| SigPy | every row, through CuPy (`device = sigpy.Device(0)`). Its wavelet transform runs on the host through PyWavelets, so the L1-wavelet row copies every iterate to the host and back: that is SigPy on a GPU, and timed as such |
+| MRIReco | every row, through `arrayType = CuArray` (RegularizedLeastSquares' and NFFT's GPU extensions), but only at one Julia thread ([`MRIRECO_GPU_SAFE`](@ref)) |
+| MRpro | every row, its tensors on `"cuda"` |
+| MIRT | none: no GPU support |
+"""
+function gpu_supports(tk::Symbol, c::BenchCase, m::Symbol)
+    tk === :mirt && return false
+    tk === :bart && return !(m in (:adjoint, :gridding))
+    tk === :mrireco && return MRIRECO_GPU_SAFE
+    return true
+end
+
+"""
+    MRIRECO_GPU_SAFE
+
+Whether MRIReco's GPU rows run: only when Julia has a single thread. With more, its operators
+(`DiagOp`, `GradientOp`, the LLR prox) run their parts as OhMyThreads tasks, each of which issues
+its kernels on its own CUDA stream, and nothing orders those streams against each other: on the
+2D 8-coil Cartesian case CG-SENSE returned NRMSE 0.94-1.29, different on every call, against
+0.675 on the CPU, and the radial and L1-wavelet rows returned NaN. At one thread every row matched
+the CPU to 1e-6. The scheduler of those operators is not reachable through `reconstruction`'s
+parameters, so the rows are left out instead.
+"""
+const MRIRECO_GPU_SAFE = Threads.nthreads() == 1
+ON_GPU && !MRIRECO_GPU_SAFE && @warn "MRIReco's GPU path races with more than one Julia thread, so MRIReco rows are skipped; run with -t 1 to include them" threads = Threads.nthreads()
 
 """
     uses_admm(tk, c::BenchCase, method) -> Bool
@@ -1050,6 +1135,8 @@ function bart_run(c::BenchCase, m::Symbol; λ, maxit, budget = maxit * CMP_CG_IT
         return NaN, reshape(sum(imgs .* conj.(s); dims = 4), size(c.reference))
     end
     cmd = bart_cmd(c, m, λ, maxit; budget, ρ)
+    # `-t` takes the trajectory, the first input, as its argument, so it stays last.
+    ON_GPU && (cmd *= " -g")
     c.trajectory === :noncartesian && (cmd *= " -t")
     tb, _, r = time_bart(cmd, inputs...; num_runs = RUNS[])
     return 1000 * tb, bart_image(c, r)
@@ -1089,26 +1176,31 @@ rows are the apps of `sigpy_recon` given
 """
 function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = CMP_RHO)
     ns, nsp = size(c.traj, 2), size(c.traj, 3)
-    coord = _np(_sp_coord(c))
+    coordh = _np(_sp_coord(c))
     yj = parent(permutedims(CMP_CTYPE.(c.kspace), (3, 2, 1)))                # (coil, spoke, sample)
-    y = _np(yj)
-    mps = _sp_s(c.smaps)
+    yh = _np(yj)
+    mpsh = _sp_s(c.smaps)
+    dev = SP_DEVICE
     app = if m === :gridding
         w = reshape(permutedims(c.dcf, (2, 1)), 1, nsp, ns)
         yw = _np(yj .* w)
-        () -> sp_mri.linop.Sense(mps; coord).H(yw)
+        () -> sp_mri.linop.Sense(_sp_dev(mpsh); coord = _sp_dev(coordh)).H(_sp_dev(yw))
     elseif m === :cgsense
-        () -> sp_app.SenseRecon(y, mps; coord, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
+        () -> sp_app.SenseRecon(
+            _sp_dev(yh), _sp_dev(mpsh); coord = _sp_dev(coordh), device = dev,
+            max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
+        ).run()
     elseif m in (:tv, :atv)
         tv = m === :tv ? PY["_IsoTVRecon"] : sp_app.TotalVariationRecon
         () -> tv(
-            y, mps, λ; coord, solver = "ADMM", rho = ρ,
+            _sp_dev(yh), _sp_dev(mpsh), λ; coord = _sp_dev(coordh), device = dev, solver = "ADMM", rho = ρ,
             max_cg_iter = CMP_CG_ITERS, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
         ).run()
     elseif m in (:tv_pd, :atv_pd)
         tv = m === :tv_pd ? PY["_IsoTVRecon"] : sp_app.TotalVariationRecon
         () -> tv(
-            y, mps, λ; coord, solver = "PrimalDualHybridGradient", max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
+            _sp_dev(yh), _sp_dev(mpsh), λ; coord = _sp_dev(coordh), device = dev, solver = "PrimalDualHybridGradient",
+            max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
         ).run()
     else
         error("SigPy has no non-Cartesian $m here")
@@ -1150,7 +1242,7 @@ returned as `(reconSize..., frames)`.
 function mrireco_direct(acq, smaps, reconSize; frames::Int = 1)
     nc = size(smaps, ndims(smaps))
     s = CMP_CTYPE.(smaps)
-    rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => reconSize, :senseMaps => _mrireco_maps(s, reconSize))
+    rp = Dict{Symbol, Any}(:reco => "direct", :reconSize => reconSize, :senseMaps => _mrireco_maps(s, reconSize), pairs(MRIRECO_DEVICE)...)
     # `direct` returns `(x, y, z or slice, echo, coil, rep)`; the maps broadcast over the frames.
     sb = reshape(s, reconSize..., 1, nc)
     t, _, x = time_reconstruction() do
@@ -1232,42 +1324,50 @@ pyexec(
         if kx is None:
             return CartesianMaskingOp(mask) @ FastFourierOp(dim=tuple(range(-ndim, 0))) @ S
         ny, nx = csm.shape[-2], csm.shape[-1]
-        traj = KTrajectory(torch.zeros(1, 1, 1, 1, 1), ky, kx)
+        traj = KTrajectory(torch.zeros(1, 1, 1, 1, 1, device=kx.device), ky, kx)
         return FourierOp(recon_matrix=SpatialDimension(1, ny, nx), encoding_matrix=SpatialDimension(1, ny, nx), traj=traj) @ S
 
-    def _mrpro_solve(method, y, csm, mask, kx, ky, dcf, lam, maxit, ndim, wavelet, levels):
-        y, csm, mask, kx, ky, dcf = map(_mrpro_tensor, (y, csm, mask, kx, ky, dcf))
+    def _mrpro_solve(method, y, csm, mask, kx, ky, dcf, lam, maxit, ndim, wavelet, levels, device):
+        y, csm, mask, kx, ky, dcf = (None if a is None else a.to(device)
+                                     for a in map(_mrpro_tensor, (y, csm, mask, kx, ky, dcf)))
         A = _mrpro_system(csm, mask, kx, ky, ndim)
         if method == 'adjoint':
-            return A.H(y)[0].numpy()
+            return A.H(y)[0].cpu().numpy()
         if method == 'gridding':
-            return A.H(y * dcf)[0].numpy()
+            return A.H(y * dcf)[0].cpu().numpy()
         (b,) = A.H(y)
         if method == 'cgsense':
-            return cg(A.gram, b, max_iterations=maxit, tolerance=0.0)[0].numpy()
+            return cg(A.gram, b, max_iterations=maxit, tolerance=0.0)[0].cpu().numpy()
         if method in ('tv_pd', 'atv_pd', 'ttv_pd'):
             if method == 'ttv_pd':
                 D = FiniteDifferenceOp(dim=(-5,), mode='forward', pad_mode='circular')
             else:
                 D = FiniteDifferenceOp(dim=tuple(range(-ndim, 0)), mode='forward')
-            g = _MrproJointL1(lam) if method == 'tv_pd' else L1Norm(weight=lam)
+            g = _MrproJointL1(lam) if method == 'tv_pd' else L1Norm(weight=lam).to(device)
             K = LinearOperatorMatrix(((A,), (D,)))
             return pdhg(f=L2NormSquared(target=y) | g, g=None, operator=K,
-                        initial_values=(torch.zeros_like(b),), max_iterations=maxit)[0].numpy()
+                        initial_values=(torch.zeros_like(b),), max_iterations=maxit)[0].cpu().numpy()
         torch.manual_seed(0)
         L2 = 1.05 * float(A.operator_norm(torch.randn_like(b), dim=None, max_iterations=30)) ** 2
         if method == 'wavelet':
             W = WaveletOp(domain_shape=tuple(b.shape[-ndim:]), dim=tuple(range(-ndim, 0)), wavelet_name=wavelet, level=levels)
             (z0,) = W(torch.zeros_like(b))
-            (z,) = pgd(f=L2NormSquared(target=y) @ A @ W.H, g=L1Norm(weight=lam), initial_value=z0,
+            (z,) = pgd(f=L2NormSquared(target=y) @ A @ W.H, g=L1Norm(weight=lam).to(device), initial_value=z0,
                        stepsize=0.5 / L2, max_iterations=maxit)
-            return W.H(z)[0].numpy()
+            return W.H(z)[0].cpu().numpy()
         if method == 'lowrank':
             return pgd(f=L2NormSquared(target=y) @ A, g=_MrproSVT(lam), initial_value=torch.zeros_like(b),
-                       stepsize=0.5 / L2, max_iterations=maxit)[0].numpy()
+                       stepsize=0.5 / L2, max_iterations=maxit)[0].cpu().numpy()
         raise ValueError('MRpro has no ' + method + ' here')
     """, PY,
 )
+
+"""
+    MRPRO_DEVICE
+
+The PyTorch device MRpro's tensors live on: `"cuda"` on a GPU run, `"cpu"` otherwise.
+"""
+const MRPRO_DEVICE = ON_GPU ? "cuda" : "cpu"
 
 """
     mrpro_inputs(c) -> (y, csm, mask, kx, ky, dcf, ndim)
@@ -1311,7 +1411,8 @@ end
 
 MRpro's reconstruction of case `c` by `method` (see the section comment above for how each row is
 composed). The inputs are handed to Python before the clock starts; the solve, the construction of
-its operators and the step-size estimate are timed. A multislice case runs slice by slice. Global
+its operators and the step-size estimate are timed, and on a GPU run the copies of the inputs to
+the device (`MRPRO_DEVICE`) and of the image back. A multislice case runs slice by slice. Global
 low rank runs `proxgrad_budget(maxit)` iterations, as MIRT's proximal-gradient row does.
 """
 function mrpro_run(c::BenchCase, m::Symbol; λ, maxit)
@@ -1325,7 +1426,7 @@ function mrpro_run(c::BenchCase, m::Symbol; λ, maxit)
     it = m === :lowrank ? proxgrad_budget(maxit) : maxit
     solve = PY["_mrpro_solve"]
     t, _, raw = time_reconstruction(
-        _jl(() -> solve(String(m), y, csm, mask, kx, ky, dcf, Float64(λ), it, ndim, CMP_WAVELET_NAME, CMP_WAVELET_LEVELS))
+        _jl(() -> solve(String(m), y, csm, mask, kx, ky, dcf, Float64(λ), it, ndim, CMP_WAVELET_NAME, CMP_WAVELET_LEVELS, MRPRO_DEVICE))
     )
     return t * 1000, mrpro_image(c, raw)
 end

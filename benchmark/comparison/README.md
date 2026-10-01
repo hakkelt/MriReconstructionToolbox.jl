@@ -57,6 +57,51 @@ so they cannot share a process) and is the normal entry point:
 julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_all.jl --threads=N [--use-mkl]
 ```
 
+## GPU
+
+`--device=cuda` runs every section on an NVIDIA GPU instead, for the toolkits that reconstruct on
+one, under the same row labels with a `(CUDA)` suffix and recorded under backend `cuda`:
+
+| toolkit | on the GPU |
+|---|---|
+| MRT | the acquisition moved with `adapt(CuArray, ·)`; everything runs on the device |
+| BART | `pics -g`, from the build `MRT_BENCH_BART_CUDA` names; not the direct rows, which are not timed on the CPU either |
+| SigPy | CuPy, with the k-space, maps and trajectory on `sigpy.Device(0)`. Its wavelet transform is PyWavelets on the host, so its L1-wavelet row copies every iterate to the host and back |
+| MRIReco | `arrayType = CuArray`, through RegularizedLeastSquares' and NFFT's GPU extensions, at one Julia thread only: with more, its operators issue kernels from parallel tasks on unordered CUDA streams and return wrong images (`MRIRECO_GPU_SAFE`) |
+| MRpro | its tensors on `"cuda"`; cufinufft for the NUFFT |
+| MIRT | none |
+
+Every row is timed from host data to a host image: the copies to the device and back are inside
+the timed region for every toolkit, since BART cannot be timed any other way. A BART process also
+creates its CUDA context and loads cuFFT and cuBLAS on every call, which an in-process toolkit
+does once, in its warm-up; that cost (`BART_GPU_INIT`, measured on an 8×8 problem) is subtracted
+along with the process spawn and file I/O. After each toolkit's row the memory pools of CUDA.jl,
+CuPy and PyTorch are emptied, so each toolkit starts with the whole device. λ and ρ are the CPU
+calibration's: the problem is the same, and so is the precision (`ComplexF32`).
+
+CUDA.jl is not a dependency of this environment. A GPU run adds it through a GPUEnv overlay,
+persisted in `gpu_env/` (gitignored) and reused until this environment changes. SigPy and MRpro
+need CuPy and a CUDA build of PyTorch, which the CPU interpreter does not have, so a GPU run uses
+the interpreter `MRT_BENCH_GPU_PYTHON` names when it is set:
+
+```sh
+uv venv -p /path/to/uv-python/cpython-3.14.*/bin/python3.14 /path/to/venvs/py314-gpu
+uv pip install -p /path/to/venvs/py314-gpu torch torchvision --index-url https://download.pytorch.org/whl/cu128
+uv pip install -p /path/to/venvs/py314-gpu numpy sigpy numba scipy cupy-cuda12x mrpro cufinufft pytorch-finufft
+```
+
+The BART build needs `CUDA = 1` and the device's architecture in its `Makefile.local`
+(`GPUARCH_FLAGS = -gencode arch=compute_80,code=sm_80` for an A100). A toolkit whose GPU build is
+missing is skipped with a warning. The SLURM script asks for one GPU and runs one host thread
+(`--threads=N` changes it, at the cost of the MRIReco rows):
+
+```sh
+benchmark/slurm/submit.sh comparison_gpu.sh --sections=cgsense,sparsity
+```
+
+The `kspace` section has no GPU rows (GRAPPA runs on a host copy), nor does the non-Cartesian
+section's second MRT operating point. `--use-mkl` does not combine with `--device=cuda`.
+
 ## Filtering a rerun
 
 Three independent filters, all stackable, all forwarded from `run_all.jl` to each section

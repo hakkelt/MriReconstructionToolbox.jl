@@ -20,6 +20,8 @@ const NFFT_TENSOR = isdefined(MriReconstructionToolbox, :NFFT) ? MriReconstructi
 for c in section_cases(c -> c.trajectory === :noncartesian)
     xm = run_method_rows!("Non-Cartesian", c, :gridding)
     xm === nothing && continue
+    # The host NFFT at a second operating point; a GPU run has no counterpart of it.
+    ON_GPU && continue
     # MRT at MRIReco's NFFT operating point, same acquisition and DCF.
     try
         acq = mrt_acquisition(c; dcf = true)
