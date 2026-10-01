@@ -844,3 +844,37 @@ end
     )
     @test_throws ArgumentError check_applicable(GRAPPA(), acq_full)
 end
+
+@testitem "device reconstructions hand their FFT plans back" tags = [:reconstruction, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
+    using Test
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Random
+
+    # A reconstruction drops the encoding operator it built, and with it the operator's cuFFT
+    # plans; their handles must be back in CUDA's cache when it returns, not left for the
+    # garbage collector, or every later reconstruction plans its FFTs from scratch.
+    Random.seed!(2)
+    n, nc = 32, 4
+    mask = falses(n)
+    mask[1:2:end] .= true
+    acq = CartesianAcquisitionInfo(
+        randn(ComplexF32, n, count(mask), nc); is3D = false, image_size = (n, n),
+        subsampling = (:, mask), sensitivity_maps = randn(ComplexF32, n, n, nc),
+    )
+    methods = (
+        DirectReconstruction(),
+        IterativeReconstruction(; regularization = TotalVariation2D(1.0f-3), maxit = 3),
+    )
+    for backend in fft_backends()
+        nameof(backend.array_type) === :CuArray || continue
+        handles = Base.get_extension(MriReconstructionToolbox, :MriReconstructionToolboxCUDAExt).CUFFT.idle_handles
+        dacq = to_device(backend, acq)
+        for method in methods
+            reconstruct(dacq, method; verbosity = Silent())
+            active = length(handles.active_handles)
+            reconstruct(dacq, method; verbosity = Silent())
+            @test length(handles.active_handles) == active
+        end
+    end
+end
