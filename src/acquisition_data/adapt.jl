@@ -2,7 +2,8 @@
 #
 # The k-space, the sensitivity maps and the density compensation move to the target storage;
 # the subsampling pattern and the trajectory stay on the host, because the operators built from
-# them (`GetIndex`, the NFFT plan) take host indices and a host trajectory on every storage.
+# them (`GetIndex`, the NFFT plan) take host indices and a host trajectory on every storage, and
+# move to the device what they apply there.
 
 _adapt_array(to, ::Nothing) = nothing
 _adapt_array(to, x::NamedDimsArray{L}) where {L} = NamedDimsArray{L}(Adapt.adapt(to, parent(x)))

@@ -247,11 +247,31 @@ function _get_dimnames_from_subsampling(ksp_dimnames, img_size, subsampling::Abs
     )
 end
 
+"""
+    _device_batched_getindex(ksp, img_size, subsampling)
+
+The subsampling of a device k-space with batch axes (coils, slices, frames) as one `GetIndex` over
+the whole array, the batch axes taken whole, instead of a `BatchOp` of one `GetIndex` per batch
+element. The two select the same samples in the same order; on a device the batch runs its
+elements one after another, each a kernel launch of its own, which on a 128×128 image with 8 coils
+and 30 frames costs more than the gather itself. A linear index into the Fourier grid becomes the
+`CartesianIndex` it stands for, so that the trailing `:`s index the batch axes rather than extend
+the linear index.
+"""
+function _device_batched_getindex(ksp, img_size, subsampling::Tuple)
+    nbatch = ndims(ksp) - length(img_size)
+    return GetIndex(ksp, (_fourier_index(img_size, subsampling)..., ntuple(_ -> Colon(), nbatch)...))
+end
+
+_fourier_index(img_size, subsampling::Tuple) = subsampling
+_fourier_index(img_size, subsampling::Tuple{AbstractVector{Int}}) = (CartesianIndices(img_size)[only(subsampling)],)
+
 function _get_subsampling_operator(ksp, img_size::Tuple{Int, Int}, subsampling::_2D_subsampling_type; threaded::Bool)
     @argcheck length(img_size) == 2 "img_size must be a 2-element tuple for 2D subsampling"
     @argcheck img_size == size(ksp)[1:2] DimensionMismatch
     if ndims(ksp) > length(img_size)
         batch_dims = size(ksp)[3:end]
+        _is_device(ksp) && return _device_batched_getindex(ksp, img_size, subsampling)
         ksp_view = @view ksp[:, :, fill(1, length(batch_dims))...]
         𝒫 = GetIndex(ksp_view, subsampling)
         return BatchOp(𝒫, batch_dims; threaded)
@@ -265,6 +285,7 @@ function _get_subsampling_operator(ksp, img_size::Tuple{Int, Int, Int}, subsampl
     @argcheck img_size == size(ksp)[1:3] DimensionMismatch
     if ndims(ksp) > length(img_size)
         batch_dims = size(ksp)[4:end]
+        _is_device(ksp) && return _device_batched_getindex(ksp, img_size, subsampling)
         ksp_view = @view ksp[:, :, :, fill(1, length(batch_dims))...]
         𝒫 = GetIndex(ksp_view, subsampling)
         return BatchOp(𝒫, batch_dims; threaded)
