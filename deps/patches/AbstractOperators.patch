@@ -86,7 +86,7 @@ index fd2546a..f21a74b 100644
      allocate_in_codomain,
      domain_array_type,
 diff --git a/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl b/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl
-index 9b4461e..1e83e9c 100644
+index a229b00..9994104 100644
 --- a/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl
 +++ b/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl
 @@ -1,10 +1,10 @@
