@@ -25,9 +25,10 @@
 # converts its result to the element type of the buffer it would have been written to, and the
 # reduction adds the blocks in the same order. The result is therefore the same bit for bit.
 #
-# Fusion needs CPU storage, since the loop indexes elements, and is checked again when the run
-# executes: a run whose arrays are not `Array`s, or whose steps do not match the length they
-# are applied to, falls back to the operators' own `mul!`s.
+# Fusion needs storage a kernel can index, and is checked again when the run executes: a run
+# whose arrays are neither `Array`s nor arrays a device backend fuses (see `ext/GpuExt`), or
+# whose steps do not match the length they are applied to, falls back to the operators' own
+# `mul!`s.
 
 abstract type PwKind end
 struct PwNoneKind <: PwKind end
@@ -271,8 +272,12 @@ function _pw_kernel!(y, x, steps, shape, layout, threaded::Bool)
     return y
 end
 
-function _pw_fits(y, x, steps, shape, layout)
-    x isa Array && y isa Array || return false
+# Whether the run can be fused for these arrays. The kernels above index elements, so only
+# `Array`s qualify here; a device backend adds a method for its own arrays.
+_pw_fits(y, x, steps, shape, layout) = false
+_pw_fits(y::Array, x::Array, steps, shape, layout) = _pw_shape_fits(y, x, steps, shape, layout)
+
+function _pw_shape_fits(y, x, steps, shape, layout)
     layout === nothing && return false
     n = _pw_small_length(shape, y, x)
     if shape isa PwPlain
