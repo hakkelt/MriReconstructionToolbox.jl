@@ -443,20 +443,24 @@ function _warm_start_scale_proxy(𝒜, x̂::AbstractArray, config, y = nothing)
     local ρ
     # `@printing_step`, not `@step`, for the same reason as `_operator_norm_for_stepsize`.
     @printing_step "Estimating the warm-start scale" config begin
-        R = real(eltype(x̂))
-        # Unnamed: `dot` of two `NamedDimsArray`s is the generic element loop, scalar indexing on
-        # a device array.
-        u = unname(x̂)
-        if isnothing(y)
-            denom = real(dot(u, u))
-            num = denom > 0 ? real(dot(u, unname(𝒜' * (𝒜 * x̂)))) : zero(denom)
-        else
-            v = unname(𝒜 * x̂)
-            num = real(dot(v, v))
-            denom = real(dot(v, unname(y)))
+        # Serial BLAS for the inner products, as for the operator norm (see
+        # `_operator_norm_for_stepsize`).
+        ρ = with_serial_blas() do
+            R = real(eltype(x̂))
+            # Unnamed: `dot` of two `NamedDimsArray`s is the generic element loop, scalar indexing
+            # on a device array.
+            u = unname(x̂)
+            if isnothing(y)
+                denom = real(dot(u, u))
+                num = denom > 0 ? real(dot(u, unname(𝒜' * (𝒜 * x̂)))) : zero(denom)
+            else
+                v = unname(𝒜 * x̂)
+                num = real(dot(v, v))
+                denom = real(dot(v, unname(y)))
+            end
+            # A zero (or numerically degenerate) warm start needs no correction.
+            return num > 0 && denom > 0 ? R(num / denom) : one(R)
         end
-        # A zero (or numerically degenerate) warm start needs no correction.
-        ρ = num > 0 && denom > 0 ? R(num / denom) : one(R)
     end
     return ρ
 end
@@ -561,11 +565,18 @@ function _operator_norm_for_stepsize(𝒜, method::IterativeReconstruction, conf
     local L
     # `@printing_step`, not `@step`: the latter runs its body in a `@spawn`, so `L` would be
     # bound only inside that task's closure.
+    #
+    # The power iteration is level-1 BLAS on one work item, like the solve, so it runs under the
+    # same serial-BLAS scope. Outside it, its `dot` and `norm` start MKL's OpenMP team at full
+    # width, which re-pins the Julia threads: the 2D 8-coil L1-wavelet FISTA row at 8 threads went
+    # from 64 to 196 ms once the iteration ran on plain arrays. OpenBLAS was unaffected.
     @printing_step "Estimating the operator norm" config begin
-        L = method.exact_opnorm ? LinearAlgebra.opnorm(𝒜) :
-            AbstractOperators.estimate_opnorm(
-                𝒜; rel_margin = opnorm_rel_margin(method.algorithm)
-            )
+        L = with_serial_blas() do
+            method.exact_opnorm ? LinearAlgebra.opnorm(𝒜) :
+                AbstractOperators.estimate_opnorm(
+                    𝒜; rel_margin = opnorm_rel_margin(method.algorithm)
+                )
+        end
     end
     @argcheck L != 0 "Cannot reconstruct with an encoding operator of zero norm"
     return L
@@ -594,7 +605,8 @@ function _term_gradient_lipschitz(t::StructuredOptimization.Term)
     L_f = _gradient_lipschitz(t.f)
     iszero(L_f) && return 0.0
     K = StructuredOptimization.operator(t)
-    return Float64(t.lambda * L_f * AbstractOperators.estimate_opnorm(K)^2)
+    normK = with_serial_blas(() -> AbstractOperators.estimate_opnorm(K))  # see `_operator_norm_for_stepsize`
+    return Float64(t.lambda * L_f * normK^2)
 end
 
 # Lipschitz constant of `∇f`. A smooth function this does not know contributes nothing, which is
