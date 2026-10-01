@@ -146,3 +146,47 @@ end
     @test allocated(y, C, x) == 0
     @test allocated(x, Ca, y) == 0
 end
+
+@testitem "Pointwise fusion: device arrays" tags = [:gpu, :calculus, :pointwise] setup = [TestUtils, GpuEnvSetup] begin
+    using GPUEnv, Random, LinearAlgebra, AbstractOperators
+    const AO = AbstractOperators
+
+    for backend in gpu_backends()
+        Random.seed!(0)
+        T = ComplexF32
+        n = (6, 5, 4)
+        dev(a) = to_gpu(backend, a)
+        S = Base.typename(typeof(dev(zeros(T, 1)))).wrapper
+        d1, d2 = randn(T, n), randn(T, n)
+        D1, D2 = DiagOp(dev(d1)), DiagOp(dev(d2))
+        hD1, hD2 = DiagOp(d1), DiagOp(d2)
+        # An expansion along the last axis and one along a middle axis.
+        expands = [
+            (BroadCast(Eye(dev(zeros(T, n[1:2]))), n), BroadCast(Eye(T, n[1:2]), n)),
+            (
+                AO.NoOperatorBroadCast(T, S{T}, (n[1], n[3]), (n[1], 1, n[3]), n),
+                AO.NoOperatorBroadCast(T, Array{T}, (n[1], n[3]), (n[1], 1, n[3]), n),
+            ),
+        ]
+        @test AO._pw_kind(D1) isa AO.PwMapKind
+        @test AO._pw_kind(D1') isa AO.PwMapKind
+        @test AO._pw_kind(first(expands[1])) isa AO.PwExpandKind
+        @test AO._pw_kind(first(expands[1])') isa AO.PwReduceKind
+        pairs = Any[(D2 * D1, hD2 * hD1), (D2' * D1, hD2' * hD1), (Scale(T(2), D1) * D2, Scale(T(2), hD1) * hD2)]
+        for (E, hE) in expands
+            push!(pairs, (D1 * E, hD1 * hE))
+            push!(pairs, (E' * D1, hE' * hD1))
+            push!(pairs, (E' * D2' * D1 * E, hE' * hD2' * hD1 * hE))
+        end
+        for (C, H) in pairs
+            # Two diagonals combine into one, which is no `Compose`.
+            C isa Compose && @test AO._pw_run_length(C.A) > 1
+            x = randn(T, size(C, 2))
+            r = randn(T, size(C, 1))
+            y = C * dev(x)
+            @test y isa S
+            @test collect(y) ≈ H * x rtol = 1.0e-5
+            @test collect(C' * dev(r)) ≈ H' * r rtol = 1.0e-5
+        end
+    end
+end

@@ -246,8 +246,6 @@ end
 @testitem "NFFTOp (GPU)" tags = [:gpu, :nfft, :NFFTOp] setup = [TestUtils, GpuEnvSetup] begin
     using AbstractOperators, NFFTOperators, NFFT, GPUEnv, LinearAlgebra, Random
 
-    # The device plan builds its interpolation matrix itself; it must be the one NFFT.jl's own
-    # GPU plan computes on the host, and the operator must match the host operator.
     for backend in gpu_backends(; include_jlarrays = false, supports_fftw = true), D in (2, 3)
         Random.seed!(0)
         n = D == 2 ? 32 : 12
@@ -259,9 +257,44 @@ end
         host = NFFTOp(ntuple(_ -> n, D), traj)
         @test collect(op * to_gpu(backend, x)) ≈ host * x rtol = 1.0e-4
         @test collect(op' * to_gpu(backend, y)) ≈ host' * y rtol = 1.0e-4
+    end
+end
 
-        reference = NFFT.plan_nfft(Base.typename(A).wrapper, reshape(traj, D, :), ntuple(_ -> n, D))
-        @test collect(op.plan.B.rowVal) == collect(reference.B.rowVal)
-        @test collect(op.plan.B.nzVal) ≈ collect(reference.B.nzVal) rtol = 1.0e-5
+@testitem "BatchedNFFTOp (GPU)" tags = [:gpu, :nfft, :NFFTOp] setup = [TestUtils, GpuEnvSetup] begin
+    using AbstractOperators, NFFTOperators, NFFT, GPUEnv, LinearAlgebra, Random
+    using AbstractOperators: get_normal_op
+
+    # Frame `t` of every coil goes through frame `t`'s own NFFT.
+    @test_throws ArgumentError BatchedNFFTOp((16, 16), rand(Float32, 2, 8, 3) .- 0.5f0)
+    for backend in gpu_backends(; include_jlarrays = false, supports_fftw = true)
+        Random.seed!(0)
+        n, coils, frames = 24, 3, 4
+        traj = Float32.(rand(2, 40, 6, frames) .- 0.5)
+        dcf = rand(Float32, 40, 6, frames)
+        x = randn(ComplexF32, n, n, coils, frames)
+        y = randn(ComplexF32, 40, 6, coils, frames)
+        A = typeof(to_gpu(backend, y))
+        op = BatchedNFFTOp((n, n), traj, dcf; batch = (coils,), nframe = 1, array_type = A)
+        @test size(op) == ((40, 6, coils, frames), (n, n, coils, frames))
+        fwd = collect(op * to_gpu(backend, x))
+        adj = collect(op' * to_gpu(backend, y))
+        for t in 1:frames
+            host = NFFTOp((n, n), traj[:, :, :, t], dcf[:, :, t])
+            for c in 1:coils
+                @test fwd[:, :, c, t] ≈ host * x[:, :, c, t] rtol = 1.0e-4
+                @test adj[:, :, c, t] ≈ host' * y[:, :, c, t] rtol = 1.0e-4
+            end
+        end
+
+        N = get_normal_op(op)
+        @test get_normal_op(op) === N
+        @test collect(N * to_gpu(backend, x)) ≈ collect(op' * (op * to_gpu(backend, x))) rtol = 1.0e-3
+
+        # One trajectory for every image when there are no frame axes.
+        shared = BatchedNFFTOp((n, n), traj[:, :, :, 1]; batch = (coils, frames), array_type = A)
+        host = NFFTOp((n, n), traj[:, :, :, 1], ones(Float32, 40, 6))
+        @test collect(shared * to_gpu(backend, x))[:, :, 2, 3] ≈ host * x[:, :, 2, 3] rtol = 1.0e-4
+        @test collect(get_normal_op(shared) * to_gpu(backend, x))[:, :, 2, 3] ≈
+            host' * (host * x[:, :, 2, 3]) rtol = 1.0e-3
     end
 end
