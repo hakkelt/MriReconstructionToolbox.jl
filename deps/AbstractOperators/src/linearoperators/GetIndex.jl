@@ -46,6 +46,10 @@ end
 
 _prepare_getindex_intvec(idx, ::Type{<:AbstractArray}) = idx
 _prepare_getindex_boolmask(mask, ::Type{<:AbstractArray}) = mask
+# The index tuple as the operator stores it, for storage `S`: unchanged on the host. A device
+# backend moves its array components to the device once here, so that applying the operator does
+# not upload them (and check them against the host) on every call.
+_prepare_getindex_tuple(idx::Tuple, ::Type{<:AbstractArray}) = idx
 
 # Constructors
 # default
@@ -57,7 +61,7 @@ function GetIndex(
         return Eye(domain_type, dim_in)
     else
         S = _normalize_array_type(array_type, domain_type)
-        return GetIndex(domain_type, S, dim_out, dim_in, idx)
+        return GetIndex(domain_type, S, dim_out, dim_in, _prepare_getindex_tuple(idx, S))
     end
 end
 
@@ -99,7 +103,7 @@ function GetIndex(x::AbstractArray, idx::Tuple)
         return Eye(eltype(x), dim_in)
     else
         S = _array_wrapper(x){eltype(x)}
-        return GetIndex(eltype(x), S, dim_out, dim_in, idx)
+        return GetIndex(eltype(x), S, dim_out, dim_in, _prepare_getindex_tuple(idx, S))
     end
 end
 function GetIndex(

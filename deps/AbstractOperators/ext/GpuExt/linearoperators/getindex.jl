@@ -28,6 +28,31 @@ function AbstractOperators._prepare_getindex_boolmask(
     return _to_gpu_indices(array_type, _mask_to_linear_indices(mask))
 end
 
+# One component of an index tuple on the device: a Bool mask as the positions it selects (Int for
+# one dimension, `CartesianIndex` for several, as Base indexes with a mask), an index array as is;
+# scalars, ranges and `Colon` need no storage and stay.
+_tuple_index_to_gpu(array_type, i) = i
+_tuple_index_to_gpu(array_type, i::AbstractVector{Bool}) = _to_gpu_indices(array_type, findall(Array(i)))
+function _tuple_index_to_gpu(array_type, i::AbstractArray{Bool})
+    ArrayT = Base.typename(array_type).wrapper
+    return ArrayT(findall(Array(i)))
+end
+_tuple_index_to_gpu(array_type, i::AbstractVector{<:Integer}) = _to_gpu_indices(array_type, i)
+_tuple_index_to_gpu(array_type, i::AbstractRange{<:Integer}) = i
+function _tuple_index_to_gpu(array_type, i::AbstractVector{<:CartesianIndex})
+    ArrayT = Base.typename(array_type).wrapper
+    return ArrayT(Vector(i))
+end
+
+# A host index array in the tuple would be copied to the device, and its bounds checked there with
+# a reduction read back to the host, on every application: per call one upload and one
+# synchronisation, which on a per-coil, per-frame batch of small `GetIndex`es dominated the
+# operator. Moved once here, and the applications below skip the bounds check that construction
+# has done.
+function AbstractOperators._prepare_getindex_tuple(idx::Tuple, array_type::Type{<:AbstractGPUArray})
+    return map(i -> _tuple_index_to_gpu(array_type, i), idx)
+end
+
 function GetIndex(x::AbstractGPUArray, idx::AbstractVector{Int})
     dim_in = size(x)
     dim_out = AbstractOperators.get_dim_out(dim_in, idx)
@@ -54,7 +79,7 @@ function mul!(
         y::AbstractGPUArray, L::GetIndex{I}, b::AbstractGPUArray
     ) where {K, I <: NTuple{K, Any}}
     check(y, L, b)
-    y .= view(b, L.idx...)
+    y .= @inbounds view(b, L.idx...)
     return y
 end
 
@@ -63,6 +88,17 @@ function mul!(
     ) where {K, I <: NTuple{K, Any}}
     check(y, Lc, b)
     fill!(y, zero(eltype(y)))
-    view(y, Lc.A.idx...) .= b
+    @inbounds view(y, Lc.A.idx...) .= b
+    return y
+end
+
+# The additive adjoint as one broadcast into the selected samples. The generic form gathers them
+# with `getindex`, which on a device allocates the gathered copy and checks its indices with a
+# reduction read back to the host, on every call of a `VCAT` adjoint.
+function AbstractOperators.add_mul!(
+        y::AbstractGPUArray, Lc::AdjointOperator{<:GetIndex{I}}, b::AbstractGPUArray, ::AbstractArray
+    ) where {K, I <: NTuple{K, Any}}
+    check(y, Lc, b)
+    view(y, Lc.A.idx...) .+= b
     return y
 end
