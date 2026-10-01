@@ -97,7 +97,7 @@ end
 # there the next plan of the same shape takes it in microseconds. An operator is a tree of
 # structs, tuples and arrays of operators; every plan found in it is finalized once.
 
-function MRT._release_device_plans!(op)
+function MRT._release_device_plans!(op, ::CuArray)
     _release_plans!(Base.IdSet{Any}(), op)
     return nothing
 end

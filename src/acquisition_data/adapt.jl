@@ -43,15 +43,16 @@ _is_device(x::PartitionedKSpace) = _is_device(first(x.parts))
 _is_device(info::AcquisitionInfo) = _is_device(info.kspace_data)
 
 """
-    _release_device_plans!(op)
+    _release_device_plans!(op, storage)
 
 Hand the device FFT plans inside `op` back to their library's plan cache, so the next operator of
-the same shape is planned from it. `op` must not be applied afterwards. Nothing happens unless a
-device backend's extension adds a method: CUDA's plans otherwise return to the cache only when
+the same shape is planned from it. `op` must not be applied afterwards. `storage` is the array
+`op` was built for (see [`_storage_template`](@ref)); nothing happens unless a device backend's
+extension adds a method for its array type: CUDA's plans otherwise return to the cache only when
 the garbage collector finalizes them, and until then every reconstruction plans its FFTs anew,
 2.2 ms per 128×128 plan against 5 µs from the cache (Quadro RTX 6000).
 """
-_release_device_plans!(op) = nothing
+_release_device_plans!(op, storage) = nothing
 
 """
     _storage_template(x)

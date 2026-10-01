@@ -133,7 +133,7 @@ function _reconstruct_dispatch_plain(acq_data, method::ReconstructionMethod, x�
                     )
                     slice_result = _reconstruct(local_acq, method, local_x₀, local_conf; 𝒜)
                     AbstractOperators.recycle!(pool, 𝒜)
-                    _is_device(local_acq) && _release_device_plans!(𝒜)
+                    _release_device_plans!(𝒜, _storage_template(local_acq))
                     slice_result
                 end
             end
@@ -195,7 +195,7 @@ function _reconstruct(
         x̂ = _present_image(x̂, method, acq_data, config)
     end
 
-    built_here && _is_device(acq_data) && _release_device_plans!(𝒜)
+    built_here && _release_device_plans!(𝒜, _storage_template(acq_data))
     return x̂, scale
 end
 
@@ -280,7 +280,7 @@ function _reconstruct_components(
     names = map(c -> c.name, components)
     present = xs -> _present_components(xs, names, method, acq_data)
     xs = _iterative_reconstruct_core(𝒜, acq_data, x₀s, scale, method, config; build, present, prior = something(prior, _NO_PRIOR))
-    built_here && _is_device(acq_data) && _release_device_plans!(𝒜)
+    built_here && _release_device_plans!(𝒜, _storage_template(acq_data))
     return _present_components(xs, names, method, acq_data), scale
 end
 

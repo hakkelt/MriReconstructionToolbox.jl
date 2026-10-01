@@ -86,7 +86,7 @@ function execute_regularized(plan, acq_data, config, method::IterativeReconstruc
             local_acq, local_method, warm_start, local_conf;
             scale_override = global_scale, 𝒜, prior,
         )
-        _is_device(local_acq) && _release_device_plans!(𝒜)
+        _release_device_plans!(𝒜, _storage_template(local_acq))
         return result
     end
     return execute_two_phase(plan, acq_data, config, prepare, solve_slice)
@@ -112,7 +112,7 @@ function execute_regularized_components(plan, acq_data, config, method::Iterativ
             local_acq, local_method, nothing, local_conf;
             scale_override = global_scale, x₀s, 𝒜, prior,
         )
-        _is_device(local_acq) && _release_device_plans!(𝒜)
+        _release_device_plans!(𝒜, _storage_template(local_acq))
         return result
     end
     return execute_two_phase(plan, acq_data, config, prepare, solve_slice)
