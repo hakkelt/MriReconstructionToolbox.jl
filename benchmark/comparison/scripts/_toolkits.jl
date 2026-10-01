@@ -966,30 +966,15 @@ the host is left out rather than timed as a GPU row.
 |---|---|
 | BART | every `pics` row (`-g`); not the direct rows, whose `fft` / `nufft` calls are not timed anyway |
 | SigPy | every row, through CuPy (`device = sigpy.Device(0)`). Its wavelet transform runs on the host through PyWavelets, so the L1-wavelet row copies every iterate to the host and back: that is SigPy on a GPU, and timed as such |
-| MRIReco | every row, through `arrayType = CuArray` (RegularizedLeastSquares' and NFFT's GPU extensions), but only at one Julia thread ([`MRIRECO_GPU_SAFE`](@ref)) |
+| MRIReco | every row, through `arrayType = CuArray` (RegularizedLeastSquares' and NFFT's GPU extensions); correct only at one Julia thread, which a GPU run enforces (see `DEVICE`) |
 | MRpro | every row, its tensors on `"cuda"` |
 | MIRT | none: no GPU support |
 """
 function gpu_supports(tk::Symbol, c::BenchCase, m::Symbol)
     tk === :mirt && return false
     tk === :bart && return !(m in (:adjoint, :gridding))
-    tk === :mrireco && return MRIRECO_GPU_SAFE
     return true
 end
-
-"""
-    MRIRECO_GPU_SAFE
-
-Whether MRIReco's GPU rows run: only when Julia has a single thread. With more, its operators
-(`DiagOp`, `GradientOp`, the LLR prox) run their parts as OhMyThreads tasks, each of which issues
-its kernels on its own CUDA stream, and nothing orders those streams against each other: on the
-2D 8-coil Cartesian case CG-SENSE returned NRMSE 0.94-1.29, different on every call, against
-0.675 on the CPU, and the radial and L1-wavelet rows returned NaN. At one thread every row matched
-the CPU to 1e-6. The scheduler of those operators is not reachable through `reconstruction`'s
-parameters, so the rows are left out instead.
-"""
-const MRIRECO_GPU_SAFE = Threads.nthreads() == 1
-ON_GPU && !MRIRECO_GPU_SAFE && @warn "MRIReco's GPU path races with more than one Julia thread, so MRIReco rows are skipped; run with -t 1 to include them" threads = Threads.nthreads()
 
 """
     uses_admm(tk, c::BenchCase, method) -> Bool

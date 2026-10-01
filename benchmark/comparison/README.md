@@ -67,7 +67,7 @@ one, under the same row labels with a `(CUDA)` suffix and recorded under backend
 | MRT | the acquisition moved with `adapt(CuArray, ·)`; everything runs on the device |
 | BART | `pics -g`, from the build `MRT_BENCH_BART_CUDA` names; not the direct rows, which are not timed on the CPU either |
 | SigPy | CuPy, with the k-space, maps and trajectory on `sigpy.Device(0)`. Its wavelet transform is PyWavelets on the host, so its L1-wavelet row copies every iterate to the host and back |
-| MRIReco | `arrayType = CuArray`, through RegularizedLeastSquares' and NFFT's GPU extensions, at one Julia thread only: with more, its operators issue kernels from parallel tasks on unordered CUDA streams and return wrong images (`MRIRECO_GPU_SAFE`) |
+| MRIReco | `arrayType = CuArray`, through RegularizedLeastSquares' and NFFT's GPU extensions |
 | MRpro | its tensors on `"cuda"`; cufinufft for the NUFFT |
 | MIRT | none |
 
@@ -90,17 +90,22 @@ uv pip install -p /path/to/venvs/py314-gpu torch torchvision --index-url https:/
 uv pip install -p /path/to/venvs/py314-gpu numpy sigpy numba scipy cupy-cuda12x mrpro cufinufft pytorch-finufft
 ```
 
-The BART build needs `CUDA = 1` and the device's architecture in its `Makefile.local`
+The BART build needs `CUDA = 1`, OpenBLAS and the device's architecture in its `Makefile.local`
 (`GPUARCH_FLAGS = -gencode arch=compute_80,code=sm_80` for an A100). A toolkit whose GPU build is
-missing is skipped with a warning. The SLURM script asks for one GPU and runs one host thread
-(`--threads=N` changes it, at the cost of the MRIReco rows):
+missing is skipped with a warning.
+
+A GPU run has one host thread and OpenBLAS as the host BLAS (`-t 1 --threads=1`, no `--use-mkl`),
+and refuses to start otherwise. The device does the work, and MRIReco's GPU path is wrong with more than one
+Julia thread: its operators issue kernels from parallel tasks on unordered CUDA streams, which
+returned different, wrong images on every call (NaN on the radial and L1-wavelet rows), while at
+one thread every row matched the CPU. The SLURM script passes those flags itself:
 
 ```sh
 benchmark/slurm/submit.sh comparison_gpu.sh --sections=cgsense,sparsity
 ```
 
 The `kspace` section has no GPU rows (GRAPPA runs on a host copy), nor does the non-Cartesian
-section's second MRT operating point. `--use-mkl` does not combine with `--device=cuda`.
+section's second MRT operating point.
 
 ## Filtering a rerun
 

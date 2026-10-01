@@ -23,7 +23,14 @@ end
 `--device=cpu` (default) or `--device=cuda`. On `cuda` every toolkit that can reconstruct on an
 NVIDIA GPU does so (`gpu_supports` in `_toolkits.jl`), each from host data to a host image: the
 transfers to and from the device are inside the timed region, for every toolkit alike, since BART
-cannot be timed any other way. The host threads still serve whatever a toolkit keeps on the host.
+cannot be timed any other way.
+
+A GPU run has one host thread and OpenBLAS as the host BLAS, and refuses to start otherwise. One
+thread because the device does the work, and because MRIReco's GPU path races with more: its operators
+issue kernels from parallel OhMyThreads tasks, each on its own CUDA stream with nothing ordering
+them, and on the 2D 8-coil Cartesian case its CG-SENSE returned NRMSE 0.94-1.29, different on every
+call, against 0.675 on the CPU (NaN on the radial and L1-wavelet rows); at one thread every row
+matched the CPU to 1e-6.
 """
 const DEVICE = let i = findfirst(a -> startswith(a, "--device="), ARGS)
     d = i === nothing ? "cpu" : ARGS[i][(length("--device=") + 1):end]
@@ -31,7 +38,9 @@ const DEVICE = let i = findfirst(a -> startswith(a, "--device="), ARGS)
     Symbol(d)
 end
 const ON_GPU = DEVICE === :cuda
-ON_GPU && USE_MKL && error("--use-mkl selects a host BLAS backend; it does not combine with --device=cuda")
+ON_GPU && USE_MKL && error("--device=cuda runs with OpenBLAS as the host BLAS: drop --use-mkl")
+ON_GPU && (NUM_THREADS != 1 || Threads.nthreads() != 1) &&
+    error("--device=cuda runs with one host thread: pass -t 1 --threads=1 (see `DEVICE`)")
 
 # Machine paths (BART builds, SigPy's interpreter, the data cache) come from the environment, filled
 # from the untracked `benchmark/slurm/site.env` for anything not already set.
