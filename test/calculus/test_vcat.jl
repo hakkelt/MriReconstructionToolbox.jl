@@ -164,6 +164,21 @@ end
         A2 = gpu_randn(backend, m2, n)
         opV2 = VCAT(MatrixOp(A1), MatrixOp(A2))
         test_op(opV2, gpu_randn(backend, n), ArrayPartition(gpu_randn(backend, m1), gpu_randn(backend, m2)), false)
+
+        # Blocks of `GetIndex`es, whose adjoint accumulates through `add_mul!`.
+        x = gpu_zeros(backend, Float64, 6, 3)
+        g1 = GetIndex(x, (1:2:5, :))
+        g2 = GetIndex(x, (2:3, 2))
+        opG = VCAT(g1, g2)
+        yh = ArrayPartition(randn(3, 3), randn(2))
+        y = ArrayPartition(to_gpu(backend, yh.x[1]), to_gpu(backend, yh.x[2]))
+        hg1 = GetIndex(zeros(6, 3), (1:2:5, :))
+        hg2 = GetIndex(zeros(6, 3), (2:3, 2))
+        @test Array(opG' * y) ≈ hg1' * yh.x[1] .+ hg2' * yh.x[2]
+        z = to_gpu(backend, ones(6, 3))
+        AbstractOperators.add_mul!(z, g2', y.x[2], similar(z))
+        @test Array(z) ≈ ones(6, 3) .+ hg2' * yh.x[2]
+        test_op(opG, gpu_randn(backend, 6, 3), y, false)
     end
 end
 

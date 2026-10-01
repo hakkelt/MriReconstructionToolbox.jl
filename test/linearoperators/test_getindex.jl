@@ -156,6 +156,34 @@ end
         test_op(op_mask, gpu_randn(backend, n), gpu_randn(backend, sum(mask)), false)
         op_mask_kw = GetIndex(Float64, (n,), mask; array_type = gpu_wrapper(backend, Float64, 1))
         @test Base.typename(typeof(op_mask_kw.idx[1])).wrapper == backend_type_wrapper
+
+        # Index tuples holding arrays (a phase-encode mask, say): the arrays are stored on the
+        # device and every application matches the host operator.
+        on_device(i) = i isa Union{Colon, Integer, AbstractRange} ||
+            Base.typename(typeof(i)).wrapper == backend_type_wrapper
+        l = 6
+        rows = BitVector([true, false, true, true, false])
+        cols = BitArray([isodd(i + j) for i in 1:m, j in 1:l])
+        picks = [4, 1, 3]
+        for (dims, idx) in (
+                ((n, m), (:, rows[1:m])),
+                ((n, m), (rows, 2)),
+                ((n, m, l), (:, cols)),
+                ((n, m, l), (picks, :, 2:l)),
+                ((n, m, l), (rows, picks, 1)),
+            )
+            xh = randn(dims...)
+            op_h = GetIndex(xh, idx)
+            op_d = GetIndex(gpu_zeros(backend, Float64, dims...), idx)
+            @test all(on_device, op_d.idx)
+            @test size(op_d) == size(op_h)
+            x = to_gpu(backend, xh)
+            yh = randn(size(op_h, 1)...)
+            y = to_gpu(backend, yh)
+            @test Array(op_d * x) ≈ op_h * xh
+            @test Array(op_d' * y) ≈ op_h' * yh
+            test_op(op_d, x, y, false)
+        end
     end
 end
 
