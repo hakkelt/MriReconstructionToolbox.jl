@@ -309,6 +309,13 @@ branch = "fix/operator-wrapper-storage"
 parent = "unified-threading"
 pr = "hakkelt/AbstractOperators.jl#32"
 
+# A device `GetIndex` keeps the arrays of its index tuple on the device, instead of uploading and
+# bounds-checking them on every application.
+[[AbstractOperators.stack]]
+branch = "fix/gpu-getindex-device-indices"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#33"
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
