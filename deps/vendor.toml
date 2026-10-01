@@ -58,6 +58,26 @@ branch = "feat/is-affine"
 parent = ""
 pr = ""
 
+# NFFT.jl is a monorepo: AbstractNFFTs, NFFTTools and the wrappers are packages of their own and
+# stay registered dependencies, so only the `NFFT` package at its root is vendored, with its GPU
+# extension, which MRT's `MriReconstructionToolboxGPUExt` includes.
+[NFFT]
+fork = "https://github.com/hakkelt/NFFT.jl.git"
+upstream = "https://github.com/JuliaMath/NFFT.jl.git"
+base = "upstream/master"
+prefix = "deps/NFFT"
+prune = [
+    "AbstractNFFTs", "NFFTTools", "CuNFFT", "Wrappers",
+    "test", "docs", "benchmark", ".github", "NFFT.bib", "Manifest.toml",
+]
+
+# GPU plans that transform a stack of arrays (coils x frames) at once, with interpolation tables
+# built on the device and no host synchronization per transform.
+[[NFFT.stack]]
+branch = "perf/gpu-batched-plan"
+parent = ""
+pr = "hakkelt/NFFT.jl#1"
+
 [AbstractOperators]
 fork = "https://github.com/hakkelt/AbstractOperators.jl.git"
 upstream = "https://github.com/kul-optec/AbstractOperators.jl.git"
@@ -307,6 +327,19 @@ pr = "hakkelt/AbstractOperators.jl#31"
 branch = "perf/gpu-nfft-device-plan"
 parent = "feat/gpu-nfft-toeplitz"
 pr = "hakkelt/AbstractOperators.jl#34"
+
+# `BatchedNFFTOp`: the NFFT of a coil x frame stack as one device transform, with a cached
+# Toeplitz normal operator.
+[[AbstractOperators.stack]]
+branch = "perf/gpu-nfft-batched"
+parent = "perf/gpu-nfft-device-plan"
+pr = "hakkelt/AbstractOperators.jl#35"
+
+# Fused pointwise runs of a `Compose` on device arrays, one kernel per run.
+[[AbstractOperators.stack]]
+branch = "perf/gpu-fused-pointwise"
+parent = "perf/fused-pointwise"
+pr = "hakkelt/AbstractOperators.jl#36"
 
 # `remove_displacement` of an `OperatorWrapper` keeps the device storage it reports, so a
 # host-only operator wrapped for a device reconstruction survives the solver's rebuild.
