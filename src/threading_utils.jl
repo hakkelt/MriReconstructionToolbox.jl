@@ -255,3 +255,13 @@ decide it per operator, per input.
 """
 _should_thread_work_item(config, bytes) =
     config.threaded && bytes >= serial_blas_threshold_bytes()
+
+# The vendored NFFT's thread switch, registered with NestedThreading as its NFFT extension
+# registers NFFT.jl's: a boolean, on only when nothing restricts the process, with `capacity()`
+# clamped up to 2 so that the get/set pair stays a round trip in a single-threaded session. It
+# is a pool of its own name, because NFFT.jl may be loaded alongside under `:nfft`.
+_nfft_full_threads() = max(2, NestedThreading.capacity())
+_get_nfft_threads() = NFFT._use_threads[] ? _nfft_full_threads() : 1
+_set_nfft_threads(n::Integer) = (NFFT._use_threads[] = n >= _nfft_full_threads())
+_register_nfft_threads!() =
+    NestedThreading.register_counted_pool!(_get_nfft_threads, _set_nfft_threads; name = :mrt_nfft)

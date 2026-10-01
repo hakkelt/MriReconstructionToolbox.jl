@@ -63,7 +63,7 @@ include("convolution.jl")
 
 function __init__()
   NFFT._use_threads[] = (Threads.nthreads() > 1)
-  activate!()
+  ismissing(AbstractNFFTs.active_backend()) && activate!()
 end
 
 include("precompile.jl")

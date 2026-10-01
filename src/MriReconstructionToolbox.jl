@@ -16,6 +16,7 @@ include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "src", "AbstractOp
 include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "ContourletOperators", "src", "ContourletOperators.jl"))
 include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "DSPOperators", "src", "DSPOperators.jl"))
 include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "FFTWOperators", "src", "FFTWOperators.jl"))
+include(joinpath(@__DIR__, "..", "deps", "NFFT", "src", "NFFT.jl"))
 include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "NFFTOperators", "src", "NFFTOperators.jl"))
 include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "WaveletOperators", "src", "WaveletOperators.jl"))
 include(joinpath(@__DIR__, "..", "deps", "ProximalOperators", "src", "ProximalOperators.jl"))
@@ -27,8 +28,9 @@ using .ProximalAlgorithms
 using .AbstractOperators
 using .AbstractOperators: Sum  # resolve ambiguity with ProximalOperators.Sum
 using .StructuredOptimization
-using .NFFTOperators: NFFTOp, NFFT
+using .NFFTOperators: NFFTOp, BatchedNFFTOp
 
+import NestedThreading
 using NestedThreading: @budgeted_threads, capacity, with_full_threads, with_restricted_threads, with_thread_budget,
     with_thread_default
 using .WaveletOperators: WaveletOp, WT, wavelet
@@ -222,6 +224,7 @@ include("simulation/add_noise.jl")
 include("simulation/trajectories.jl")
 
 function __init__()
+    _register_nfft_threads!()
     _init_serial_blas_threshold!()
     atexit(_save_fftw_wisdom)
     return nothing

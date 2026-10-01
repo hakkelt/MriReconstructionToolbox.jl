@@ -1,6 +1,6 @@
 module MriReconstructionToolboxGPUExt
 
-# The operator and proximal packages are submodules of MriReconstructionToolbox, and a submodule
+# The NFFT, operator and proximal packages are submodules of MriReconstructionToolbox, and a submodule
 # cannot load package extensions, so their GPU extensions are included here instead. Each goes
 # into a module of its own that binds the package it extends, because the extensions import it
 # relatively (`..AbstractOperators`) and two of them are called `GpuExt`.
@@ -15,6 +15,11 @@ module FFTWOperatorsGPU
     include(
         joinpath(@__DIR__, "..", "deps", "AbstractOperators", "FFTWOperators", "ext", "GpuExt", "GpuExt.jl")
     )
+end
+
+module NFFTGPU
+    using MriReconstructionToolbox: NFFT
+    include(joinpath(@__DIR__, "..", "deps", "NFFT", "ext", "NFFTGPUArraysExt", "NFFTGPUArraysExt.jl"))
 end
 
 module NFFTOperatorsGPU

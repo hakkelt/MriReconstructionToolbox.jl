@@ -49,7 +49,7 @@ is unnamed into a `Variable`.
 ### Key dependencies (custom forks, dev-pathed under `deps/`)
 
 `AbstractOperators` (+ `FFTWOperators`, `NFFTOperators`, `WaveletOperators`, `DSPOperators`),
-`StructuredOptimization`, `ProximalOperators`, `ProximalAlgorithms`, `OperatorCore`,
+`StructuredOptimization`, `ProximalOperators`, `ProximalAlgorithms`, `OperatorCore`, `NFFT`,
 `NestedThreading`. These are local checkouts under `deps/` — never `Pkg.add` an upstream version;
 `Pkg.instantiate` the existing Manifest.
 
@@ -57,6 +57,10 @@ They are inlined as **submodules** of `MriReconstructionToolbox` (see the `inclu
 `src/MriReconstructionToolbox.jl`), which has two consequences worth knowing before editing them:
 
 - Every cross-package `using`/`import` inside `deps/` must be relative (`using ..AbstractOperators`).
+- NFFT.jl may be loaded next to the vendored `NFFT` (MRIReco does), and both register an
+  AbstractNFFTs backend. The vendored copy activates itself only when no backend is active, so
+  MRT code names its backend explicitly: `NFFT.plan_nfft(NFFT.backend(), ...)`. Its thread switch
+  is registered with NestedThreading as the pool `:mrt_nfft` (`src/threading_utils.jl`).
 - A method that extends another package's function must have that function on an `import` list, or
   it silently defines a *new* function of the same name in the submodule and the extension is never
   seen. `FFTWOperators.has_optimized_normalop`, `NFFTOperators.is_symmetric` and
@@ -67,7 +71,7 @@ They are inlined as **submodules** of `MriReconstructionToolbox` (see the `inclu
   `RecursiveArrayToolsExt` is (`deps/ProximalOperators/src/recursive_array_tools.jl`), or dropped
   when MRT does not need it — OSQP, and with it `IndPolyhedral`, is not vendored for that reason.
   The GPU extensions (AbstractOperators', FFTWOperators' and ProximalOperators' `ext/GpuExt`,
-  NFFTOperators' `NFFTOperatorsGPUArraysExt`) are the third case: they stay under `deps/` and
+  NFFTOperators' `NFFTOperatorsGPUArraysExt`, NFFT's `NFFTGPUArraysExt`) are the third case: they stay under `deps/` and
   `ext/MriReconstructionToolboxGPUExt.jl` `include`s each one into a module of its own.
 
 Only what MRT compiles is vendored. Each package's own `test/`, `docs/`, `benchmark/`, CI config

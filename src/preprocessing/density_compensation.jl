@@ -104,16 +104,14 @@ function compute_dcf(
         image_size::Tuple,
         method::PipeMenonDCF,
     ) where {T <: Real}
-    mod = parentmodule(NFFTOp)
-    NFFT = getfield(mod, :NFFT)
-    NFFTTools = getfield(mod, :NFFTTools)
+    NFFTTools = getfield(parentmodule(NFFTOp), :NFFTTools)
 
     traj_raw = trajectory isa NamedDimsArray ? unname(trajectory) : trajectory
     coord_dim = size(traj_raw, 1)
     ksp_shape = size(traj_raw)[2:end]
     traj_flat = reshape(traj_raw, coord_dim, :)
 
-    plan = NFFT.plan_nfft(traj_flat, image_size)
+    plan = NFFT.plan_nfft(NFFT.backend(), traj_flat, image_size)
     raw_dcf = NFFTTools.sdc(plan; iters = method.maxit)
     dcf_arr = reshape(raw_dcf, ksp_shape)
     if method.edge_correction
