@@ -266,6 +266,26 @@ end
 _fourier_index(img_size, subsampling::Tuple) = subsampling
 _fourier_index(img_size, subsampling::Tuple{AbstractVector{Int}}) = (CartesianIndices(img_size)[only(subsampling)],)
 
+"""
+    _device_spreading_getindex(ksp, img_size, subsampling::AbstractArray, prefix_batch_dims)
+
+The subsampling of a device k-space by one spec per element of its trailing axes (one mask per
+frame, say) as a single `GetIndex` of linear indices into the whole array, reshaped to
+`(samples of one element..., size(subsampling)...)`: the layout the `BatchOp` of one `GetIndex`
+per element gives, with the same samples in the same order. The indices are worked out on the
+host, one `Int` per sample, and moved to the device once; the `BatchOp` would launch a gather
+per element on every apply, and a fill and a scatter per element on every adjoint.
+"""
+function _device_spreading_getindex(ksp, img_size, subsampling::AbstractArray, prefix_batch_dims::Int)
+    linear = LinearIndices(size(ksp))
+    prefix = ntuple(_ -> Colon(), prefix_batch_dims)
+    indices = stack(CartesianIndices(subsampling)) do I
+        spec = _normalize_subsampling(subsampling[I])
+        linear[_fourier_index(img_size, spec)..., prefix..., Tuple(I)...]
+    end
+    return reshape(GetIndex(ksp, (vec(indices),)), size(indices)...)
+end
+
 function _get_subsampling_operator(ksp, img_size::Tuple{Int, Int}, subsampling::_2D_subsampling_type; threaded::Bool)
     @argcheck length(img_size) == 2 "img_size must be a 2-element tuple for 2D subsampling"
     @argcheck img_size == size(ksp)[1:2] DimensionMismatch
@@ -322,6 +342,10 @@ function _get_subsampling_operator(ksp, img_size, subsampling::AbstractArray; th
     # equal-count case keeps exactly the dense path it had.
     if _has_unequal_sample_counts(ksp, img_size, subsampling)
         return _get_partitioned_subsampling_operator(ksp, img_size, subsampling)
+    end
+
+    if _is_device(ksp) && suffix_batch_dims == 0
+        return _device_spreading_getindex(ksp, img_size, subsampling, prefix_batch_dims)
     end
 
     op_indices = CartesianIndices(subsampling)

@@ -867,3 +867,35 @@ end
     @test A_named isa NamedDimsOp
     @test unname(A_named * NamedDimsArray{(:x, :y, :time)}(x)) ≈ chain * x
 end
+
+@testitem "device encoding operator batches maps and masks over frames" tags = [:encoding, :operators, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
+    using Test
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: get_encoding_operator, CartesianAcquisitionInfo
+    using MriReconstructionToolbox.AbstractOperators: get_normal_op
+    using NamedDims
+    using Random
+
+    # Maps shared by every frame, and a ky mask per frame or one for all of them: on a device
+    # each is one operator over the whole batch rather than one per frame.
+    Random.seed!(1)
+    n, nc, nt, ns = 32, 4, 5, 12
+    mask() = (m = falses(n); m[randperm(n)[1:ns]] .= true; m)
+    smaps = randn(ComplexF32, n, n, nc)
+    ksp = randn(ComplexF32, n, ns, nc, nt)
+    x = randn(ComplexF32, n, n, nt)
+    y = randn(ComplexF32, n, ns, nc, nt)
+    apply(a, x, y) = (A = get_encoding_operator(a); (A * x, A' * y, get_normal_op(A) * x))
+    for subsampling in ([(:, mask()) for _ in 1:nt], (:, mask()))
+        acq = CartesianAcquisitionInfo(ksp; is3D = false, image_size = (n, n), subsampling, sensitivity_maps = smaps)
+        test_on_devices(apply, acq, x, y)
+        acq_named = CartesianAcquisitionInfo(
+            NamedDimsArray{(:kx, :ky, :coil, :time)}(ksp); is3D = false, image_size = (n, n),
+            subsampling, sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps)
+        )
+        test_on_devices(acq_named, x, y) do a, x, y
+            A = get_encoding_operator(a)
+            return unname(A * NamedDimsArray{(:x, :y, :time)}(x))
+        end
+    end
+end
