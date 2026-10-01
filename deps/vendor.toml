@@ -302,6 +302,12 @@ branch = "feat/gpu-nfft-toeplitz"
 parent = "unified-threading"
 pr = "hakkelt/AbstractOperators.jl#31"
 
+# A device `NFFTOp`'s plan and Toeplitz kernel are computed on the device instead of the host.
+[[AbstractOperators.stack]]
+branch = "perf/gpu-nfft-device-plan"
+parent = "feat/gpu-nfft-toeplitz"
+pr = "hakkelt/AbstractOperators.jl#34"
+
 # `remove_displacement` of an `OperatorWrapper` keeps the device storage it reports, so a
 # host-only operator wrapped for a device reconstruction survives the solver's rebuild.
 [[AbstractOperators.stack]]
