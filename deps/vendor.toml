@@ -328,8 +328,8 @@ branch = "perf/gpu-nfft-device-plan"
 parent = "feat/gpu-nfft-toeplitz"
 pr = "hakkelt/AbstractOperators.jl#34"
 
-# `BatchedNFFTOp`: the NFFT of a coil x frame stack as one device transform, with a cached
-# Toeplitz normal operator.
+# `NFFTOp` over a stack (`dims`, `nframe`): on a device the NFFT of a coil x frame stack is one
+# transform, with a cached Toeplitz normal operator.
 [[AbstractOperators.stack]]
 branch = "perf/gpu-nfft-batched"
 parent = "perf/gpu-nfft-device-plan"
