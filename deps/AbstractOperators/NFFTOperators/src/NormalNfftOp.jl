@@ -25,29 +25,40 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-struct NfftNormalOp{N, T, A <: AbstractArray, F, I} <: AbstractOperators.LinearOperator
+struct NfftNormalOp{N, T, A <: AbstractArray, L <: AbstractArray, F, I, P, X} <: AbstractOperators.LinearOperator
     array_type::Type{T}
     shape::NTuple{N, Int}
-    λ::A
+    λ::L
     fftplan::F
     ifftplan::I
     buf::A
+    perm::P
+    xbuf::X
     threaded::Bool
 end
 
 function mul!(y::AbstractArray, op::NfftNormalOp, x::AbstractArray)
     AbstractOperators.check(y, op, x)
     return with_nfft_threading(op.threaded) do
-        _mul!(y, op, x)
+        if op.perm === nothing
+            _mul!(y, op, x)
+        else
+            permutedims!(op.xbuf, x, op.perm)
+            _mul!(op.xbuf, op, op.xbuf)
+            permutedims!(y, op.xbuf, invperm(op.perm))
+        end
     end
 end
 
+# `x` and `y` are in the transform's own layout, `(image..., stack...)`; `buf` is the stack on the
+# twice-oversampled grid, and `λ` the kernel of each frame, broadcast over the rest of the stack.
+# The inverse FFT is unnormalized, its `1/length` folded into `λ`.
 function _mul!(y, op::NfftNormalOp, x)
     op.buf .= 0
     op.buf[CartesianIndices(x)] .= x
     op.fftplan * op.buf # in-place FFT
     op.buf .*= op.λ
-    op.ifftplan * op.buf # in-place IFFT
+    op.ifftplan * op.buf # in-place unnormalized IFFT
     y .= @view op.buf[CartesianIndices(x)]
     return y
 end
@@ -67,38 +78,65 @@ function _planner_rigor(plan)
     return fft.flags & (FFTW.ESTIMATE | FFTW.PATIENT | FFTW.EXHAUSTIVE | FFTW.WISDOM_ONLY)
 end
 
+# The planner keywords of the embedding's FFTs: FFTW's planner rigor on the host, none for a
+# device FFT, which takes no flags.
+_embedding_fft_kwargs(op::NFFTOp{T, D, N, M, P, <:Array}) where {T, D, N, M, P} = (flags = _planner_rigor(_first_plan(op)),)
+_embedding_fft_kwargs(::NFFTOp) = NamedTuple()
+
+# The normal operator owns FFT plans and a buffer of the whole stack on the twice-oversampled
+# grid; it is built on the first request and returned to every later one.
 AbstractOperators.has_optimized_normalop(::NFFTOp) = true
 function AbstractOperators.get_normal_op(op::NFFTOp)
-    return with_nfft_threading(op.threaded) do
+    cached = op.normal_op[]
+    cached === nothing || return cached
+    normal = with_nfft_threading(op.threaded) do
         _get_normal_op(op)
     end
+    op.normal_op[] = normal
+    return normal
 end
 
-function _get_normal_op(op::NFFTOp)
-    shape = op.plan.N
+function _get_normal_op(op::NFFTOp{T, D, N}) where {T, D, N}
+    shape = op.dim_in[op.dims]
     shape_ext = 2 .* shape
-
-    buf = allocate_in_domain(op, shape_ext...)
+    perm = _in_perm(op)
+    stack = op.dim_in[collect(perm[(D + 1):end])]
+    frame_size = op.dim_in[(end - op.nframe + 1):end]
+    λ = _toeplitz_kernel(op, shape_ext, _nframes(op))
+    λ = reshape(λ, shape_ext..., map(_ -> 1, stack[1:(end - op.nframe)])..., frame_size...)
+    buf = similar(op.ksp_buffer, (shape_ext..., stack...))
+    kw = _embedding_fft_kwargs(op)
+    fftplan = FFTW.plan_fft!(buf, 1:D; kw...)
+    ifftplan = FFTW.plan_bfft!(buf, 1:D; kw...)
     fill!(buf, 0)
-    tmp = allocate_in_codomain(op, size(op.plan.k, 2))
-    tmp .= vec(op.dcf)
-
-    fftplan = FFTW.plan_fft!(buf; flags = _planner_rigor(op.plan))
-    fill!(buf, 0)
-    p = NFFT.plan_nfft(
-        op.plan.k,
-        shape_ext;
-        m = op.plan.params.m,
-        σ = op.plan.params.σ,
-        precompute = NFFT.POLYNOMIAL,
-        fftflags = FFTW.ESTIMATE,
-        blocking = true,
+    xbuf = op.img_buffer === nothing ? nothing : similar(op.img_buffer)
+    return NfftNormalOp(
+        domain_array_type(op), op.dim_in, λ, fftplan, ifftplan, buf,
+        op.img_buffer === nothing ? nothing : perm, xbuf, op.threaded,
     )
+end
 
-    mul!(buf, adjoint(p), tmp)
-    λ = fftplan * FFTW.fftshift(buf) # create a new array by fftshift and apply in-place FFT
-
-    return NfftNormalOp(domain_array_type(op), shape, λ, fftplan, inv(fftplan), buf, op.threaded)
+# The Toeplitz kernel of each of `frames` frames, `(2N..., frames)`: the FFT of the adjoint NFFT
+# of the frame's density compensation on the twice-oversampled grid, centred, and divided by the
+# grid size for the unnormalized inverse.
+function _toeplitz_kernel(op::NFFTOp{T, D}, shape_ext, frames) where {T, D}
+    k = _nodes(op)
+    params = _first_plan(op).params
+    J = size(k, 2) ÷ frames
+    w = reshape(Complex{T}.(op.dcf), J, frames)
+    λ = zeros(Complex{T}, shape_ext..., frames)
+    λs = reshape(λ, :, frames)
+    for t in 1:frames
+        p = NFFTPlan(
+            k[:, ((t - 1) * J + 1):(t * J)], shape_ext;
+            m = params.m, σ = params.σ, precompute = NFFT.POLYNOMIAL, fftflags = FFTW.ESTIMATE, blocking = true,
+        )
+        mul!(reshape(view(λs, :, t), shape_ext), adjoint(p), w[:, t])
+    end
+    λ = circshift(λ, (shape_ext .÷ 2..., 0))
+    FFTW.fft!(λ, 1:D)
+    λ ./= T(prod(shape_ext))
+    return λ
 end
 
 # properties
