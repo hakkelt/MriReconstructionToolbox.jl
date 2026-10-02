@@ -374,12 +374,14 @@ function mrt_acquisition(c::BenchCase; dcf::Bool = false)
 end
 
 function _mrt_noncartesian(c::BenchCase; dcf::Bool)
-    names = c.family === :cine ? (:sample, :spoke, :coil, :time) : (:sample, :spoke, :coil)
+    names = c.family === :cine ? (:sample, :spoke, :coil, :time) :
+        c.family === :multislice ? (:sample, :spoke, :coil, :z) : (:sample, :spoke, :coil)
+    map_names = c.family === :multislice ? (:x, :y, :coil, :z) : (:x, :y, :coil)
     return NonCartesianAcquisitionInfo(
         NamedDimsArray{names}(c.kspace);
         trajectory = NamedDimsArray{(:coord, :sample, :spoke)}(c.traj),
         dcf = dcf ? NamedDimsArray{(:sample, :spoke)}(c.dcf) : nothing,
-        image_size = c.image_size, sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(c.smaps),
+        image_size = c.image_size, sensitivity_maps = NamedDimsArray{map_names}(c.smaps),
     )
 end
 
