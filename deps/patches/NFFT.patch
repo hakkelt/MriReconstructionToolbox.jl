@@ -1,0 +1,27 @@
+diff --git a/deps/NFFT/ext/NFFTGPUArraysExt/NFFTGPUArraysExt.jl b/deps/NFFT/ext/NFFTGPUArraysExt/NFFTGPUArraysExt.jl
+index 30daacb..33f6a71 100644
+--- a/deps/NFFT/ext/NFFTGPUArraysExt/NFFTGPUArraysExt.jl
++++ b/deps/NFFT/ext/NFFTGPUArraysExt/NFFTGPUArraysExt.jl
+@@ -1,7 +1,7 @@
+ module NFFTGPUArraysExt
+ 
+-using NFFT, NFFT.AbstractNFFTs
+-using NFFT.SparseArrays, NFFT.LinearAlgebra, NFFT.FFTW
++using ..NFFT, ..NFFT.AbstractNFFTs
++using ..NFFT.SparseArrays, ..NFFT.LinearAlgebra, ..NFFT.FFTW
+ using GPUArrays, Adapt
+ using GPUArrays.KernelAbstractions: KernelAbstractions, @kernel, @index, @Const, get_backend
+ 
+diff --git a/deps/NFFT/src/NFFT.jl b/deps/NFFT/src/NFFT.jl
+index 7228aa7..e93e2fc 100644
+--- a/deps/NFFT/src/NFFT.jl
++++ b/deps/NFFT/src/NFFT.jl
+@@ -63,7 +63,7 @@ include("convolution.jl")
+ 
+ function __init__()
+   NFFT._use_threads[] = (Threads.nthreads() > 1)
+-  activate!()
++  ismissing(AbstractNFFTs.active_backend()) && activate!()
+ end
+ 
+ include("precompile.jl")

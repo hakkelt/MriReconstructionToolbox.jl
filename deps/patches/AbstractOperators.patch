@@ -86,19 +86,20 @@ index fd2546a..f21a74b 100644
      allocate_in_codomain,
      domain_array_type,
 diff --git a/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl b/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl
-index a229b00..9994104 100644
+index 2b31c23..ec58667 100644
 --- a/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl
 +++ b/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl
-@@ -1,10 +1,10 @@
+@@ -1,11 +1,11 @@
  module NFFTOperatorsGPUArraysExt
  
 -using NFFTOperators
--import NFFTOperators: _nfft_plan, _nfft_adapt, NFFTOp, _get_normal_op, NfftNormalOp
+-import NFFTOperators:
++using ..NFFTOperators
++import ..NFFTOperators:
+     _nfft_plan, _batched_nfft_plan, _nfft_adapt, NFFTOp, BatchedNFFTOp, _get_normal_op, NfftNormalOp
 -import NFFTOperators.NFFT: NFFT
 -import NFFTOperators: FFTW
 -import NFFTOperators.AbstractOperators: allocate_in_domain, domain_array_type
-+using ..NFFTOperators
-+import ..NFFTOperators: _nfft_plan, _nfft_adapt, NFFTOp, _get_normal_op, NfftNormalOp
 +import ..NFFTOperators.NFFT: NFFT
 +import ..NFFTOperators: FFTW
 +import ..NFFTOperators.AbstractOperators: allocate_in_domain, domain_array_type
@@ -106,11 +107,11 @@ index a229b00..9994104 100644
  using Adapt
  using LinearAlgebra: mul!
 diff --git a/deps/AbstractOperators/NFFTOperators/src/NFFTOperators.jl b/deps/AbstractOperators/NFFTOperators/src/NFFTOperators.jl
-index f3125af..2775185 100644
+index 4a69b5f..904024b 100644
 --- a/deps/AbstractOperators/NFFTOperators/src/NFFTOperators.jl
 +++ b/deps/AbstractOperators/NFFTOperators/src/NFFTOperators.jl
 @@ -3,14 +3,14 @@ module NFFTOperators
- export NFFTOp
+ export NFFTOp, BatchedNFFTOp
  
  using LinearAlgebra
 -using AbstractOperators
@@ -119,7 +120,8 @@ index f3125af..2775185 100644
  using NestedThreading: with_full_threads, with_restricted_threads
  import LinearAlgebra: mul!
  import Base: size
- import NFFT: NFFT
+-import NFFT: NFFT
++import ..NFFT: NFFT
  import NFFTTools: NFFTTools
 -import AbstractOperators:
 +import ..AbstractOperators:
@@ -162,7 +164,7 @@ index 11c8bb1..333beeb 100644
      is_AAc_diagonal,
      diag_AcA,
 diff --git a/deps/AbstractOperators/ext/GpuExt/GpuExt.jl b/deps/AbstractOperators/ext/GpuExt/GpuExt.jl
-index b84871e..8895ff4 100644
+index f741841..382d252 100644
 --- a/deps/AbstractOperators/ext/GpuExt/GpuExt.jl
 +++ b/deps/AbstractOperators/ext/GpuExt/GpuExt.jl
 @@ -2,9 +2,9 @@ module GpuExt
