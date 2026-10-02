@@ -8,7 +8,17 @@
         piracies = false,
         persistent_tasks = false,
         stale_deps = false,
+        unbound_args = false,
+        undefined_exports = false,
     )
+    # The vendored NFFT carries NFFT.jl's own unbound type parameters (`precomputation.jl`), and
+    # re-exports `ndct_transpose`, which AbstractNFFTs exports without defining. Both are those
+    # packages' defects; everything else is checked.
+    within(m, root) = m === root || (parentmodule(m) !== m && within(parentmodule(m), root))
+    unbound = Aqua.detect_unbound_args_recursively(MriReconstructionToolbox)
+    @test isempty(filter(m -> !within(m.module, MriReconstructionToolbox.NFFT), unbound))
+    undefined = Aqua.undefined_exports(MriReconstructionToolbox)
+    @test isempty(filter(s -> !startswith(string(s), "MriReconstructionToolbox.NFFT."), undefined))
     # The vendored dependencies live in submodules of this package, so a recursive ambiguity
     # check would report their ambiguities as ours. They are checked -- and, where they are
     # unavoidable consequences of the operator syntax, tolerated -- by their own test suites,
