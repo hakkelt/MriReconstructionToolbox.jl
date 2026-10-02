@@ -89,7 +89,8 @@ end
 
 # `λ` for `frames` frames of `plan`'s nodes, each the FFT of the adjoint NFFT of `w` on the
 # twice-oversampled grid, centred, and divided by the grid size for the unnormalized inverse.
-# `buf` is `(2N..., [1, frames])` scratch.
+# `buf` is `(2N..., [1, frames])` scratch. The FFT plans made here are finalized before
+# returning: a device library may hand a plan's resources back only then.
 function _toeplitz_kernel(plan, buf, w, frames)
     T = real(eltype(buf))
     shape = plan.N
@@ -99,8 +100,12 @@ function _toeplitz_kernel(plan, buf, w, frames)
         NFFT.backend(), array_type, plan.k, 2 .* shape; m = plan.params.m, σ = plan.params.σ, frames
     )
     mul!(buf, adjoint(p), w)
-    shifted = circshift(buf, (shape..., ntuple(_ -> 0, ndims(buf) - D)...))
-    λ = FFTW.fft(shifted, 1:D)
+    finalize(p.forwardFFT)
+    finalize(p.backwardFFT)
+    λ = circshift(buf, (shape..., ntuple(_ -> 0, ndims(buf) - D)...))
+    fft_plan = FFTW.plan_fft!(λ, 1:D)
+    fft_plan * λ
+    finalize(fft_plan)
     λ ./= T(prod(2 .* shape))
     return λ
 end
