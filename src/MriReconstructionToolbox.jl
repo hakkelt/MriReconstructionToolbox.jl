@@ -28,7 +28,7 @@ using .ProximalAlgorithms
 using .AbstractOperators
 using .AbstractOperators: Sum  # resolve ambiguity with ProximalOperators.Sum
 using .StructuredOptimization
-using .NFFTOperators: NFFTOp, BatchedNFFTOp
+using .NFFTOperators: NFFTOp
 
 import NestedThreading
 using NestedThreading: @budgeted_threads, capacity, with_full_threads, with_restricted_threads, with_thread_budget,

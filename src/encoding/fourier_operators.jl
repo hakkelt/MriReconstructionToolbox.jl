@@ -224,7 +224,7 @@ A trajectory with trailing frame axes (one trajectory per frame, see
 image goes through frame `t`'s NFFT, repeated over the axes between the samples and the frames
 (coils, slabs). The frames are then the parallel layer when `threaded`.
 
-For k-space in device memory the operator is one `BatchedNFFTOp` over every axis after the
+For k-space in device memory the operator is one `NFFTOp` over every axis after the
 samples, with or without frame axes: each step of the transform runs once for all coils and
 frames, and its Toeplitz normal operator is built once and kept.
 """
@@ -255,9 +255,10 @@ function _nfft_operator(ksp, image_size, trajectory, nframe::Int; dcf, threaded,
         # and the operator moves what it needs.
         nfft_kwargs = Base.structdiff(nfft_kwargs, NamedTuple{(:fftflags,)})
         dcf = dcf isa AbstractArray ? _adapt_any(Array, dcf) : dcf
-        batch = size(ksp)[(fourier_dims + 1):(ndims(ksp) - nframe)]
-        return BatchedNFFTOp(
-            image_size, _adapt_any(Array, trajectory), dcf; batch, nframe, array_type = _array_type_of(ksp), nfft_kwargs...
+        dim_in = (image_size..., size(ksp)[(fourier_dims + 1):end]...)
+        return NFFTOp(
+            dim_in, _adapt_any(Array, trajectory), dcf;
+            dims = 1:length(image_size), nframe, array_type = _array_type_of(ksp), nfft_kwargs...,
         )
     end
     if nframe > 0
