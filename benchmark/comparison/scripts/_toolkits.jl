@@ -228,11 +228,19 @@ const MRIRECO_DEVICE = ON_GPU ? (; arrayType = CuArray) : (;)
 # `regTrafo`): its storage has to match the device the solve runs on.
 const MRIRECO_STORAGE = ON_GPU ? typeof(CuArray{CMP_CTYPE}(undef, 0)) : Vector{CMP_CTYPE}
 
+# The per-contrast data weights `reconstruction` uses under `MRIRECO_UNWEIGHTED`: `1/√N` for every
+# sample (`RecoParameters.jl:96-101`). A normal operator built for a step-size estimate must carry
+# these, not `samplingDensity`: on a radial trajectory the two differ in scale, and a step from the
+# density-weighted operator made the FISTA row diverge.
+_mrireco_unweighted(acq, reconSize) =
+    [fill(CMP_CTYPE(1 / sqrt(prod(reconSize))), size(acq.kdata[c], 1)) for c in 1:MRIReco.numContrasts(acq)]
+
 """
     _mrireco_normal_operator(acq, senseMaps, reconSize) -> AHA
 
 The normal operator `(W∘E)ᴴ(W∘E)` that `reconstruction_multiCoil` builds internally
-(`IterativeReconstruction.jl:238-240`) and hands to `createLinearSolver` as `AHA`.
+(`IterativeReconstruction.jl:238-240`) and hands to `createLinearSolver` as `AHA`, with the weights
+`W` of `MRIRECO_UNWEIGHTED` (`_mrireco_unweighted`).
 
 Rebuilt here for one purpose: so a FISTA row can run the same `power_iterations(AHA)` step-size
 estimate `FISTA`'s constructor would run by itself, and be timed for it. Only the power iteration
@@ -244,13 +252,35 @@ function _mrireco_normal_operator(acq, senseMaps, reconSize)
     if ON_GPU
         params = MRIReco.getEncodingOperatorParams(; arrayType = CuArray, S = MRIRECO_STORAGE)
         E = MRIReco.encodingOps_parallel(acq, reconSize, CuArray(senseMaps); slice = 1, params...)
-        weights = CuArray(MRIReco.samplingDensity(acq, reconSize)[1])
+        weights = CuArray(_mrireco_unweighted(acq, reconSize)[1])
         W = MRIReco.WeightingOp(CMP_CTYPE; weights, rep = size(senseMaps, ndims(senseMaps)))
         return MRIReco.normalOperator(∘(W, E[1]); MRIReco.normalOpParams(CuArray)...)
     end
     E = MRIReco.encodingOps_parallel(acq, reconSize, senseMaps; slice = 1)
-    W = MRIReco.WeightingOp(CMP_CTYPE; weights = MRIReco.samplingDensity(acq, reconSize)[1], rep = size(senseMaps, ndims(senseMaps)))
+    W = MRIReco.WeightingOp(CMP_CTYPE; weights = _mrireco_unweighted(acq, reconSize)[1], rep = size(senseMaps, ndims(senseMaps)))
     return MRIReco.normalOperator(∘(W, E[1]))
+end
+
+"""
+    _mrireco_frame_wavelet(reconSize) -> operator
+
+The transform of MRIReco's `"Wavelet"` `SparseOp` (`LinearOperatorCollection.WaveletOp`: `db2`, every
+level) for one frame, without its scratch arrays. `reconstruction_multiCoilMultiEcho` repeats the one
+operator it is given for every contrast in a `DiagOp`, whose blocks run as parallel tasks on views,
+and `WaveletOp` routes a view through `tmp`/`tmpRes` arrays it owns: the frames then overwrite each
+other's coefficients. Measured on the Cartesian cine at 16 threads, NRMSE 1.2-1.3 against 0.16 at one
+thread. This one allocates per application instead, which also keeps it correct on a GPU run, where
+the coefficients are computed on the host as `WaveletOp` computes them.
+"""
+function _mrireco_frame_wavelet(reconSize)
+    WL = MRIReco.MRIOperators.Wavelets
+    wt = WL.wavelet(WL.WT.db2)
+    n = prod(reconSize)
+    fwd! = (res, x) -> copyto!(res, vec(WL.dwt(reshape(Array(x), reconSize), wt)))
+    adj! = (res, x) -> copyto!(res, vec(WL.idwt(reshape(Array(x), reconSize), wt)))
+    return MRIReco.MRIOperators.LinearOperators.LinearOperator(
+        CMP_CTYPE, n, n, false, false, fwd!, nothing, adj!; S = MRIRECO_STORAGE,
+    )
 end
 
 """
@@ -266,7 +296,7 @@ function _mrireco_multiecho_normal_operator(acq, senseMaps, reconSize)
     params = ON_GPU ? MRIReco.getEncodingOperatorParams(; arrayType = CuArray, S = MRIRECO_STORAGE) :
         MRIReco.getEncodingOperatorParams()
     E = MRIReco.encodingOp_multiEcho_parallel(acq, reconSize, array_type(senseMaps); slice = 1, params...)
-    weights = array_type(vcat(MRIReco.samplingDensity(acq, reconSize)...))
+    weights = array_type(vcat(_mrireco_unweighted(acq, reconSize)...))
     W = MRIReco.WeightingOp(CMP_CTYPE; weights, rep = nc)
     return MRIReco.normalOperator(∘(W, E); MRIReco.normalOpParams(array_type)...)
 end
@@ -372,10 +402,11 @@ penalty, which measured 2.6× MRT's NRMSE on the Cartesian cine. `randshift = fa
 at fixed positions, as MRT's `LocallyLowRank` and BART's `-n` do; the default shifts them randomly
 every iteration, a different objective.
 
-L1-wavelet is FISTA with `sparseTrafo = "Wavelet"`, which `reconstruction_multiCoilMultiEcho`
-applies to each contrast on its own, i.e. the spatial wavelet of each frame, the transform of the
-other toolkits' cine wavelet rows. Its step is estimated as `mrireco`'s is, from the normal operator
-of the joint system (`_mrireco_multiecho_normal_operator`).
+L1-wavelet is FISTA with a wavelet `sparseTrafo`, which `reconstruction_multiCoilMultiEcho` applies
+to each contrast on its own, i.e. the spatial wavelet of each frame, the transform of the other
+toolkits' cine wavelet rows. The transform is `_mrireco_frame_wavelet`, not the `"Wavelet"` named
+`SparseOp`: see there for why. Its step is estimated as `mrireco`'s is, from the normal operator of
+the joint system (`_mrireco_multiecho_normal_operator`).
 
 **Temporal TV is not reachable through this API and therefore has no MRIReco row.** Not for lack of
 a prox — `L1Regularization` + a `GradientOp` along the time axis is the right formulation, and it is
@@ -412,7 +443,7 @@ function mrireco_dynamic(
             :absTol => 0.0, :relTol => 0.0, :tolInner => CMP_TOL_INNER, pairs(MRIRECO_UNWEIGHTED)...,
             pairs(MRIRECO_DEVICE)...,
         )
-        method === :wavelet && (rp[:sparseTrafo] = "Wavelet")
+        method === :wavelet && (rp[:sparseTrafo] = _mrireco_frame_wavelet(reconSize))
         with_mrireco_blas() do
             MRIReco.reconstruction(acq, rp)
         end

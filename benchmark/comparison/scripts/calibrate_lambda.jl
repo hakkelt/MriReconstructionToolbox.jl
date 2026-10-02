@@ -274,8 +274,17 @@ end
 
 # Sweeps as stored: `[λ, ρ, nrmse]` with `ρ = null` for a row without one; a file from before ρ
 # calibration holds `[λ, nrmse]`.
-_curve_from_json(pts) = [length(p) == 2 ? (Float64(p[1]), nothing, Float64(p[2])) : (Float64(p[1]), p[2], Float64(p[3])) for p in pts]
+# A point whose solve failed or diverged has NRMSE `NaN`, stored as `null` (JSON has no NaN).
+_nrmse_from_json(e) = e === nothing ? NaN : Float64(e)
+_curve_from_json(pts) = [length(p) == 2 ? (Float64(p[1]), nothing, _nrmse_from_json(p[2])) : (Float64(p[1]), p[2], _nrmse_from_json(p[3])) for p in pts]
 _curve_to_json(curve) = [[λ, ρ, e] for (λ, ρ, e) in curve]
+
+# Non-finite numbers as `null`: a toolkit whose solve returns NaN at some λ must not stop the file
+# from being written.
+_json_finite(x::AbstractFloat) = isfinite(x) ? x : nothing
+_json_finite(d::AbstractDict) = Dict(k => _json_finite(v) for (k, v) in d)
+_json_finite(v::Union{AbstractVector, Tuple}) = map(_json_finite, v)
+_json_finite(x) = x
 
 """
     write_calibration!(c, fresh)
@@ -329,7 +338,10 @@ function write_calibration!(c::BenchCase, fresh::Dict{String, Any})
             "backend" => USE_MKL ? "mkl" : "openblas", "threads" => NUM_THREADS,
             "git" => Dict(pairs(git_ref(normpath(joinpath(@__DIR__, "..", "..", ".."))))),
         )
-        open(io -> JSON.print(io, file, 4), path, "w")
+        # Written aside and moved into place, so a failed write cannot truncate the case's file.
+        tmp = path * ".tmp"
+        open(io -> JSON.print(io, _json_finite(file), 4), tmp, "w")
+        mv(tmp, path; force = true)
         @info "wrote" path
     end
 end
