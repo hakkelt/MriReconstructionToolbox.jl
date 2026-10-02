@@ -316,7 +316,8 @@ function mul!(
 end
 
 function _weight!(op::NFFTOp{T, D, N, M, P, K}, ksp) where {T, D, N, M, P, K}
-    if !(K <: Array)
+    # FastBroadcast takes equal axes only; a stack's dcf repeats along its batch axes.
+    if !(K <: Array) || size(op.dcf) != size(ksp)
         op.ksp_buffer .= ksp .* op.dcf
     elseif op.threaded
         @.. thread = true op.ksp_buffer = ksp * op.dcf
