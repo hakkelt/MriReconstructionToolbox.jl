@@ -34,7 +34,7 @@ include(joinpath(@__DIR__, "_setup.jl"))
 include(joinpath(@__DIR__, "_toolkits.jl"))
 include(joinpath(@__DIR__, "_methods.jl"))
 
-for c in section_cases(c -> c.family === :cine), m in (:lowrank, :llr, :ttv, :ttv_pd)
+for c in section_cases(c -> c.family === :cine), m in (:lowrank, :llr, :ttv, :ttv_pd, :wavelet)
     run_method_rows!("Dynamic", c, m)
 end
 

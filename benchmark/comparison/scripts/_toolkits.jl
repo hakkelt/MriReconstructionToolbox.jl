@@ -254,6 +254,24 @@ function _mrireco_normal_operator(acq, senseMaps, reconSize)
 end
 
 """
+    _mrireco_multiecho_normal_operator(acq, senseMaps, reconSize) -> AHA
+
+The normal operator of the joint system of all contrasts that `reconstruction_multiCoilMultiEcho`
+builds internally (`IterativeReconstruction.jl:297-326`), for the step-size estimate of a cine
+FISTA row; built outside the timed region for the reason `_mrireco_normal_operator` gives.
+"""
+function _mrireco_multiecho_normal_operator(acq, senseMaps, reconSize)
+    nc = size(senseMaps, ndims(senseMaps))
+    array_type = ON_GPU ? CuArray : Array
+    params = ON_GPU ? MRIReco.getEncodingOperatorParams(; arrayType = CuArray, S = MRIRECO_STORAGE) :
+        MRIReco.getEncodingOperatorParams()
+    E = MRIReco.encodingOp_multiEcho_parallel(acq, reconSize, array_type(senseMaps); slice = 1, params...)
+    weights = array_type(vcat(MRIReco.samplingDensity(acq, reconSize)...))
+    W = MRIReco.WeightingOp(CMP_CTYPE; weights, rep = nc)
+    return MRIReco.normalOperator(∘(W, E); MRIReco.normalOpParams(array_type)...)
+end
+
+"""
     mrireco(method, mkacq, smaps, reconSize; λ, iterations, ρ) -> (time_ms, image)
 
 A static (2D or 3D) reconstruction of the acquisition `mkacq()` builds, with maps `smaps`
@@ -332,7 +350,7 @@ end
 
 Dynamic (2D+t) reconstruction with MRIReco of `acq`, a cine with its `nt` frames as echoes
 (`_mrireco_cine_acq` or `_mrireco_nc_acq`). `method ∈ (:adjoint, :gridding, :cgsense, :lowrank,
-:llr)`: the first two are the `direct` reconstruction of every frame with the conjugate-sensitivity
+:llr, :wavelet)`: the first two are the `direct` reconstruction of every frame with the conjugate-sensitivity
 combination (see `mrireco_direct`), CG-SENSE is CGNR on the joint system of all frames, as MRT and
 BART solve it. Returns `(nx, ny, nt)`.
 
@@ -354,6 +372,11 @@ penalty, which measured 2.6× MRT's NRMSE on the Cartesian cine. `randshift = fa
 at fixed positions, as MRT's `LocallyLowRank` and BART's `-n` do; the default shifts them randomly
 every iteration, a different objective.
 
+L1-wavelet is FISTA with `sparseTrafo = "Wavelet"`, which `reconstruction_multiCoilMultiEcho`
+applies to each contrast on its own, i.e. the spatial wavelet of each frame, the transform of the
+other toolkits' cine wavelet rows. Its step is estimated as `mrireco`'s is, from the normal operator
+of the joint system (`_mrireco_multiecho_normal_operator`).
+
 **Temporal TV is not reachable through this API and therefore has no MRIReco row.** Not for lack of
 a prox — `L1Regularization` + a `GradientOp` along the time axis is the right formulation, and it is
 what MRIReco's own TV path uses spatially — but `reconstruction_multiCoilMultiEcho` wraps whatever
@@ -372,18 +395,24 @@ function mrireco_dynamic(
         MR_ADMM, RLS.NuclearRegularization(λ; svtShape = (prod(reconSize), nt))
     elseif method === :llr
         MR_ADMM, RLS.LLRRegularization(λ; shape = reconSize, blockSize = (8, 8), randshift = false)
+    elseif method === :wavelet
+        MR_FISTA, L1Regularization(λ)
     else
         error("MRIReco has no dynamic $method here (see the docstring on temporal TV)")
     end
     senseMaps = _mrireco_maps(smaps3, reconSize)
+    # FISTA's step is estimated inside the timed region, as in `mrireco`.
+    AHA = method === :wavelet ? _mrireco_multiecho_normal_operator(acq, senseMaps, reconSize) : nothing
     t, _, img = time_reconstruction() do
         rp = Dict{Symbol, Any}(
             :reco => "multiCoilMultiEcho", :reconSize => reconSize, :senseMaps => senseMaps,
-            :solver => solver, :reg => reg, :iterations => iterations, :rho => ρ,
+            :solver => solver, :reg => reg, :iterations => iterations,
+            :rho => AHA === nothing ? ρ : 0.95 / RLS.power_iterations(AHA),
             :vary_rho => :none, :iterationsCG => CMP_CG_ITERS,
             :absTol => 0.0, :relTol => 0.0, :tolInner => CMP_TOL_INNER, pairs(MRIRECO_UNWEIGHTED)...,
             pairs(MRIRECO_DEVICE)...,
         )
+        method === :wavelet && (rp[:sparseTrafo] = "Wavelet")
         with_mrireco_blas() do
             MRIReco.reconstruction(acq, rp)
         end
@@ -768,7 +797,7 @@ end
     sigpy_dynamic(method, c; λ, iterations, ρ) -> (time_ms, image)
 
 Cine reconstruction with SigPy on the joint system of all frames (`_sp_cine_system`), returned as
-`(nx, ny, time)`. `method ∈ (:adjoint, :gridding, :cgsense, :lowrank, :ttv)`:
+`(nx, ny, time)`. `method ∈ (:adjoint, :gridding, :cgsense, :lowrank, :ttv, :ttv_pd, :wavelet)`:
 
   * `:adjoint` / `:gridding` apply `Aᴴ`, the latter to the DCF-weighted data;
   * `:cgsense` is `sigpy.app.LinearLeastSquares` with no prox, i.e. conjugate gradient;
@@ -780,6 +809,8 @@ Cine reconstruction with SigPy on the joint system of all frames (`_sp_cine_syst
 
 The regularized rows use the settings of the other SigPy rows (`ADMM`, `rho = ρ`,
 `max_cg_iter = CMP_CG_ITERS`); `:ttv_pd` is `:ttv` with `solver = "PrimalDualHybridGradient"`.
+`:wavelet` is the prox `sigpy.mri.app.L1WaveletRecon` builds, with the wavelet over the two image
+axes of each frame, and its solver, accelerated proximal gradient with the step from a power method.
 """
 function sigpy_dynamic(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = CMP_RHO)
     A, y, ishape = _sp_cine_system(c)
@@ -801,6 +832,10 @@ function sigpy_dynamic(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = 
         solver = m === :ttv ? admm :
             (; solver = "PrimalDualHybridGradient", max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false)
         () -> sp.app.LinearLeastSquares(A(), _sp_dev(yn); proxg = prox, G, solver...).run()
+    elseif m === :wavelet
+        W = sp.linop.Wavelet(ishape; axes = (-2, -1), wave_name = CMP_WAVELET_NAME)
+        prox = sp.prox.UnitaryTransform(sp.prox.L1Reg(W.oshape, λ), W)
+        () -> sp.app.LinearLeastSquares(A(), _sp_dev(yn); proxg = prox, max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
     else
         error("SigPy has no dynamic $m here")
     end
@@ -916,10 +951,10 @@ trajectories of its family.
 | toolkit | static (2D, per slice, 3D) | cine |
 |---|---|---|
 | BART | everything | everything |
-| SigPy | adjoint / gridding, CG-SENSE, isotropic / anisotropic TV (ADMM and PDHG), L1-wavelet | adjoint / gridding, CG-SENSE, global low-rank, temporal TV (ADMM and PDHG) |
-| MRIReco | adjoint / gridding, CG-SENSE, anisotropic TV, L1-wavelet | adjoint / gridding, CG-SENSE, global / locally low-rank |
+| SigPy | adjoint / gridding, CG-SENSE, isotropic / anisotropic TV (ADMM and PDHG), L1-wavelet | adjoint / gridding, CG-SENSE, global low-rank, temporal TV (ADMM and PDHG), L1-wavelet |
+| MRIReco | adjoint / gridding, CG-SENSE, anisotropic TV, L1-wavelet | adjoint / gridding, CG-SENSE, global / locally low-rank, L1-wavelet |
 | MIRT | adjoint / gridding, CG-SENSE | adjoint / gridding, CG-SENSE, global low-rank |
-| MRpro | adjoint / gridding, CG-SENSE, isotropic / anisotropic TV (PDHG), L1-wavelet | adjoint / gridding, CG-SENSE, global low-rank, temporal TV (PDHG) |
+| MRpro | adjoint / gridding, CG-SENSE, isotropic / anisotropic TV (PDHG), L1-wavelet | adjoint / gridding, CG-SENSE, global low-rank, temporal TV (PDHG), L1-wavelet |
 
 What is absent and why: TGV exists only in BART and MRT. SigPy and MIRT have no locally low-rank
 prox, and building one here would compare this file's block convention rather than the toolkits
@@ -938,18 +973,18 @@ function supports(tk::Symbol, c::BenchCase, m::Symbol)
     fam = c.family
     if tk === :bart
         cart && return true
-        return fam === :cine || m in (:gridding, :cgsense, :tv, :atv, :tv_pd, :atv_pd)
+        return fam === :cine || m in (:gridding, :cgsense, :tv, :atv, :tv_pd, :atv_pd, :wavelet)
     elseif tk === :sigpy
-        fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank, :ttv, :ttv_pd)
+        fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank, :ttv, :ttv_pd, :wavelet)
         return m in (:adjoint, :gridding, :cgsense, :tv, :atv, :tv_pd, :atv_pd, :wavelet)
     elseif tk === :mrireco
-        fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank, :llr)
+        fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank, :llr, :wavelet)
         return m in (:adjoint, :gridding, :cgsense, :atv, :wavelet)
     elseif tk === :mirt
         fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank)
         return m in (:adjoint, :gridding, :cgsense)
     elseif tk === :mrpro
-        fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank, :ttv_pd)
+        fam === :cine && return m in (:adjoint, :gridding, :cgsense, :lowrank, :ttv_pd, :wavelet)
         return m in (:adjoint, :gridding, :cgsense, :tv_pd, :atv_pd, :wavelet)
     end
     return false
@@ -1155,9 +1190,8 @@ end
     sigpy_noncartesian(method, c; λ, iterations) -> (time_ms, image)
 
 SigPy's NUFFT path for a single-slice non-Cartesian case, on `_sp_coord(c)`. `:gridding` is
-`Sense(mps, coord)ᴴ (dcf · y)`, the operator built inside the timed region; `:cgsense` and the TV
-rows are the apps of `sigpy_recon` given
-`coord`.
+`Sense(mps, coord)ᴴ (dcf · y)`, the operator built inside the timed region; `:cgsense`, the TV
+rows and L1-wavelet are the apps of `sigpy_recon` given `coord`.
 """
 function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = CMP_RHO)
     ns, nsp = size(c.traj, 2), size(c.traj, 3)
@@ -1185,6 +1219,11 @@ function sigpy_noncartesian(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, 
         tv = m === :tv_pd ? PY["_IsoTVRecon"] : sp_app.TotalVariationRecon
         () -> tv(
             _sp_dev(yh), _sp_dev(mpsh), λ; coord = _sp_dev(coordh), device = dev, solver = "PrimalDualHybridGradient",
+            max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
+        ).run()
+    elseif m === :wavelet
+        () -> sp_app.L1WaveletRecon(
+            _sp_dev(yh), _sp_dev(mpsh), λ; coord = _sp_dev(coordh), device = dev, wave_name = CMP_WAVELET_NAME,
             max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false
         ).run()
     else

@@ -409,7 +409,8 @@ penalty_of(m::Symbol) = get(PDHG_METHODS, m, m)
 
 The methods that make sense for case `c`: a direct reconstruction (adjoint for Cartesian, DCF
 gridding for radial), CG-SENSE where there is more than one coil, spatial sparsity (isotropic and
-anisotropic TV, L1-wavelet, TGV) for static images, and temporal priors (global and locally low rank, temporal TV) for cine.
+anisotropic TV, L1-wavelet, TGV) for static images, and temporal priors (global and locally low rank, temporal TV) for cine,
+along with the spatial L1-wavelet of each frame.
 Each TV runs twice, by ADMM and by PDHG ([`PDHG_METHODS`](@ref)).
 TGV is 2D-only here (the 3D variant costs an order of magnitude more per iteration than anything
 else in the catalog).
@@ -418,9 +419,9 @@ function applicable_methods(c::BenchCase)
     ms = Symbol[c.trajectory === :noncartesian ? :gridding : :adjoint]
     ncoils(c) > 1 && push!(ms, :cgsense)
     if c.family === :cine
-        append!(ms, (:lowrank, :llr, :ttv, :ttv_pd))
+        append!(ms, (:lowrank, :llr, :ttv, :ttv_pd, :wavelet))
     elseif c.trajectory === :noncartesian
-        append!(ms, (:tv, :atv, :tv_pd, :atv_pd))
+        append!(ms, (:tv, :atv, :tv_pd, :atv_pd, :wavelet))
     elseif c.family === :volume
         append!(ms, (:tv, :atv, :tv_pd, :atv_pd, :wavelet))
     else
