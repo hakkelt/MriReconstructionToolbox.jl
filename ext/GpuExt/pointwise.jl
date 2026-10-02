@@ -6,12 +6,12 @@
 # of the array the run writes, adding a reduction's copies in order, so the result is the one
 # the operators give one after another.
 
-using AbstractOperators:
-    AbstractOperators, DiagOp, NoOperatorBroadCast,
+using .AbstractOperators:
+    DiagOp, NoOperatorBroadCast,
     PwMapKind, PwExpandKind, PwReduceKind, PwPlain, PwExpand, PwReduce,
     PwLeftMul, PwConjLeftMul, PwRealConjLeftMul, PwMask, PwTrailingMask,
     _pw_apply_all, _pw_shape_fits
-import AbstractOperators: _pw_kind, _pw_fits, _pw_kernel!, _pw_apply
+import .AbstractOperators: _pw_kind, _pw_fits, _pw_kernel!, _pw_apply
 import GPUArrays.Adapt: Adapt, adapt_structure
 
 const _GPUDiagOp = DiagOp{<:Any, <:Any, <:Any, <:Any, <:Any, <:Any, <:AbstractGPUArray}
