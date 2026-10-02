@@ -86,32 +86,29 @@ index fd2546a..f21a74b 100644
      allocate_in_codomain,
      domain_array_type,
 diff --git a/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl b/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl
-index 2b31c23..ec58667 100644
+index 3e1f4b1..c3fa432 100644
 --- a/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl
 +++ b/deps/AbstractOperators/NFFTOperators/ext/NFFTOperatorsGPUArraysExt.jl
-@@ -1,11 +1,11 @@
+@@ -1,9 +1,9 @@
  module NFFTOperatorsGPUArraysExt
  
 -using NFFTOperators
--import NFFTOperators:
-+using ..NFFTOperators
-+import ..NFFTOperators:
-     _nfft_plan, _batched_nfft_plan, _nfft_adapt, NFFTOp, BatchedNFFTOp, _get_normal_op, NfftNormalOp
+-import NFFTOperators: _nfft_plan, _nfft_adapt, NFFTOp, _toeplitz_kernel, _nodes, _first_plan
 -import NFFTOperators.NFFT: NFFT
 -import NFFTOperators: FFTW
--import NFFTOperators.AbstractOperators: allocate_in_domain, domain_array_type
++using ..NFFTOperators
++import ..NFFTOperators: _nfft_plan, _nfft_adapt, NFFTOp, _toeplitz_kernel, _nodes, _first_plan
 +import ..NFFTOperators.NFFT: NFFT
 +import ..NFFTOperators: FFTW
-+import ..NFFTOperators.AbstractOperators: allocate_in_domain, domain_array_type
  using GPUArrays
  using Adapt
  using LinearAlgebra: mul!
 diff --git a/deps/AbstractOperators/NFFTOperators/src/NFFTOperators.jl b/deps/AbstractOperators/NFFTOperators/src/NFFTOperators.jl
-index 4a69b5f..904024b 100644
+index f3125af..204d830 100644
 --- a/deps/AbstractOperators/NFFTOperators/src/NFFTOperators.jl
 +++ b/deps/AbstractOperators/NFFTOperators/src/NFFTOperators.jl
 @@ -3,14 +3,14 @@ module NFFTOperators
- export NFFTOp, BatchedNFFTOp
+ export NFFTOp
  
  using LinearAlgebra
 -using AbstractOperators

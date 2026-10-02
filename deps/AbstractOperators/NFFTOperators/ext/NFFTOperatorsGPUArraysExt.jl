@@ -1,9 +1,9 @@
 module NFFTOperatorsGPUArraysExt
 
-using NFFTOperators
-import NFFTOperators: _nfft_plan, _nfft_adapt, NFFTOp, _toeplitz_kernel, _nodes, _first_plan
-import NFFTOperators.NFFT: NFFT
-import NFFTOperators: FFTW
+using ..NFFTOperators
+import ..NFFTOperators: _nfft_plan, _nfft_adapt, NFFTOp, _toeplitz_kernel, _nodes, _first_plan
+import ..NFFTOperators.NFFT: NFFT
+import ..NFFTOperators: FFTW
 using GPUArrays
 using Adapt
 using LinearAlgebra: mul!
