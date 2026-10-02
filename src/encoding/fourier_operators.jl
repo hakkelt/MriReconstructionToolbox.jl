@@ -223,6 +223,10 @@ A trajectory with trailing frame axes (one trajectory per frame, see
 `trajectory` and of an array `dcf`, and applies them with a spreading `BatchOp`: frame `t` of the
 image goes through frame `t`'s NFFT, repeated over the axes between the samples and the frames
 (coils, slabs). The frames are then the parallel layer when `threaded`.
+
+For k-space in device memory the operator is one `BatchedNFFTOp` over every axis after the
+samples, with or without frame axes: each step of the transform runs once for all coils and
+frames, and its Toeplitz normal operator is built once and kept.
 """
 function get_fourier_operator(
         ksp::AbstractArray,
@@ -245,10 +249,16 @@ function _nfft_operator(ksp, image_size, trajectory, nframe::Int; dcf, threaded,
     fourier_dims = ndims(trajectory) - 1 - nframe
     nfft_kwargs = _nfft_operating_point_kwargs(m, sigma, precompute, fast_planning)
     if _is_device(ksp)
-        # The device plan's FFT is not FFTW's, so it takes no FFTW flags; the trajectory (and a
-        # host `dcf`) stay on the host, `NFFTOp` moves what it needs.
-        nfft_kwargs = (; Base.structdiff(nfft_kwargs, NamedTuple{(:fftflags,)})..., array_type = _array_type_of(ksp))
+        # One transform for the whole stack: the axes after the samples are the batch, the last
+        # `nframe` of them frames with trajectories of their own. The device plan's FFT is not
+        # FFTW's, so it takes no FFTW flags; the trajectory (and a host `dcf`) stay on the host,
+        # and the operator moves what it needs.
+        nfft_kwargs = Base.structdiff(nfft_kwargs, NamedTuple{(:fftflags,)})
         dcf = dcf isa AbstractArray ? _adapt_any(Array, dcf) : dcf
+        batch = size(ksp)[(fourier_dims + 1):(ndims(ksp) - nframe)]
+        return BatchedNFFTOp(
+            image_size, _adapt_any(Array, trajectory), dcf; batch, nframe, array_type = _array_type_of(ksp), nfft_kwargs...
+        )
     end
     if nframe > 0
         return _per_frame_nfft_operator(ksp, image_size, trajectory, nframe, fourier_dims; dcf, threaded, nfft_kwargs)

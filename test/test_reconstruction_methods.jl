@@ -848,12 +848,14 @@ end
 @testitem "device reconstructions hand their FFT plans back" tags = [:reconstruction, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
     using Test
     using MriReconstructionToolbox
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using MriReconstructionToolbox: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
     using Random
 
     # A reconstruction drops the encoding operator it built, and with it the operator's cuFFT
     # plans; their handles must be back in CUDA's cache when it returns, not left for the
-    # garbage collector, or every later reconstruction plans its FFTs from scratch.
+    # garbage collector, or every later reconstruction plans its FFTs from scratch. A radial
+    # iterative reconstruction also has the Toeplitz normal operator's plans, which the solver
+    # asks the encoding operator for.
     Random.seed!(2)
     n, nc = 32, 4
     mask = falses(n)
@@ -862,15 +864,20 @@ end
         randn(ComplexF32, n, count(mask), nc); is3D = false, image_size = (n, n),
         subsampling = (:, mask), sensitivity_maps = randn(ComplexF32, n, n, nc),
     )
+    radial = NonCartesianAcquisitionInfo(
+        randn(ComplexF32, 2n, 12, nc); trajectory = Float32.(parent(radial_trajectory(2n, 12))), image_size = (n, n),
+        sensitivity_maps = randn(ComplexF32, n, n, nc),
+    )
     methods = (
         DirectReconstruction(),
         IterativeReconstruction(; regularization = TotalVariation2D(1.0f-3), maxit = 3),
+        IterativeReconstruction(; maxit = 3),
     )
     for backend in fft_backends()
         nameof(backend.array_type) === :CuArray || continue
         handles = Base.get_extension(MriReconstructionToolbox, :MriReconstructionToolboxCUDAExt).CUFFT.idle_handles
-        dacq = to_device(backend, acq)
-        for method in methods
+        for a in (acq, radial), method in methods
+            dacq = to_device(backend, a)
             reconstruct(dacq, method; verbosity = Silent())
             active = length(handles.active_handles)
             reconstruct(dacq, method; verbosity = Silent())
