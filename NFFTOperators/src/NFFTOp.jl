@@ -1,45 +1,70 @@
 struct NFFTOp{
         T,
         D,
-        P <: NFFT.AbstractNFFTPlan{T, D},
+        N,
+        M,
+        P,
         K <: AbstractArray{Complex{T}},
         DC <: AbstractArray{T},
+        IB <: Union{Nothing, AbstractArray{Complex{T}}},
     } <: AbstractOperators.LinearOperator
     plan::P
+    dim_in::NTuple{N, Int}
+    dim_out::NTuple{M, Int}
+    dims::UnitRange{Int}
+    nframe::Int
     ksp_buffer::K
+    img_buffer::IB
     dcf::DC
     threaded::Bool
+    normal_op::Base.RefValue{Any}
 end
 
 """
-	NFFTOp(image_size::NTuple{D,Int}, trajectory::AbstractArray{T}, dcf::Union{Nothing,Symbol,AbstractArray}=nothing; threaded::Bool=true, kwargs...)
+	NFFTOp(dim_in::NTuple{N,Int}, trajectory::AbstractArray{T}, dcf::Union{Nothing,Symbol,AbstractArray}=nothing;
+	       dims = 1:N, nframe::Int = 0, threaded::Bool = true, array_type::Type = Array{T}, kwargs...)
 
-Create a non-uniform fast Fourier transform operator [1]. The operator is created with a given image
+Create a non-uniform fast Fourier transform operator [1]. The operator is created with a given input
 size, trajectory, and density compensation function (dcf). The dcf, when applied, corrects for the
 non-uniform sample density of the trajectory in the *adjoint* direction (`op' * ksp`); the forward
 direction (`op * image`) never uses it. The operator can be used to transform images to k-space and
 back.
 
+The transform runs over the axes `dims` of the input, a range of consecutive axes, and the samples
+take their place in the output: an input of size `(Nx, Ny, C)` with `dims = 1:2` maps to
+`(samples..., C)`. Every other axis is a batch axis, and each of its images is transformed alike.
+The last `nframe` axes of the input, which must come after `dims`, are frame axes with a
+trajectory of their own: `trajectory` is then `(D, samples..., frames...)`, and frame `t` of the
+input is transformed with `trajectory[:, .., t]`.
+
+On device storage the whole stack is one transform, each step of it a single kernel launch, and
+the Toeplitz normal operator is built once for all frames. On the host the images of the stack are
+transformed one after another, each threaded as `threaded` allows; to spread a host stack over
+threads instead, apply an operator of one image with `BatchOp`.
+
 <em>To use the operator, the NFFT package must be explicitly imported!</em>
 
 # Arguments
-- `image_size::NTuple{D,Int}`: The size of the image to transform.
+- `dim_in::NTuple{N,Int}`: The size of the input, the image axes `dims` and any batch axes.
 - `trajectory::AbstractArray{T}`: The trajectory of the samples in k-space. The first dimension
-  of the trajectory must match the number of image dimensions. The trajectory must have at least
-  two dimensions.
+  of the trajectory must match the number of axes in `dims`. The trajectory must have at least
+  two dimensions; its last `nframe` axes are frames and must match the last `nframe` of `dim_in`.
 - `dcf::Union{Nothing,Symbol,AbstractArray}=nothing`: Controls density compensation:
   - `nothing` (the default): **no** density compensation is applied — the dcf is an array of ones,
     so `op'` is the *true* mathematical adjoint of `op`. This is what any algorithm that assumes
     `A'` is the adjoint (operator-norm estimation via power iteration, CG/CGNR, ...) requires.
-  - `:auto`: estimate the dcf with the iterative sample density compensation method of Pipe &
-    Menon [2] (`NFFTTools.sdc`), exactly as this constructor always did before this keyword
-    existed. With `:auto`, `op'` is **not** the true adjoint of `op` — it is a density-compensated
-    approximate inverse, useful for a quick direct (gridding) reconstruction but wrong as the
-    adjoint fed to an algorithm that relies on the adjoint relationship.
-  - An `AbstractArray`: used as given (its shape from the second dimension of `trajectory` on must
-    match, and its element type must match `trajectory`'s). Same caveat as `:auto`: a non-trivial
-    dcf makes `op'` a weighted approximate inverse, not the true adjoint.
+  - `:auto`: estimate the dcf of each frame with the iterative sample density compensation method
+    of Pipe & Menon [2] (`NFFTTools.sdc`). With `:auto`, `op'` is **not** the true adjoint of `op` —
+    it is a density-compensated approximate inverse, useful for a quick direct (gridding)
+    reconstruction but wrong as the adjoint fed to an algorithm that relies on the adjoint
+    relationship.
+  - An `AbstractArray`: used as given (its shape must be that of `trajectory` from the second
+    dimension on, and its element type must match `trajectory`'s). Same caveat as `:auto`: a
+    non-trivial dcf makes `op'` a weighted approximate inverse, not the true adjoint.
+- `dims = 1:N`: The axes of the input the transform runs over, consecutive and ascending.
+- `nframe::Int = 0`: The number of trailing input axes that are frame axes of the trajectory.
 - `threaded::Bool=true`: `false` disables threading outright; `true` (the default) enables it subject to the threading policy, which also requires more than one Julia thread and CPU storage. Fixed at construction, since the NFFT plan is built for a thread count.
+- `array_type::Type = Array{T}`: The storage of the operator's buffers and plans.
 - `dcf_estimation_iterations::Int=20`: The number of iterations to use when estimating the dcf.
   Only used when `dcf = :auto`.
 - `dcf_correction_function::Function=identity`: A correction function to apply to the estimated dcf.
@@ -70,50 +95,99 @@ julia> ksp = op * image;
 
 julia> image_reconstructed = op' * ksp;
 
+julia> NFFTOp((128, 128, 8), trajectory; dims = 1:2)
+𝒩  ℂ^(128, 128, 8) -> ℂ^(128, 50, 8)
+
+julia> NFFTOp((128, 128, 8, 4), rand(2, 128, 12, 4) .- 0.5; dims = 1:2, nframe = 1)
+𝒩  ℂ^(128, 128, 8, 4) -> ℂ^(128, 12, 8, 4)
+
 ```
 """
 function NFFTOp(
-        image_size::NTuple{D, Int},
+        dim_in::NTuple{N, Int},
         trajectory::AbstractArray{T},
         dcf::Union{Nothing, Symbol, AbstractArray} = nothing;
+        dims = 1:N,
+        nframe::Int = 0,
         threaded::Bool = true,
         array_type::Type = Array{T},
         dcf_estimation_iterations::Int = 20,
         dcf_correction_function::Function = identity,
         kwargs...,
-    ) where {T, D}
+    ) where {N, T}
+    dims_ = _transform_axes(dims, N)
+    D = length(dims_)
     check_traj(trajectory, D)
+    0 <= nframe <= ndims(trajectory) - 2 ||
+        throw(ArgumentError("a trajectory of $(ndims(trajectory)) axes has no room for $nframe frame axes"))
+    last(dims_) <= N - nframe ||
+        throw(ArgumentError("the frame axes must come after the transformed axes $dims_"))
+    sample_size = size(trajectory)[2:(end - nframe)]
+    frame_size = size(trajectory)[(end - nframe + 1):end]
+    dim_in[(end - nframe + 1):end] == frame_size || throw(
+        DimensionMismatch("the frame axes $(dim_in[(end - nframe + 1):end]) of the input do not match the trajectory's $frame_size")
+    )
+    image_size = dim_in[dims_]
+    inner = dim_in[1:(first(dims_) - 1)]
+    outer = dim_in[(last(dims_) + 1):end]
+    nbatch = prod(inner; init = 1) * prod(outer[1:(end - nframe)]; init = 1)
+    nframes = prod(frame_size; init = 1)
     arr_wrapper = _array_wrapper_type(array_type)
     # Resolved before planning: the plan itself is built for this thread count, so the
     # policy has to have had its say by now (a `nothing` reaching `create_plan` would not
     # even dispatch).
     threaded_flag = _nfft_threaded(threaded, arr_wrapper)
-    plan = _nfft_plan(arr_wrapper, trajectory, image_size, threaded_flag; kwargs...)
-    ksp_shape = size(trajectory)[2:end]
-    ksp_buffer = _nfft_adapt(arr_wrapper, zeros(complex(T), ksp_shape...))
-    dcf_cpu = _resolve_dcf(dcf, plan, trajectory, ksp_shape, T, D, dcf_estimation_iterations, dcf_correction_function)
-    adapted_dcf = _nfft_adapt(arr_wrapper, collect(dcf_cpu))
-    return NFFTOp{T, D, typeof(plan), typeof(ksp_buffer), typeof(adapted_dcf)}(plan, ksp_buffer, adapted_dcf, threaded_flag)
+    plan = _nfft_plan(arr_wrapper, trajectory, image_size, threaded_flag; batch = nbatch, frames = nframes, kwargs...)
+    dcf_host = _resolve_dcf(
+        dcf, plan, trajectory, image_size, sample_size, frame_size, T, dcf_estimation_iterations, dcf_correction_function; kwargs...
+    )
+    # Buffers and the dcf are in the transform's own layout, `(image or samples, inner..., outer...)`.
+    batch_axes = (inner..., outer...)
+    dcf_shape = (sample_size..., map(_ -> 1, batch_axes[1:(end - nframe)])..., frame_size...)
+    adapted_dcf = _nfft_adapt(arr_wrapper, reshape(collect(T, dcf_host), dcf_shape))
+    ksp_buffer = _nfft_adapt(arr_wrapper, zeros(complex(T), sample_size..., batch_axes...))
+    img_buffer = isempty(inner) ? nothing : similar(ksp_buffer, (image_size..., batch_axes...))
+    dim_out = (inner..., sample_size..., outer...)
+    return NFFTOp{T, D, N, length(dim_out), typeof(plan), typeof(ksp_buffer), typeof(adapted_dcf), typeof(img_buffer)}(
+        plan, dim_in, dim_out, dims_, nframe, ksp_buffer, img_buffer, adapted_dcf, threaded_flag, Ref{Any}(nothing)
+    )
+end
+
+function _transform_axes(dims, N)
+    d = collect(Int, dims)
+    (!isempty(d) && d == first(d):last(d) && 1 <= first(d) && last(d) <= N) ||
+        throw(ArgumentError("dims must be consecutive ascending axes of the $N-axis input, got $dims"))
+    return first(d):last(d)
 end
 
 """
-    _resolve_dcf(dcf, plan, trajectory, ksp_shape, T, D, dcf_estimation_iterations, dcf_correction_function)
+    _resolve_dcf(dcf, plan, trajectory, image_size, sample_size, frame_size, T, iters, correction; kwargs...)
 
-Resolve the `dcf` keyword of [`NFFTOp`](@ref) into a concrete dcf array:
+Resolve the `dcf` keyword of [`NFFTOp`](@ref) into a concrete host dcf array of size
+`(sample_size..., frame_size...)`:
 - `nothing` -> an array of ones (no density compensation, `op'` is the true adjoint).
-- `:auto` -> estimate with `NFFTTools.sdc` (the pre-existing automatic behaviour).
+- `:auto` -> estimate each frame's with `NFFTTools.sdc`.
 - an `AbstractArray` -> used as given, after validating its shape/eltype against `trajectory`.
 """
-function _resolve_dcf(::Nothing, plan, trajectory, ksp_shape, T, D, dcf_estimation_iterations, dcf_correction_function)
-    return ones(T, ksp_shape...)
+function _resolve_dcf(::Nothing, plan, trajectory, image_size, sample_size, frame_size, T, iters, correction; kwargs...)
+    return ones(T, sample_size..., frame_size...)
 end
-function _resolve_dcf(dcf::Symbol, plan, trajectory, ksp_shape, T, D, dcf_estimation_iterations, dcf_correction_function)
+function _resolve_dcf(dcf::Symbol, plan, trajectory, image_size, sample_size, frame_size, T, iters, correction; kwargs...)
     dcf === :auto || throw(ArgumentError("dcf as a Symbol must be :auto, got :$dcf"))
-    raw_dcf = NFFTTools.sdc(plan; iters = dcf_estimation_iterations)
-    return dcf_correction_function(reshape(raw_dcf, ksp_shape))
+    if plan isa NFFT.NFFTPlan
+        return correction(reshape(NFFTTools.sdc(plan; iters), sample_size))
+    end
+    D = size(trajectory, 1)
+    k = reshape(trajectory, D, :)
+    J = prod(sample_size)
+    frames = map(1:prod(frame_size; init = 1)) do t
+        p = create_plan(k[:, ((t - 1) * J + 1):(t * J)], image_size, false; kwargs...)
+        correction(reshape(NFFTTools.sdc(p; iters), sample_size))
+    end
+    return reshape(stack(frames), sample_size..., frame_size...)
 end
-function _resolve_dcf(dcf::AbstractArray, plan, trajectory, ksp_shape, T, D, dcf_estimation_iterations, dcf_correction_function)
-    check_traj_and_dcf(trajectory, dcf, D)
+function _resolve_dcf(dcf::AbstractArray, plan, trajectory, image_size, sample_size, frame_size, T, iters, correction; kwargs...)
+    check_traj_and_dcf(trajectory, dcf, size(trajectory, 1))
     return dcf
 end
 
@@ -168,9 +242,15 @@ function _nfft_threaded(threaded::Bool, arr_wrapper)
     end
 end
 
-# Default (CPU) implementations — overridden by NFFTOperatorsGPUArraysExt for GPU types
-function _nfft_plan(::Type{Array}, trajectory, image_size, threaded; kwargs...)
-    return create_plan(trajectory, image_size, threaded; kwargs...)
+
+# Default (CPU) implementations — overridden by NFFTOperatorsGPUArraysExt for GPU types. A host
+# plan transforms one image: frames with trajectories of their own get a plan each, and a batch
+# is a loop over the images (`_transform!`).
+function _nfft_plan(::Type{Array}, trajectory, image_size, threaded; batch = 1, frames = 1, kwargs...)
+    frames == 1 && return create_plan(trajectory, image_size, threaded; kwargs...)
+    k = reshape(trajectory, size(trajectory, 1), :)
+    J = size(k, 2) ÷ frames
+    return [create_plan(k[:, ((t - 1) * J + 1):(t * J)], image_size, threaded; kwargs...) for t in 1:frames]
 end
 _nfft_adapt(::Type{Array}, arr::AbstractArray) = collect(arr)
 
@@ -189,10 +269,29 @@ per-call.
 with_nfft_threading(f::F, threaded::Bool) where {F} =
     threaded ? with_full_threads(f) : with_restricted_threads(f)
 
+
+# The number of images in the stack, and of frames among them.
+_nframes(op::NFFTOp) = prod(op.dim_in[(end - op.nframe + 1):end]; init = 1)
+_nimages(op::NFFTOp) = prod(op.dim_in; init = 1) ÷ prod(op.dim_in[op.dims])
+
+# The axis order of the transform's own layout, `(image, inner..., outer...)`, in the input, and
+# that of the output in the transform's `(samples, inner..., outer...)`.
+_in_perm(op::NFFTOp{T, D, N}) where {T, D, N} =
+    (op.dims..., 1:(first(op.dims) - 1)..., (last(op.dims) + 1):N...)
+function _out_perm(op::NFFTOp{T, D, N, M}) where {T, D, N, M}
+    pre = first(op.dims) - 1
+    ns = M - N + D
+    return ((ns + 1):(ns + pre)..., 1:ns..., (ns + pre + 1):M...)
+end
+
 function mul!(ksp::AbstractArray, op::NFFTOp, img::AbstractArray)
     AbstractOperators.check(ksp, op, img)
-    with_nfft_threading(op.threaded) do
-        mul!(vec(ksp), op.plan, img)
+    if op.img_buffer === nothing
+        _transform!(ksp, op, img)
+    else
+        permutedims!(op.img_buffer, img, _in_perm(op))
+        _transform!(op.ksp_buffer, op, op.img_buffer)
+        permutedims!(ksp, op.ksp_buffer, _out_perm(op))
     end
     return ksp
 end
@@ -204,25 +303,80 @@ function mul!(
     )
     AbstractOperators.check(img, adjop, ksp)
     op = adjop.A
-    if op.threaded
-        @.. thread = true op.ksp_buffer = ksp * op.dcf
+    if op.img_buffer === nothing
+        _weight!(op, ksp)
+        _adjoint_transform!(img, op, op.ksp_buffer)
     else
-        @.. op.ksp_buffer = ksp * op.dcf
-    end
-    with_nfft_threading(op.threaded) do
-        mul!(img, op.plan', vec(op.ksp_buffer))
+        permutedims!(op.ksp_buffer, ksp, invperm(_out_perm(op)))
+        _weight!(op, op.ksp_buffer)
+        _adjoint_transform!(op.img_buffer, op, op.ksp_buffer)
+        permutedims!(img, op.img_buffer, invperm(_in_perm(op)))
     end
     return img
 end
 
+function _weight!(op::NFFTOp{T, D, N, M, P, K}, ksp) where {T, D, N, M, P, K}
+    if !(K <: Array)
+        op.ksp_buffer .= ksp .* op.dcf
+    elseif op.threaded
+        @.. thread = true op.ksp_buffer = ksp * op.dcf
+    else
+        @.. op.ksp_buffer = ksp * op.dcf
+    end
+    return op.ksp_buffer
+end
+
+# The transform of a stack in the transform's own layout. One plan does the whole stack on a
+# device; on the host each image is transformed by its frame's plan in turn.
+function _transform!(ksp, op::NFFTOp, img)
+    with_nfft_threading(op.threaded) do
+        _each_image(op, ksp, img) do p, k, x
+            mul!(k, p, x)
+        end
+    end
+    return ksp
+end
+
+function _adjoint_transform!(img, op::NFFTOp, ksp)
+    with_nfft_threading(op.threaded) do
+        _each_image(op, ksp, img) do p, k, x
+            mul!(x, p', k)
+        end
+    end
+    return img
+end
+
+function _each_image(f::F, op::NFFTOp{T, D, N, M, P, K}, ksp, img) where {F, T, D, N, M, P, K}
+    if !(K <: Array)
+        f(op.plan, ksp, img)
+        return nothing
+    end
+    image_size = op.dim_in[op.dims]
+    nf = _nframes(op)
+    nb = _nimages(op) ÷ nf
+    if nb * nf == 1
+        f(op.plan, vec(ksp), reshape(img, image_size))
+        return nothing
+    end
+    ks = reshape(ksp, :, nb, nf)
+    xs = reshape(img, :, nb, nf)
+    for t in 1:nf
+        p = op.plan isa AbstractVector ? op.plan[t] : op.plan
+        for b in 1:nb
+            f(p, view(ks, :, b, t), reshape(view(xs, :, b, t), image_size))
+        end
+    end
+    return nothing
+end
+
 # Properties
 
-size(L::NFFTOp) = size(L.ksp_buffer), NFFT.size_in(L.plan)
+size(L::NFFTOp) = L.dim_out, L.dim_in
 fun_name(::NFFTOp) = "𝒩"
 domain_type(::NFFTOp{T}) where {T} = complex(T)
 codomain_type(::NFFTOp{T}) where {T} = complex(T)
-domain_array_type(op::NFFTOp) = AbstractOperators._array_wrapper_type(typeof(op.plan.tmpVec)){domain_type(op)}
-codomain_array_type(op::NFFTOp{T, D, P, K}) where {T, D, P, K} = AbstractOperators._array_wrapper_type(K){codomain_type(op)}
+domain_array_type(op::NFFTOp{T, D, N, M, P, K}) where {T, D, N, M, P, K} = _array_wrapper_type(K){domain_type(op)}
+codomain_array_type(op::NFFTOp{T, D, N, M, P, K}) where {T, D, N, M, P, K} = _array_wrapper_type(K){codomain_type(op)}
 
 # Utility
 
@@ -324,6 +478,7 @@ function NFFTPlan(
     )
 end
 
+
 # ─── Threading ────────────────────────────────────────────────────────────────
 #
 # NFFT is a *counted* pool in NestedThreading: the plan itself is built for a thread count
@@ -338,23 +493,29 @@ supports_threading(::NFFTOp) = true
 # Not thread-safe: `ksp_buffer` is operator-owned scratch written by every `mul!`.
 is_thread_safe(::NFFTOp) = false
 
+# A host plan's FFT plans and grid are its own scratch; a copy gets its own, with the gridding
+# tables copied rather than recomputed. A device plan runs in its stream's order and is shared.
+_copy_plan(p::NFFT.NFFTPlan) = copy(p)
+_copy_plan(ps::AbstractVector) = map(_copy_plan, ps)
+_copy_plan(p) = p
+
+# The nodes of all frames, `(D, samples × frames)`.
+_nodes(op::NFFTOp) = op.plan isa AbstractVector ? reduce(hcat, [p.k for p in op.plan]) : op.plan.k
+_first_plan(op::NFFTOp) = op.plan isa AbstractVector ? first(op.plan) : op.plan
+
 function _copy_operator_impl(
-        op::NFFTOp{T, D, P, K, DC}; storage_type = nothing, threaded = nothing
-    ) where {T, D, P, K, DC}
+        op::NFFTOp{T, D, N, M, P, K, DC, IB}; storage_type = nothing, threaded = nothing
+    ) where {T, D, N, M, P, K, DC, IB}
     if storage_type === nothing
         # `mul!` writes the plan's internal scratch (`plan.tmpVec` / `plan.tmpVecHat`), so a
         # plan *shared* between two operator copies races when they run concurrently -- which
-        # is exactly what a per-thread copy is for. `Base.copy` on an `NFFTPlan` gives the copy
-        # its own scratch and its own FFT plans while only copying (not recomputing) the
-        # expensive gridding tables, so it is far cheaper than replanning from the trajectory.
+        # is exactly what a per-thread copy is for. The copy is made inside the target threading
+        # scope, since it re-plans the FFTs at FFTW's *current* budget, and nothing else in the
+        # plan is thread-count-specific. `threaded` still goes through the package rule (`false`
+        # vetoes, `true` is a permission), so `is_threaded` on the copy reports what it will
+        # actually do.
         #
-        # It re-plans those FFTs at FFTW's *current* budget, though, and nothing else in the
-        # plan is thread-count-specific -- so copying inside the target threading scope is what
-        # makes a thread-count change honest without a replan. `threaded` still goes through
-        # the package rule (`false` vetoes, `true` is a permission), so `is_threaded` on the
-        # copy reports what it will actually do.
-        #
-        # `dcf` is read-only in `mul!` and is shared per the copy convention; `ksp_buffer` is
+        # `dcf` is read-only in `mul!` and is shared per the copy convention; the buffers are
         # operator-owned scratch, so the copy gets its own.
         new_threaded = if threaded === nothing
             op.threaded
@@ -362,25 +523,28 @@ function _copy_operator_impl(
             _nfft_threaded(threaded, _array_wrapper_type(K))
         end
         plan = with_nfft_threading(new_threaded) do
-            copy(op.plan)
+            _copy_plan(op.plan)
         end
-        return NFFTOp{T, D, P, K, DC}(plan, similar(op.ksp_buffer), op.dcf, new_threaded)
+        img_buffer = op.img_buffer === nothing ? nothing : similar(op.img_buffer)
+        return NFFTOp{T, D, N, M, P, K, DC, IB}(
+            plan, op.dim_in, op.dim_out, op.dims, op.nframe, similar(op.ksp_buffer), img_buffer, op.dcf,
+            new_threaded, Ref{Any}(nothing),
+        )
     end
     new_threaded = threaded === nothing ? op.threaded : threaded
     # Storage-backend change: rebuild on the requested array type from the trajectory, which
-    # the plan still carries (`plan.k`, in the flattened 2D form `create_plan` reshapes to).
-    image_size = NFFT.size_in(op.plan)
-    ksp_shape = size(op.dcf)
-    trajectory = reshape(collect(op.plan.k), D, ksp_shape...)
-    dcf = collect(op.dcf)
-    new_array_type = storage_type === nothing ? _array_wrapper_type(K){T} : storage_type{T}
+    # the plans still carry (`plan.k`, in the flattened 2D form `create_plan` reshapes to).
+    frame_size = op.dim_in[(end - op.nframe + 1):end]
+    sample_size = op.dim_out[first(op.dims):(first(op.dims) + M - N + D - 1)]
+    trajectory = reshape(collect(_nodes(op)), D, sample_size..., frame_size...)
+    dcf = reshape(collect(op.dcf), sample_size..., frame_size...)
     # The gridding operating point is not recoverable from the trajectory, so it has to be read
     # off the old plan and forwarded: rebuilding at the constructor defaults would silently give
     # the copy a *different* transform from the one the caller set up.
     return NFFTOp(
-        image_size, trajectory, dcf;
-        threaded = new_threaded, array_type = new_array_type,
-        _operating_point_kwargs(op.plan)...,
+        op.dim_in, trajectory, dcf;
+        dims = op.dims, nframe = op.nframe, threaded = new_threaded, array_type = storage_type{T},
+        _operating_point_kwargs(_first_plan(op))...,
     )
 end
 

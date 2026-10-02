@@ -1,6 +1,6 @@
 module NFFTOperators
 
-export NFFTOp, BatchedNFFTOp
+export NFFTOp
 
 using LinearAlgebra
 using AbstractOperators
@@ -31,6 +31,5 @@ import FFTW: FFTW
 
 include("NFFTOp.jl")
 include("NormalNfftOp.jl")
-include("BatchedNFFTOp.jl")
 
 end # module NFFTOperators
