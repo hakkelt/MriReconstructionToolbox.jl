@@ -29,7 +29,8 @@ method_label(m::Symbol, maxit) = m in (:adjoint, :gridding) ? METHOD_LABEL[m] : 
 The methods of case `c` that carry a λ: `applicable_methods` without the direct reconstruction
 and CG-SENSE. These are what `calibrate_lambda.jl` sweeps.
 """
-regularized_methods(c::BenchCase) = filter(m -> !(m in (:adjoint, :gridding, :cgsense)), applicable_methods(c))
+regularized_methods(c::BenchCase) =
+    filter(m -> !(m in (:adjoint, :gridding, :cgsense)) && !haskey(MRT_ONLY_METHODS, m), applicable_methods(c))
 
 """
     race_methods(c) -> Vector{Symbol}
@@ -141,6 +142,7 @@ prepared (a real dataset that is unavailable) is logged and left out.
 function section_cases(pred)
     out = BenchCase[]
     for id in case_ids(; real = DATA in ("real", "all"), synthetic = DATA in ("synthetic", "all"))
+        id in HARNESS_ONLY_CASES && continue
         should_run_case(id) || continue
         c = try
             get_case(id)

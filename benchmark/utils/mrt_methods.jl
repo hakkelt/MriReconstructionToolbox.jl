@@ -37,7 +37,7 @@ which leaves the effective regularization weight unchanged.
 const RADIAL_ADMM_RHO = 2.0e-3
 const RADIAL_LAMBDA = Dict(
     :tv => 8.43e-4, :atv => 8.43e-4, :wavelet => 2.53e-3, :tgv => 8.43e-4, :lowrank => 2.37e-2, :llr => 2.37e-3,
-    :ttv => 7.89e-4,
+    :ttv => 7.89e-4, :epr => 8.43e-4,
 )
 
 """
@@ -50,11 +50,12 @@ and its NRMSE are comparable across checkouts regardless of later recalibration.
 They were set under `BartScaling` (tv 0.01, wavelet 0.005, tgv 0.003, lowrank 0.01) and are now in
 `QuantileScaling` units: the spatial penalties are multiplied by 1.636, the geometric mean of
 `s_bart / s_quantile` over the Cartesian 2D, 3D and multi-slice cases (1.25–1.97), and the temporal
-ones by 0.669, its value on the Cartesian cine.
+ones by 0.669, its value on the Cartesian cine. The edge-preserving roughness penalty (`:epr`, at
+its default `δ`) takes anisotropic TV's λ, the penalty it approaches as `δ → 0`; it is uncalibrated.
 """
 const DEFAULT_LAMBDA = Dict(
     :tv => 0.0164, :atv => 0.0164, :wavelet => 0.0082, :tgv => 0.0049, :lowrank => 0.00669, :llr => 0.00669,
-    :ttv => 0.00669,
+    :ttv => 0.00669, :epr => 0.0164,
 )
 
 """
@@ -95,6 +96,7 @@ function mrt_regularizer(c::BenchCase, method::Symbol, λ::Real)
     method === :wavelet && return vol ?
         L1Wavelet3D(λ; wavelet = MriReconstructionToolbox.WT.db2, levels = WAVELET_LEVELS) :
         L1Wavelet2D(λ; wavelet = MriReconstructionToolbox.WT.db2, levels = WAVELET_LEVELS)
+    method === :epr && return vol ? EdgePreservingRoughness3D(λ) : EdgePreservingRoughness2D(λ)
     method === :tgv && return TotalGeneralizedVariation2D(λ; ratio = 2.0)
     method === :lowrank && return LowRank(λ; time_dim = :time)
     method === :llr && return LocallyLowRank(λ; block_size = (8, 8), time_dim = :time)
@@ -115,22 +117,26 @@ const PDHG_ITERATIONS = OUTER_ITERATIONS * CG_ITERATIONS
 """
     default_maxit(method) -> Int
 
-`CG_ITERATIONS` for CG-SENSE, `PDHG_ITERATIONS` for a PDHG row, `OUTER_ITERATIONS` otherwise.
+`CG_ITERATIONS` for CG-SENSE, `PDHG_ITERATIONS` for a PDHG or L-BFGS row (each iteration
+applies the normal operator about once), `OUTER_ITERATIONS` otherwise.
 """
 default_maxit(m::Symbol) =
-    m === :cgsense ? CG_ITERATIONS : haskey(PDHG_METHODS, m) ? PDHG_ITERATIONS : OUTER_ITERATIONS
+    m === :cgsense ? CG_ITERATIONS : (haskey(PDHG_METHODS, m) || m === :epr_lbfgs) ? PDHG_ITERATIONS : OUTER_ITERATIONS
 
 """
     mrt_algorithm(method, maxit; rho = ADMM_RHO)
 
 Fixed-ρ ADMM with a fixed inner CG and no early stop for every regularized method except
-L1-wavelet, which runs FISTA (forcing a fixed-ρ ADMM on it wrecks it); CGNR for CG-SENSE;
+L1-wavelet, which runs FISTA (forcing a fixed-ρ ADMM on it wrecks it), or POGM for
+`:wavelet_pogm`; L-BFGS for `:epr_lbfgs`; CGNR for CG-SENSE;
 `ChambollePock` for a PDHG row, with the step sizes `reconstruct` derives (its block-diagonal,
 density-compensated preconditioning, ahead of Vũ-Condat on both Cartesian and radial data).
 """
 function mrt_algorithm(method::Symbol, maxit::Int; rho::Real = ADMM_RHO)
     method === :cgsense && return MriReconstructionToolbox.CGNR(; maxit, tol = 0.0)
     method === :wavelet && return MriReconstructionToolbox.FISTA(; maxit, tol = 0.0)
+    method === :wavelet_pogm && return MriReconstructionToolbox.POGM(; maxit, tol = 0.0)
+    method === :epr_lbfgs && return MriReconstructionToolbox.LBFGS(; maxit, tol = 0.0)
     haskey(PDHG_METHODS, method) && return MriReconstructionToolbox.ChambollePock(; maxit, tol = 0.0)
     return MriReconstructionToolbox.ADMM(; rho, maxit, tol = 0.0, cg_tol = 0.0, cg_maxit = CG_ITERATIONS)
 end

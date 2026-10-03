@@ -15,7 +15,7 @@ One benchmark problem. Array layouts, by `family`:
 | family | `reference` | `smaps` | `kspace` | `mask` |
 |---|---|---|---|---|
 | `:single_slice` | `(x, y)` | `(x, y, coil)` | Cartesian `(kx, ky, coil)`, radial `(sample, spoke, coil)` | `(kx, ky)` |
-| `:multislice` | `(x, y, slice)` | `(x, y, coil, slice)` | `(kx, ky, coil, slice)` | `(kx, ky)`, shared by every slice |
+| `:multislice` | `(x, y, slice)` | `(x, y, coil, slice)` | Cartesian `(kx, ky, coil, slice)`, radial `(sample, spoke, coil, slice)` | `(kx, ky)`, shared by every slice |
 | `:volume` | `(x, y, z)` | `(x, y, z, coil)` | `(kx, ky, kz, coil)` | `(kx, ky, kz)` |
 | `:cine` | `(x, y, time)` | `(x, y, coil)` | Cartesian `(kx, ky, coil, time)`, radial `(sample, spoke, coil, time)` | `(kx, ky, time)` |
 
@@ -92,10 +92,19 @@ const SYNTHETIC_CASES = (
     "shepp_logan_2d_8ch_cartesian",
     "shepp_logan_2d_8ch_radial",
     "shepp_logan_multislice_8ch_cartesian",
+    "shepp_logan_multislice_8ch_radial",
     "shepp_logan_3d_8ch_cartesian",
     "torso_cine_8ch_cartesian",
     "torso_cine_8ch_radial",
 )
+
+"""
+    HARNESS_ONLY_CASES
+
+Synthetic cases the MRT harness times but the comparison suite leaves out, because not every
+toolkit converter handles their layout.
+"""
+const HARNESS_ONLY_CASES = ("shepp_logan_multislice_8ch_radial",)
 
 """
     REAL_CASES
@@ -153,8 +162,8 @@ snr_db() = parse(Float64, get(ENV, "MRT_BENCH_SNR_DB", "30"))
 
 function _dims()
     return small_mode() ?
-        (n = 32, slices = 3, coils = 4, acs = 8, calib3d = 8, radial = (64, 16), cine_radial = (64, 9), cine_lines = (4, 4)) :
-        (n = 128, slices = 12, coils = 8, acs = 16, calib3d = 24, radial = (256, 64), cine_radial = (256, 34), cine_lines = (8, 24))
+        (n = 32, slices = 3, radial_slices = 3, coils = 4, acs = 8, calib3d = 8, radial = (64, 16), cine_radial = (64, 9), cine_lines = (4, 4)) :
+        (n = 128, slices = 12, radial_slices = 8, coils = 8, acs = 16, calib3d = 24, radial = (256, 64), cine_radial = (256, 34), cine_lines = (8, 24))
 end
 
 const _CASE_CACHE = Dict{String, BenchCase}()
@@ -233,6 +242,16 @@ function _build_synthetic(id::String; pattern::Symbol = :catalog)
         kfull = centred_fft(reshape(ref, n, n, 1, :) .* maps, (1, 2))
         lines = vd_lines(rng, n, n ÷ 4; acs = d.acs)
         return _finish_cartesian(id, :multislice, ref, maps, kfull, line_mask(n, lines, n); seed)
+    elseif id == "shepp_logan_multislice_8ch_radial"
+        vol = shepp_logan_volume(n)
+        ns = d.radial_slices
+        zsel = round.(Int, range(n ÷ 4 + 1, 3n ÷ 4; length = ns))
+        ref = vol[:, :, zsel]
+        maps = permutedims(coil_maps_3d(n, n, n, d.coils)[:, :, zsel, :], (1, 2, 4, 3))   # (x, y, coil, slice)
+        traj = golden_angle_radial(d.radial...)                                # shared by every slice
+        k = _nfft_forward(reshape(reshape(ref, n, n, 1, ns) .* maps, n, n, :), traj)
+        k = reshape(k, size(traj, 2), size(traj, 3), d.coils, ns)              # (sample, spoke, coil, slice)
+        return _finish_radial(id, :multislice, ref, maps, k, traj; seed)
     elseif id == "shepp_logan_3d_8ch_cartesian"
         vol = shepp_logan_volume(n)
         maps = coil_maps_3d(n, n, n, d.coils)
@@ -393,7 +412,8 @@ end
 Every method name the harness and the comparison suite know, in run order.
 """
 const METHODS = (
-    :adjoint, :gridding, :cgsense, :tv, :atv, :tv_pd, :atv_pd, :wavelet, :tgv, :lowrank, :llr, :ttv, :ttv_pd,
+    :adjoint, :gridding, :cgsense, :tv, :atv, :tv_pd, :atv_pd, :wavelet, :wavelet_pogm, :epr_lbfgs, :tgv, :lowrank, :llr,
+    :ttv, :ttv_pd,
 )
 
 """
@@ -404,7 +424,16 @@ family) algorithm instead of ADMM, and the method whose penalty each solves: `:t
 problem, and so on. `penalty_of` is the identity for every other method.
 """
 const PDHG_METHODS = Dict(:tv_pd => :tv, :atv_pd => :atv, :ttv_pd => :ttv)
-penalty_of(m::Symbol) = get(PDHG_METHODS, m, m)
+
+"""
+    MRT_ONLY_METHODS
+
+Methods that time another MRT algorithm on a penalty, with no counterpart in the other toolkits,
+mapped to that penalty: `:wavelet_pogm` is `:wavelet`'s problem solved by POGM, `:epr_lbfgs` the
+smooth edge-preserving (Huber) roughness penalty solved by L-BFGS. The comparison suite skips them.
+"""
+const MRT_ONLY_METHODS = Dict(:wavelet_pogm => :wavelet, :epr_lbfgs => :epr)
+penalty_of(m::Symbol) = get(PDHG_METHODS, m, get(MRT_ONLY_METHODS, m, m))
 
 """
     applicable_methods(c::BenchCase) -> Vector{Symbol}
@@ -413,7 +442,8 @@ The methods that make sense for case `c`: a direct reconstruction (adjoint for C
 gridding for radial), CG-SENSE where there is more than one coil, spatial sparsity (isotropic and
 anisotropic TV, L1-wavelet, TGV) for static images, and temporal priors (global and locally low rank, temporal TV) for cine,
 along with the spatial L1-wavelet of each frame.
-Each TV runs twice, by ADMM and by PDHG ([`PDHG_METHODS`](@ref)).
+Each TV runs twice, by ADMM and by PDHG ([`PDHG_METHODS`](@ref)). Static 2D cases also run
+L1-wavelet by POGM and the edge-preserving roughness penalty by L-BFGS ([`MRT_ONLY_METHODS`](@ref)).
 TGV is 2D-only here (the 3D variant costs an order of magnitude more per iteration than anything
 else in the catalog).
 """
@@ -423,11 +453,11 @@ function applicable_methods(c::BenchCase)
     if c.family === :cine
         append!(ms, (:lowrank, :llr, :ttv, :ttv_pd, :wavelet))
     elseif c.trajectory === :noncartesian
-        append!(ms, (:tv, :atv, :tv_pd, :atv_pd, :wavelet))
+        append!(ms, (:tv, :atv, :tv_pd, :atv_pd, :wavelet, :wavelet_pogm, :epr_lbfgs))
     elseif c.family === :volume
         append!(ms, (:tv, :atv, :tv_pd, :atv_pd, :wavelet))
     else
-        append!(ms, (:tv, :atv, :tv_pd, :atv_pd, :wavelet, :tgv))
+        append!(ms, (:tv, :atv, :tv_pd, :atv_pd, :wavelet, :wavelet_pogm, :epr_lbfgs, :tgv))
     end
     return ms
 end
