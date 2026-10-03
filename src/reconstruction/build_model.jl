@@ -198,7 +198,7 @@ an implementation detail of `extract_variables`, not something to rely on.
 function build_model_with_variables(
         𝒜::AbstractOperator, y::AbstractArray, regs::Tuple;
         threaded::Bool = true, x₀::Union{Nothing, AbstractArray} = nothing,
-        fidelity::DataFidelity = L2Loss(),
+        fidelity::DataFidelity = L2Loss(), preconditioner = nothing,
     )
     x₀ = isnothing(x₀) ? 𝒜' * y : copy(x₀)
     regs = bind_dimensions(regs, dims_of(x₀))
@@ -213,7 +213,11 @@ function build_model_with_variables(
         # instead. That decision belongs there and nowhere else, because only the parser sees the
         # operator expanded over the problem's full variable tuple — image alone, or
         # (image, auxiliary...) once a regularization such as total generalized variation adds one.
-        @term ls(𝒜 * x - y)
+        #
+        # A `ChambollePock` solve with default step sizes takes the same term written for its
+        # block-diagonal preconditioning instead (`_ChambollePockPreconditioner`).
+        isnothing(preconditioner) ? (@term ls(𝒜 * x - y)) :
+            _preconditioned_data_term(𝒜, y, x, reg_term_list, preconditioner)
     elseif fidelity isa HardConsistency
         prox = hard_consistency_prox(𝒜, y, fidelity.maxit, fidelity.tol)
         StructuredOptimization.Term(1, prox, identity_operator(unname(~x)) * x, "HardConsistency(𝒜x=y)")

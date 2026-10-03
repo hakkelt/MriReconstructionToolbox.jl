@@ -180,17 +180,18 @@ function _reconstruct(
     elseif method isa IterativeReconstruction
         # Iterative reconstruction with regularization
         bound_regs = bind_dimensions(method.regularization, get_image_dims(acq_data))
+        preconditioner = _chambolle_pock_preconditioner(method, acq_data)
         build = (𝒜, y; x₀) -> build_model_with_variables(
             𝒜, y, bound_regs;
             threaded = config.threaded, x₀,
-            fidelity = method.fidelity,
+            fidelity = method.fidelity, preconditioner,
         )
         # The same two post-processing steps the final image goes through below, so that an
         # `on_iteration` callback sees intermediate iterates in the units, shape and dimension
         # names of the value this function returns.
         present = x -> _present_image(x, method, acq_data, config)
         x̂ = _iterative_reconstruct_core(
-            𝒜, acq_data, x̂, scale, method, config; build, present, prior,
+            𝒜, acq_data, x̂, scale, method, config; build, present, prior, preconditioner,
         )
         x̂ = _present_image(x̂, method, acq_data, config)
     end

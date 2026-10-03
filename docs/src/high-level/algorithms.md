@@ -342,28 +342,34 @@ Chambolle-Pock's primal-dual method (Algorithm 1 of the 2011 paper) solves
 ``\min_x g(x) + h(Kx)`` with ``g`` and ``h`` used only through their proximal operators and ``K``
 only through `K` and `K'`. `reconstruct` stacks every term into ``h``: the data term and each
 regularizer become blocks of ``K = [\mathcal{A}; D_1; …]`` and ``h`` their separable sum, so the data
-term is handled through its proximal operator, not its gradient, and the primal step is limited by
-``\|K\|`` alone. A constraint the stack cannot take goes to ``g``. Each iteration applies
+term is handled through its proximal operator, not its gradient. Each iteration applies
 ``\mathcal{A}``, ``\mathcal{A}'`` and every ``D_i``, ``D_i'`` once.
 
+Unless `tau`, `sigma`, `ratio` or `normL` is given, `reconstruct` preconditions the iteration
+(block-diagonal preconditioning, Pock & Chambolle 2011): the data block gets a dual step of its
+own, per k-space sample proportional to the density-compensation weight on non-Cartesian data
+(the acquisition's `dcf`, or `density_compensation`'s when it has none), and the step budget is
+split evenly between the data and the regularization blocks. Without it one scalar step serves
+every block, the large-norm data block dictates it, and the data dual barely moves.
+
 **Parameters:**
-- `ratio`: the ratio ``\sigma/\tau`` of the dual and primal step sizes (default `1`).
-- `tau`, `sigma`, `normL`: the step sizes and ``\|K\|``, derived when not given (``\|K\|`` by a power
-  iteration).
+- `tau`, `sigma`, `ratio`, `normL`: step sizes, the ratio ``\sigma/\tau`` and ``\|K\|`` of the
+  unpreconditioned iteration; giving any of them turns the preconditioning off.
 - `maxit`, `tol`.
 
 **Pros:**
 - ✅ No inner solve, no penalty parameter, no Lipschitz constant of the data term
 - ✅ Any number of regularizers
-- ✅ On a 2D 8-coil Cartesian anisotropic-TV problem, 200 iterations reach NRMSE 0.067 where `VuCondat` reaches
-  0.150
+- ✅ On the 2D 8-coil cases with anisotropic TV, NRMSE after 25 / 50 / 200 iterations: radial
+  0.028 / 0.0165 / 0.0163 against `VuCondat`'s 0.32 / 0.23 / 0.070; Cartesian 0.083 / 0.072 /
+  0.067 against 0.40 / 0.36 / 0.150
 
 **Cons:**
-- ❌ Ill-conditioned encodings converge slowly: on the 2D 8-coil radial case `VuCondat` reached
-  NRMSE 0.070 in 200 iterations, `ChambollePock` 0.19 at its best `ratio`. Use `VuCondat` or
-  `ADMM` there.
-- ❌ Needs many more iterations than ADMM; count operator applications, not iterations, when
-  comparing the two
+- ❌ On non-Cartesian data an iteration costs about three `VuCondat` iterations: the data block
+  applies the NFFT and its adjoint, not the Toeplitz normal operator. It still reaches a given
+  accuracy several times sooner.
+- ❌ Needs more iterations than ADMM; count operator applications, not iterations, when comparing
+  the two
 
 ```julia
 img = reconstruct(acq, IterativeReconstruction(TotalVariation2D(1e-2); algorithm = PDHG(), maxit = 500))
@@ -372,8 +378,9 @@ img = reconstruct(acq, IterativeReconstruction(TotalVariation2D(1e-2); algorithm
 ### Vũ-Condat (`VuCondat`)
 
 **When to use:**
-- The problems `ChambollePock` takes, when the data term is better handled through its gradient:
-  non-Cartesian encodings, whose ``\mathcal{A}'\mathcal{A}`` is badly conditioned.
+- The problems `ChambollePock` takes, with the data term handled through its gradient (the fused
+  normal operator): one ``\mathcal{A}'\mathcal{A}`` per iteration, but a primal step capped by
+  ``\|\mathcal{A}\|^2``, so it needs many more iterations than the preconditioned `ChambollePock`.
 
 **How it works:**
 The Vũ-Condat generalization of Chambolle-Pock solves ``\min_x f(x) + g(x) + h(Dx)``, taking the

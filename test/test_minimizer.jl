@@ -262,6 +262,34 @@ end
     @test norm(x_vc - x_admm) / norm(x_admm) < 1.0e-2
 end
 
+@testitem "Preconditioned ChambollePock on radial data reaches the VuCondat solution" tags = [:minimizer, :reconstruction, :nfft] begin
+    using Test
+    using MriReconstructionToolbox
+    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using LinearAlgebra
+
+    nx, ny = 32, 32
+    img = zeros(ComplexF32, nx, ny)
+    img[10:22, 8:20] .= 1
+    img[14:17, 12:15] .= 2
+    traj = radial_trajectory(64, 24; ordering = GoldenAngle())
+    smaps = coil_sensitivities(nx, ny, 4)
+    acq = NonCartesianAcquisitionInfo(nothing; trajectory = traj, image_size = (nx, ny), sensitivity_maps = smaps)
+    data = simulate_acquisition(img, acq)
+
+    reg = AnisotropicTotalVariation2D(1.0e-3)
+    ref = IterativeReconstruction(reg; algorithm = VuCondat(maxit = 6000, tol = 0.0), maxit = 6000, reltol = 0.0)
+    x_ref = reconstruct(data, ref; verbosity = Silent())
+    # The density-compensated, block-preconditioned steps reconstruct derives...
+    err(x) = norm(x - x_ref) / norm(x_ref)
+    cp = IterativeReconstruction(reg; algorithm = ChambollePock(maxit = 300, tol = 0.0), maxit = 300, reltol = 0.0)
+    @test err(reconstruct(data, cp; verbosity = Silent())) < 1.0e-2
+    # ...against one scalar step, which a given `ratio` leaves in place: further from the
+    # solution after the same number of iterations.
+    short(alg) = err(reconstruct(data, IterativeReconstruction(reg; algorithm = alg, maxit = 60, reltol = 0.0); verbosity = Silent()))
+    @test short(ChambollePock(maxit = 60, tol = 0.0)) < short(ChambollePock(maxit = 60, tol = 0.0, ratio = 1))
+end
+
 @testitem "NCG and LBFGS reach the POGM solution of a smooth problem" tags = [:minimizer, :reconstruction] begin
     using Test
     using MriReconstructionToolbox

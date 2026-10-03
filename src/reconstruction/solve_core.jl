@@ -18,7 +18,7 @@ here instead of being computed again.
 """
 function _iterative_reconstruct_core(
         𝒜, acq_data, x₀_or_x₀s, scale, method::IterativeReconstruction, config;
-        build::Function, present::Function = identity, prior = _NO_PRIOR,
+        build::Function, present::Function = identity, prior = _NO_PRIOR, preconditioner = nothing,
     )
     if scale != 1
         @step "Scaling k-space data" config begin
@@ -77,6 +77,10 @@ function _iterative_reconstruct_core(
             R_type(_n_vars(vars) * L^2 + _smooth_regularization_lipschitz(model, method.fidelity)) :
             nothing
         algorithm = patch_algorithm_with_default_values(selected_algorithm, Lf; eltype_real = R_type)
+        # The step sizes that go with a preconditioned data term (`_ChambollePockPreconditioner`).
+        if !isnothing(preconditioner) && !isnothing(preconditioner.steps)
+            algorithm = ProximalAlgorithms.override_parameters(algorithm; preconditioner.steps...)
+        end
         algorithm = _scale_admm_penalty(
             algorithm, 𝒜, acq_data, isnothing(L) ? prior.L : L, method, config;
             eltype_real = R_type, curvature = prior.curvature,
