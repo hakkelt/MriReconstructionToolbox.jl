@@ -796,8 +796,28 @@ function print_diagnostics(terms::TermSet, assumption::ProximalAlgorithms.Repeat
 end
 
 function prepare(term::Term, assumption::ProximalAlgorithms.RepeatedOperatorTerm, variables::NTuple{N, Variable}) where {N}
+    normal = prepare_through_normal_op(term, assumption, variables)
+    normal === nothing || return normal
     operator_term_assumption = ProximalAlgorithms.OperatorTerm(assumption.func, assumption.operator)
     return prepare(term, operator_term_assumption, variables)
+end
+
+# A term an algorithm only differentiates, handed over as `(f, I)` with its operator absorbed into
+# `f` through its normal operator, when that is the formulation `best_formulation` ranks first. The
+# algorithm then pays one normal-operator application per gradient (a Toeplitz embedding, say)
+# where `(f, L)` would cost an `L` and an `L'`. A term asked for its prox keeps `(f, L)`.
+function prepare_through_normal_op(term::Term, assumption, variables::NTuple{N, Variable}) where {N}
+    needs_prox(assumption) && return nothing
+    does_satisfy(term, assumption.func) || return nothing
+    kind, _ = best_formulation(operator(term), term.f, displacement(term), term.lambda, :any)
+    kind === :normal_op || return nothing
+    op = extract_operators(variables, term)
+    f = merge_function_with_operator(op, term.f, displacement(term), term.lambda)
+    example_input = length(variables) > 1 ? ArrayPartition(Tuple(~var for var in variables)) : ~variables[1]
+    return (
+        assumption.func.first => f,
+        assumption.operator.first => AbstractOperators.Eye(example_input),
+    )
 end
 
 function print_diagnostics(term::Term, assumption::ProximalAlgorithms.RepeatedOperatorTerm, variables::NTuple{N, Variable}) where {N}
@@ -810,7 +830,8 @@ function prepare(terms::TermSet, assumption::ProximalAlgorithms.RepeatedOperator
     function_results = ()
     operator_results = ()
     for term in terms
-        result = prepare(term, operator_term_assumption, variables)
+        result = prepare_through_normal_op(term, assumption, variables)
+        result === nothing && (result = prepare(term, operator_term_assumption, variables))
         if isnothing(result)
             return nothing
         end
