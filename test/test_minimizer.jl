@@ -211,7 +211,7 @@ end
     @test isapprox(rec, x_true; rtol = 1.0e-4, atol = 1.0e-4)
 end
 
-@testitem "ChambollePock (PDHG) reaches the ADMM solution of total variation" tags = [:minimizer, :reconstruction] begin
+@testitem "ChambollePock (PDHG) reaches the ADMM solution of total variation" tags = [:minimizer, :reconstruction, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: CartesianAcquisitionInfo
@@ -235,6 +235,9 @@ end
     x_admm = reconstruct(data, admm; verbosity = Silent())
     x_pdhg = reconstruct(data, pdhg; verbosity = Silent())
     @test norm(x_pdhg - x_admm) / norm(x_admm) < 1.0e-2
+
+    short = IterativeReconstruction(reg; algorithm = PDHG(maxit = 50, tol = 0.0), maxit = 50, reltol = 0.0)
+    test_on_devices(a -> reconstruct(a, short; verbosity = Silent()), data; rtol = 1.0e-3)
 end
 
 @testitem "VuCondat reaches the ADMM solution of total variation" tags = [:minimizer, :reconstruction] begin
@@ -262,7 +265,7 @@ end
     @test norm(x_vc - x_admm) / norm(x_admm) < 1.0e-2
 end
 
-@testitem "Preconditioned ChambollePock on radial data reaches the VuCondat solution" tags = [:minimizer, :reconstruction, :nfft] begin
+@testitem "Preconditioned ChambollePock on radial data reaches the VuCondat solution" tags = [:minimizer, :reconstruction, :nfft, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: NonCartesianAcquisitionInfo
@@ -288,6 +291,9 @@ end
     # solution after the same number of iterations.
     short(alg) = err(reconstruct(data, IterativeReconstruction(reg; algorithm = alg, maxit = 60, reltol = 0.0); verbosity = Silent()))
     @test short(ChambollePock(maxit = 60, tol = 0.0)) < short(ChambollePock(maxit = 60, tol = 0.0, ratio = 1))
+
+    cp_short = IterativeReconstruction(reg; algorithm = ChambollePock(maxit = 60, tol = 0.0), maxit = 60, reltol = 0.0)
+    test_on_devices(a -> reconstruct(a, cp_short; verbosity = Silent()), data; rtol = 1.0e-3)
 end
 
 @testitem "NCG and LBFGS reach the POGM solution of a smooth problem" tags = [:minimizer, :reconstruction] begin

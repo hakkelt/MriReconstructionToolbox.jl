@@ -49,7 +49,14 @@ mutable struct _ChambollePockPreconditioner{W}
     steps::Union{Nothing, NamedTuple}
 end
 
-_storage_like(y, w) = (wf = similar(y, real(eltype(y))); wf .= w; wf)
+# `w` broadcast over the trailing (coil) dimensions of `y`, in `y`'s storage.
+function _storage_like(y, w)
+    R = real(eltype(y))
+    wd = copyto!(similar(unname(y), R, size(w)), w)
+    wf = similar(y, R)
+    wf .= wd
+    return wf
+end
 
 # The density weights of `acq`, normalised to a largest weight of 1: `nothing` on a Cartesian grid,
 # where every sample has the same weight.
@@ -115,7 +122,7 @@ function _preconditioned_data_term(𝒜, y, x, reg_terms, p::_ChambollePockPreco
     a = p.data_step
     p.steps = (; tau = R(0.99 / (2 * a * nA2)), sigma = R(a * nA2 / nD2), normL = R(sqrt(2 * nD2)))
     if isnothing(w)
-        return StructuredOptimization.Term(1, SqrNormL2(R(1 / c^2)), R(c) .* (𝒜 * x) - R(c) .* y, "ls(𝒜x - y)")
+        return StructuredOptimization.Term(1, SqrNormL2(R(1 / c^2)), R(c) * (𝒜 * x) - R(c) .* y, "ls(𝒜x - y)")
     end
     sw = R(c) .* sqrt.(w)
     return StructuredOptimization.Term(1, SqrNormL2(R(1 / c^2) ./ w), sw .* (𝒜 * x) - sw .* y, "ls(𝒜x - y)")
