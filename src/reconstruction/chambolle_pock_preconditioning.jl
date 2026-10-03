@@ -37,8 +37,9 @@ changes fix that without touching the objective:
 
 On radial data an iteration costs about three Vũ-Condat iterations — the data block applies the
 NFFT and its adjoint where Vũ-Condat applies the Toeplitz normal operator — and the setup (density
-compensation when the acquisition carries none, the power iteration for ``‖W^{1/2}𝒜‖``) about 0.4 s
-on that case; 50 iterations reached in 1.2 s what 200 Vũ-Condat iterations (1.1 s) did not.
+compensation when the acquisition carries none, `AbstractOperators.estimate_opnorm` of
+``W^{1/2}𝒜``) about 0.4 s on that case; 50 iterations reached in 1.2 s what 200 Vũ-Condat
+iterations (1.1 s) did not.
 
 `steps` is filled in by [`build_model_with_variables`](@ref), which is where the regularization
 operators first exist.
@@ -81,22 +82,6 @@ function _chambolle_pock_preconditioner(method::IterativeReconstruction, acq)
 end
 _chambolle_pock_preconditioner(method, acq) = nothing
 
-# ‖W^{1/2}𝒜‖² by power iteration from `x`.
-function _weighted_opnorm2(𝒜, w, x; maxit = 20)
-    v = copy(x)
-    v ./= norm(v)
-    s = zero(real(eltype(v)))
-    for _ in 1:maxit
-        r = 𝒜 * v
-        isnothing(w) || (r .*= w)
-        v = 𝒜' * r
-        s = norm(v)
-        iszero(s) && break
-        v ./= s
-    end
-    return s
-end
-
 _term_list(t::StructuredOptimization.Term) = (t,)
 _term_list(ts::StructuredOptimization.TermSet) = Tuple(ts)
 
@@ -117,12 +102,14 @@ function _preconditioned_data_term(𝒜, y, x, reg_terms, p::_ChambollePockPreco
         p.steps = nothing
         return @term ls(𝒜 * x - y)
     end
-    w = isnothing(p.weights) ? nothing : _to_storage_of(unname(y), p.weights)
-    nA2 = Float64(with_serial_blas(() -> _weighted_opnorm2(𝒜, w, ~x)))
+    # `‖W^{1/2}𝒜‖` from above, since the step budget `τσ‖K‖² < 1` must hold. On a Cartesian grid
+    # that is the closed-form bound of the SENSE operator, with no iteration.
+    W½𝒜 = isnothing(p.weights) ? 𝒜 : DiagOp(codomain_type(𝒜), size(y), _storage_like(y, sqrt.(p.weights))) * 𝒜
+    nA2 = Float64(with_serial_blas(() -> AbstractOperators.estimate_opnorm(W½𝒜)))^2
     c = sqrt(nD2 / nA2)
     a = CHAMBOLLE_POCK_DATA_STEP
     p.steps = (; tau = R(0.99 / (2 * a * nA2)), sigma = R(a * nA2 / nD2), normL = R(sqrt(2 * nD2)))
-    if isnothing(w)
+    if isnothing(p.weights)
         return StructuredOptimization.Term(1, SqrNormL2(R(1 / c^2)), R(c) * (𝒜 * x) - R(c) .* y, "ls(𝒜x - y)")
     end
     sw = _storage_like(y, c .* sqrt.(p.weights))
