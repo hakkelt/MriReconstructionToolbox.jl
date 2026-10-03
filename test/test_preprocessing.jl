@@ -521,7 +521,7 @@ end
     @test normalize_sensitivity_maps(plain) === plain
 end
 
-@testitem "Gradient delays: multi-coil k-space is combined over the coil axis" tags = [:preprocessing, :acquisition, :nfft] begin
+@testitem "Gradient delays: multi-coil k-space is combined over the coil axis" tags = [:preprocessing, :acquisition, :nfft, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
     using Test
     using MriReconstructionToolbox
     using MriReconstructionToolbox: NonCartesianAcquisitionInfo
@@ -549,6 +549,19 @@ end
     d = estimate_gradient_delays(acq; method = OpposingSpokes())
     @test isapprox(d[1], delay_true[1]; atol = 2.0e-3)
     @test isapprox(d[2], delay_true[2]; atol = 2.0e-3)
+
+    # On a device only the trajectory changes: the k-space stays where it is.
+    corrected = correct_gradient_delays(acq; method = OpposingSpokes())
+    for backend in all_backends()
+        @testset "$(backend.name)" begin
+            acq_d = to_device(backend, acq)
+            @test all(estimate_gradient_delays(acq_d; method = OpposingSpokes()) .≈ d)
+            corrected_d = correct_gradient_delays(acq_d; method = OpposingSpokes())
+            @test _is_device(corrected_d)
+            @test corrected_d.kspace_data === acq_d.kspace_data
+            @test unname(corrected_d.trajectory) ≈ unname(corrected.trajectory)
+        end
+    end
 end
 
 @testitem "Gradient delay correction in non-Cartesian MRI" tags = [:preprocessing, :acquisition, :nfft] begin

@@ -32,7 +32,6 @@ function correct_gradient_delays(
         acq::NonCartesianAcquisitionInfo;
         method::GradientDelay = OpposingSpokes(),
     )
-    _is_device(acq) && return _to_storage_of(acq, correct_gradient_delays(Adapt.adapt(Array, acq); method))
     delays = estimate_gradient_delays(acq; method)
     # Every frame of a per-frame trajectory is corrected alike: the spokes are corrected one by one
     # whichever frame they belong to.
@@ -57,8 +56,8 @@ function estimate_gradient_delays(
         acq::NonCartesianAcquisitionInfo;
         method::GradientDelay = OpposingSpokes(),
     )
-    _is_device(acq) && return estimate_gradient_delays(Adapt.adapt(Array, acq); method)
-    traj, ksp = _pooled_spokes(acq.trajectory, acq.kspace_data)
+    # The estimate reads the k-space alone, and the trajectory is held on the host on every storage.
+    traj, ksp = _pooled_spokes(acq.trajectory, _adapt_any(Array, acq.kspace_data))
     @argcheck size(traj, 1) >= 2 "Trajectory must have at least 2 spatial dimensions (got $(size(traj, 1)))"
     return _estimate_delays_core(traj, ksp, method)
 end
