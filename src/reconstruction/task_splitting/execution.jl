@@ -74,7 +74,8 @@ function execute_regularized(plan, acq_data, config, method::IterativeReconstruc
         # here, because this same operator is reused in phase 2 below -- otherwise phase 2 would
         # plan an equivalent operator again from scratch.
         𝒜 = build_encoding_operator(
-            local_acq, method; threaded = false, fast_planning = _fast_planning(method, local_acq, local_conf; threaded = false)
+            local_acq, method; threaded = local_conf.threaded,
+            fast_planning = _fast_planning(method, local_acq, local_conf),
         )
         warm_start, scale, prior = _direct_reconstruct(𝒜, local_acq, local_x₀, method, local_conf)
         return warm_start, scale, 𝒜, prior
@@ -100,7 +101,8 @@ function execute_regularized_components(plan, acq_data, config, method::Iterativ
     prepare = function (idx, local_acq, local_conf)
         local_x₀ = isnothing(x₀) ? nothing : slice_x₀_components(x₀, plan, idx)
         𝒜 = build_encoding_operator(
-            local_acq, method; threaded = false, fast_planning = _fast_planning(method, local_acq, local_conf; threaded = false)
+            local_acq, method; threaded = local_conf.threaded,
+            fast_planning = _fast_planning(method, local_acq, local_conf),
         )
         x̂, scale, prior = _direct_reconstruct_components(𝒜, local_acq, method, local_conf)
         return get_component_x0s(method.regularization, x̂, local_x₀), scale, 𝒜, prior
