@@ -83,7 +83,10 @@ function (*)(M::AbstractMatrix, a::T) where {T <: AbstractExpression}
 end
 #MatrixOp
 
-function Broadcast.broadcasted(::typeof(*), d::D, a::T) where {D <: Union{Number, AbstractArray}, T <: AbstractExpression}
+# A scalar scales the expression (`Scale`), which keeps the storage of the expression's operator;
+# a `DiagOp` built from a bare number would hold its data in host arrays.
+Broadcast.broadcasted(::typeof(*), d::Number, a::AbstractExpression) = d * a
+function Broadcast.broadcasted(::typeof(*), d::D, a::T) where {D <: AbstractArray, T <: AbstractExpression}
     A = convert(Expression, a)
     op = DiagOp(codomain_type(affine(A)), size(affine(A), 1), d)
     return op * A

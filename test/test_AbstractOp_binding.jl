@@ -33,6 +33,11 @@ ex = d .* x
 @test norm(operator(ex) * (~x) - op * (~x)) < 1.0e-12
 ex = x .* d
 @test norm(operator(ex) * (~x) - op * (~x)) < 1.0e-12
+# A scalar broadcast scales the expression, as `*` does.
+ex = 5 .* x
+@test operator(ex) isa Scale
+@test norm(operator(ex) * (~x) - 5 * (~x)) < 1.0e-12
+@test norm(operator(x .* 5) * (~x) - 5 * (~x)) < 1.0e-12
 
 # Scale
 n = 3
