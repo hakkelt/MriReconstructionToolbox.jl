@@ -93,6 +93,22 @@ and aligns virtual coil bases across `x` via Procrustes rotation so the compress
 """
 struct GeometricCompression <: CoilCompression end
 
+# The `n` dominant left singular vectors of `flat` (coils × samples), as columns: the leading
+# eigenvectors of the coil Gram matrix `flat flatᴴ`, which is formed where `flat` lives (one
+# product, so a device array is never copied) and decomposed on the host in double precision.
+# Each vector's phase is fixed, its largest entry real and positive, so that host and device
+# storage give the same compression matrix.
+function _dominant_coil_vectors(flat::AbstractMatrix, n::Int)
+    T = eltype(flat)
+    G = Array{T <: Complex ? ComplexF64 : Float64}(_to_host(flat * flat'))
+    V = eigen(Hermitian(G)).vectors[:, end:-1:(end - n + 1)]
+    for j in axes(V, 2)
+        k = argmax(abs.(view(V, :, j)))
+        V[:, j] .*= conj(V[k, j]) / abs(V[k, j])
+    end
+    return convert(Matrix{T}, V)
+end
+
 """
     compress_coils(acq::AcquisitionInfo, n_virtual::Int; method = SVDCompression(), coil_dim = nothing)
     compress_coils(data::AbstractArray, n_virtual::Int; method = SVDCompression(), coil_dim = nothing)
@@ -108,7 +124,8 @@ function compress_coils(
         method::CoilCompression = SVDCompression(),
         coil_dim = nothing,
     )
-    if _is_device(acq)
+    # The geometric matrices come from per-readout spectra, formed on the host.
+    if _is_device(acq) && !(method isa SVDCompression)
         host_acq, C = compress_coils(Adapt.adapt(Array, acq), n_virtual; method, coil_dim)
         return _to_storage_of(acq, host_acq), C
     end
@@ -128,10 +145,6 @@ function compress_coils(
         method::CoilCompression = SVDCompression(),
         coil_dim = nothing,
     )
-    if _is_device(data)
-        compressed, C = compress_coils(_adapt_any(Array, data), n_virtual; method, coil_dim)
-        return _to_storage_of(data, compressed), C
-    end
     c_idx = _resolve_coil_dim(data, coil_dim)
 
     Nc = size(data, c_idx)
@@ -141,12 +154,15 @@ function compress_coils(
         perm = _front_perm(c_idx, ndims(data))
         perm_data = permutedims(unname(data), perm)
         flat_data = reshape(perm_data, Nc, :)
-
-        F = svd(flat_data)
-        C = Matrix(F.U[:, 1:n_virtual]') # (n_virtual, Nc)
-
+        C = Matrix(_dominant_coil_vectors(flat_data, n_virtual)') # (n_virtual, Nc)
         return compress_coils_with_matrix(data, C; coil_dim)
-    elseif method isa GeometricCompression
+    end
+    # The geometric matrices come from per-readout spectra, formed on the host.
+    if _is_device(data)
+        compressed, C = compress_coils(_adapt_any(Array, data), n_virtual; method, coil_dim)
+        return _to_storage_of(data, compressed), C
+    end
+    if method isa GeometricCompression
         raw = unname(data)
         Nx = size(raw, 1)
         hybrid = ifft(ifftshift(raw, 1), 1)
