@@ -1,9 +1,9 @@
 diff --git a/deps/ProximalOperators/Project.toml b/deps/ProximalOperators/Project.toml
-index 571e1d6..0f2f785 100644
+index de08d75..3bf2b39 100644
 --- a/deps/ProximalOperators/Project.toml
 +++ b/deps/ProximalOperators/Project.toml
-@@ -19,12 +19,10 @@ TSVD = "9449cd9e-2762-5aa3-a617-5413e99d722e"
- [weakdeps]
+@@ -20,14 +20,12 @@ TSVD = "9449cd9e-2762-5aa3-a617-5413e99d722e"
+ CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
  GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
  KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 -OSQP = "ab2f91bb-94b4-55e3-9ba0-7f65df51de79"
@@ -11,11 +11,13 @@ index 571e1d6..0f2f785 100644
  
  [extensions]
  GpuExt = ["GPUArrays", "KernelAbstractions"]
+ GpuRecursiveArrayToolsExt = ["GPUArrays", "RecursiveArrayTools"]
+ ProximalOperatorsCUDAExt = ["CUDA", "GPUArrays", "KernelAbstractions"]
 -ProximalOperatorsOSQPExt = "OSQP"
  RecursiveArrayToolsExt = "RecursiveArrayTools"
  
  [compat]
-@@ -34,7 +32,6 @@ KernelAbstractions = "0.9"
+@@ -38,7 +36,6 @@ KernelAbstractions = "0.9"
  LinearAlgebra = "1.4"
  LoopVectorization = "0.12"
  NestedThreading = "0.1.2"
@@ -24,7 +26,7 @@ index 571e1d6..0f2f785 100644
  ProximalCore = "0.2.0"
  RecursiveArrayTools = "2, 3"
 diff --git a/deps/ProximalOperators/ext/GpuExt/GpuExt.jl b/deps/ProximalOperators/ext/GpuExt/GpuExt.jl
-index febf512..e379637 100644
+index 9796df4..4460ca0 100644
 --- a/deps/ProximalOperators/ext/GpuExt/GpuExt.jl
 +++ b/deps/ProximalOperators/ext/GpuExt/GpuExt.jl
 @@ -20,8 +20,8 @@ module GpuExt
@@ -39,7 +41,7 @@ index febf512..e379637 100644
  include("properties.jl")
  include("kernels.jl")
 diff --git a/deps/ProximalOperators/src/ProximalOperators.jl b/deps/ProximalOperators/src/ProximalOperators.jl
-index 3c89b64..abb5e18 100644
+index 56dac6b..78bd240 100644
 --- a/deps/ProximalOperators/src/ProximalOperators.jl
 +++ b/deps/ProximalOperators/src/ProximalOperators.jl
 @@ -70,7 +70,6 @@ include("functions/indNonnegative.jl")
@@ -50,7 +52,7 @@ index 3c89b64..abb5e18 100644
  include("functions/indPSD.jl")
  include("functions/indSimplex.jl")
  include("functions/indSOC.jl")
-@@ -116,6 +115,11 @@ include("calculus/sum.jl")
+@@ -117,6 +116,11 @@ include("calculus/sum.jl")
  include("calculus/pointwiseMinimum.jl")
  include("calculus/proximalAverage.jl")
  
