@@ -433,6 +433,19 @@ branch = "perf/factorization-thread-grant"
 parent = "threaded-kernels"
 pr = ""
 
+# `BatchedNuclearNorm`: singular value thresholding of a stack of matrices, batched on a device
+# (Gram kernels on any GPU, CUSOLVER's batched Jacobi solvers under CUDA).
+[[ProximalOperators.stack]]
+branch = "feat/batched-nuclear-norm"
+parent = "threaded-kernels"
+pr = "hakkelt/ProximalOperators.jl#18"
+
+# `dot`, `axpy!`, `axpby!` and `norm` of an `ArrayPartition` of device arrays, block by block.
+[[ProximalOperators.stack]]
+branch = "feat/gpu-array-partition-linalg"
+parent = "threaded-kernels"
+pr = "hakkelt/ProximalOperators.jl#17"
+
 # `recursive-array-tools-ext` (#164) and `precomposed-sliced-separable-sum` (#157) have merged
 # upstream and are intentionally absent: that code now arrives through `base`.
 
