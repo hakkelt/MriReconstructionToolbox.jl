@@ -1,5 +1,5 @@
 diff --git a/deps/ProximalAlgorithms/src/ProximalAlgorithms.jl b/deps/ProximalAlgorithms/src/ProximalAlgorithms.jl
-index ee8649b..d45631e 100644
+index bf1cb3e..77d3f09 100644
 --- a/deps/ProximalAlgorithms/src/ProximalAlgorithms.jl
 +++ b/deps/ProximalAlgorithms/src/ProximalAlgorithms.jl
 @@ -4,7 +4,7 @@ using ADTypes: ADTypes
