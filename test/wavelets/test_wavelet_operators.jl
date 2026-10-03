@@ -117,6 +117,22 @@ end
 
     # Below the threshold the policy keeps it serial.
     @test !is_threaded(WaveletOp(Float64, wavelet(WT.db2), (32, 32), 2))
+
+    # A serial batch hands each frame to a threaded transform as a view.
+    for (dims, w, L) in (((512, 512), wavelet(WT.db2), 3), ((64, 64, 64), wavelet(WT.db2), 3))
+        op = WaveletOp(ComplexF32, w, dims, L)
+        x = randn(ComplexF32, dims..., 2)
+        y = similar(x)
+        for k in 1:2
+            mul!(view(y, ntuple(_ -> :, length(dims))..., k), op, view(x, ntuple(_ -> :, length(dims))..., k))
+            @test selectdim(y, length(dims) + 1, k) == dwt(selectdim(x, length(dims) + 1, k), w, L)
+        end
+        xa = similar(x)
+        mul!(view(xa, ntuple(_ -> :, length(dims))..., 1), op', view(y, ntuple(_ -> :, length(dims))..., 1))
+        @test selectdim(xa, length(dims) + 1, 1) ≈ selectdim(x, length(dims) + 1, 1)
+        b = BatchOp(op, 2; threaded = false)
+        @test b * x == cat((dwt(selectdim(x, length(dims) + 1, k), w, L) for k in 1:2)...; dims = length(dims) + 1)
+    end
 end
 
 @testitem "WaveletOp constructor errors" tags = [:wavelet, :WaveletOp] setup = [TestUtils] begin
