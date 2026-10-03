@@ -193,13 +193,15 @@ end
 
 One row per (backend, threads, case, category, method, framework): the most recent (`ts`), among
 rows matching `prefer_source` if given, else preferring `"slurm"` over anything else and falling
-back to whatever exists when no `"slurm"` row is present for that case.
+back to whatever exists when no `"slurm"` row is present for that case. An accuracy-race method
+(`"… (NRMSE≤0.05, 150 it)"`) is keyed without its iteration count, which is the race's outcome, so
+a rerun that reaches the target sooner replaces the earlier row.
 """
 function latest_per_case(rows::Vector{Row}; prefer_source::Union{Nothing, AbstractString} = nothing)
     best = Dict{NTuple{6, Any}, Row}()
     for r in rows
         prefer_source !== nothing && r.source != prefer_source && continue
-        key = (r.backend, r.threads, r.case_id, r.category, r.method, r.framework)
+        key = (r.backend, r.threads, r.case_id, r.category, _method_key(r.method), r.framework)
         cur = get(best, key, nothing)
         if cur === nothing
             best[key] = r
@@ -211,5 +213,7 @@ function latest_per_case(rows::Vector{Row}; prefer_source::Union{Nothing, Abstra
     end
     return collect(values(best))
 end
+
+_method_key(method::AbstractString) = replace(method, r"(\(NRMSE≤[^,]*), \d+ it\)$" => s"\1)")
 
 end
