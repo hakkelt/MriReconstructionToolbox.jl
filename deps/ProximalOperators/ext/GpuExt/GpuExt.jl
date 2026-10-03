@@ -26,5 +26,6 @@ using ..ProximalOperators: Strategy
 include("properties.jl")
 include("kernels.jl")
 include("guards.jl")
+include("batched_svd.jl")
 
 end # module
