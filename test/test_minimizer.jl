@@ -300,6 +300,17 @@ end
     short(alg) = err(reconstruct(data, IterativeReconstruction(reg; algorithm = alg, maxit = 60, reltol = 0.0); verbosity = Silent()))
     @test short(ChambollePock(maxit = 60, tol = 0.0)) < short(ChambollePock(maxit = 60, tol = 0.0, ratio = 1))
 
+    # One trajectory per frame: the per-sample weights of each frame broadcast over its coils.
+    nt = 3
+    traj_t = reshape(unname(radial_trajectory(64, 24nt; ordering = GoldenAngle())), 2, 64, 24, nt)
+    acq_t = NonCartesianAcquisitionInfo(
+        zeros(ComplexF32, 64, 24, 4, nt); trajectory = Float32.(traj_t), image_size = (nx, ny), sensitivity_maps = smaps,
+    )
+    data_t = simulate_acquisition(stack(fill(img, nt)), acq_t)
+    x_ref_t = reconstruct(data_t, ref; verbosity = Silent(), disable_task_splitting = true)
+    x_cp_t = reconstruct(data_t, cp; verbosity = Silent(), disable_task_splitting = true)
+    @test norm(x_cp_t - x_ref_t) / norm(x_ref_t) < 1.0e-2
+
     cp_short = IterativeReconstruction(reg; algorithm = ChambollePock(maxit = 60, tol = 0.0), maxit = 60, reltol = 0.0)
     test_on_devices(a -> reconstruct(a, cp_short; verbosity = Silent()), data; rtol = 1.0e-3)
 end

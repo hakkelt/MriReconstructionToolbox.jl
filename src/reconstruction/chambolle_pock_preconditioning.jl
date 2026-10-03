@@ -49,10 +49,21 @@ mutable struct _ChambollePockPreconditioner{W}
     steps::Union{Nothing, NamedTuple}
 end
 
-# `w` broadcast over the trailing (coil) dimensions of `y`, in `y`'s storage.
+# `w`, laid out like the trajectory's sample and frame axes, in `y`'s storage and reshaped to
+# broadcast against `y`: the sample axes lead `y`, the frame axes end it, and the axes between them
+# (coils, slabs) have size one.
+function _broadcast_weights(y, w)
+    nframe = _frame_dims_count(size(w), size(y))
+    nsample = ndims(w) - nframe
+    shift = ndims(y) - ndims(w)
+    shape = ntuple(d -> d <= nsample ? size(w, d) : d > ndims(y) - nframe ? size(w, d - shift) : 1, ndims(y))
+    return _to_storage_of(unname(y), reshape(w, shape))
+end
+
+# `w` expanded to the size of `y`, for the operators that need one weight per entry.
 function _storage_like(y, w)
     wf = similar(y, real(eltype(y)))
-    wf .= _to_storage_of(unname(y), w)
+    wf .= _broadcast_weights(y, w)
     return wf
 end
 
@@ -109,9 +120,10 @@ function _preconditioned_data_term(𝒜, y, x, reg_terms, p::_ChambollePockPreco
     c = sqrt(nD2 / nA2)
     a = CHAMBOLLE_POCK_DATA_STEP
     p.steps = (; tau = R(0.99 / (2 * a * nA2)), sigma = R(a * nA2 / nD2), normL = R(sqrt(2 * nD2)))
-    if isnothing(p.weights)
-        return StructuredOptimization.Term(1, SqrNormL2(R(1 / c^2)), R(c) * (𝒜 * x) - R(c) .* y, "ls(𝒜x - y)")
+    sw, λ = if isnothing(p.weights)
+        R(c), R(1 / c^2)
+    else
+        _storage_like(y, c .* sqrt.(p.weights)), _broadcast_weights(y, R.(1 / c^2 ./ p.weights))
     end
-    sw = _storage_like(y, c .* sqrt.(p.weights))
-    return StructuredOptimization.Term(1, SqrNormL2(_storage_like(y, 1 / c^2 ./ p.weights)), sw .* (𝒜 * x) - sw .* y, "ls(𝒜x - y)")
+    return StructuredOptimization.Term(1, SqrNormL2(λ), sw .* (𝒜 * x) - sw .* y, "ls(𝒜x - y)")
 end
