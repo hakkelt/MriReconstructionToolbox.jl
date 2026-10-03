@@ -13,6 +13,8 @@ With a nonnegative array `λ`, return the weighted squared Euclidean norm
 ```math
 f(x) = \\tfrac{1}{2}∑_i λ_i x_i^2.
 ```
+An array `λ` whose size differs from `x`'s broadcasts against it, as `λ .* x` would: weights per
+row of a matrix `x` are a column `λ`, and they are never expanded to the size of `x`.
 
 `threaded = false` forbids this operator from using more than one thread; see
 [`is_threaded`](@ref).
@@ -47,6 +49,7 @@ end
 function (f::SqrNormL2{<:AbstractArray})(x)
     R = real(eltype(x))
     lambda = f.lambda
+    size(lambda) == size(x) || return _weighted_sqrnorm(lambda, x) / R(2)
     sqnorm = reduce_call_idx(f, (k, xk) -> lambda[k] * abs2(xk), x)
     return sqnorm / R(2)
 end
@@ -73,6 +76,10 @@ end
 function gradient!(y, f::SqrNormL2{<:AbstractArray}, x)
     R = real(eltype(x))
     lambda = f.lambda
+    if size(lambda) != size(x)
+        y .= lambda .* x
+        return _weighted_sqrnorm(lambda, x) / R(2)
+    end
     if is_cpu_storage(x)
         sqnx = R(0)
         strategy = execution_strategy(f, x)
@@ -83,7 +90,7 @@ function gradient!(y, f::SqrNormL2{<:AbstractArray}, x)
         return sqnx / R(2)
     end
     y .= lambda .* x
-    return sum(lambda .* abs2.(x)) / R(2)
+    return _weighted_sqrnorm(lambda, x) / R(2)
 end
 
 function prox!(y, f::SqrNormL2{<:Real}, x, gamma::Number)
@@ -96,6 +103,10 @@ end
 function prox!(y, f::SqrNormL2{<:AbstractArray}, x, gamma::Number)
     R = real(eltype(x))
     lambda = f.lambda
+    if size(lambda) != size(x)
+        y .= x ./ (1 .+ gamma .* lambda)
+        return _weighted_sqrnorm(lambda, y) / R(2)
+    end
     wsqny = map_reduce_prox_idx!(
         f, y, (k, xk) -> xk / (1 + gamma * lambda[k]), (k, yk) -> lambda[k] * abs2(yk), x
     )
@@ -114,14 +125,22 @@ end
 function prox!(y, f::SqrNormL2{<:AbstractArray}, x, gamma::AbstractArray)
     R = real(eltype(x))
     lambda = f.lambda
+    if size(lambda) != size(x)
+        y .= x ./ (1 .+ gamma .* lambda)
+        return _weighted_sqrnorm(lambda, y) / R(2)
+    end
     wsqny = map_reduce_prox_idx!(
         f, y, (k, xk) -> xk / (1 + gamma[k] * lambda[k]), (k, yk) -> lambda[k] * abs2(yk), x
     )
     return wsqny / R(2)
 end
 
+# `∑ λᵢ |xᵢ|²` with `λ` broadcast against `x`, reduced without materialising the product.
+_weighted_sqrnorm(lambda, x) =
+    real(sum(Broadcast.instantiate(Broadcast.broadcasted((l, xk) -> l * abs2(xk), lambda, x))))
+
 function prox_naive(f::SqrNormL2, x, gamma)
     R = real(eltype(x))
     y = x./(R(1) .+ f.lambda .* gamma)
-    return y, real(dot(f.lambda .* y, y)) / R(2)
+    return y, real(sum(f.lambda .* abs2.(y))) / R(2)
 end
