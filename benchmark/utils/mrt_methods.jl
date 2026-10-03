@@ -121,17 +121,21 @@ default_maxit(m::Symbol) =
     m === :cgsense ? CG_ITERATIONS : haskey(PDHG_METHODS, m) ? PDHG_ITERATIONS : OUTER_ITERATIONS
 
 """
-    mrt_algorithm(method, maxit; rho = ADMM_RHO)
+    mrt_algorithm(method, maxit; rho = ADMM_RHO, noncartesian = false)
 
 Fixed-ρ ADMM with a fixed inner CG and no early stop for every regularized method except
-L1-wavelet, which runs FISTA (forcing a fixed-ρ ADMM on it wrecks it); CGNR for CG-SENSE;
-`ChambollePock` for a PDHG row, with its default step sizes. The data term is its smooth part, so
-it runs the Condat-Vũ form of the iteration.
+L1-wavelet, which runs FISTA (forcing a fixed-ρ ADMM on it wrecks it); CGNR for CG-SENSE. A PDHG
+row runs `ChambollePock` (the data term through its prox) on Cartesian data and `VuCondat` (the
+data term through its gradient) on non-Cartesian data, each with its default step sizes: on the
+2D 8-coil radial case `ChambollePock` reached NRMSE 0.19 in 200 iterations at its best step ratio,
+`VuCondat` 0.070, while on the Cartesian case `ChambollePock` reached 0.067 and `VuCondat` 0.150.
 """
-function mrt_algorithm(method::Symbol, maxit::Int; rho::Real = ADMM_RHO)
+function mrt_algorithm(method::Symbol, maxit::Int; rho::Real = ADMM_RHO, noncartesian::Bool = false)
     method === :cgsense && return MriReconstructionToolbox.CGNR(; maxit, tol = 0.0)
     method === :wavelet && return MriReconstructionToolbox.FISTA(; maxit, tol = 0.0)
-    haskey(PDHG_METHODS, method) && return MriReconstructionToolbox.ChambollePock(; maxit, tol = 0.0)
+    haskey(PDHG_METHODS, method) && return noncartesian ?
+        MriReconstructionToolbox.VuCondat(; maxit, tol = 0.0) :
+        MriReconstructionToolbox.ChambollePock(; maxit, tol = 0.0)
     return MriReconstructionToolbox.ADMM(; rho, maxit, tol = 0.0, cg_tol = 0.0, cg_maxit = CG_ITERATIONS)
 end
 
@@ -163,7 +167,7 @@ function mrt_reconstructor(
         DirectReconstruction()
     else
         reg = method === :cgsense ? () : mrt_regularizer(c, method, λ)
-        IterativeReconstruction(; regularization = reg, algorithm = mrt_algorithm(method, maxit; rho), maxit, reltol = 0.0)
+        IterativeReconstruction(; regularization = reg, algorithm = mrt_algorithm(method, maxit; rho, noncartesian = c.trajectory === :noncartesian), maxit, reltol = 0.0)
     end
     device === nothing && return () -> reconstruct(a, m; verbosity = Silent())
     return () -> Array(parent(reconstruct(MriReconstructionToolbox.Adapt.adapt(device, a), m; verbosity = Silent())))
