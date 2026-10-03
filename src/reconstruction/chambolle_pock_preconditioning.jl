@@ -51,10 +51,8 @@ end
 
 # `w` broadcast over the trailing (coil) dimensions of `y`, in `y`'s storage.
 function _storage_like(y, w)
-    R = real(eltype(y))
-    wd = copyto!(similar(unname(y), R, size(w)), w)
-    wf = similar(y, R)
-    wf .= wd
+    wf = similar(y, real(eltype(y)))
+    wf .= _to_storage_of(unname(y), w)
     return wf
 end
 
@@ -65,8 +63,8 @@ _density_weights(::CartesianAcquisitionInfo) = nothing
 function _density_weights(acq::NonCartesianAcquisitionInfo)
     dcf = isnothing(acq.dcf) ? density_compensation(acq).dcf : acq.dcf
     w = Array(unname(dcf))
-    w = w ./ maximum(w)
-    return max.(w, minimum(v for v in w if v > 0))
+    w = max.(w, minimum(filter(>(0), w)))
+    return w ./ maximum(w)
 end
 
 """
@@ -118,7 +116,7 @@ function _preconditioned_data_term(𝒜, y, x, reg_terms, p::_ChambollePockPreco
         p.steps = nothing
         return @term ls(𝒜 * x - y)
     end
-    w = isnothing(p.weights) ? nothing : _storage_like(y, p.weights)
+    w = isnothing(p.weights) ? nothing : _to_storage_of(unname(y), p.weights)
     nA2 = Float64(_weighted_opnorm2(𝒜, w, ~x))
     c = sqrt(nD2 / nA2)
     a = p.data_step
@@ -126,6 +124,6 @@ function _preconditioned_data_term(𝒜, y, x, reg_terms, p::_ChambollePockPreco
     if isnothing(w)
         return StructuredOptimization.Term(1, SqrNormL2(R(1 / c^2)), R(c) * (𝒜 * x) - R(c) .* y, "ls(𝒜x - y)")
     end
-    sw = R(c) .* sqrt.(w)
-    return StructuredOptimization.Term(1, SqrNormL2(R(1 / c^2) ./ w), sw .* (𝒜 * x) - sw .* y, "ls(𝒜x - y)")
+    sw = _storage_like(y, c .* sqrt.(p.weights))
+    return StructuredOptimization.Term(1, SqrNormL2(_storage_like(y, 1 / c^2 ./ p.weights)), sw .* (𝒜 * x) - sw .* y, "ls(𝒜x - y)")
 end
