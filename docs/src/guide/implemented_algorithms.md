@@ -10,13 +10,32 @@ CurrentModule = ProximalAlgorithms
 Depending on the structure a problem can be reduced to, different types of algorithms will apply.
 The major distinctions are in the number of objective terms, whether any of them is differentiable,
 whether they are composed with some linear mapping (which in general complicates evaluating the proximal mapping).
-Based on this we can split problems, and algorithms that apply to them, in three categories:
+Based on this we can split problems, and algorithms that apply to them, in four categories:
+- [Smooth: ``\sum_i f_i \circ L_i``](@ref smooth_terms)
 - [Two-terms: ``f + g``](@ref two_terms_splitting)
 - [Three-terms: ``f + g + h``](@ref three_terms_splitting)
 - [Primal-dual: ``f + g + h \circ L``](@ref primal_dual_splitting)
 
 In what follows, the list of available algorithms is given, with links to the documentation for their constructors
 and their underlying [iterator type](@ref iterator_interface).
+
+## [Smooth: ``\sum_i f_i \circ L_i``](@id smooth_terms)
+
+When every term is smooth, the step along a search direction ``d`` can be found by a line search
+that reuses ``L_i x`` and ``L_i d``, so it applies no operator: an iteration costs one ``L_i`` and one
+``L_i^*`` per term, and no Lipschitz constant is needed.
+
+Algorithm | Assumptions | Oracle | Implementation | References
+----------|-------------|--------|----------------|-----------
+Nonlinear conjugate gradient | ``f_i`` smooth, ``L_i`` linear | ``\nabla f_i``, ``L_i``, ``L_i^*`` | [`NonlinearCG`](@ref) | Nocedal, Wright (2006), §5.2
+L-BFGS | ``f_i`` smooth, ``L_i`` linear | ``\nabla f_i``, ``L_i``, ``L_i^*`` | [`LimitedMemoryBFGS`](@ref) | Nocedal, Wright (2006), §7.2
+
+```@docs
+ProximalAlgorithms.NonlinearCG
+ProximalAlgorithms.NonlinearCGIteration
+ProximalAlgorithms.LimitedMemoryBFGS
+ProximalAlgorithms.LimitedMemoryBFGSIteration
+```
 
 ## [Two-terms: ``f + g``](@id two_terms_splitting)
 

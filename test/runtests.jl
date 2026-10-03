@@ -23,6 +23,7 @@ end
 
 @testset "Problems" begin
     include("problems/test_cg.jl")
+    include("problems/test_smooth_descent.jl")
     include("problems/test_equivalence.jl")
     include("problems/test_elasticnet.jl")
     include("problems/test_lasso_small.jl")

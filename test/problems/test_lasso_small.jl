@@ -3,7 +3,7 @@ using Test
 
 using Zygote
 using DifferentiationInterface: AutoZygote
-using ProximalOperators: NormL1, LeastSquares, SqrNormL2, ElasticNet, Translate
+using ProximalOperators: NormL1, LeastSquares, SqrNormL2, ElasticNet, Translate, SlicedSeparableSum
 using ProximalAlgorithms
 using ProximalAlgorithms:
     LBFGS,
@@ -296,6 +296,29 @@ using ProximalAlgorithms:
         @test eltype(y_afba) == T
         @test norm(x_afba - x_star, Inf) <= 1e-4
         @test it_afba <= 150
+        @test x0 == x0_backup
+    end
+
+    @testset "ChambollePock" begin
+        x0 = zeros(T, n)
+        x0_backup = copy(x0)
+
+        # g = λ‖x‖₁, h(Ax) = ½‖Ax - b‖²
+        solver = ProximalAlgorithms.ChambollePock(tol = R(1e-7), maxit = 10_000)
+        (x_cp, y_cp), it_cp = @inferred solver(x0 = x0, g = g, h = f_prox, L = A)
+        @test eltype(x_cp) == T
+        @test eltype(y_cp) == T
+        @test norm(x_cp - x_star, Inf) <= 1e-4
+        @test x0 == x0_backup
+
+        # Both terms through the dual: h = ½‖· - b‖² ⊕ λ‖·‖₁ of [A; I] x
+        h = SlicedSeparableSum((f_prox, g), ((1:m,), ((m + 1):(m + n),)))
+        K = vcat(A, Matrix{T}(I, n, n))
+        solver = ProximalAlgorithms.ChambollePock(tol = R(1e-7), maxit = 10_000, ratio = 4)
+        (x_cp, y_cp), it_cp = @inferred solver(x0 = x0, h = h, L = K)
+        @test eltype(x_cp) == T
+        @test length(y_cp) == m + n
+        @test norm(x_cp - x_star, Inf) <= 1e-4
         @test x0 == x0_backup
     end
 

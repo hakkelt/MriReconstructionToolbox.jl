@@ -17,6 +17,8 @@ using ProximalAlgorithms: get_assumptions
     @test length(get_assumptions(ProximalAlgorithms.ChambollePockIteration)) == 2
     @test length(get_assumptions(ProximalAlgorithms.SFISTAIteration)) == 2
     @test length(get_assumptions(ProximalAlgorithms.ZeroFPRIteration)) == 2
+    @test length(get_assumptions(ProximalAlgorithms.NonlinearCGIteration)) == 1
+    @test length(get_assumptions(ProximalAlgorithms.LimitedMemoryBFGSIteration)) == 1
 end
 
 # An operator with a displacement: affine, not linear.

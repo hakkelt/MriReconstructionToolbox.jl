@@ -143,33 +143,6 @@ get_assumptions(::typeof(VuCondatIteration)) = AssumptionGroup(
     OperatorTermWithInfimalConvolution(:h => (is_proximable, is_convex), :l => (is_proximable, is_strongly_convex), :L => (is_linear,))
 )
 
-"""
-    ChambollePockIteration(; <keyword-arguments>)
-
-Iterator implementing the Chambolle-Pock primal-dual algorithm [1].
-
-This iterator solves convex optimization problems of the form
-
-    minimize g(x) + h(L x),
-
-where `g` and `h` are possibly nonsmooth, and `L` is a linear mapping.
-
-See also: [`AFBAIteration`](@ref), [`ChambollePock`](@ref).
-
-This iteration is equivalent to [`AFBAIteration`](@ref) with `theta=2`, `f=Zero()`, `l=IndZero()`;
-for all other arguments see [`AFBAIteration`](@ref).
-
-# References
-1. Chambolle, Pock, "A First-Order Primal-Dual Algorithm for Convex Problems with Applications to Imaging", Journal of Mathematical Imaging and Vision, vol. 40, no. 1, pp. 120-145 (2011).
-"""
-ChambollePockIteration(; kwargs...) =
-    AFBAIteration(kwargs..., theta = 2, f = Zero(), l = IndZero())
-
-get_assumptions(::T) where {T<:typeof(ChambollePockIteration)} = AssumptionGroup(
-    SimpleTerm(:g => (is_proximable, is_convex)),
-    OperatorTerm(:h => (is_proximable, is_convex), :L => (is_linear,))
-)
-
 Base.@kwdef struct AFBAState{Tx,Ty}
     x::Tx
     y::Ty
@@ -316,38 +289,6 @@ See also: [`VuCondatIteration`](@ref), [`AFBAIteration`](@ref), [`IterativeAlgor
 2. Vũ, "A splitting algorithm for dual monotone inclusions involving cocoercive operators", Advances in Computational Mathematics, vol. 38, no. 3, pp. 667-681 (2013).
 """
 VuCondat(; kwargs...) = AFBA(; kwargs..., theta = 2)
-
-"""
-    ChambollePock(; <keyword-arguments>)
-
-Constructs the Chambolle-Pock primal-dual algorithm [1].
-
-This algorithm solves convex optimization problems of the form
-
-    minimize g(x) + h(L x),
-
-where `g` and `h` are possibly nonsmooth, and `L` is a linear mapping.
-
-The returned object has type `IterativeAlgorithm{AFBAIteration}`,
-and can be called with the problem's arguments to trigger its solution.
-
-See also: [`ChambollePockIteration`](@ref), [`AFBAIteration`](@ref), [`IterativeAlgorithm`](@ref).
-
-# Arguments
-- `maxit::Int=10_000`: maximum number of iteration
-- `tol::1e-5`: tolerance for the default stopping criterion
-- `stop::Function=(iter, state) -> default_stopping_criterion(tol, iter, state)`: termination condition, `stop(::T, state)` should return `true` when to stop the iteration
-- `solution::Function=default_solution`: solution mapping, `solution(::T, state)` should return the identified solution
-- `verbose::Bool=false`: whether the algorithm state should be displayed
-- `freq::Int=100`: every how many iterations to display the algorithm state. If `freq <= 0`, only the final iteration is displayed.
-- `summary::Function=default_iteration_summary`: function to generate iteration summaries, `summary(::Int, iter::T, state)` should return a summary of the iteration state
-- `display::Function=default_display`: display function, `display(::Int, ::T, state)` should display a summary of the iteration state
-- `kwargs...`: additional keyword arguments to pass on to the `AFBAIteration` constructor upon call
-
-# References
-1. Chambolle, Pock, "A First-Order Primal-Dual Algorithm for Convex Problems with Applications to Imaging", Journal of Mathematical Imaging and Vision, vol. 40, no. 1, pp. 120-145 (2011).
-"""
-ChambollePock(; kwargs...) = AFBA(; kwargs..., f = Zero(), l = IndZero(), theta = 2)
 
 function AFBA_default_stepsizes(L, h::Zero, theta::R, mu::R, beta_f::R, beta_l::R) where {R}
     return R(1.99) / beta_f, R(1)
