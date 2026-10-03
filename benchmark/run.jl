@@ -25,10 +25,7 @@
 # stored for the same clean code on the same node class is skipped, so a baseline measured once is
 # never measured again. `benchmark/compare.jl` compares two refs.
 
-const _ARGS = copy(ARGS)
-_arg(name, default = nothing) = (i = findlast(a -> startswith(a, "--$name="), _ARGS)) === nothing ? default : _ARGS[i][(length(name) + 4):end]
-_flag(name) = "--$name" in _ARGS
-_list(name) = (v = _arg(name); v === nothing ? nothing : String.(split(v, ",")))
+include(joinpath(@__DIR__, "utils", "cli.jl"))
 
 # ---------------------------------------------------------------- --mrt: re-run in that checkout
 
@@ -66,7 +63,7 @@ if _arg("mrt") !== nothing && get(ENV, "MRT_BENCH_REEXEC", "") != "1"
         end
         run(`$(Base.julia_cmd()) --project=$proj -e "using Pkg; Pkg.instantiate()"`)
     end
-    cmd = `$(Base.julia_cmd()) --project=$proj -t $(Threads.nthreads()) $(@__FILE__) $_ARGS`
+    cmd = `$(Base.julia_cmd()) --project=$proj -t $(Threads.nthreads()) $(@__FILE__) $ARGS`
     exit(run(addenv(ignorestatus(cmd), "MRT_BENCH_REEXEC" => "1")).exitcode)
 end
 

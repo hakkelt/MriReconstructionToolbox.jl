@@ -19,6 +19,7 @@
 #   `min` the fastest, for repeated measurements such as `matrix.sh --swap-repeat`, whose repeats
 #   ran each ref on the other NUMA domain.
 
+include(joinpath(@__DIR__, "utils", "cli.jl"))
 include(joinpath(@__DIR__, "utils", "results_store.jl"))
 using .ResultsStore
 using Printf, Statistics
@@ -26,7 +27,6 @@ using Printf, Statistics
 length(ARGS) >= 2 && !startswith(ARGS[1], "--") && !startswith(ARGS[2], "--") ||
     error("usage: compare.jl <A> <B> [--threads=..] [--backend=..] [--cases=..] [--methods=..]")
 const A, B = ARGS[1], ARGS[2]
-_list(name) = (i = findlast(a -> startswith(a, "--$name="), ARGS); i === nothing ? nothing : String.(split(ARGS[i][(length(name) + 4):end], ",")))
 const THREADS = let t = _list("threads")
     t === nothing ? nothing : parse.(Int, t)
 end

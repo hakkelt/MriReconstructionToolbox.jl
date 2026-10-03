@@ -28,9 +28,7 @@
 # `PDHG_ITERATIONS`, no early stop) and λ of the case's synthetic analogue. Each row is compiled on
 # the analogue first, then timed once. Results go to `results/<backend>.json` next to this script.
 
-const _ARGS = copy(ARGS)
-_arg(name, default = nothing) = (i = findlast(a -> startswith(a, "--$name="), _ARGS)) === nothing ? default : _ARGS[i][(length(name) + 4):end]
-_list(name, default) = (v = _arg(name); v === nothing ? default : String.(split(v, ",")))
+include(joinpath(@__DIR__, "..", "utils", "cli.jl"))
 
 const DEVICE = _arg("device", "cpu")
 DEVICE in ("cpu", "cuda") || error("--device=$DEVICE: expected cpu or cuda")
@@ -41,7 +39,7 @@ let allowed = findall(==(1), getaffinity()) .- 1
     physical = filter(!ThreadPinning.ishyperthread, allowed)
     if length(physical) >= Threads.nthreads()
         pinthreads(physical[1:Threads.nthreads()])
-    elseif !("--prepare" in _ARGS)
+    elseif !_flag("prepare")
         error("only $(length(physical)) physical cores allowed, $(Threads.nthreads()) threads requested")
     end
 end
@@ -186,7 +184,7 @@ end
 for id in CASES
     c = large_case(id)
     @info "case" c
-    "--prepare" in _ARGS && continue
+    _flag("prepare") && continue
     analogue = get_case(c.analogue)
     for method in METHOD_LIST
         device = ON_GPU ? CuArray : nothing

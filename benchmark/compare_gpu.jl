@@ -8,15 +8,14 @@
 # ΔNRMSE = NRMSE(B) - NRMSE(A) against the ground truth. A ratio above `--slower` is flagged
 # `slower`, below its inverse `faster`, and a |ΔNRMSE| above 1e-3 `NRMSE CHANGED`.
 
+include(joinpath(@__DIR__, "utils", "cli.jl"))
 include(joinpath(@__DIR__, "utils", "results_store.jl"))
 using .ResultsStore
 using Printf, Statistics
 
 length(ARGS) >= 3 || error("usage: compare_gpu.jl <dir> <A> <B> [--slower=1.05]")
 const DIR, A, B = ARGS[1], ARGS[2], ARGS[3]
-const SLOWER = let i = findlast(a -> startswith(a, "--slower="), ARGS)
-    i === nothing ? 1.05 : parse(Float64, ARGS[i][(length("--slower=") + 1):end])
-end
+const SLOWER = parse(Float64, _arg("slower", "1.05"))
 
 # Minimum time and the NRMSE of that run, per row key, over every run file of one ref.
 function side(ref)
