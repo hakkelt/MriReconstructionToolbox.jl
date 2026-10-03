@@ -525,6 +525,21 @@ branch = "fix/pogm-restart-device"
 parent = "master"
 pr = "hakkelt/ProximalAlgorithms.jl#5"
 
+# `ChambollePock` gets an iteration of its own (Chambolle-Pock 2011, `g + h(Lx)`): it was AFBA with
+# a defaulted `f = Zero()`, so a smooth data term went to `f` and the run was Vu-Condat. `master`
+# owns `primal_dual.jl` and is frozen.
+[[ProximalAlgorithms.stack]]
+branch = "feat/chambolle-pock-iteration"
+parent = "master"
+pr = "hakkelt/ProximalAlgorithms.jl#6"
+
+# `NonlinearCG` and `LimitedMemoryBFGS` for Σᵢ fᵢ(Lᵢ x) with every fᵢ smooth, with a line search on
+# the cached Lᵢ x and Lᵢ d.
+[[ProximalAlgorithms.stack]]
+branch = "feat/smooth-line-search"
+parent = "master"
+pr = "hakkelt/ProximalAlgorithms.jl#7"
+
 # `pogm-algorithm` is deliberately absent: it added POGM as a `pogm::Bool` variant of
 # `FastForwardBackward`, and `master` (#100) supersedes it with a `src/algorithms/pogm.jl` of its
 # own. Merging it would only re-add the old path. The branch is still on the fork, unmerged.
@@ -577,3 +592,11 @@ pr = ""
 branch = "refactor/aac-diagonal-in-ao"
 parent = "master"
 pr = ""
+
+# A term an algorithm only differentiates goes to a `RepeatedOperatorTerm` slot through its normal
+# operator when that formulation ranks first (NonlinearCG / LimitedMemoryBFGS on a least-squares
+# term: one normal-operator application per gradient instead of an L and an L').
+[[StructuredOptimization.stack]]
+branch = "feat/smooth-normal-op"
+parent = "master"
+pr = "hakkelt/StructuredOptimization.jl#3"
