@@ -96,8 +96,8 @@ function patch_algorithm_with_default_values(
     return algorithm
 end
 
-# The primal-dual family (`ChambollePock`, `VuCondat`, `AFBA`) takes the data term as its smooth
-# `f`, whose gradient Lipschitz constant `beta_f` it requires.
+# `VuCondat` and `AFBA` take the data term as their smooth `f`, whose gradient Lipschitz constant
+# `beta_f` they require. `ChambollePock` takes it through its prox and needs no `beta_f`.
 function patch_algorithm_with_default_values(
         algorithm::ProximalAlgorithms.IterativeAlgorithm{ProximalAlgorithms.AFBAIteration}, Lf::Union{Nothing, Real} = nothing;
         eltype_real::Type{<:Real} = Float64,

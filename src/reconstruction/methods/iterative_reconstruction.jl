@@ -60,6 +60,8 @@ Algorithm-dependent fields are present only where the algorithm actually compute
 | `DouglasRachford` | `objective`, `smooth_value`, `nonsmooth_value`, `fixed_point_residual` |
 | `ADMM` | `primal_residual`, `dual_residual`, `iterate_change` |
 | `CG` / `CGNR` | `residual_norm` |
+| `ChambollePock` | `primal_change`, `dual_change` (`‖x - x⁻‖∞`, `‖y - y⁻‖∞`) |
+| `NCG` / `LBFGS` | `objective`, `stepsize`, `gradient_norm` |
 
 Use [`IterationTrace`](@ref) rather than writing a collector by hand. The callback fires from the
 solver task, so under task splitting several slabs may call it concurrently — `IterationTrace`

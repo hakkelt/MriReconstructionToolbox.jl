@@ -239,6 +239,7 @@ end
 # `(x, y)`, every other algorithm the primal iterate alone.
 _primal_solution(iter, sol) = sol
 _primal_solution(::ProximalAlgorithms.AFBAIteration, sol::Tuple) = first(sol)
+_primal_solution(::ProximalAlgorithms.ChambollePockIteration, sol::Tuple) = first(sol)
 
 _copy_iterate(x::AbstractArray) = copy(x)
 _copy_iterate(xs::Tuple) = map(copy, xs)
@@ -291,6 +292,17 @@ function _iteration_metrics(::ProximalAlgorithms.ADMMIteration, state)
 end
 
 _iteration_metrics(::ProximalAlgorithms.AbstractCGIteration, state) = (; residual_norm = sqrt(state.r²))
+
+function _iteration_metrics(::ProximalAlgorithms.ChambollePockIteration, state)
+    primal_change, dual_change = ProximalAlgorithms._cp_changes(state)
+    return (; primal_change, dual_change)
+end
+
+function _iteration_metrics(
+        ::Union{ProximalAlgorithms.NonlinearCGIteration, ProximalAlgorithms.LimitedMemoryBFGSIteration}, state,
+    )
+    return (; objective = state.f_x, stepsize = state.alpha, gradient_norm = norm(state.grad, Inf))
+end
 
 function get_reasonable_freq(maxit)
     reasonable_freqs = [1, 5, 10, 20, 50, 100]

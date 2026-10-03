@@ -53,7 +53,10 @@ end
             (:objective, :smooth_value, :nonsmooth_value, :fixed_point_residual),
         ),
         # A primal-dual solver's `solution` is the pair `(x, y)`; the callback gets `x`.
-        (ChambollePock(), (TotalVariation2D(0.01),), L2Loss(), ()),
+        (ChambollePock(), (TotalVariation2D(0.01),), L2Loss(), (:primal_change, :dual_change)),
+        (VuCondat(), (TotalVariation2D(0.01),), L2Loss(), ()),
+        (NCG(), (EdgePreservingRoughness2D(0.01),), L2Loss(), (:objective, :stepsize, :gradient_norm)),
+        (LBFGS(), (EdgePreservingRoughness2D(0.01),), L2Loss(), (:objective, :stepsize, :gradient_norm)),
     )
 
     @testset "$(nameof(typeof(algorithm)))" for (algorithm, regs, fidelity, metric_keys) in cases

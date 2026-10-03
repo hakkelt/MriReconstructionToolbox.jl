@@ -15,7 +15,9 @@ img = reconstruct(acq, IterativeReconstruction(regularization))
 
 ```
 Is your problem smooth (no L1, TV, etc.)?
-├─ Yes → Use CGNR (Conjugate Gradient Normal Residual)
+├─ Yes → Is every term quadratic (data term, Tikhonov)?
+│   ├─ Yes → Use CGNR (Conjugate Gradient Normal Residual)
+│   └─ No → Use LBFGS (an edge-preserving roughness penalty, say)
 └─ No → Does it have a single non-smooth regularizer where the wrapped operator is symmetric* (e.g. wavelets, temporal Fourier)?
     ├─ Yes → Use POGM (Proximal Optimized Gradient Method)
     └─ No → Use ADMM (Alternating Direction Method of Multipliers)
@@ -25,8 +27,9 @@ Is your problem smooth (no L1, TV, etc.)?
 
 ## ProximalAlgorithms.jl Interface
 
-MriReconstructionToolbox builds on [ProximalAlgorithms.jl](https://github.com/JuliaFirstOrder/ProximalAlgorithms.jl). All algorithms from that package can be used directly. There are three recommended algorithms for MRI reconstruction used by default in `reconstruct()`:
-- `CGNR`: Conjugate Gradient Normal Residual for smooth problems
+MriReconstructionToolbox builds on [ProximalAlgorithms.jl](https://github.com/JuliaFirstOrder/ProximalAlgorithms.jl). All algorithms from that package can be used directly. There are four recommended algorithms for MRI reconstruction used by default in `reconstruct()`:
+- `CGNR`: Conjugate Gradient Normal Residual for quadratic problems
+- `LBFGS`: limited-memory BFGS for smooth, non-quadratic problems (`NCG` solves the same problems)
 - `POGM`: Proximal Optimized Gradient Method for a single non-smooth regularizer (`FISTA` solves the
   same problems and is one `algorithm = FISTA()` away)
 - `ADMM`: Alternating Direction Method of Multipliers for multiple regularizers
@@ -330,33 +333,93 @@ y_{k+1} = \operatorname{prox}_{\gamma f}(x_k), \quad z_{k+1} = \operatorname{pro
 ### Primal-Dual Hybrid Gradient (`ChambollePock`, also `PDHG`)
 
 **When to use:**
-- One non-smooth regularizer composed with a linear transform — total variation, temporal TV —
-  when a solve without inner CG iterations and without a penalty `ρ` to tune is wanted.
+- Regularizers composed with linear transforms — total variation, temporal TV, several at once —
+  when a solve without inner CG iterations and without a penalty `ρ` to tune is wanted, on
+  Cartesian data in particular.
 
 **How it works:**
-Chambolle-Pock's primal-dual method solves ``\min f(x) + h(Dx)`` by alternating a gradient step
-on the primal variable with a proximal step on a dual variable for ``h``, so ``h`` is only ever
-used through its proximal operator and ``D`` only through `D` and `D'`. The data term
-``\tfrac12\|\mathcal{A}x - y\|^2`` enters as the smooth ``f``, through its gradient (the fused
-normal operator), which makes the iteration the Condat-Vũ generalization of Chambolle-Pock.
-`reconstruct` supplies the gradient's Lipschitz constant ``\|\mathcal{A}\|^2`` as `beta_f`.
+Chambolle-Pock's primal-dual method (Algorithm 1 of the 2011 paper) solves
+``\min_x g(x) + h(Kx)`` with ``g`` and ``h`` used only through their proximal operators and ``K``
+only through `K` and `K'`. `reconstruct` stacks every term into ``h``: the data term and each
+regularizer become blocks of ``K = [\mathcal{A}; D_1; …]`` and ``h`` their separable sum, so the data
+term is handled through its proximal operator, not its gradient, and the primal step is limited by
+``\|K\|`` alone. A constraint the stack cannot take goes to ``g``. Each iteration applies
+``\mathcal{A}``, ``\mathcal{A}'`` and every ``D_i``, ``D_i'`` once.
+
+**Parameters:**
+- `ratio`: the ratio ``\sigma/\tau`` of the dual and primal step sizes (default `1`).
+- `tau`, `sigma`, `normL`: the step sizes and ``\|K\|``, derived when not given (``\|K\|`` by a power
+  iteration).
+- `maxit`, `tol`.
+
+**Pros:**
+- ✅ No inner solve, no penalty parameter, no Lipschitz constant of the data term
+- ✅ Any number of regularizers
+- ✅ On a 2D 8-coil Cartesian anisotropic-TV problem, 200 iterations reach NRMSE 0.067 where `VuCondat` reaches
+  0.150
+
+**Cons:**
+- ❌ Ill-conditioned encodings converge slowly: on the 2D 8-coil radial case `VuCondat` reached
+  NRMSE 0.070 in 200 iterations, `ChambollePock` 0.19 at its best `ratio`. Use `VuCondat` or
+  `ADMM` there.
+- ❌ Needs many more iterations than ADMM; count operator applications, not iterations, when
+  comparing the two
+
+```julia
+img = reconstruct(acq, IterativeReconstruction(TotalVariation2D(1e-2); algorithm = PDHG(), maxit = 500))
+```
+
+### Vũ-Condat (`VuCondat`)
+
+**When to use:**
+- The problems `ChambollePock` takes, when the data term is better handled through its gradient:
+  non-Cartesian encodings, whose ``\mathcal{A}'\mathcal{A}`` is badly conditioned.
+
+**How it works:**
+The Vũ-Condat generalization of Chambolle-Pock solves ``\min_x f(x) + g(x) + h(Dx)``, taking the
+smooth ``f`` (the data term, through its fused normal operator) by a gradient step and ``h`` through
+its proximal operator. `reconstruct` supplies the gradient's Lipschitz constant ``\|\mathcal{A}\|^2``
+as `beta_f`, which caps the primal step at about ``2/\|\mathcal{A}\|^2``.
 
 **Parameters:**
 - `gamma1`, `gamma2`: primal and dual step sizes, derived from `beta_f` and ``\|D\|`` when not
   given.
 - `maxit`, `tol`.
 
+```julia
+img = reconstruct(acq, IterativeReconstruction(TotalVariation2D(1e-2); algorithm = VuCondat(), maxit = 500))
+```
+
+### Nonlinear Conjugate Gradient and L-BFGS (`NCG`, `LBFGS`)
+
+**When to use:**
+- Every term smooth but not every term quadratic: an edge-preserving (Huber) roughness penalty,
+  a Tikhonov term next to it. `LBFGS` is the default for such a problem.
+
+**How it works:**
+Both minimize ``\sum_i f_i(L_i x)`` with a line search along each search direction ``d`` that keeps
+``L_i x`` and ``L_i d`` and so applies no operator: an iteration costs one ``L_i`` and one ``L_i'`` per
+term, and the data term enters through its normal operator, one ``\mathcal{A}'\mathcal{A}`` per
+iteration. No Lipschitz constant is needed, so a Huber penalty with a small threshold ``\delta``,
+which caps POGM's fixed step at about ``\delta/(8\lambda)``, does not slow them down. `NCG` is
+Polak-Ribière+, `LBFGS` keeps the last `memory` correction pairs.
+
+**Parameters:**
+- `memory` (`LBFGS` only): stored correction pairs (default `5`).
+- `eta`: line search accuracy, the accepted ``|\varphi'(\alpha)|`` relative to ``|\varphi'(0)|``
+  (`0.1` for `NCG`, `0.9` for `LBFGS`).
+- `maxit`, `tol` (on the size of the last step).
+
 **Pros:**
-- ✅ One application of ``\mathcal{A}'\mathcal{A}``, ``D`` and ``D'`` per iteration; no inner solve
-- ✅ No penalty parameter
+- ✅ On a 2D 8-coil Cartesian case with ``\delta = 0.01``, 25 iterations reach NRMSE 0.044 where
+  POGM reaches 0.081; with ``\delta = 0.001``, 0.19 against 0.34
+- ✅ No step size and no ``\|\mathcal{A}\|`` estimate
 
 **Cons:**
-- ❌ Needs many more iterations than ADMM; count operator applications, not iterations, when
-  comparing the two
-- ❌ One regularizer term only
+- ❌ Smooth terms only: a non-smooth regularizer or a constraint needs a proximal method
 
 ```julia
-img = reconstruct(acq, IterativeReconstruction(TotalVariation2D(1e-2); algorithm = PDHG(), maxit = 500))
+img = reconstruct(acq, IterativeReconstruction(EdgePreservingRoughness2D(1e-2; δ = 0.01); algorithm = LBFGS(), maxit = 50))
 ```
 
 ## Tuning Algorithm Parameters
@@ -474,6 +537,8 @@ the sort:
 | `DouglasRachford` | `objective`, `smooth_value`, `nonsmooth_value`, `fixed_point_residual` |
 | `ADMM` | `primal_residual`, `dual_residual`, `iterate_change` |
 | `CG`, `CGNR` | `residual_norm` |
+| `ChambollePock` | `primal_change`, `dual_change` |
+| `NCG`, `LBFGS` | `objective`, `stepsize`, `gradient_norm` |
 
 So an objective-vs-iteration curve for FISTA is `[m.objective for m in trace.metrics]`, while for
 ADMM the comparable curve is `[m.primal_residual for m in trace.metrics]`. Test

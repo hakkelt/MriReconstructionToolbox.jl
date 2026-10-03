@@ -55,6 +55,9 @@ const CGNR = ProximalAlgorithms.CGNR
 const POGM = ProximalAlgorithms.POGM
 const ChambollePock = ProximalAlgorithms.ChambollePock
 const PDHG = ChambollePock
+const VuCondat = ProximalAlgorithms.VuCondat
+const NCG = ProximalAlgorithms.NonlinearCG
+const LBFGS = ProximalAlgorithms.LimitedMemoryBFGS
 
 # Exported names target a non-expert user assembling a reconstruction from the built-in pieces.
 # The extension surface (abstract supertypes, interface functions) is `public` but not exported.
@@ -77,7 +80,7 @@ export Silent, ProgressBar, Verbose
 export IterationTrace
 export BartScaling, FixedScaling, KSpaceNormScaling, MaxScaling, MeasurementBasedScaling, NoiseLevelScaling
 export NoScaling, QuantileScaling, StdScaling, SystemMatrixBasedScaling
-export ISTA, FISTA, POGM, ADMM, DouglasRachford, CG, CGNR, ChambollePock
+export ISTA, FISTA, POGM, ADMM, DouglasRachford, CG, CGNR, ChambollePock, VuCondat, NCG, LBFGS
 # Established second name for `ChambollePock` (NAMING.md rule 2.1)
 export PDHG
 

@@ -144,7 +144,7 @@ built-in pieces. Anything needed only to *extend* the package is `public` but no
 - every concrete reconstruction method (`DirectReconstruction`, `IterativeReconstruction`, `GRAPPA`,
   `SPIRiT`, `Homodyne`, `PhaseConstrained`, `POCS`);
 - algorithm aliases (`ISTA`, `FISTA`, `POGM`, `ADMM`, `DouglasRachford`, `CG`, `CGNR`, `ChambollePock`,
-  `PDHG`);
+  `PDHG`, `VuCondat`, `NCG`, `LBFGS`);
 - the concrete members of each configuration family — coil combination, data fidelity, verbosity,
   scaling, executors, partial-Fourier filters, sampling patterns, preprocessing methods;
 - `AcquisitionInfo` (its two concrete subtypes are `public`, see Rule 6.2);
