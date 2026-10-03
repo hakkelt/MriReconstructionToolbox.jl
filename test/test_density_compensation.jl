@@ -165,8 +165,20 @@ end
     @test corr_pm > 0.85
     @test corr_vor > 0.5
 
-    # The density compensation is computed on the host, the gridding and the iterative solve run
-    # on the device's NFFT.
+    # On a device, PipeMenonDCF iterates on the device's NFFT and VoronoiDCF is computed on the
+    # host; either way the weights land in the k-space's storage, and the gridding and the
+    # iterative solve run on the device's NFFT.
+    for backend in fft_backends()
+        @testset "$(backend.name) weights" begin
+            acq_d = to_device(backend, acq)
+            for (method, host) in ((PipeMenonDCF(maxit = 20), acq_pm), (VoronoiDCF(), acq_vor))
+                dev = density_compensation(acq_d; method)
+                @test _is_device(dev.dcf)
+                @test dev.kspace_data === acq_d.kspace_data
+                @test _relerr(_values(dev.dcf), _values(host.dcf)) < 1.0e-3
+            end
+        end
+    end
     test_on_devices(a -> reconstruct(density_compensation(a; method = PipeMenonDCF(maxit = 20)); verbosity = Silent()), acq)
     test_on_devices(acq; rtol = 1.0e-3) do a
         reconstruct(a, IterativeReconstruction(TotalVariation2D(1.0e-3); maxit = 20); verbosity = Silent())

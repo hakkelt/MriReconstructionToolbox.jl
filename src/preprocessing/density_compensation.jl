@@ -63,46 +63,44 @@ function density_compensation(
         acq::NonCartesianAcquisitionInfo;
         method::DensityCompensation = PipeMenonDCF(),
     )
-    _is_device(acq) && return _to_storage_of(acq, density_compensation(Adapt.adapt(Array, acq); method))
-    nframe = _trajectory_frame_dims_count(acq.trajectory, acq.kspace_data)
+    # The weights are computed from the trajectory, which is held on the host on every storage;
+    # the k-space only says which storage they go to, and is never copied.
+    ksp = acq.kspace_data
+    array_type = isnothing(ksp) ? Array : Base.typename(_array_type_of(ksp)).wrapper
+    nframe = _trajectory_frame_dims_count(acq.trajectory, ksp)
     dcf = if nframe == 0
-        compute_dcf(acq.trajectory, acq.image_size, method)
+        compute_dcf(acq.trajectory, acq.image_size, method; array_type)
     else
-        _per_frame_dcf(acq.trajectory, acq.image_size, method, nframe)
+        _per_frame_dcf(acq.trajectory, acq.image_size, method, nframe; array_type)
     end
-    return NonCartesianAcquisitionInfo(
-        acq.kspace_data;
-        trajectory = acq.trajectory,
-        dcf = dcf,
-        sensitivity_maps = acq.sensitivity_maps,
-        image_size = acq.image_size,
-        shifted_kspace_dims = acq.shifted_kspace_dims,
-        shifted_image_dims = acq.shifted_image_dims,
-    )
+    return NonCartesianAcquisitionInfo(acq; dcf = isnothing(ksp) ? dcf : _to_storage_of(ksp, dcf))
 end
 
 # A per-frame trajectory's frames are separate acquisitions, each with its own sample density: the
 # weights are computed frame by frame, never over the samples of every frame pooled together.
-function _per_frame_dcf(trajectory, image_size, method, nframe::Int)
+function _per_frame_dcf(trajectory, image_size, method, nframe::Int; array_type = Array)
     traj = unname(trajectory)
     nsample = ndims(traj) - 1 - nframe
     sample_axes = ntuple(_ -> Colon(), nsample)
     dcf = similar(traj, size(traj)[2:end])
     for I in CartesianIndices(size(traj)[(nsample + 2):end])
-        dcf[sample_axes..., Tuple(I)...] = compute_dcf(traj[:, sample_axes..., Tuple(I)...], image_size, method)
+        dcf[sample_axes..., Tuple(I)...] = compute_dcf(traj[:, sample_axes..., Tuple(I)...], image_size, method; array_type)
     end
     return trajectory isa NamedDimsArray ? NamedDimsArray{dimnames(trajectory)[2:end]}(dcf) : dcf
 end
 
 """
-    compute_dcf(trajectory::AbstractArray, image_size::Tuple, method::DensityCompensation)
+    compute_dcf(trajectory::AbstractArray, image_size::Tuple, method::DensityCompensation; array_type = Array)
 
-Compute density compensation factor weights for the given trajectory and Cartesian image grid size.
+Compute density compensation factor weights for the given host trajectory and Cartesian image grid
+size, as a host array. [`PipeMenonDCF`](@ref) runs its iteration on an NFFT plan of `array_type`
+storage (a device array type to run it on the device); [`VoronoiDCF`](@ref) is computed on the host.
 """
 function compute_dcf(
         trajectory::AbstractArray{T},
         image_size::Tuple,
-        method::PipeMenonDCF,
+        method::PipeMenonDCF;
+        array_type::Type = Array,
     ) where {T <: Real}
     NFFTTools = getfield(parentmodule(NFFTOp), :NFFTTools)
 
@@ -111,9 +109,10 @@ function compute_dcf(
     ksp_shape = size(traj_raw)[2:end]
     traj_flat = reshape(traj_raw, coord_dim, :)
 
-    plan = NFFT.plan_nfft(NFFT.backend(), traj_flat, image_size)
+    plan = array_type <: Array ? NFFT.plan_nfft(NFFT.backend(), traj_flat, image_size) :
+        NFFT.plan_nfft(NFFT.backend(), array_type, Matrix(traj_flat), image_size)
     raw_dcf = NFFTTools.sdc(plan; iters = method.maxit)
-    dcf_arr = reshape(raw_dcf, ksp_shape)
+    dcf_arr = reshape(_to_host(raw_dcf), ksp_shape)
     if method.edge_correction
         dcf_arr = correct_dcf_edges(dcf_arr; edge_samples = method.edge_samples)
     end
@@ -127,7 +126,8 @@ end
 function compute_dcf(
         trajectory::AbstractArray{T},
         image_size::Tuple,
-        method::VoronoiDCF,
+        method::VoronoiDCF;
+        array_type::Type = Array,
     ) where {T <: Real}
     traj_raw = trajectory isa NamedDimsArray ? unname(trajectory) : trajectory
     coord_dim = size(traj_raw, 1)
