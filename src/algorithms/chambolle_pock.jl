@@ -103,10 +103,12 @@ function Base.iterate(iter::ChambollePockIteration, state::ChambollePockState = 
 end
 
 # The largest change of the last step, in the scratch arrays (free between iterations).
+# `maximum(abs, ·)` rather than `norm(·, Inf)`: the dual of a sum of terms is an `ArrayPartition`,
+# whose `norm` reads it element by element, which a GPU array does not allow.
 function _cp_changes(state::ChambollePockState)
     state.temp_x .= state.x .- state.x_prev
     state.temp_y .= state.y .- state.y_prev
-    return norm(state.temp_x, Inf), norm(state.temp_y, Inf)
+    return maximum(abs, state.temp_x), maximum(abs, state.temp_y)
 end
 
 default_stopping_criterion(tol, ::ChambollePockIteration, state::ChambollePockState) =
@@ -149,7 +151,7 @@ See also: [`ChambollePockIteration`](@ref), [`VuCondat`](@ref), [`IterativeAlgor
 """
 ChambollePock(;
     maxit = 10_000,
-    tol = 1e-5,
+    tol = 1.0e-5,
     stop = (iter, state) -> default_stopping_criterion(tol, iter, state),
     solution = default_solution,
     verbose = false,
