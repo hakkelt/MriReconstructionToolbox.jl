@@ -54,6 +54,20 @@ using TestItems
         @test result == manual_result
     end
 
+    @testset "get_operator - frames above the threading threshold" begin
+        x = rand(ComplexF32, 512, 512, 2)
+        reg = L1Wavelet2D(0.1; levels = 3)
+        serial = get_operator(reg, x; threaded = false)
+        threaded = get_operator(reg, x; threaded = true)
+        @test threaded * x == serial * x
+        @test threaded' * (threaded * x) ≈ x
+        # A serial batch whose frames go to a threaded transform one view at a time.
+        𝒲 = WaveletOp(ComplexF32, wavelet(WT.db2), (512, 512), 3; threaded = true)
+        batch = BatchOp(𝒲, 2; threaded = false)
+        @test batch * x == serial * x
+        @test batch' * (batch * x) ≈ x
+    end
+
     @testset "get_operator - dimension check" for threaded in [false, true]
         x = rand(10)  # 1D
         reg = L1Wavelet2D(0.1)
