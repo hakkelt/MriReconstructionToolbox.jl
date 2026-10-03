@@ -268,7 +268,8 @@ end
 @testitem "Preconditioned ChambollePock on radial data reaches the VuCondat solution" tags = [:minimizer, :reconstruction, :nfft, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
     using Test
     using MriReconstructionToolbox
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using MriReconstructionToolbox: NonCartesianAcquisitionInfo, AcquisitionInfo
+    using NamedDims: unname
     using LinearAlgebra
 
     nx, ny = 32, 32
@@ -287,6 +288,13 @@ end
     err(x) = norm(x - x_ref) / norm(x_ref)
     cp = IterativeReconstruction(reg; algorithm = ChambollePock(maxit = 300, tol = 0.0), maxit = 300, reltol = 0.0)
     @test err(reconstruct(data, cp; verbosity = Silent())) < 1.0e-2
+    # A density compensation that is zero at the k-space centre, as a ramp is: the zero weights are
+    # raised to the smallest positive one, so the centre samples stay in the data term.
+    dcf0 = copy(unname(density_compensation(data).dcf))
+    dcf0[size(dcf0, 1) ÷ 2 + 1, :] .= 0
+    data0 = AcquisitionInfo(data; dcf = dcf0)
+    @test all(>(0), MriReconstructionToolbox._density_weights(data0))
+    @test err(reconstruct(data0, cp; verbosity = Silent())) < 1.0e-2
     # ...against one scalar step, which a given `ratio` leaves in place: further from the
     # solution after the same number of iterations.
     short(alg) = err(reconstruct(data, IterativeReconstruction(reg; algorithm = alg, maxit = 60, reltol = 0.0); verbosity = Silent()))

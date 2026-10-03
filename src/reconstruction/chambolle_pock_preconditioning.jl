@@ -59,12 +59,14 @@ function _storage_like(y, w)
 end
 
 # The density weights of `acq`, normalised to a largest weight of 1: `nothing` on a Cartesian grid,
-# where every sample has the same weight.
+# where every sample has the same weight. A weight of zero (a ramp's k-space centre) would take its
+# sample out of the data term, so every weight is at least the smallest positive one.
 _density_weights(::CartesianAcquisitionInfo) = nothing
 function _density_weights(acq::NonCartesianAcquisitionInfo)
     dcf = isnothing(acq.dcf) ? density_compensation(acq).dcf : acq.dcf
     w = Array(unname(dcf))
-    return w ./ maximum(w)
+    w = w ./ maximum(w)
+    return max.(w, minimum(v for v in w if v > 0))
 end
 
 """
