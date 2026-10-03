@@ -31,7 +31,8 @@ function _check_dwt_args(y, x, L)
 end
 
 function _threaded_dwt!(
-        y::Array{<:Number, 2}, x::Array{<:Number, 2}, filter::Wavelets.WT.OrthoFilter, L::Integer, fw::Bool
+        y::StridedArray{<:Number, 2}, x::StridedArray{<:Number, 2}, filter::Wavelets.WT.OrthoFilter, L::Integer,
+        fw::Bool,
     )
     _check_dwt_args(y, x, L)
     L == 0 && return copyto!(y, x)
@@ -73,7 +74,8 @@ function _threaded_dwt!(
 end
 
 function _threaded_dwt!(
-        y::Array{<:Number, 3}, x::Array{<:Number, 3}, filter::Wavelets.WT.OrthoFilter, L::Integer, fw::Bool
+        y::StridedArray{<:Number, 3}, x::StridedArray{<:Number, 3}, filter::Wavelets.WT.OrthoFilter, L::Integer,
+        fw::Bool,
     )
     _check_dwt_args(y, x, L)
     L == 0 && return copyto!(y, x)
