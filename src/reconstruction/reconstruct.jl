@@ -50,7 +50,13 @@ function reconstruct(
     t_start = time()
     method = lower(method, acq_data)
     check_applicable(method, acq_data)
-    x = _reconstruct_dispatch(acq_data, method, x₀, config)
+    # What the measured plans learned is saved once per reconstruction, not only at exit, so a
+    # session that is killed does not plan them again next time.
+    x = try
+        _reconstruct_dispatch(acq_data, method, x₀, config)
+    finally
+        _save_fftw_wisdom()
+    end
     t_end = time()
     log_message(config.verbosity, "Total time: ", format_time(t_end - t_start))
     return x
