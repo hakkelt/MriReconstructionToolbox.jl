@@ -37,11 +37,14 @@ See also: [`ChambollePock`](@ref).
 - `normL=opnorm(L)`: the operator norm `‖L‖`.
 - `ratio=1`: the ratio `σ/τ` of the dual and primal step sizes of the default step sizes.
 - `tau`, `sigma`: primal and dual step sizes; by default `τ = 0.99/(‖L‖√ratio)` and
-  `σ = 0.99√ratio/‖L‖`, so that `τσ‖L‖² < 1`.
+  `σ = 0.99√ratio/‖L‖`, so that `τσ‖L‖² < 1`. With `h` a separable sum whose dual is an
+  `ArrayPartition`, `sigma` may also be a tuple with one step per block, each a number or an
+  array of the block's size (a diagonal preconditioner, as in [2]); `tau` must then be given.
 - `theta=1`: extrapolation parameter.
 
 # References
 1. Chambolle, Pock, "A First-Order Primal-Dual Algorithm for Convex Problems with Applications to Imaging", Journal of Mathematical Imaging and Vision, vol. 40, no. 1, pp. 120-145 (2011).
+2. Pock, Chambolle, "Diagonal preconditioning for first order primal-dual algorithms in convex optimization", ICCV (2011).
 """
 Base.@kwdef struct ChambollePockIteration{Tx, Ty, Tg, Th, TL, TLt, Tn, Tr, Tt, Ts, Tθ}
     g::Tg = Zero()
@@ -64,7 +67,7 @@ get_assumptions(::Type{<:ChambollePockIteration}) = AssumptionGroup(
     SimpleTerm(:g => (is_proximable, is_convex)),
 )
 
-mutable struct ChambollePockState{Tx, Ty}
+mutable struct ChambollePockState{Tx, Ty, Ts}
     x::Tx
     x_prev::Tx
     xbar::Tx
@@ -72,23 +75,33 @@ mutable struct ChambollePockState{Tx, Ty}
     y_prev::Ty
     temp_x::Tx
     temp_y::Ty
+    sigma_inv::Ts
 end
 
 function ChambollePockState(iter::ChambollePockIteration)
     x = copy(iter.x0)
     y = iter.y0 === nothing ? zero(iter.L * x) : copy(iter.y0)
-    return ChambollePockState(x, similar(x), copy(x), y, similar(y), similar(x), similar(y))
+    return ChambollePockState(x, similar(x), copy(x), y, similar(y), similar(x), similar(y), _inv_step(iter.sigma))
 end
+
+_inv_step(σ::Number) = inv(σ)
+_inv_step(σ::AbstractArray) = inv.(σ)
+_inv_step(σ::Tuple) = map(_inv_step, σ)
+
+# `f(blocks..., σ)` over the dual: on the whole of each array under one scalar step, or block by
+# block of `ArrayPartition`s under a tuple of steps, one per block.
+_dual_blocks(f, σ, ys...) = (f(ys..., σ); nothing)
+_dual_blocks(f, σ::Tuple, ys...) = (foreach(f, map(y -> y.x, ys)..., σ); nothing)
 
 function Base.iterate(iter::ChambollePockIteration, state::ChambollePockState = ChambollePockState(iter))
     # dual step, from the extrapolated primal point, through Moreau's identity
     # prox[σh*](v) = σ (v/σ - prox[h/σ](v/σ)): the prox of `h` itself keeps a separable `h`
     # separable, where its conjugate's prox would go through the generic, allocating path
     mul!(state.temp_y, iter.L, state.xbar)
-    state.temp_y .= state.y ./ iter.sigma .+ state.temp_y
+    _dual_blocks((t, y, σ) -> (t .= y ./ σ .+ t), iter.sigma, state.temp_y, state.y)
     state.y, state.y_prev = state.y_prev, state.y
-    prox!(state.y, iter.h, state.temp_y, inv(iter.sigma))
-    state.y .= iter.sigma .* (state.temp_y .- state.y)
+    prox!(state.y, iter.h, state.temp_y, state.sigma_inv)
+    _dual_blocks((y, t, σ) -> (y .= σ .* (t .- y)), iter.sigma, state.y, state.temp_y)
 
     # primal step
     mul!(state.temp_x, iter.Lt, state.y)
