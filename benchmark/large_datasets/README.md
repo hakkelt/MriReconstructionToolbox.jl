@@ -25,3 +25,24 @@ benchmark/slurm/submit.sh --production large_datasets_gpu.sh
 `large_datasets.sh` books one node and runs the thread counts at the same time, each on the
 physical cores of its own NUMA domain. Results land in `results/<backend>.json`, one row per case
 and method.
+
+## Results (2026-10-03, commit 24b8ca845 + this directory)
+
+Seconds per reconstruction, host OpenBLAS on an AMD EPYC node of the `cpu` partition, device an
+A100-SXM4-40GB. NRMSE is the same on every backend to three digits.
+
+| case | method | 1 thread | 4 threads | 8 threads | A100 | NRMSE |
+|---|---|---:|---:|---:|---:|---:|
+| knee 3D | CG-SENSE | 44.3 | 66.2 | 37.4 | 0.96 | 0.606 |
+| knee 3D | L1-wavelet | 234 | 273 | 153 | 3.15 | 0.537 |
+| knee 3D | TV (ADMM) | 743 | 303 | 279 | 12.3 | 0.353 |
+| knee 3D | anisotropic TV (PDHG) | 1254 | 704 | 616 | 19.0 | 0.338 |
+| breast multislice radial | CG-SENSE | 71.7 | 31.2 | 23.3 | 7.80 | 0.308 |
+| breast multislice radial | L1-wavelet | 292 | 101 | 65.9 | 8.85 | 0.313 |
+| breast multislice radial | TV (ADMM) | 1055 | 327 | 201 | 18.0 | 0.174 |
+| breast multislice radial | anisotropic TV (PDHG) | 1321 | 441 | 309 | 21.8 | 0.174 |
+
+Peak host memory was 21 GB on the host runs and 8.5 GB of host memory on the GPU run. The knee's
+host rows barely scale with threads (CG-SENSE is slower at 4 than at 1 thread, and repeated calls
+in one process time the same, so FFTW planning is not the cause); the breast scales 3–5× to 8
+threads.
