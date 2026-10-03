@@ -546,6 +546,8 @@ The operator norm is defined as: `‖A‖ = sup_{x != 0} ‖A*x‖ / ‖x‖`.
 - `maxit = 100`: iteration cap.
 - `rng`: start vector source, a **fixed-seed** generator by default (see `powerit`), so
   repeated calls on the same operator return the same number.
+- `threaded = true`: whether the iteration's own vector updates may thread. The applications
+  of `A` follow `A`'s own threading.
 
 ## What is returned
 
@@ -592,6 +594,7 @@ function estimate_opnorm(
         side::Symbol = :upper,
         maxit = 100,
         rng = _powerit_rng(),
+        threaded::Bool = true,
     )
     side in (:upper, :accurate) ||
         throw(ArgumentError("`side` must be `:upper` or `:accurate`, got $(repr(side))"))
@@ -601,13 +604,13 @@ function estimate_opnorm(
     # falls short of `‖A‖` by the square of the iterate's angle error, whereas `opnorm_bound` is a
     # structural over-estimate that no amount of iteration improves. Since the bound can never
     # come out below the iterate, it has nothing to contribute here and is not even computed.
-    side === :accurate && return first(_powerit(A; maxit, rel_margin, rng, upper = Inf))
+    side === :accurate && return first(_powerit(A; maxit, rel_margin, rng, upper = Inf, threaded))
 
     upper = opnorm_bound(A)
     # `rel_margin` is a promise about the value returned, so it is checked against the value
     # returned. A certificate is only known to be within the margin once the iteration has
     # climbed to meet it, which is what `_powerit` is asked to do when `upper` is finite.
-    lower, θ, resid = _powerit(A; maxit, rel_margin, rng, upper)
+    lower, θ, resid = _powerit(A; maxit, rel_margin, rng, upper, threaded)
 
     if isfinite(upper)
         if upper > lower * (1 + rel_margin) && lower > 0
@@ -629,7 +632,7 @@ end
 _powerit_rng() = Random.Xoshiro(0x5eed)
 
 """
-	powerit(A::AbstractOperator; maxit, rel_margin, rng)
+	powerit(A::AbstractOperator; maxit, rel_margin, rng, threaded)
 
 A **lower** bound on `‖A‖` from the power method on `AᴴA`.
 
@@ -644,18 +647,21 @@ truth.
 The start vector is drawn from `rng`, a **fixed-seed** generator by default. That is not only for
 reproducible tests: convergence is linear in `|λ₂/λ₁|` [1, §8.2.1], so with a near-degenerate top
 of the spectrum `maxit` is usually exhausted and the start vector leaks into the *result*. From
-the global RNG the same operator gave a 6.5e-4 relative spread over six calls.
+the global RNG the same operator gave a 6.5e-4 relative spread over six calls. It is drawn on the
+host and copied into `A`'s domain storage, so a device operator gets the same start vector.
+
+`threaded = false` keeps the iteration's vector updates on one thread.
 
 ## References
 
 1. Golub, Van Loan, "Matrix Computations", 4th ed., Johns Hopkins (2013).
 """
-function powerit(A::AbstractOperator; maxit = 100, rel_margin = 1.0e-6, rng = _powerit_rng())
-    return first(_powerit(A; maxit, rel_margin, rng, upper = Inf))
+function powerit(A::AbstractOperator; maxit = 100, rel_margin = 1.0e-6, rng = _powerit_rng(), threaded::Bool = true)
+    return first(_powerit(A; maxit, rel_margin, rng, upper = Inf, threaded))
 end
 
 """
-	_powerit(A; maxit, rel_margin, rng, upper) -> (lower, θ, resid)
+	_powerit(A; maxit, rel_margin, rng, upper, threaded) -> (lower, θ, resid)
 
 One power iteration on `B = AᴴA`, reporting what its callers need rather than just a number:
 
@@ -680,12 +686,12 @@ gain from the other's criterion.
 
 1. Parlett, "The Symmetric Eigenvalue Problem", SIAM Classics in Applied Mathematics 20 (1998).
 """
-function _powerit(A::AbstractOperator; maxit, rel_margin, rng, upper)
+function _powerit(A::AbstractOperator; maxit, rel_margin, rng, upper, threaded::Bool = true)
     AHA = A' * A
     x = allocate_in_domain(A)
     y = similar(x)
     r = similar(x)
-    Random.randn!(rng, x)
+    copyto!(x, randn(rng, eltype(x), size(x)))
     normalize!(x)
     R = real(eltype(x))
     nrm = zero(R)
@@ -698,11 +704,19 @@ function _powerit(A::AbstractOperator; maxit, rel_margin, rng, upper)
         # A null operator: every bound is zero and dividing by `nrm` below would not be defined.
         nrm == 0 && return (zero(R), zero(R), zero(R))
         θ = real(dot(x, y))
-        @.. thread = true r = y - θ * x
+        if threaded
+            @.. thread = true r = y - θ * x
+        else
+            @.. r = y - θ * x
+        end
         resid = norm(r)
         θ > 0 && resid / (2θ) <= rel_margin && break
         isfinite(upper) && upper <= sqrt(nrm) * (1 + rel_margin) && break
-        @.. thread = true x = y / nrm
+        if threaded
+            @.. thread = true x = y / nrm
+        else
+            @.. x = y / nrm
+        end
     end
 
     return (sqrt(nrm), θ, resid)

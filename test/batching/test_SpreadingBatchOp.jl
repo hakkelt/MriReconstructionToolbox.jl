@@ -263,6 +263,8 @@ end
         # comparison below).
         @test operator_norm ≈ maximum(opnorm.(ops)) rtol = 0.05
         @test estimate_opnorm(bop) ≈ operator_norm rtol = 0.05
+        x = randn(n, 3, 4)
+        @test AbstractOperators.get_normal_op(bop) * x ≈ bop' * (bop * x)
         ops2 = [DiagOp(rand(n)) for i in 1:3]
         bop2 = BatchOp(ops2, 4, (:_, :s, :b); threaded = true, threading_strategy = AbstractOperators.ThreadingStrategy.COPYING)
         @test size(diag(bop2)) == (n, 3, 4)

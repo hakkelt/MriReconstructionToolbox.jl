@@ -830,8 +830,9 @@ end
 function get_normal_op(
         L::SpreadingBatchOpCopying{dT, cT, dM, cM, sD, N, M, opT}
     ) where {dT, cT, dM, cM, sD, N, M, opT}
-    new_ops = get_normal_op.(L.operators)
-    return SpreadingBatchOpCopying{dT, cT, dM, dM, sD, N, N, typeof(new_ops[1])}(
+    # One array of operators per thread: each copy gets its own normal operator.
+    new_ops = map(ops -> get_normal_op.(ops), L.operators)
+    return SpreadingBatchOpCopying{dT, cT, dM, dM, sD, N, N, eltype(new_ops[1])}(
         new_ops, L.domain_size, L.domain_size, L.batch_indices
     )
 end
