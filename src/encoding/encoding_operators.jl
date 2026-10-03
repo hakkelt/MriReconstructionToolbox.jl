@@ -197,7 +197,7 @@ function _frame_batched_coil_fused_operator(
         subsampling = slice_subsampling(info.subsampling, ksp, frame_dims, idx)
         frame_info = CartesianAcquisitionInfo(info; kspace_data = ksp_frame, subsampling)
         op = _coil_fused_frame_operator(frame_info; threaded = false, fast_planning, coil_maps)
-        return _unwrap_named(op)
+        return unname(op)
     end
     codomain = size(first(per_frame), 1)
     all(op -> isequal(size(op, 1), codomain), per_frame) || return nothing
@@ -236,7 +236,7 @@ function _coil_fused_frame_operator(
     )
     # A fresh Fourier operator per coil, never one shared object: each carries its own FFT plan
     # and scratch buffers, which is what makes the batch loop race-free without locking.
-    single_coil_fourier() = _unwrap_named(
+    single_coil_fourier() = unname(
         if isnothing(info.subsampling)
             ksp_one_coil isa NamedDimsArray ?
                 get_fourier_operator(ksp_one_coil; shift_kwargs..., threaded = false, fast_planning) :
@@ -272,9 +272,6 @@ function _coil_maps(info::CartesianAcquisitionInfo)
     nd = length(info.image_size)
     return [copy(selectdim(plain_smaps, nd + 1, c)) for c in axes(plain_smaps, nd + 1)]
 end
-
-_unwrap_named(op::NamedDimsOp) = op.L
-_unwrap_named(op::AbstractOperators.AbstractOperator) = op
 
 # `PartitionedKSpace` and friends do not have one array behind them, so `ksp[…, 1]` is not a
 # single-coil k-space of the same kind and the fused form does not apply.

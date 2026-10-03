@@ -468,9 +468,6 @@ function should_run_framework(framework)
     return FRAMEWORK_FILTER === nothing || any(p -> occursin(p, lowercase(framework)), FRAMEWORK_FILTER)
 end
 
-"""Replace NaN / Inf with -1.0 so a single bad toolkit row does not sink the section's JSON."""
-_json_num(x::Real) = isfinite(x) ? Float64(x) : -1.0
-
 using .BenchUtils.ResultsStore: record_run
 
 """

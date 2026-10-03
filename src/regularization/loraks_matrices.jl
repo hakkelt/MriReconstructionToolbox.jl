@@ -345,21 +345,27 @@ function ProximalCore.prox!(y, f::LoraksLowRankProx{RANK}, x, gamma) where {RANK
     return RANK ? R(0) : f.λ * sum(partial)
 end
 
-function _llrp_prox_slab!(yr, xr, f::LoraksLowRankProx, b::Int, threshold, ::Val{RANK}) where {RANK}
-    R = real(eltype(xr))
-    xb = selectdim(xr, ndims(xr), b)
-    M = _llrp_matrix(f, xb)
+# `M` replaced by its rank-`max_rank` truncation (`RANK`) or its singular values soft-thresholded
+# by `threshold`; returns the nuclear norm of the result.
+function _svd_shrink!(M, threshold, max_rank, ::Val{RANK}) where {RANK}
     F = ProximalOperators.with_factorization_threads(() -> svd!(M), M)
     if RANK
-        r = min(f.max_rank, length(F.S))
+        r = min(max_rank, length(F.S))
         fill!(view(F.S, (r + 1):length(F.S)), 0)
         nucval = sum(@view F.S[1:r])
     else
-        F.S .= max.(R(0), F.S .- threshold)
+        F.S .= max.(zero(eltype(F.S)), F.S .- threshold)
         nucval = sum(F.S)
     end
     lmul!(Diagonal(F.S), F.Vt)
     mul!(M, F.U, F.Vt)
+    return nucval
+end
+
+function _llrp_prox_slab!(yr, xr, f::LoraksLowRankProx, b::Int, threshold, ::Val{RANK}) where {RANK}
+    xb = selectdim(xr, ndims(xr), b)
+    M = _llrp_matrix(f, xb)
+    nucval = _svd_shrink!(M, threshold, f.max_rank, Val(RANK))
     yb = selectdim(yr, ndims(yr), b)
     _loraks_unlift!(yb, f.lift, M, _llrp_form(f))
     @. yb *= f.invmult

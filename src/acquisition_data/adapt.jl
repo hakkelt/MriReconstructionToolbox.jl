@@ -5,28 +5,24 @@
 # them (`GetIndex`, the NFFT plan) take host indices and a host trajectory on every storage, and
 # move to the device what they apply there.
 
-_adapt_array(to, ::Nothing) = nothing
-_adapt_array(to, x::NamedDimsArray{L}) where {L} = NamedDimsArray{L}(Adapt.adapt(to, parent(x)))
-_adapt_array(to, x::AbstractArray) = Adapt.adapt(to, x)
-
 Adapt.adapt_structure(to, p::PartitionedKSpace) =
-    PartitionedKSpace(map(part -> _adapt_array(to, part), p.parts), p.ragged_dim, p.dimnames)
-
-_adapt_kspace(to, ksp) = _adapt_array(to, ksp)
-_adapt_kspace(to, ksp::PartitionedKSpace) = Adapt.adapt_structure(to, ksp)
+    PartitionedKSpace(map(part -> _adapt_any(to, part), p.parts), p.ragged_dim, p.dimnames)
 
 Adapt.adapt_structure(to, info::CartesianAcquisitionInfo) = CartesianAcquisitionInfo(
     info;
-    kspace_data = _adapt_kspace(to, info.kspace_data),
-    sensitivity_maps = _adapt_array(to, info.sensitivity_maps),
+    kspace_data = _adapt_any(to, info.kspace_data),
+    sensitivity_maps = _adapt_any(to, info.sensitivity_maps),
 )
 
 Adapt.adapt_structure(to, info::NonCartesianAcquisitionInfo) = NonCartesianAcquisitionInfo(
     info;
-    kspace_data = _adapt_kspace(to, info.kspace_data),
-    sensitivity_maps = _adapt_array(to, info.sensitivity_maps),
-    dcf = _adapt_array(to, info.dcf),
+    kspace_data = _adapt_any(to, info.kspace_data),
+    sensitivity_maps = _adapt_any(to, info.sensitivity_maps),
+    dcf = _adapt_any(to, info.dcf),
 )
+
+# The array wrappers whose storage is their parent's.
+const _ArrayWrapper = Union{NamedDimsArray, SubArray, Base.ReshapedArray, Base.ReinterpretArray}
 
 """
     _is_device(x) -> Bool
@@ -35,11 +31,7 @@ Whether `x` is held in device (GPU) memory. Wrappers (`NamedDimsArray`, views, r
 looked through. `false` for everything the GPU extension does not claim, including `nothing`.
 """
 _is_device(x) = false
-_is_device(x::NamedDimsArray) = _is_device(parent(x))
-_is_device(x::SubArray) = _is_device(parent(x))
-_is_device(x::Base.ReshapedArray) = _is_device(parent(x))
-_is_device(x::Base.ReinterpretArray) = _is_device(parent(x))
-_is_device(x::PartitionedKSpace) = _is_device(first(x.parts))
+_is_device(x::Union{_ArrayWrapper, PartitionedKSpace}) = _is_device(_storage_template(x))
 _is_device(info::AcquisitionInfo) = _is_device(info.kspace_data)
 
 """
@@ -61,7 +53,7 @@ The unwrapped array whose storage `x` lives in, for `similar` and `adapt`: the p
 `NamedDimsArray`, the first part of a `PartitionedKSpace`.
 """
 _storage_template(x::AbstractArray) = x
-_storage_template(x::Union{NamedDimsArray, SubArray, Base.ReshapedArray}) = _storage_template(parent(x))
+_storage_template(x::_ArrayWrapper) = _storage_template(parent(x))
 _storage_template(x::PartitionedKSpace) = _storage_template(first(x.parts))
 _storage_template(info::AcquisitionInfo) = _storage_template(info.kspace_data)
 
@@ -74,7 +66,7 @@ _array_type_of(x) = typeof(_storage_template(x))
 # `adapt` that keeps `NamedDimsArray` names and recurses into tuples; everything else goes
 # through `Adapt.adapt`, so an `AcquisitionInfo` uses the methods above.
 _adapt_any(to, x) = Adapt.adapt(to, x)
-_adapt_any(to, x::NamedDimsArray) = _adapt_array(to, x)
+_adapt_any(to, x::NamedDimsArray{L}) where {L} = NamedDimsArray{L}(Adapt.adapt(to, parent(x)))
 _adapt_any(to, x::Tuple) = map(xi -> _adapt_any(to, xi), x)
 _adapt_any(to, x::NamedTuple) = map(xi -> _adapt_any(to, xi), x)
 

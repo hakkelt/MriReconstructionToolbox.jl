@@ -45,7 +45,6 @@ operators first exist.
 """
 mutable struct _ChambollePockPreconditioner{W}
     weights::W
-    data_step::Float64
     steps::Union{Nothing, NamedTuple}
 end
 
@@ -78,7 +77,7 @@ function _chambolle_pock_preconditioner(method::IterativeReconstruction, acq)
     alg isa ProximalAlgorithms.IterativeAlgorithm{<:ProximalAlgorithms.ChambollePockIteration} || return nothing
     method.fidelity isa L2Loss || return nothing
     any(k -> haskey(alg.kwargs, k), (:tau, :sigma, :ratio, :normL)) && return nothing
-    return _ChambollePockPreconditioner(_density_weights(acq), CHAMBOLLE_POCK_DATA_STEP, nothing)
+    return _ChambollePockPreconditioner(_density_weights(acq), nothing)
 end
 _chambolle_pock_preconditioner(method, acq) = nothing
 
@@ -111,15 +110,17 @@ no regularization block to balance against.
 function _preconditioned_data_term(𝒜, y, x, reg_terms, p::_ChambollePockPreconditioner)
     R = real(eltype(y))
     terms = Iterators.flatten(map(_term_list, reg_terms))
-    nD2 = sum(t -> Float64(AbstractOperators.estimate_opnorm(StructuredOptimization.operator(t)))^2, terms; init = 0.0)
+    nD2 = with_serial_blas() do
+        sum(t -> Float64(AbstractOperators.estimate_opnorm(StructuredOptimization.operator(t)))^2, terms; init = 0.0)
+    end
     if iszero(nD2)
         p.steps = nothing
         return @term ls(𝒜 * x - y)
     end
     w = isnothing(p.weights) ? nothing : _to_storage_of(unname(y), p.weights)
-    nA2 = Float64(_weighted_opnorm2(𝒜, w, ~x))
+    nA2 = Float64(with_serial_blas(() -> _weighted_opnorm2(𝒜, w, ~x)))
     c = sqrt(nD2 / nA2)
-    a = p.data_step
+    a = CHAMBOLLE_POCK_DATA_STEP
     p.steps = (; tau = R(0.99 / (2 * a * nA2)), sigma = R(a * nA2 / nD2), normL = R(sqrt(2 * nD2)))
     if isnothing(w)
         return StructuredOptimization.Term(1, SqrNormL2(R(1 / c^2)), R(c) * (𝒜 * x) - R(c) .* y, "ls(𝒜x - y)")

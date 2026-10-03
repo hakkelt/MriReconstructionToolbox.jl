@@ -65,17 +65,8 @@ a host copy and the image moved back (GRAPPA's and SPIRiT's kernels are scalar c
 _runs_on_host(::ReconstructionMethod) = false
 
 # An initial guess must live where the k-space does: the solver's iterates start as copies of it.
-_check_x₀_storage(::Nothing, acq_data) = nothing
+_check_x₀_storage(x₀, acq_data) = _check_same_storage(acq_data, x₀, "x₀")
 _check_x₀_storage(x₀::Union{Tuple, NamedTuple}, acq_data) = foreach(x -> _check_x₀_storage(x, acq_data), x₀)
-function _check_x₀_storage(x₀::AbstractArray, acq_data)
-    _is_device(x₀) == _is_device(acq_data) && return nothing
-    throw(
-        ArgumentError(
-            "x₀ ($(nameof(_array_type_of(x₀)))) and the k-space ($(nameof(_array_type_of(acq_data)))) " *
-                "must both be in host memory or both in device memory; move x₀ with `Adapt.adapt`."
-        )
-    )
-end
 
 function _reconstruct_dispatch(acq_data, method::ReconstructionMethod, x₀, config)
     @argcheck isnothing(x₀) || x₀ isa AbstractArray "x₀ must be a plain array unless reconstructing with `Component`s."

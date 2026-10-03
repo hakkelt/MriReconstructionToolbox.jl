@@ -127,7 +127,7 @@ function MRT._batched_svt!(A::AbstractGPUArray{T, 3}, τ) where {T}
 end
 
 function _svt_through_adjoint!(A, τ)
-    At = conj.(permutedims(A, (2, 1, 3)))
+    At = _tall(A)
     total = MRT._batched_svt!(At, τ)
     A .= conj.(permutedims(At, (2, 1, 3)))
     return total

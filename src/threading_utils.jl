@@ -41,9 +41,9 @@ const _SERIAL_BLAS_THRESHOLD_BYTES = Ref(DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES)
     serial_blas_threshold_bytes() -> Int
 
 Per-work-item size below which a threaded BLAS costs more than it returns, and below which one
-work item cannot keep the machine busy on its own. Consulted by [`with_serial_blas`](@ref) and,
-through `_should_thread_work_item`, by `suggest_executor` when it chooses between spreading
-slices over threads and running them one at a time.
+work item cannot keep the machine busy on its own. Consulted, through
+`_should_thread_work_item`, by `suggest_executor` when it chooses between spreading slices over
+threads and running them one at a time.
 
 It is no longer consulted to decide whether an *operator* may thread: that is the operator's own
 call, made per input by `AbstractOperators.threading_threshold` and
@@ -187,8 +187,8 @@ low-rank prox steps run, shows the inversion far more sharply:
 So: with batch width to saturate the cores, serial BLAS wins at every size tested — the outer
 loop is already using the machine and BLAS's barriers are pure overhead. Without it, serial
 BLAS runs one core out of eight, and past roughly 16 MiB per item that idle capacity is worth
-more than the barriers cost. Hence the threshold, and hence why this cannot be an unconditional
-scope.
+more than the barriers cost. Hence the threshold that `suggest_executor` applies through
+[`serial_blas_threshold_bytes`](@ref).
 
 ## Core count
 
@@ -221,17 +221,6 @@ allowed → a default of 4), so do not assume the two environments agree.
 An operator that genuinely wants a threaded `gemm` (a large `MatrixOp`) is unaffected: it grants
 itself BLAS's threads back, see the gate table above.
 
-## Why the gate keys on the work item and not on batch width
-
-The tables above say the decision really depends on two quantities — item size *and* whether
-enough slabs are in flight to saturate the cores — but `_iterative_reconstruct_core` only ever
-sees one work item; it cannot see how many slabs the caller has in flight, and the task-splitting
-executor that does know is several frames up. The two quantities disagree only for a wide batch
-of large items, and there the gate opens BLAS while the outer loop is already using the machine
-— i.e. the budget wins over this scope in exactly the case the gate gets wrong. Preferring the
-budget there is the conservative direction (a wide batch of 16 MiB+ items is the one row where
-threaded BLAS-1 is within noise either way), so this is left keyed on the item alone rather than
-plumbed through.
 """
 function with_serial_blas(f::F) where {F}
     LinearAlgebra.BLAS.get_num_threads() == 1 && return f()
@@ -247,8 +236,7 @@ Whether a work item of `bytes` bytes is large enough to occupy the machine by it
 
 This is a question about **how to spread slices**, not about whether an individual operator
 should thread. `suggest_executor` asks it to choose between spreading slices over threads and
-running them one at a time, and `slice_threading` asks it to keep the inside of a slice serial
-while a [`MultiThreadingExecutor`](@ref) already has every thread busy with whole slices.
+running them one at a time.
 Whether a given kernel is worth threading at a given size is not decided here at all: it belongs
 to the operator, and `AbstractOperators.threading_threshold` / `ProximalOperators.should_thread`
 decide it per operator, per input.

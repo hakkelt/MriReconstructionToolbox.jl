@@ -11,7 +11,7 @@ function execute(f::Function, plan, acq_data, config, executor::ReconstructionEx
     maybe_print_task_splitting_info(plan, config)
     batch_sizes = plan.variable_size[collect(plan.variable_batch_dims)]
     slices = collect(get_slices(plan, acq_data))
-    slice_threaded = slice_threading(plan, acq_data, config, executor)
+    slice_threaded = slice_threading(config, executor)
     scales = Array{real(eltype(acq_data.kspace_data))}(undef, batch_sizes)
 
     # A split run's bar counts slices, not iterations: it is the only granularity that is
@@ -122,17 +122,17 @@ end
 # `(warm_start, scale, 𝒜, prior)` for one slice -- `𝒜` is the fully-planned encoding operator phase 1
 # already had to build to get the warm start, cached here so phase 2 does not plan an equivalent
 # one again; `prior` is what phase 1 computed while forming that warm start (`_warm_start_prior`:
-# the operator-norm estimate, the curvature, `𝒜'y`), cached the same way so phase 2 does not repeat
-# it; the `L` locals below hold it. `solve(local_acq, warm_start, ratio, global_scale, local_conf,
-# 𝒜, prior)` solves that slice under
-# the shared scale, with its regularization compensated by `ratio`, reusing both.
+# the operator-norm estimate, the curvature, the warm-start divisor), cached the same way so phase 2
+# does not repeat it. `solve(local_acq, warm_start, ratio, global_scale, local_conf, 𝒜, prior)`
+# solves that slice under the shared scale, with its regularization compensated by `ratio`,
+# reusing both.
 function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Function)
     executor = suggest_executor(plan, acq_data, config)
     maybe_print_task_splitting_info(plan, config)
     batch_sizes = plan.variable_size[collect(plan.variable_batch_dims)]
     slices = collect(get_slices(plan, acq_data))
 
-    slice_threaded = slice_threading(plan, acq_data, config, executor)
+    slice_threaded = slice_threading(config, executor)
 
     # Both phases visit every slice, so the bar counts `2 * length(slices)` ticks.
     return with_progress(config.verbosity, 2 * length(slices); desc = "Slices ") do verbosity
@@ -151,17 +151,17 @@ function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Fun
         # unpacking below type-stable.
         first_idx, first_id, first_local_acq = slices[1]
         rest_slices = @view(slices[2:end])
-        first_warm_start, first_scale, first_𝒜, first_L =
+        first_warm_start, first_scale, first_𝒜, first_prior =
             run_first_item(rest_slices, conf, executor; threaded = slice_threaded) do
             prepare(first_idx, first_local_acq, slice_config(first_id))
         end
         isnothing(tick) || tick()
-        first_prelim = (first_id, first_local_acq, first_warm_start, first_scale, first_𝒜, first_L)
+        first_prelim = (first_id, first_local_acq, first_warm_start, first_scale, first_𝒜, first_prior)
         prelim = Array{typeof(first_prelim)}(undef, batch_sizes)
         prelim[first_idx] = first_prelim
         for_each_item!(rest_slices, conf, executor; threaded = slice_threaded) do (idx, id, local_acq)
-            warm_start, scale, 𝒜, L = prepare(idx, local_acq, slice_config(id))
-            store_item!(prelim, idx, (id, local_acq, warm_start, scale, 𝒜, L), id)
+            warm_start, scale, 𝒜, prior = prepare(idx, local_acq, slice_config(id))
+            store_item!(prelim, idx, (id, local_acq, warm_start, scale, 𝒜, prior), id)
             isnothing(tick) || tick()
         end
 
@@ -172,22 +172,22 @@ function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Fun
 
         indices = vec(collect(CartesianIndices(batch_sizes)))
         first_result_idx = indices[1]
-        first_res_id, first_res_acq, first_res_warm_start, first_res_scale, first_res_𝒜, first_res_L = prelim[first_result_idx]
+        first_res_id, first_res_acq, first_res_warm_start, first_res_scale, first_res_𝒜, first_res_prior = prelim[first_result_idx]
         first_res_ratio = safe_scale_ratio(first_res_scale, global_scale)
         rest_indices = @view(indices[2:end])
         first_result = run_first_item(rest_indices, conf, executor; threaded = slice_threaded) do
             solve(
                 first_res_acq, first_res_warm_start, first_res_ratio, global_scale,
-                slice_config(first_res_id), first_res_𝒜, first_res_L,
+                slice_config(first_res_id), first_res_𝒜, first_res_prior,
             )
         end
         isnothing(tick) || tick()
         results = Array{typeof(first_result)}(undef, batch_sizes)
         results[first_result_idx] = first_result
         for_each_item!(rest_indices, conf, executor; threaded = slice_threaded) do idx
-            id, local_acq, warm_start, scale, 𝒜, L = prelim[idx]
+            id, local_acq, warm_start, scale, 𝒜, prior = prelim[idx]
             ratio = safe_scale_ratio(scale, global_scale)
-            store_item!(results, idx, solve(local_acq, warm_start, ratio, global_scale, slice_config(id), 𝒜, L), id)
+            store_item!(results, idx, solve(local_acq, warm_start, ratio, global_scale, slice_config(id), 𝒜, prior), id)
             isnothing(tick) || tick()
         end
 
@@ -196,8 +196,7 @@ function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Fun
 end
 
 # `threaded` is the *work item's* threading decision (`slice_threading`), not `config.threaded`:
-# opening every pool around a loop whose body was just gated serial is the dead weight this
-# scope exists to avoid.
+# a loop whose slices run serially inside opens no pools.
 function for_each_item!(
         f!::Function, items, config, ::SequentialExecutor; threaded = config.threaded
     )
@@ -271,7 +270,7 @@ function execute_single_slice(f::Function, idx, id, local_acq, config; kwargs...
 end
 
 """
-    slice_threading(plan, acq_data, config, executor) -> Bool
+    slice_threading(config, executor) -> Bool
 
 Whether the work *inside* one slice of a task-split reconstruction may thread.
 
@@ -287,10 +286,8 @@ blanket gate here would override all of them at once, which is what it used to d
 kept the coil-fused encoding operator from ever being built on a 2-D slice. See `solve_core.jl`
 for the measurements.
 """
-function slice_threading(plan, acq_data, config, executor::ReconstructionExecutor)
-    executor isa MultiThreadingExecutor && return false
-    return config.threaded
-end
+slice_threading(config, executor::ReconstructionExecutor) =
+    config.threaded && !(executor isa MultiThreadingExecutor)
 
 """
     slice_bytes(plan, acq_data) -> Int

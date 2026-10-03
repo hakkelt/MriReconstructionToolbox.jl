@@ -621,19 +621,17 @@ end
     # inside one must stay serial. A sequential executor leaves the threads free and passes
     # `config.threaded` through: how small is too small to thread is the operator's call, made
     # per kernel and per input, not a blanket rule applied here.
-    @test MRT.slice_threading(plan, acq, config, MRT.SequentialExecutor()) == true
-    @test MRT.slice_threading(plan, acq, config, MRT.MultiThreadingExecutor()) == false
+    @test MRT.slice_threading(config, MRT.SequentialExecutor()) == true
+    @test MRT.slice_threading(config, MRT.MultiThreadingExecutor()) == false
+    @test MRT.slice_threading(
+        ReconstructionConfig(config; threaded = false), MRT.SequentialExecutor()
+    ) == false
 
     big_size = (2048, 2048, nslices)
     big = MRT.TaskSplittingPlan(
         big_size, (3,), (2048, 2048, nc, nslices), (4,), false, big_size
     )
     @test MRT.slice_bytes(big, acq) >= MRT.serial_blas_threshold_bytes()
-    @test MRT.slice_threading(big, acq, config, MRT.SequentialExecutor()) == true
-    @test MRT.slice_threading(big, acq, config, MRT.MultiThreadingExecutor()) == false
-    @test MRT.slice_threading(
-        big, acq, ReconstructionConfig(config; threaded = false), MRT.SequentialExecutor()
-    ) == false
 
     # The gate is a performance decision only: the result may not depend on it.
     img_threaded = reconstruct(acq, method; threaded = true, verbosity = Silent())

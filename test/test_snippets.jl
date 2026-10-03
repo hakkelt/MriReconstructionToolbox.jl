@@ -182,8 +182,7 @@ end
     _relerr(::Nothing, ::Nothing) = 0.0
     _relerr(a::Number, b::Number) = abs(a - b) / abs(b)
 
-    _on_device(x::AbstractArray) = _is_device(x)
-    _on_device(x::AcquisitionInfo) = _is_device(x)
+    _on_device(x) = _is_device(x)
     _on_device(x::Tuple) = _on_device(first(x))
 
     """

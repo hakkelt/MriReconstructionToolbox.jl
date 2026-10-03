@@ -106,21 +106,10 @@ function _hlrp_restore!(yb, xb, keep)
 end
 
 function _hlrp_prox_slab!(yr, xr, f::HankelLowRankProx, b::Int, threshold, ::Val{RANK}) where {RANK}
-    R = real(eltype(xr))
     xb = selectdim(xr, ndims(xr), b)
     buffer = _hlrp_lift(f.w, xb)
     M = f.H * buffer
-    F = ProximalOperators.with_factorization_threads(() -> svd!(M), M)
-    if RANK
-        r = min(f.max_rank, length(F.S))
-        fill!(view(F.S, (r + 1):length(F.S)), 0)
-        nucval = sum(@view F.S[1:r])
-    else
-        F.S .= max.(R(0), F.S .- threshold)
-        nucval = sum(F.S)
-    end
-    lmul!(Diagonal(F.S), F.Vt)
-    mul!(M, F.U, F.Vt)
+    nucval = _svd_shrink!(M, threshold, f.max_rank, Val(RANK))
     yb = selectdim(yr, ndims(yr), b)
     # `buffer` is scratch of the slab's shape in both cases -- but it is overwritten here, which
     # is why the restore below reads `xb` (the input slab), not `buffer`.

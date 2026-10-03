@@ -242,8 +242,7 @@ end
 # The primal part of what a solver's `solution` returns: the primal-dual family returns the pair
 # `(x, y)`, every other algorithm the primal iterate alone.
 _primal_solution(iter, sol) = sol
-_primal_solution(::ProximalAlgorithms.AFBAIteration, sol::Tuple) = first(sol)
-_primal_solution(::ProximalAlgorithms.ChambollePockIteration, sol::Tuple) = first(sol)
+_primal_solution(::Union{ProximalAlgorithms.AFBAIteration, ProximalAlgorithms.ChambollePockIteration}, sol::Tuple) = first(sol)
 
 _copy_iterate(x::AbstractArray) = copy(x)
 _copy_iterate(xs::Tuple) = map(copy, xs)

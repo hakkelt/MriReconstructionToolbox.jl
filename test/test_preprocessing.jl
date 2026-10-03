@@ -94,6 +94,7 @@ end
     for method in (SVDCompression(), GeometricCompression())
         test_on_devices(a -> compress_coils(a, Nv; method), acq_sim; backends = all_backends())
     end
+    test_on_devices(k -> MriReconstructionToolbox.compress_coils_with_matrix(k, C), acq_sim.kspace_data; backends = all_backends())
 end
 
 @testitem "Sensitivity map estimation: SelfCalibrating, AdaptiveCombine, ESPIRiT" tags = [:acquisition, :encoding, :simulation, :gpu] setup = [SyntheticCoils, GpuEnvSetup, GpuHelpers] begin

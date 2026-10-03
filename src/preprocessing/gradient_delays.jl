@@ -39,7 +39,7 @@ function correct_gradient_delays(
     traj = acq.trajectory
     raw = unname(traj)
     corr = reshape(_apply_gradient_delays(reshape(raw, size(raw, 1), size(raw, 2), :), delays), size(raw))
-    traj_corr = traj isa NamedDimsArray ? NamedDimsArray{dimnames(traj)}(corr) : corr
+    traj_corr = _rewrap_like(traj, corr)
     return NonCartesianAcquisitionInfo(acq; trajectory = traj_corr)
 end
 

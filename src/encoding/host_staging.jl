@@ -1,4 +1,4 @@
-# Operators with no device kernels (wavelets, contourlets) run on the host inside a device
+# Operators with no device kernels (contourlets) run on the host inside a device
 # reconstruction: they are built for a host array of the same shape and wrapped so that each
 # apply copies its input to the host and its output back.
 

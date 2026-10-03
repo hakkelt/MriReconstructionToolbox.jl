@@ -183,14 +183,13 @@ function compress_coils(
     end
 end
 
-# Device data is compressed on the host and moved back; `C` is returned as it was given.
+# Device data is compressed slice-wise on the host and moved back; `C` is returned as it was given.
 function _compress_on_host(data, C, coil_dim)
     compressed = first(compress_coils_with_matrix(_adapt_any(Array, data), _to_host(C); coil_dim))
     return _to_storage_of(data, compressed), C
 end
 
 function compress_coils_with_matrix(data::AbstractArray, C::AbstractMatrix; coil_dim = nothing)
-    _is_device(data) && return _compress_on_host(data, C, coil_dim)
     c_idx = _resolve_coil_dim(data, coil_dim)
 
     Nc = size(data, c_idx)
@@ -202,7 +201,7 @@ function compress_coils_with_matrix(data::AbstractArray, C::AbstractMatrix; coil
 
     perm_data = permutedims(unname(data), perm)
     flat_data = reshape(perm_data, Nc, :)
-    comp_flat = C * flat_data
+    comp_flat = _to_storage_of(data, C) * flat_data
 
     out_perm_size = ntuple(i -> i == 1 ? n_virtual : size(perm_data, i), ndims(data))
     comp_perm = reshape(comp_flat, out_perm_size)
