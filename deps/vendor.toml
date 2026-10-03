@@ -355,6 +355,12 @@ branch = "fix/gpu-getindex-device-indices"
 parent = "unified-threading"
 pr = "hakkelt/AbstractOperators.jl#33"
 
+# The normal operator of a copying spreading `BatchOp` maps over its per-thread operator arrays.
+[[AbstractOperators.stack]]
+branch = "fix/spreading-copying-normal-op"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#37"
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
