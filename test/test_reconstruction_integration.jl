@@ -994,3 +994,62 @@ end
     )
     @test_throws ArgumentError reconstruct(acq, GRAPPA(; kernel_size = (3, 3)); verbosity = Silent())
 end
+
+@testitem "Task splitting: non-Cartesian" tags = [:reconstruction, :integration, :nfft] begin
+    using LinearAlgebra, Random
+    using MriReconstructionToolbox: NonCartesianAcquisitionInfo, get_task_splitting_plan, get_encoding_operator, unname, get_slices
+    Random.seed!(0)
+    n, nc, nsample = 48, 4, 96
+    xs = range(-1, 1; length = n)
+    disk(r, s) = ComplexF32[(x^2 + (y / 0.8)^2 < r ? s : 0) + (abs(x - 0.2s) < 0.1 && abs(y) < 0.3) for x in xs, y in xs]
+    traj(nspoke, frames...) = reshape(
+        Float32.(unname(radial_trajectory(nsample, nspoke * prod(frames; init = 1); ordering = GoldenAngle()))),
+        2, nsample, nspoke, frames...,
+    )
+    function simulate(img, trajectory, maps)
+        nb = size(img, 3)
+        empty = NonCartesianAcquisitionInfo(
+            zeros(ComplexF32, size(trajectory, 2), size(trajectory, 3), nc, nb);
+            trajectory, image_size = (n, n), sensitivity_maps = maps,
+        )
+        ksp = get_encoding_operator(empty) * img
+        return NonCartesianAcquisitionInfo(ksp; trajectory, image_size = (n, n), sensitivity_maps = maps)
+    end
+    nrmse(x, ref) = norm(abs.(unname(parent(x))) .- abs.(ref)) / norm(ref)
+    tv = IterativeReconstruction(; regularization = TotalVariation2D(1.0e-3), maxit = 40)
+    config = ReconstructionConfig()
+
+    @testset "multislice, shared trajectory, maps per slice" begin
+        img = stack(disk(0.6, s) for s in 1:3)
+        maps = randn(ComplexF32, n, n, nc, 3) .* 0.1f0 .+ 1
+        acq = simulate(img, traj(40), maps)
+        @test !isnothing(get_task_splitting_plan(acq, tv, config))
+        split = reconstruct(acq, tv; verbosity = Silent())
+        whole = reconstruct(acq, tv; verbosity = Silent(), disable_task_splitting = true)
+        @test nrmse(split, img) <= nrmse(whole, img) + 1.0e-3
+        gridded = density_compensation(acq)
+        @test reconstruct(gridded, DirectReconstruction()) ≈
+            reconstruct(gridded, DirectReconstruction(); disable_task_splitting = true) rtol = 1.0e-5
+    end
+
+    @testset "per-frame trajectory, explicit dcf" begin
+        nt = 5  # not the coil count, so the frame axis is unambiguous by size
+        img = stack(disk(0.6, s) for s in (1, 2, 3, 1, 2))
+        acq = density_compensation(simulate(img, traj(20, nt), randn(ComplexF32, n, n, nc) .* 0.1f0 .+ 1))
+        plan = get_task_splitting_plan(acq, tv, config)
+        @test !isnothing(plan)
+        _, _, first_acq = first(get_slices(plan, acq))
+        @test size(first_acq.trajectory) == (2, nsample, 20)
+        @test first_acq.dcf == acq.dcf[:, :, 1]
+        # Each frame's λ is compensated by its own scale, so the frames, whose intensities differ
+        # threefold, are not solved with the unsplit run's single λ: close to it, not equal.
+        split = reconstruct(acq, tv; verbosity = Silent())
+        whole = reconstruct(acq, tv; verbosity = Silent(), disable_task_splitting = true)
+        @test nrmse(split, img) <= nrmse(whole, img) + 1.0e-2
+        @test reconstruct(acq, DirectReconstruction()) ≈
+            reconstruct(acq, DirectReconstruction(); disable_task_splitting = true) rtol = 1.0e-5
+        # A temporal regularizer couples the frames: they stay one problem.
+        ttv = IterativeReconstruction(; regularization = TemporalTotalVariation(1.0e-3; time_dim = 3))
+        @test isnothing(get_task_splitting_plan(acq, ttv, config))
+    end
+end

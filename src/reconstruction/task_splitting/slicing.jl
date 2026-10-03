@@ -14,12 +14,36 @@ end
 
 function get_acquisition_info_slice(acq_info::CartesianAcquisitionInfo, plan, idx, kspace_data, slice_sensitivity_maps)
     subsampling = slice_subsampling(acq_info.subsampling, acq_info.kspace_data, plan.kspace_batch_dims, idx)
-    if slice_sensitivity_maps
-        sensitivity_maps = @view acq_info.sensitivity_maps[:, :, :, idx[1]]
-        return CartesianAcquisitionInfo(acq_info; kspace_data, sensitivity_maps, subsampling)
-    else
-        return CartesianAcquisitionInfo(acq_info; kspace_data, subsampling)
+    sensitivity_maps = slice_sensitivity_maps_of(acq_info, idx, slice_sensitivity_maps)
+    return CartesianAcquisitionInfo(acq_info; kspace_data, sensitivity_maps, subsampling)
+end
+
+function get_acquisition_info_slice(acq_info::NonCartesianAcquisitionInfo, plan, idx, kspace_data, slice_sensitivity_maps)
+    ksp = acq_info.kspace_data
+    nframe = _trajectory_frame_dims_count(acq_info.trajectory, ksp)
+    trajectory = slice_frames(acq_info.trajectory, nframe, ndims(ksp), plan.kspace_batch_dims, idx)
+    dcf = slice_frames(acq_info.dcf, nframe, ndims(ksp), plan.kspace_batch_dims, idx)
+    sensitivity_maps = slice_sensitivity_maps_of(acq_info, idx, slice_sensitivity_maps)
+    return NonCartesianAcquisitionInfo(acq_info; kspace_data, trajectory, dcf, sensitivity_maps)
+end
+
+# Maps with a slice axis (4-D for a 2-D encoding) go to each task one slice at a time.
+slice_sensitivity_maps_of(acq_info, idx, slice_sensitivity_maps) =
+    slice_sensitivity_maps ? @view(acq_info.sensitivity_maps[:, :, :, idx[1]]) : acq_info.sensitivity_maps
+
+# The last `nframe` axes of a per-frame trajectory or dcf `a` are the last `nframe` axes of an
+# `ksp_ndims`-dimensional k-space; each one a task splits is indexed down to that task's frame, as a
+# copy, since an NFFT plan takes its nodes as a dense matrix. A shared trajectory (`nframe == 0`), or
+# one whose frame axes the split leaves whole, is returned as is.
+function slice_frames(a, nframe, ksp_ndims, kspace_batch_dims, idx)
+    (isnothing(a) || nframe == 0) && return a
+    slicer = ntuple(ndims(a)) do j
+        j <= ndims(a) - nframe && return Colon()
+        position = findfirst(==(ksp_ndims - (ndims(a) - j)), kspace_batch_dims)
+        return isnothing(position) ? Colon() : idx[position]
     end
+    all(s -> s isa Colon, slicer) && return a
+    return a[slicer...]
 end
 
 # A subsampling spec shared by every batch element (`nothing`, or the per-axis tuple `(:, mask)`)
