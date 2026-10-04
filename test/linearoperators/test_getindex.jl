@@ -309,4 +309,10 @@ end
     y = op * x
     @test size(y) == (length(cart),)
     @test y == x[cart]
+
+    # A `CartesianIndex{2}` spans two axes, so an index after it addresses the fourth axis.
+    x4 = randn(3, n, m, 2)
+    op4 = GetIndex(Float64, size(x4), (:, cart, :))
+    @test size(op4, 1) == (3, length(cart), 2)
+    @test op4 * x4 == x4[:, cart, :]
 end
