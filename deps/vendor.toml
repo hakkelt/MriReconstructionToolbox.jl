@@ -367,6 +367,12 @@ branch = "perf/batch-inner-threads"
 parent = "unified-threading"
 pr = "hakkelt/AbstractOperators.jl#38"
 
+# GetIndex's codomain steps over N axes for a vector of CartesianIndex{N}.
+[[AbstractOperators.stack]]
+branch = "fix/getindex-cartesian-dim-out"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#39"
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
