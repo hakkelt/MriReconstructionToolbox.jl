@@ -224,11 +224,13 @@ get_max_transform_levels(dim_in::Tuple) = minimum(maxtransformlevels.(dim_in))
 # Wavelets.jl runs serially. The threaded path (`threaded_dwt.jl`) exists for the 2-D and 3-D
 # filter-bank transforms; 1-D transforms and lifting schemes always run in Wavelets.jl.
 #
-# The threshold is the package default (`THRESHOLD_MEMORY_BOUND`), not a swept value: each
-# element costs a filter's length in multiply-adds per level, so the true crossover is likely
-# lower. Measured at 128³ ComplexF32, db2, 3 levels (EPYC 7763, one NUMA domain): forward
-# 240 ms serial.
+# Each element costs a filter's length in multiply-adds per level, so threading pays far below
+# the memory-bound default. Swept forward 2-D transforms, ComplexF32, db2, 3 levels (EPYC 7763,
+# one NUMA domain), threaded against serial: 32² 0.79x / 0.33x, 64² 1.86x / 1.10x,
+# 128² 3.0x / 3.3x, 512² 4.9x / 8.3x at 8 / 16 threads; at 2 threads the win starts near 128².
 _has_threaded_path(N::Int, wavelet) = N in (2, 3) && wavelet isa Wavelets.WT.OrthoFilter
+
+AbstractOperators.threading_threshold(::Type{<:WaveletOp}) = 2^14
 
 function _wavelet_threaded(threaded::Bool, ::Type{T}, wavelet, dim_in::NTuple{N, Int}, ::Type{S}) where {T, N, S}
     _has_threaded_path(N, wavelet) || return false
