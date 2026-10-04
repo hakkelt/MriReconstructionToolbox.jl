@@ -22,42 +22,21 @@ function execute(f::Function, plan, acq_data, config, executor::ReconstructionEx
         conf = ReconstructionConfig(config; verbosity)
         tick = progress_tick(verbosity)
 
-        # A slice's result type isn't known until `f` actually runs (it depends on the acquisition
-        # and warm-start array types), so -- mirroring `execute_two_phase`'s own `prelim` idiom --
-        # the first slice runs outside the (possibly threaded) loop to learn it, and `results` is
-        # then allocated concretely instead of as `Array{AbstractArray}`.
-        first_idx, first_id, first_local_acq = slices[1]
-        rest_slices = @view(slices[2:end])
-        first_r, first_s = run_first_item(rest_slices, conf, executor; threaded = slice_threaded) do
-            execute_single_slice(
-                f, first_idx, first_id, first_local_acq, conf; threaded = slice_threaded
-            )
+        solved = map_items(slices, map(s -> s[2], slices), conf, executor; threaded = slice_threaded) do (idx, id, local_acq)
+            r = execute_single_slice(f, idx, id, local_acq, conf; threaded = slice_threaded)
+            isnothing(tick) || tick()
+            r
         end
-        isnothing(tick) || tick()
-        results = Array{typeof(first_r)}(undef, batch_sizes)
-        results[first_idx] = first_r
-        scales[first_idx] = first_s
-
-        run_slices!(
-            results, scales, f, rest_slices, conf, executor;
-            threaded = slice_threaded, tick,
-        )
+        results = Array{fieldtype(eltype(solved), 1)}(undef, batch_sizes)
+        for ((idx, _, _), (r, s)) in zip(slices, solved)
+            results[idx] = r
+            scales[idx] = s
+        end
         maybe_rescale_results!(results, scales, conf)
         stack_image_slices(results, plan, Val(conf.threaded))
     end
 end
 
-function run_slices!(
-        results, scales, f, slices, config, executor::ReconstructionExecutor; threaded, tick = nothing
-    )
-    for_each_item!(slices, config, executor; threaded) do (idx, id, local_acq)
-        r, s = execute_single_slice(f, idx, id, local_acq, config; threaded)
-        store_item!(results, idx, r, id)
-        scales[idx] = s
-        isnothing(tick) || tick()
-    end
-    return nothing
-end
 
 # Regularized task splitting: regularization strength (λ) is scale-dependent, so each slice
 # must be normalized before the regularization term is applied. But if each slice used its own
@@ -147,24 +126,15 @@ function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Fun
             slice_id = id,
         )
 
-        # `prelim`'s element type isn't known until `prepare` actually runs (it depends on the acquisition
-        # and warm-start array types), so the first slice is run outside the (possibly threaded) loop to
-        # learn it; `prelim` is then allocated concretely instead of as `Array{Any}`, keeping the phase-2
-        # unpacking below type-stable.
-        first_idx, first_id, first_local_acq = slices[1]
-        rest_slices = @view(slices[2:end])
-        first_warm_start, first_scale, first_𝒜, first_prior =
-            run_first_item(rest_slices, conf, executor; threaded = slice_threaded) do
-            prepare(first_idx, first_local_acq, slice_config(first_id))
-        end
-        isnothing(tick) || tick()
-        first_prelim = (first_id, first_local_acq, first_warm_start, first_scale, first_𝒜, first_prior)
-        prelim = Array{typeof(first_prelim)}(undef, batch_sizes)
-        prelim[first_idx] = first_prelim
-        for_each_item!(rest_slices, conf, executor; threaded = slice_threaded) do (idx, id, local_acq)
+        ids = map(s -> s[2], slices)
+        prepared = map_items(slices, ids, conf, executor; threaded = slice_threaded) do (idx, id, local_acq)
             warm_start, scale, 𝒜, prior = prepare(idx, local_acq, slice_config(id))
-            store_item!(prelim, idx, (id, local_acq, warm_start, scale, 𝒜, prior), id)
             isnothing(tick) || tick()
+            (id, local_acq, warm_start, scale, 𝒜, prior)
+        end
+        prelim = Array{eltype(prepared)}(undef, batch_sizes)
+        for ((idx, _, _), p) in zip(slices, prepared)
+            prelim[idx] = p
         end
 
         global_scale = robust_global_scale(vec(map(p -> p[4], prelim)))
@@ -173,25 +143,14 @@ function execute_two_phase(plan, acq_data, config, prepare::Function, solve::Fun
         )
 
         indices = vec(collect(CartesianIndices(batch_sizes)))
-        first_result_idx = indices[1]
-        first_res_id, first_res_acq, first_res_warm_start, first_res_scale, first_res_𝒜, first_res_prior = prelim[first_result_idx]
-        first_res_ratio = safe_scale_ratio(first_res_scale, global_scale)
-        rest_indices = @view(indices[2:end])
-        first_result = run_first_item(rest_indices, conf, executor; threaded = slice_threaded) do
-            solve(
-                first_res_acq, first_res_warm_start, first_res_ratio, global_scale,
-                slice_config(first_res_id), first_res_𝒜, first_res_prior,
-            )
-        end
-        isnothing(tick) || tick()
-        results = Array{typeof(first_result)}(undef, batch_sizes)
-        results[first_result_idx] = first_result
-        for_each_item!(rest_indices, conf, executor; threaded = slice_threaded) do idx
+        solved = map_items(indices, map(idx -> prelim[idx][1], indices), conf, executor; threaded = slice_threaded) do idx
             id, local_acq, warm_start, scale, 𝒜, prior = prelim[idx]
             ratio = safe_scale_ratio(scale, global_scale)
-            store_item!(results, idx, solve(local_acq, warm_start, ratio, global_scale, slice_config(id), 𝒜, prior), id)
+            r = solve(local_acq, warm_start, ratio, global_scale, slice_config(id), 𝒜, prior)
             isnothing(tick) || tick()
+            r
         end
+        results = reshape(solved, batch_sizes...)
 
         stack_image_slices(results, plan, Val(conf.threaded))
     end
@@ -219,30 +178,58 @@ function for_each_item!(
     return nothing
 end
 
-# Both schemes below run the first item outside the loop to learn its concrete result type. Under
-# `SequentialExecutor`, that item must see the same restricted/full scope `for_each_item!` opens
-# around the rest, or it runs unrestricted where the loop restricts every pool (or without NFFT's
-# guarded pool where the loop enables it).
-#
-# Under `MultiThreadingExecutor`, the hoisted item is not one of `loop_items`: it runs alone,
-# before the loop opens, so `budget_for(loop_items)` -- the budget the *n-1* not-yet-started loop
-# items would each get once the loop is running concurrently -- understates its actual
-# concurrency by a factor of the loop's worker count. It gets the full process capacity instead.
-function run_first_item(f::Function, loop_items, config, ::SequentialExecutor; threaded = config.threaded)
-    return @conditionally_enable_threading threaded f()
+"""
+    map_items(f, items, ids, config, executor; threaded) -> Vector
+
+`f(item)` for every item, in a vector of the results' common concrete type; `ids` names each item
+for the error a result of another type raises (see [`store_item!`](@ref)).
+
+A slice's result type is not known until it runs (it depends on the acquisition and warm-start
+array types). Under a [`SequentialExecutor`](@ref) the first item runs ahead of the rest to size the
+vector, which costs nothing, since the slices run one at a time anyway. Under a
+[`MultiThreadingExecutor`](@ref) a slice run ahead would run alone, with its operator built
+unthreaded, while every other thread waited: with 8 slices on 2 threads that is 4.5 slice-times
+for 4 slices' work. There every item runs in the loop instead, into a `Vector{Any}` that is
+narrowed afterwards.
+"""
+function map_items(f::F, items, ids, config, executor::SequentialExecutor; threaded = config.threaded) where {F}
+    first = run_first_item(@view(items[2:end]), config, executor; threaded) do
+        f(items[1])
+    end
+    out = Vector{typeof(first)}(undef, length(items))
+    out[1] = first
+    for_each_item!(2:length(items), config, executor; threaded) do k
+        store_item!(out, k, f(items[k]), ids[k])
+    end
+    return out
 end
 
-function run_first_item(f::Function, loop_items, config, ::MultiThreadingExecutor; threaded = false)
-    return with_thread_budget(f, capacity())
+function map_items(f::F, items, ids, config, executor::MultiThreadingExecutor; threaded = false) where {F}
+    raw = Vector{Any}(undef, length(items))
+    for_each_item!(eachindex(items), config, executor; threaded) do k
+        raw[k] = f(items[k])
+    end
+    out = Vector{typeof(raw[1])}(undef, length(items))
+    for k in eachindex(raw)
+        store_item!(out, k, raw[k], ids[k])
+    end
+    return out
+end
+
+# The first item of a sequential `map_items` runs outside the loop, so it must see the same
+# restricted/full scope `for_each_item!` opens around the rest, or it runs unrestricted where the
+# loop restricts every pool (or without NFFT's guarded pool where the loop enables it).
+function run_first_item(f::Function, loop_items, config, ::SequentialExecutor; threaded = config.threaded)
+    return @conditionally_enable_threading threaded f()
 end
 
 """
     store_item!(dest, idx, value, id)
 
-Write one item's result into the concretely-typed array the hoisted first item sized. The array's
-element type is `typeof(first_result)`, so a later item producing a different concrete type would
-otherwise surface as a bare `convert`/`MethodError` from inside a threaded loop. Check it here so
-the error names the slice and both types instead.
+Write one item's result into the concretely-typed array [`map_items`](@ref) sized from its first
+item. The array's element type is `typeof(first_result)`, so a later item producing a different
+concrete type would otherwise surface as a bare `convert`/`MethodError`. Check it here so the error
+names the slice and both types instead.
 """
 function store_item!(dest::AbstractArray{T}, idx, value, id) where {T}
     value isa T || throw(

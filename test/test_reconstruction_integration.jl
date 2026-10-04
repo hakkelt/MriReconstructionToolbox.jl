@@ -673,13 +673,10 @@ end
     using FFTW
     const MRT = MriReconstructionToolbox
 
-    # `execute`/`execute_two_phase` run item 1 outside the loop to learn its concrete result
-    # type. Under the sequential executor that must not put it in a different threading scope
-    # from items 2..n: unrestricted where the sequential loop restricts every pool, or without
-    # NFFT's guarded pool where the loop enables it. Under the multi-threading executor the
-    # hoisted item is not one of the `n-1` concurrently-running loop items -- it runs alone,
-    # before the loop opens -- so it gets full process capacity instead of the loop's
-    # per-worker budget.
+    # Under the sequential executor `map_items` runs item 1 outside the loop to learn its
+    # concrete result type. That must not put it in a different threading scope from items 2..n:
+    # unrestricted where the sequential loop restricts every pool, or without NFFT's guarded pool
+    # where the loop enables it.
     if MRT.capacity() > 1
         items = collect(1:4)
         rest = @view(items[2:end])
@@ -702,14 +699,6 @@ end
                 end
                 @test all(==(first_seen), @view(rest_seen[2:end]))
             end
-
-            # Pinned to 1 first so only a scope that actively widens to full capacity can pass
-            # this assertion -- at capacity already, a no-op scope would pass it too.
-            FFTW.set_num_threads(1)
-            first_seen = MRT.run_first_item(rest, config, MRT.MultiThreadingExecutor(); threaded = false) do
-                FFTW.get_num_threads()
-            end
-            @test first_seen == MRT.capacity()
         finally
             FFTW.set_num_threads(fftw0)
         end
@@ -735,6 +724,15 @@ end
     @test err isa ArgumentError
     @test occursin("slice 2", err.msg)
     @test occursin("Vector{Float32}", err.msg)
+
+    # `map_items` keeps the items' order and reports a type-inconsistent item under either
+    # executor, the multi-threading one included, which runs every item in its loop.
+    config = ReconstructionConfig(; threaded = true, verbosity = Silent())
+    for executor in (MRT.SequentialExecutor(), MRT.MultiThreadingExecutor())
+        out = MRT.map_items(k -> 2k, collect(1:5), string.(1:5), config, executor)
+        @test out == [2, 4, 6, 8, 10] && out isa Vector{Int}
+        @test_throws ArgumentError MRT.map_items(k -> k == 3 ? 3.0 : k, collect(1:5), string.(1:5), config, executor)
+    end
 end
 
 @testitem "Serial-BLAS threshold is settable" tags = [:reconstruction] begin
