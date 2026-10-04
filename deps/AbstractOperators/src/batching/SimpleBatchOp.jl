@@ -145,7 +145,7 @@ function create_BatchOp(
     batch_size, dType, cdType = prepare_batch_op(
         operator, domain_size, domain_batch_dim_mask, codomain_size, codomain_batch_dim_mask
     )
-    threaded = _resolve_threaded(() -> _should_thread(operator), threaded)
+    threaded = _resolve_threaded(() -> _should_thread(operator, prod(batch_size)), threaded)
     return if threaded
         batch_length = prod(batch_size)
         operators = tuple(
