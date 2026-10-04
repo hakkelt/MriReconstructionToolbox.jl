@@ -134,7 +134,7 @@ index f3125af..204d830 100644
      AdjointOperator
  
 diff --git a/deps/AbstractOperators/WaveletOperators/src/WaveletOperators.jl b/deps/AbstractOperators/WaveletOperators/src/WaveletOperators.jl
-index 11c8bb1..333beeb 100644
+index 0ea8cc2..e571199 100644
 --- a/deps/AbstractOperators/WaveletOperators/src/WaveletOperators.jl
 +++ b/deps/AbstractOperators/WaveletOperators/src/WaveletOperators.jl
 @@ -2,11 +2,11 @@ module WaveletOperators
