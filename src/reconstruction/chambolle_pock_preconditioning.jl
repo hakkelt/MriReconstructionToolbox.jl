@@ -114,11 +114,14 @@ function _preconditioned_data_term(𝒜, y, x, reg_terms, p::_ChambollePockPreco
         return @term ls(𝒜 * x - y)
     end
     # `‖W^{1/2}𝒜‖` from above, since the step budget `τσ‖K‖² < 1` must hold. On a Cartesian grid
-    # that is the closed-form bound of the SENSE operator, with no iteration. Otherwise twenty power
-    # steps give the residual bound, which errs upwards; iterating to the default margin took up to
-    # five times as many NFFT pairs for a value 1% lower.
+    # the value returned is the closed-form bound of the SENSE operator, and the margin only sets how
+    # many power steps certify it: that bound sits 1.1% above `‖𝒜‖` on the Cartesian cine case, so
+    # the default 1% ran all 100 steps (0.55 s, 6% of a 200-iteration solve) to return the same
+    # value; a loose bound costs this solver rate, not safety. Otherwise twenty power steps give the
+    # residual bound, which errs upwards; iterating to the default margin took up to five times as
+    # many NFFT pairs for a value 1% lower.
     nA2 = with_serial_blas() do
-        isnothing(p.weights) && return Float64(AbstractOperators.estimate_opnorm(𝒜))^2
+        isnothing(p.weights) && return Float64(AbstractOperators.estimate_opnorm(𝒜; rel_margin = 0.1))^2
         W½𝒜 = DiagOp(codomain_type(𝒜), size(y), _storage_like(y, sqrt.(p.weights))) * 𝒜
         return Float64(AbstractOperators.estimate_opnorm(W½𝒜; maxit = 20))^2
     end
