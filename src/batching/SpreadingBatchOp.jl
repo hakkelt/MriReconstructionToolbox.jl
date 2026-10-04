@@ -252,7 +252,7 @@ function create_BatchOp(
         codomain_batch_dim_mask,
         spreading_dims,
     )
-    threaded = _resolve_threaded(() -> _should_thread(operators[1]), threaded)
+    threaded = _resolve_threaded(() -> _should_thread(operators[1], prod(batch_size)), threaded)
     if threaded
         # Nesting safety, applied before `opType` is used: the batch loop is the parallel
         # layer, so the wrapped operators must not thread themselves. Threading is a type

@@ -242,20 +242,54 @@ end
         @test is_threaded(inner) == true
 
         # The batch loop is the parallel layer, so every wrapped instance -- including the
-        # first, which the pre-fix code left threaded -- must be serial.
-        bop = BatchOp(inner, (4,); threaded = true)
+        # first, which the pre-fix code left threaded -- must be serial. One item per thread,
+        # so the batch is large enough to thread across.
+        nb = Threads.nthreads()
+        bop = BatchOp(inner, (nb,); threaded = true)
         @test is_threaded(bop) == true
         @test all(!is_threaded, bop.operator)
 
         # Same for the spreading family.
-        ops = [FiniteDiff(Float64, (n,); threaded = true) for _ in 1:3]
-        sbop = BatchOp(ops, 2; threaded = true)
+        ops = [FiniteDiff(Float64, (n,); threaded = true) for _ in 1:nb]
+        sbop = BatchOp(ops, 1; threaded = true)
         @test all(!is_threaded, AbstractOperators._spreading_operators(sbop))
 
         # And the result is unchanged by any of it.
-        serial_batch = BatchOp(FiniteDiff(Float64, (n,); threaded = false), (4,); threaded = false)
-        x = randn(n, 4)
+        serial_batch = BatchOp(FiniteDiff(Float64, (n,); threaded = false), (nb,); threaded = false)
+        x = randn(n, nb)
         @test bop * x == serial_batch * x
+    end
+end
+
+@testitem "Threading contract: a batch smaller than the thread count leaves the threads to its operator" tags = [
+    :batching, :Threading, :SimpleBatchOp, :SpreadingBatchOp,
+] setup = [TestUtils] begin
+    using AbstractOperators, Random
+    Random.seed!(0)
+
+    if Threads.nthreads() > 2
+        n = 1 << 16
+        inner = FiniteDiff(Float64, (n,); threaded = true)
+        @test is_threaded(inner) == true
+
+        # Two items cannot keep every thread busy, so the loop stays serial and each call
+        # threads instead.
+        bop = BatchOp(inner, (2,); threaded = true)
+        @test is_threaded(bop) == false
+        @test is_threaded(AbstractOperators._wrapped_operator(bop))
+        ops = [FiniteDiff(Float64, (n,); threaded = true) for _ in 1:2]
+        sbop = BatchOp(ops, 1; threaded = true)
+        @test is_threaded(sbop) == false
+        @test all(is_threaded, AbstractOperators._spreading_operators(sbop))
+
+        # An operator that does not thread itself still threads across a small batch.
+        flat = FiniteDiff(Float64, (n,); threaded = false)
+        @test is_threaded(BatchOp(flat, (2,); threaded = true)) == true
+
+        x = randn(n, 2)
+        serial_batch = BatchOp(flat, (2,); threaded = false)
+        @test bop * x == serial_batch * x
+        @test dropdims(sbop * reshape(x, n, 2, 1); dims = 3) == serial_batch * x
     end
 end
 
