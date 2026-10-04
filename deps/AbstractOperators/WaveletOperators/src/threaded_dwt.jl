@@ -9,7 +9,9 @@
 const _TF = Wavelets.Transforms
 
 # Split lines `1:nlines` into one contiguous block per thread and call
-# `f(first_line, count, si, tmp)` on each, with scratch private to the block.
+# `f(first_line, count, si, tmp)` on each, with scratch private to the block. The kernels reach
+# `tmp` through `unsafe_vectorslice`, a pointer wrap that does not keep it alive, so the scratch is
+# rooted for the duration of the call.
 function _foreach_line_block(f::F, nlines::Int, ::Type{T}, filtlen::Int, buflen::Int) where {F, T}
     nblocks = min(Threads.nthreads(), nlines)
     @budgeted_threads for b in 1:nblocks
@@ -17,7 +19,7 @@ function _foreach_line_block(f::F, nlines::Int, ::Type{T}, filtlen::Int, buflen:
         hi = div(b * nlines, nblocks)
         si = Vector{T}(undef, filtlen - 1)
         tmp = Vector{T}(undef, buflen)
-        f(lo, hi - lo + 1, si, tmp)
+        GC.@preserve si tmp f(lo, hi - lo + 1, si, tmp)
     end
     return nothing
 end
