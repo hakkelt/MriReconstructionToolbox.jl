@@ -227,10 +227,12 @@ get_max_transform_levels(dim_in::Tuple) = minimum(maxtransformlevels.(dim_in))
 # Each element costs a filter's length in multiply-adds per level, so threading pays far below
 # the memory-bound default. Swept forward 2-D transforms, ComplexF32, db2, 3 levels (EPYC 7763,
 # one NUMA domain), threaded against serial: 32² 0.79x / 0.33x, 64² 1.86x / 1.10x,
-# 128² 3.0x / 3.3x, 512² 4.9x / 8.3x at 8 / 16 threads; at 2 threads the win starts near 128².
+# 128² 3.0x / 3.3x, 512² 4.9x / 8.3x at 8 / 16 threads. Inside an iterative solve the crossover
+# is higher: a 128² L1-wavelet FISTA solve ran 1.35x faster threaded at 8 threads but 1.4x
+# slower at 2, while 256² ran faster at both (1.23x at 2, 2.2x at 8). The threshold sits between.
 _has_threaded_path(N::Int, wavelet) = N in (2, 3) && wavelet isa Wavelets.WT.OrthoFilter
 
-AbstractOperators.threading_threshold(::Type{<:WaveletOp}) = 2^14
+AbstractOperators.threading_threshold(::Type{<:WaveletOp}) = 2^15
 
 function _wavelet_threaded(threaded::Bool, ::Type{T}, wavelet, dim_in::NTuple{N, Int}, ::Type{S}) where {T, N, S}
     _has_threaded_path(N, wavelet) || return false
