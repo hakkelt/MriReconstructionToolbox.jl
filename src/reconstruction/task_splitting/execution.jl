@@ -59,12 +59,13 @@ function execute_regularized(plan, acq_data, config, method::IterativeReconstruc
         warm_start, scale, prior = _direct_reconstruct(𝒜, local_acq, local_x₀, method, local_conf)
         return warm_start, scale, 𝒜, prior
     end
+    density_weights = _density_weights_per_trajectory()
     solve_slice = function (local_acq, warm_start, ratio, global_scale, local_conf, 𝒜, prior)
         local_reg = map(r -> scale_regularization(r, ratio), method.regularization)
         local_method = _with_regularization(method, local_reg)
         result, _ = _reconstruct(
             local_acq, local_method, warm_start, local_conf;
-            scale_override = global_scale, 𝒜, prior,
+            scale_override = global_scale, 𝒜, prior, density_weights,
         )
         _release_device_plans!(𝒜, _storage_template(local_acq))
         return result

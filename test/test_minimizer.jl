@@ -294,6 +294,10 @@ end
     dcf0[size(dcf0, 1) ÷ 2 + 1, :] .= 0
     data0 = AcquisitionInfo(data; dcf = dcf0)
     @test all(>(0), MriReconstructionToolbox._density_weights(data0))
+    # The slices of a split solve share a trajectory and so one estimate of its weights.
+    weights_of = MriReconstructionToolbox._density_weights_per_trajectory()
+    @test weights_of(data) === weights_of(AcquisitionInfo(data; kspace_data = copy(data.kspace_data)))
+    @test weights_of(data) ≈ MriReconstructionToolbox._density_weights(data)
     @test err(reconstruct(data0, cp; verbosity = Silent())) < 1.0e-2
     # ...against one scalar step, which a given `ratio` leaves in place: further from the
     # solution after the same number of iterations.

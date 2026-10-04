@@ -78,20 +78,37 @@ function _density_weights(acq::NonCartesianAcquisitionInfo)
     return w ./ maximum(w)
 end
 
+# `_density_weights` for the slices of one acquisition, estimated once per trajectory: a shared
+# trajectory reaches every slice as the same array, so the slices after the first reuse its
+# weights. A slice that finds another computing them waits for that result.
+function _density_weights_per_trajectory()
+    entries = IdDict{Any, Tuple{ReentrantLock, Base.RefValue{Any}}}()
+    entries_lock = ReentrantLock()
+    return function (acq)
+        acq isa NonCartesianAcquisitionInfo || return _density_weights(acq)
+        entry_lock, weights = lock(() -> get!(() -> (ReentrantLock(), Ref{Any}()), entries, acq.trajectory), entries_lock)
+        return lock(entry_lock) do
+            isassigned(weights) || (weights[] = _density_weights(acq))
+            weights[]
+        end
+    end
+end
+
 """
     _chambolle_pock_preconditioner(method, acq) -> Union{Nothing, _ChambollePockPreconditioner}
 
 The preconditioner for `method`'s reconstruction of `acq`, or `nothing` when `method` does not run
 `ChambollePock` with a least-squares data term, or sets any of its step sizes itself.
+`density_weights(acq)` gives its density weights.
 """
-function _chambolle_pock_preconditioner(method::IterativeReconstruction, acq)
+function _chambolle_pock_preconditioner(method::IterativeReconstruction, acq; density_weights = _density_weights)
     alg = method.algorithm
     alg isa ProximalAlgorithms.IterativeAlgorithm{<:ProximalAlgorithms.ChambollePockIteration} || return nothing
     method.fidelity isa L2Loss || return nothing
     any(k -> haskey(alg.kwargs, k), (:tau, :sigma, :ratio, :normL)) && return nothing
-    return _ChambollePockPreconditioner(_density_weights(acq), nothing)
+    return _ChambollePockPreconditioner(density_weights(acq), nothing)
 end
-_chambolle_pock_preconditioner(method, acq) = nothing
+_chambolle_pock_preconditioner(method, acq; density_weights = _density_weights) = nothing
 
 _term_list(t::StructuredOptimization.Term) = (t,)
 _term_list(ts::StructuredOptimization.TermSet) = Tuple(ts)

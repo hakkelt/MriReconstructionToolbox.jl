@@ -152,7 +152,7 @@ end
 
 function _reconstruct(
         acq_data, method::ReconstructionMethod, x₀, config;
-        scale_override = nothing, 𝒜 = nothing, prior = nothing,
+        scale_override = nothing, 𝒜 = nothing, prior = nothing, density_weights = _density_weights,
     )
     fast_planning = _fast_planning(method, acq_data, config)
     built_here = isnothing(𝒜)
@@ -178,7 +178,7 @@ function _reconstruct(
     elseif method isa IterativeReconstruction
         # Iterative reconstruction with regularization
         bound_regs = bind_dimensions(method.regularization, get_image_dims(acq_data))
-        preconditioner = _chambolle_pock_preconditioner(method, acq_data)
+        preconditioner = _chambolle_pock_preconditioner(method, acq_data; density_weights)
         build = (𝒜, y; x₀) -> build_model_with_variables(
             𝒜, y, bound_regs;
             threaded = config.threaded, x₀,
