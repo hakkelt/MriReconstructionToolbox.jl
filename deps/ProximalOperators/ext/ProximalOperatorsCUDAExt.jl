@@ -19,7 +19,7 @@ module ProximalOperatorsCUDAExt
 # both sides longer fall through to the generic GPU method. `gesvdaStridedBatched` has no size limit
 # but was 3-5x slower than the Gram route wherever both applied, and `svd!` per slice 30-250x.
 
-using ProximalOperators: ProximalOperators
+using ..ProximalOperators
 using CUDA: CuArray, CUBLAS, CUSOLVER
 using GPUArrays: AbstractGPUArray
 

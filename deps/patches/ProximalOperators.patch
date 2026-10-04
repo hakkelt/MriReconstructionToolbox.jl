@@ -40,6 +40,19 @@ index 9796df4..4460ca0 100644
  
  include("properties.jl")
  include("kernels.jl")
+diff --git a/deps/ProximalOperators/ext/ProximalOperatorsCUDAExt.jl b/deps/ProximalOperators/ext/ProximalOperatorsCUDAExt.jl
+index f864744..556884a 100644
+--- a/deps/ProximalOperators/ext/ProximalOperatorsCUDAExt.jl
++++ b/deps/ProximalOperators/ext/ProximalOperatorsCUDAExt.jl
+@@ -19,7 +19,7 @@ module ProximalOperatorsCUDAExt
+ # both sides longer fall through to the generic GPU method. `gesvdaStridedBatched` has no size limit
+ # but was 3-5x slower than the Gram route wherever both applied, and `svd!` per slice 30-250x.
+ 
+-using ProximalOperators: ProximalOperators
++using ..ProximalOperators
+ using CUDA: CuArray, CUBLAS, CUSOLVER
+ using GPUArrays: AbstractGPUArray
+ 
 diff --git a/deps/ProximalOperators/src/ProximalOperators.jl b/deps/ProximalOperators/src/ProximalOperators.jl
 index 56dac6b..78bd240 100644
 --- a/deps/ProximalOperators/src/ProximalOperators.jl
