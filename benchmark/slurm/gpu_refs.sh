@@ -49,6 +49,7 @@ nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
 
 run_ref() {
     local name="$1" path="$2" marker
+    shift 2
     marker="$(mktemp)"
     echo "### ref $name ($path), round $round: $BENCH $*"
     (
