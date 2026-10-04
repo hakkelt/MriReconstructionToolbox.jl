@@ -899,3 +899,30 @@ end
         end
     end
 end
+
+@testitem "3D subsampling by linear ky–kz indices" tags = [:encoding, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
+    using MriReconstructionToolbox: get_subsampling_operator
+
+    # `(:, v)` with `v` a linear index into the ky–kz plane: the gather must take the samples that
+    # index names in every coil, and per-frame specs must do so frame by frame.
+    nx, ny, nz, nc = 8, 6, 4, 3
+    v = [1, 5, 9, 13, 20, 24]
+    ksp = rand(ComplexF32, nx, ny, nz, nc)
+    gather(k) = get_subsampling_operator(k, (nx, ny, nz), (:, v); threaded = false) * k
+    @test gather(ksp) == reshape(ksp, nx, ny * nz, nc)[:, v, :]
+    test_on_devices(gather, ksp; backends = all_backends())
+
+    scatter(k, y) = get_subsampling_operator(k, (nx, ny, nz), (:, v); threaded = false)' * y
+    y = gather(ksp)
+    @test reshape(scatter(ksp, y), nx, ny * nz, nc)[:, v, :] == y
+    test_on_devices(scatter, ksp, y; backends = all_backends())
+
+    v2 = [2, 5, 9, 13, 20, 23]
+    ksp5 = rand(ComplexF32, nx, ny, nz, nc, 2)
+    specs = [(:, v), (:, v2)]
+    gather5(k) = get_subsampling_operator(k, (nx, ny, nz), specs; threaded = false) * k
+    @test gather5(ksp5) == stack(
+        [reshape(ksp5[:, :, :, :, f], nx, ny * nz, nc)[:, idx, :] for (f, idx) in enumerate((v, v2))]
+    )
+    test_on_devices(gather5, ksp5; backends = all_backends())
+end

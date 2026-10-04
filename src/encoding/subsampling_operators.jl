@@ -263,8 +263,16 @@ function _device_batched_getindex(ksp, img_size, subsampling::Tuple)
     return GetIndex(ksp, (_fourier_index(img_size, subsampling)..., ntuple(_ -> Colon(), nbatch)...))
 end
 
-_fourier_index(img_size, subsampling::Tuple) = subsampling
+_fourier_index(img_size, subsampling::Tuple) = _plane_index(img_size, subsampling)
 _fourier_index(img_size, subsampling::Tuple{AbstractVector{Int}}) = (CartesianIndices(img_size)[only(subsampling)],)
+
+# A 3D spec `(kx, v)` with `v` a linear index into the ky–kz plane, as the `CartesianIndex`es it
+# stands for. `GetIndex` checks its indices axis by axis, so an integer index running over two
+# axes is out of bounds for ky, and any trailing batch `:` would extend it besides.
+_plane_index(img_size, subsampling::Tuple) = subsampling
+function _plane_index(img_size::NTuple{3, Int}, subsampling::Tuple{_1D_subsampling_type, AbstractVector{Int}})
+    return (subsampling[1], CartesianIndices(img_size[2:3])[subsampling[2]])
+end
 
 """
     _device_spreading_getindex(ksp, img_size, subsampling::AbstractArray, prefix_batch_dims)
@@ -303,6 +311,7 @@ end
 function _get_subsampling_operator(ksp, img_size::Tuple{Int, Int, Int}, subsampling::_3D_subsampling_type; threaded::Bool)
     @argcheck length(img_size) == 3 "img_size must be a 3-element tuple for 3D subsampling"
     @argcheck img_size == size(ksp)[1:3] DimensionMismatch
+    subsampling = _plane_index(img_size, subsampling)
     if ndims(ksp) > length(img_size)
         batch_dims = size(ksp)[4:end]
         _is_device(ksp) && return _device_batched_getindex(ksp, img_size, subsampling)
