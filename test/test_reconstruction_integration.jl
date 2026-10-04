@@ -1027,8 +1027,14 @@ end
         split = reconstruct(acq, tv; verbosity = Silent())
         whole = reconstruct(acq, tv; verbosity = Silent(), disable_task_splitting = true)
         @test nrmse(split, img) <= nrmse(whole, img) + 1.0e-3
+        # Without a regularization to compensate, a split repeats the trajectory's setup per slice
+        # for nothing, so it is taken only on request.
         gridded = density_compensation(acq)
-        @test reconstruct(gridded, DirectReconstruction()) ≈
+        @test isnothing(get_task_splitting_plan(gridded, DirectReconstruction(), config))
+        @test isnothing(get_task_splitting_plan(acq, IterativeReconstruction(; maxit = 5), config))
+        split_config = ReconstructionConfig(; disable_task_splitting = false)
+        @test !isnothing(get_task_splitting_plan(gridded, DirectReconstruction(), split_config))
+        @test reconstruct(gridded, DirectReconstruction(); disable_task_splitting = false) ≈
             reconstruct(gridded, DirectReconstruction(); disable_task_splitting = true) rtol = 1.0e-5
     end
 
@@ -1046,7 +1052,7 @@ end
         split = reconstruct(acq, tv; verbosity = Silent())
         whole = reconstruct(acq, tv; verbosity = Silent(), disable_task_splitting = true)
         @test nrmse(split, img) <= nrmse(whole, img) + 1.0e-2
-        @test reconstruct(acq, DirectReconstruction()) ≈
+        @test reconstruct(acq, DirectReconstruction(); disable_task_splitting = false) ≈
             reconstruct(acq, DirectReconstruction(); disable_task_splitting = true) rtol = 1.0e-5
         # A temporal regularizer couples the frames: they stay one problem.
         ttv = IterativeReconstruction(; regularization = TemporalTotalVariation(1.0e-3; time_dim = 3))

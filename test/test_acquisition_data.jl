@@ -661,11 +661,11 @@ end
             # Slices spread over threads would share one device.
             @test_throws ArgumentError reconstruct(dev; task_executor = MultiThreadingExecutor(), verbosity = Silent())
 
-            conf = resolve_config(ReconstructionConfig(; threaded = true), dev)
+            conf = resolve_config(ReconstructionConfig(; threaded = true), dev, DirectReconstruction())
             @test conf.disable_task_splitting === DEVICE_DISABLES_TASK_SPLITTING
             @test !conf.threaded
-            @test resolve_config(ReconstructionConfig(; disable_task_splitting = false), dev).disable_task_splitting === false
+            @test resolve_config(ReconstructionConfig(; disable_task_splitting = false), dev, DirectReconstruction()).disable_task_splitting === false
         end
     end
-    @test resolve_config(ReconstructionConfig(), host).disable_task_splitting === false
+    @test resolve_config(ReconstructionConfig(), host, DirectReconstruction()).disable_task_splitting === false
 end

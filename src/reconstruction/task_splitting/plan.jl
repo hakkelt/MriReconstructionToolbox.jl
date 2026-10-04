@@ -15,7 +15,7 @@ struct TaskSplittingPlan{N, M, K <: Tuple, L}
 end
 
 function get_task_splitting_plan(acq_data, method::ReconstructionMethod, config)
-    _task_splitting_disabled(config, acq_data) && return nothing
+    _task_splitting_disabled(config, acq_data, method) && return nothing
 
     # Determine which image/variable dimensions can be used for task splitting
     image_dims = get_image_dims(acq_data)

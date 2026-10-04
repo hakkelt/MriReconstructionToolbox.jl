@@ -123,11 +123,13 @@ const DEVICE_DISABLES_TASK_SPLITTING = true
 """
     resolve_config(config, acq_data) -> ReconstructionConfig
 
-`config` with the settings that depend on where the k-space lives made concrete: on a device
-`threaded` is off and `disable_task_splitting = nothing` becomes
-[`DEVICE_DISABLES_TASK_SPLITTING`](@ref); on the host `nothing` becomes `false`.
+`config` with the settings that depend on the acquisition and the method made concrete: on a
+device `threaded` is off and `disable_task_splitting = nothing` becomes
+[`DEVICE_DISABLES_TASK_SPLITTING`](@ref); on the host `nothing` becomes `false`, except for a
+non-Cartesian acquisition reconstructed without regularization (see
+[`_splitting_buys_nothing`](@ref)).
 """
-function resolve_config(config::ReconstructionConfig, acq_data)
+function resolve_config(config::ReconstructionConfig, acq_data, method)
     device = _is_device(acq_data)
     if device && config.task_executor isa MultiThreadingExecutor
         throw(
@@ -138,14 +140,30 @@ function resolve_config(config::ReconstructionConfig, acq_data)
             )
         )
     end
-    disable_task_splitting = _task_splitting_disabled(config, acq_data)
+    disable_task_splitting = _task_splitting_disabled(config, acq_data, method)
     threaded = config.threaded && !device
     disable_task_splitting === config.disable_task_splitting && threaded == config.threaded && return config
     return ReconstructionConfig(config; disable_task_splitting, threaded)
 end
 
-_task_splitting_disabled(config::ReconstructionConfig, acq_data) =
-    something(config.disable_task_splitting, _is_device(acq_data) && DEVICE_DISABLES_TASK_SPLITTING)
+_task_splitting_disabled(config::ReconstructionConfig, acq_data, method) = something(
+    config.disable_task_splitting,
+    _is_device(acq_data) ? DEVICE_DISABLES_TASK_SPLITTING : _splitting_buys_nothing(acq_data, method),
+)
+
+"""
+    _splitting_buys_nothing(acq_data, method) -> Bool
+
+Whether splitting `acq_data` into slices would only repeat work. Solved whole, a non-Cartesian
+batch builds its trajectory's NFFT plans and the Toeplitz kernel of its normal operator once;
+split, every slice builds them again. That pays only where splitting changes the solution, through
+the per-slice λ compensation of a regularized reconstruction: split, a gridding reconstruction ran
+1.25-2.2x and an unregularized CG-SENSE 1.8-2.9x slower on the 8-slice radial benchmark case
+(1-16 threads), while the regularized primal-dual and POGM solves ran faster.
+"""
+_splitting_buys_nothing(acq_data, method) = false
+_splitting_buys_nothing(::NonCartesianAcquisitionInfo, method::IterativeReconstruction) = isempty(method.regularization)
+_splitting_buys_nothing(::NonCartesianAcquisitionInfo, method::ReconstructionMethod) = true
 
 function construct_config(kwargs)
     if haskey(kwargs, :config)

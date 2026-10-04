@@ -41,7 +41,7 @@ function reconstruct(
         x₀::Union{Nothing, AbstractArray, Tuple, NamedTuple} = nothing,
         kwargs...,
     )
-    config = resolve_config(construct_config(kwargs), acq_data)
+    config = resolve_config(construct_config(kwargs), acq_data, method)
     _check_x₀_storage(x₀, acq_data)
     if _is_device(acq_data) && _runs_on_host(method)
         host_x = reconstruct(Adapt.adapt(Array, acq_data), method; x₀ = _adapt_any(Array, x₀), kwargs...)
