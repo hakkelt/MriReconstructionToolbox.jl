@@ -114,9 +114,11 @@ end
     spirit_err = norm(abs.(unname(rec_spirit))[mask_obj] .- img[mask_obj]) / norm(img[mask_obj])
     @test spirit_err < 0.03
 
-    # Both run on a host copy of a device acquisition and hand the image back on the device.
+    # Both run on a host copy of a device acquisition and hand the image back on the device, so an
+    # executor that a device rejects (slices sharing one device) is fine for them.
     for method in (GRAPPA(kernel_size = (3, 2), calib_size = (32, 12)), SPIRiT(kernel_size = (5, 5), calib_size = (32, 12), maxit = 20))
         test_on_devices(a -> reconstruct(a, method; verbosity = Silent()), acq)
+        test_on_devices(a -> reconstruct(a, method; verbosity = Silent(), task_executor = MultiThreadingExecutor()), acq)
     end
 end
 

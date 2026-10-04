@@ -41,12 +41,13 @@ function reconstruct(
         x₀::Union{Nothing, AbstractArray, Tuple, NamedTuple} = nothing,
         kwargs...,
     )
-    config = resolve_config(construct_config(kwargs), acq_data, method)
     _check_x₀_storage(x₀, acq_data)
+    # Resolved against the host copy there: no slice of a host-only method shares the device.
     if _is_device(acq_data) && _runs_on_host(method)
         host_x = reconstruct(Adapt.adapt(Array, acq_data), method; x₀ = _adapt_any(Array, x₀), kwargs...)
         return _to_storage_of(acq_data, host_x)
     end
+    config = resolve_config(construct_config(kwargs), acq_data, method)
     t_start = time()
     method = lower(method, acq_data)
     check_applicable(method, acq_data)
