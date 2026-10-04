@@ -91,10 +91,10 @@ function simulate_acquisition(image, acq_info::NonCartesianAcquisitionInfo)
     # those batch axes.
     traj = acq_info.trajectory
     nspatial = acq_info.is3D ? 3 : 2
-    nsample = ndims(traj) - 1 - _simulation_frame_dims_count(traj, image, nspatial)
+    nsample = ndims(traj) - 1 - _simulation_frame_dims_count(traj, image, nspatial, acq_info.kspace_data)
     sample_dims = size(traj)[2:(nsample + 1)]
     batch_dims = size(image)[(nspatial + 1):end]
-    ncoil = isnothing(acq_info.sensitivity_maps) ? () : (size(acq_info.sensitivity_maps)[end],)
+    ncoil = isnothing(acq_info.sensitivity_maps) ? () : (size(acq_info.sensitivity_maps, nspatial + 1),)
     ksp_size = (sample_dims..., ncoil..., batch_dims...)
     ksp = similar(image, Complex{eltype(traj)}, ksp_size)
     if image isa NamedDimsArray && traj isa NamedDimsArray
@@ -113,13 +113,16 @@ function simulate_acquisition(image, acq_info::NonCartesianAcquisitionInfo)
     return acq_info
 end
 
-# The frame axes of a trajectory being simulated are its trailing axes that match the image's
-# trailing batch axes (by name when both are named, by size otherwise); there is no k-space yet to
-# compare against. Any sample axis must remain.
-function _simulation_frame_dims_count(traj, image, nspatial::Int)
-    named = traj isa NamedDimsArray && image isa NamedDimsArray
-    s = named ? dimnames(traj)[2:end] : size(traj)[2:end]
-    b = named ? dimnames(image)[(nspatial + 1):end] : size(image)[(nspatial + 1):end]
+# The frame axes of a trajectory being simulated. An acquisition that carries k-space has had them
+# read by its constructor already. Otherwise they are the trajectory's trailing axes named like the
+# image's trailing batch axes, any sample axis remaining; a plain-array trajectory has no names to
+# tell a frame axis from a sample axis of the same size (24 spokes for a 24-frame cine), so it is
+# shared, as the constructor reads it when the sizes alone allow both.
+function _simulation_frame_dims_count(traj, image, nspatial::Int, ksp)
+    isnothing(ksp) || return _trajectory_frame_dims_count(traj, ksp)
+    (traj isa NamedDimsArray && image isa NamedDimsArray) || return 0
+    s = dimnames(traj)[2:end]
+    b = dimnames(image)[(nspatial + 1):end]
     for f in min(length(b), length(s) - 1):-1:1
         s[(end - f + 1):end] == b[(end - f + 1):end] && return f
     end

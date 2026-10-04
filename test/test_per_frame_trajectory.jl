@@ -146,3 +146,32 @@ end
     @test all(abs.(values(estimate_gradient_delays(acq))) .< 1.0e-2)
     @test size(correct_gradient_delays(acq).trajectory) == size(traj)
 end
+
+@testitem "Per-frame trajectory: simulation reads frames as the constructor does" tags = [:acquisition, :nfft, :simulation] setup = [PerFrameTrajectory] begin
+    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+
+    # A plain-array trajectory with as many spokes as the image has frames: sizes cannot tell its
+    # spoke axis from a frame axis, so it is shared, every frame getting all of its spokes.
+    n, ns, nsp, nc = 16, 32, 6, 3
+    traj = radial_spokes(ns, nsp, 0)
+    smaps = rand(ComplexF32, n, n, nc)
+    shared = NonCartesianAcquisitionInfo(nothing; trajectory = traj, image_size = (n, n), sensitivity_maps = smaps)
+    @test size(simulate_acquisition(rand(ComplexF32, n, n, nsp), shared).kspace_data) == (ns, nsp, nc, nsp)
+    # Named axes make the same trajectory a per-frame one, a spoke per frame.
+    named = NonCartesianAcquisitionInfo(
+        nothing; trajectory = NamedDimsArray{(:coord, :sample, :time)}(traj), image_size = (n, n), sensitivity_maps = smaps,
+    )
+    @test size(simulate_acquisition(NamedDimsArray{(:x, :y, :time)}(rand(ComplexF32, n, n, nsp)), named).kspace_data) == (ns, nc, nsp)
+    # An acquisition that carries k-space has had its frames read by its constructor already.
+    template = NonCartesianAcquisitionInfo(
+        zeros(ComplexF32, ns, nc, nsp); trajectory = traj, image_size = (n, n), sensitivity_maps = smaps,
+    )
+    @test size(simulate_acquisition(rand(ComplexF32, n, n, nsp), template).kspace_data) == (ns, nc, nsp)
+
+    # 4-D maps of a 2-D encoding are `(x, y, coil, slice)`: the coil count is their third axis.
+    nsl = 2
+    multislice = NonCartesianAcquisitionInfo(
+        nothing; trajectory = traj, image_size = (n, n), sensitivity_maps = rand(ComplexF32, n, n, nc, nsl),
+    )
+    @test size(simulate_acquisition(rand(ComplexF32, n, n, nsl), multislice).kspace_data) == (ns, nsp, nc, nsl)
+end
