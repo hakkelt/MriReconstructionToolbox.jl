@@ -49,7 +49,10 @@ end
 function (f::SqrNormL2{<:AbstractArray})(x)
     R = real(eltype(x))
     lambda = f.lambda
-    size(lambda) == size(x) || return _weighted_sqrnorm(lambda, x) / R(2)
+    if size(lambda) != size(x)
+        _broadcasts_by_column(lambda, x) || return _weighted_sqrnorm(lambda, x) / R(2)
+        return _sum_by_column((k, l) -> l * abs2(@inbounds x[k]), f, lambda, x) / R(2)
+    end
     sqnorm = reduce_call_idx(f, (k, xk) -> lambda[k] * abs2(xk), x)
     return sqnorm / R(2)
 end
@@ -77,6 +80,14 @@ function gradient!(y, f::SqrNormL2{<:AbstractArray}, x)
     R = real(eltype(x))
     lambda = f.lambda
     if size(lambda) != size(x)
+        if _broadcasts_by_column(lambda, x, y)
+            wsqnx = _sum_by_column(f, lambda, x) do k, l
+                @inbounds xk = x[k]
+                @inbounds y[k] = l * xk
+                l * abs2(xk)
+            end
+            return wsqnx / R(2)
+        end
         y .= lambda .* x
         return _weighted_sqrnorm(lambda, x) / R(2)
     end
@@ -104,6 +115,14 @@ function prox!(y, f::SqrNormL2{<:AbstractArray}, x, gamma::Number)
     R = real(eltype(x))
     lambda = f.lambda
     if size(lambda) != size(x)
+        if _broadcasts_by_column(lambda, x, y)
+            wsqny = _sum_by_column(f, lambda, x) do k, l
+                @inbounds yk = x[k] / (1 + gamma * l)
+                @inbounds y[k] = yk
+                l * abs2(yk)
+            end
+            return wsqny / R(2)
+        end
         y .= x ./ (1 .+ gamma .* lambda)
         return _weighted_sqrnorm(lambda, y) / R(2)
     end
@@ -133,6 +152,45 @@ function prox!(y, f::SqrNormL2{<:AbstractArray}, x, gamma::AbstractArray)
         f, y, (k, xk) -> xk / (1 + gamma[k] * lambda[k]), (k, yk) -> lambda[k] * abs2(yk), x
     )
     return wsqny / R(2)
+end
+
+# Whether `_sum_by_column` applies: every array in CPU memory, and each axis of `λ` either of
+# length one or as long as that axis of `x`.
+_broadcasts_by_column(lambda, x, ys...) =
+    is_cpu_storage((lambda, x, ys...)) && ndims(lambda) <= ndims(x) &&
+    all(d -> size(lambda, d) in (1, size(x, d)), 1:ndims(lambda))
+
+# `∑ₖ g(k, λₖ)` over the linear indices `k` of `x`, with `λ` broadcast against `x`; `g` may index
+# without bounds checks, since `k` is always one of `x`'s indices. `x` is walked as columns past
+# its first axis, so the entry of `λ` a column reads is found once per column and the column itself
+# is a plain loop; the columns are what is threaded.
+function _sum_by_column(g::G, f, lambda, x) where {G}
+    R = real(eltype(x))
+    sz = ntuple(d -> size(lambda, d), Val(ndims(x)))
+    L = reshape(lambda, sz[1], :)
+    one_row = sz[1] == 1
+    n = size(x, 1)
+    columns = CartesianIndices(Base.tail(size(x)))
+    lcolumns = LinearIndices(Base.tail(sz))
+    ltail = Base.tail(sz)
+    mb = max(1, 4096 ÷ max(n, 1))
+    acc = R(0)
+    strategy = execution_strategy(f, x)
+    @elementwise_loop strategy reduction = ((+, acc),) minbatch = mb for j in 1:length(columns)
+        lj = lcolumns[CartesianIndex(min.(Tuple(columns[j]), ltail))]
+        offset = (j - 1) * n
+        if one_row
+            lcol = L[1, lj]
+            @simd for i in 1:n
+                acc += g(offset + i, lcol)
+            end
+        else
+            @simd for i in 1:n
+                acc += g(offset + i, L[i, lj])
+            end
+        end
+    end
+    return acc
 end
 
 # `∑ λᵢ |xᵢ|²` with `λ` broadcast against `x`, reduced without materialising the product.
