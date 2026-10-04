@@ -286,7 +286,7 @@ function get_dim_out(in_dim::Dims, idxs...)
             i = i + ndims(idx) - 1
         elseif idx isa AbstractVector{<:CartesianIndex}
             dim2 = (dim2..., length(idx))
-            i += ndims(idx) - 1
+            i += length(eltype(idx)) - 1
         elseif idx isa AbstractVector{Int} || idx isa OrdinalRange{Int}
             dim2 = (dim2..., length(idx))
         elseif idx isa AbstractArray{<:Union{Integer, CartesianIndex}}
