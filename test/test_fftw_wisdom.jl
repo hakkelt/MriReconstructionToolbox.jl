@@ -112,3 +112,15 @@ end
         @test_throws ArgumentError plan_fft_wisdom(acq; rigor = :fast)
     end
 end
+
+@testitem "FFTW wisdom cache: device plans leave it alone" tags = [:encoding, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
+    using MriReconstructionToolbox: get_fourier_operator, _WISDOM_DIRTY
+
+    # A device FFT is not FFTW's, so a measured device plan has nothing to add to the host wisdom
+    # and must not make the next `reconstruct` rewrite the file.
+    for backend in fft_backends()
+        _WISDOM_DIRTY[] = false
+        get_fourier_operator(to_device(backend, zeros(ComplexF32, 48, 40, 3)), false; fast_planning = false)
+        @test !_WISDOM_DIRTY[]
+    end
+end

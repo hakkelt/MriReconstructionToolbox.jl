@@ -18,13 +18,16 @@ const _WISDOM_DIRTY = Ref(false)
 const _FFTW_RIGOR = Base.ScopedValues.ScopedValue{Union{Nothing, UInt32}}(nothing)
 
 """
-    _fftw_flags(fast_planning::Bool) -> UInt32
+    _fftw_flags(fast_planning::Bool, x::AbstractArray) -> UInt32
 
-The FFTW planner flags for a plan MRT is about to make: `ESTIMATE` under `fast_planning`, else
-`MEASURE`, unless [`plan_fft_wisdom`](@ref) forces a rigor. Loads the on-disk wisdom first, so an
-`ESTIMATE` plan of a problem measured in an earlier session gets the measured plan.
+The FFTW planner flags for a plan MRT is about to make on arrays like `x`: `ESTIMATE` under
+`fast_planning`, else `MEASURE`, unless [`plan_fft_wisdom`](@ref) forces a rigor. Loads the on-disk
+wisdom first, so an `ESTIMATE` plan of a problem measured in an earlier session gets the measured
+plan. A device plan is not FFTW's: it gets `ESTIMATE`, which it ignores, and leaves the wisdom
+alone.
 """
-function _fftw_flags(fast_planning::Bool)
+function _fftw_flags(fast_planning::Bool, x::AbstractArray)
+    _is_device(x) && return FFTW.ESTIMATE
     _load_fftw_wisdom()
     flags = something(_FFTW_RIGOR[], fast_planning ? FFTW.ESTIMATE : FFTW.MEASURE)
     flags == FFTW.ESTIMATE || (_WISDOM_DIRTY[] = true)

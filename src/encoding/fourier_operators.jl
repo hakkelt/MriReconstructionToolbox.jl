@@ -122,7 +122,7 @@ function get_fourier_operator(
         threaded::Bool = true,
         fast_planning::Bool = false,
     )
-    flags = _fftw_flags(fast_planning)
+    flags = _fftw_flags(fast_planning, ksp)
     ksp_dims = is3D ? (1, 2, 3) : (1, 2)
     ℱ = DFT(ksp, ksp_dims; normalization = FFTWOperators.BACKWARD, flags, threaded)
     shifted_kspace_dims = _normalize_shifted_dims(
@@ -247,7 +247,7 @@ end
 # trajectory's frame axes (`0` for a shared trajectory).
 function _nfft_operator(ksp, image_size, trajectory, nframe::Int; dcf, threaded, m, sigma, precompute, fast_planning)
     fourier_dims = ndims(trajectory) - 1 - nframe
-    nfft_kwargs = _nfft_operating_point_kwargs(m, sigma, precompute, fast_planning)
+    nfft_kwargs = _nfft_operating_point_kwargs(m, sigma, precompute, fast_planning, ksp)
     if _is_device(ksp)
         # One transform for the whole stack: the axes after the samples are the batch, the last
         # `nframe` of them frames with trajectories of their own. The device plan's FFT is not
@@ -333,12 +333,12 @@ const DEFAULT_NFFT_PRECOMPUTE = NFFT.POLYNOMIAL
 # `DEFAULT_NFFT_M` and friends for the measured justification. The FFT inside the NFFT is planned
 # like the Cartesian DFT: `MEASURE` unless `fast_planning`. `ESTIMATE`, NFFT.jl's own default, picks
 # a 3.3x slower plan for the 192×192 oversampled grid of a 128×128 image on an EPYC 7352.
-function _nfft_operating_point_kwargs(m, sigma, precompute, fast_planning::Bool)
+function _nfft_operating_point_kwargs(m, sigma, precompute, fast_planning::Bool, ksp)
     return (
         m = isnothing(m) ? DEFAULT_NFFT_M : m,
         σ = isnothing(sigma) ? DEFAULT_NFFT_SIGMA : sigma,
         precompute = isnothing(precompute) ? DEFAULT_NFFT_PRECOMPUTE : precompute,
-        fftflags = _fftw_flags(fast_planning),
+        fftflags = _fftw_flags(fast_planning, ksp),
     )
 end
 
@@ -355,7 +355,7 @@ function _axis_dft_op(
         template::AbstractArray, dims::Tuple;
         kspace_shift::Bool = false, threaded::Bool = true, fast_planning::Bool = false,
     )
-    flags = _fftw_flags(fast_planning)
+    flags = _fftw_flags(fast_planning, template)
     ℱ = DFT(template, dims; normalization = FFTWOperators.BACKWARD, flags, threaded)
     return kspace_shift ? fftshift_op(ℱ; codomain_shifts = dims) : ℱ
 end
