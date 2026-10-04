@@ -23,9 +23,12 @@ end
 
 _release_plans!(seen, p::CUFFT.CuFFTPlan) = (p in seen || (push!(seen, p); finalize(p)); nothing)
 _release_plans!(seen, ::Union{Number, Symbol, AbstractString, Type, Function, Module, Task, Base.AbstractLock, Nothing}) = nothing
+# A slot never assigned (a cache allocated with `undef`, the storage behind a `Dict`) holds nothing.
 function _release_plans!(seen, x::AbstractArray)
     isbitstype(eltype(x)) && return nothing
-    foreach(e -> _release_plans!(seen, e), x)
+    for i in eachindex(x)
+        isassigned(x, i) && _release_plans!(seen, x[i])
+    end
     return nothing
 end
 function _release_plans!(seen, x)
