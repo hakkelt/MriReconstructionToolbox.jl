@@ -135,6 +135,31 @@ end
     end
 end
 
+@testitem "WaveletOp: threaded scratch survives garbage collection" tags = [:wavelet, :WaveletOp, :Threading] setup = [TestUtils] begin
+    using Wavelets, LinearAlgebra, Random, WaveletOperators
+    Random.seed!(11)
+
+    # Small transforms, threaded regardless of the size policy, applied often enough that the
+    # collector runs while the line kernels still write through the per-block scratch.
+    for dims in ((64, 64), (32, 32, 32))
+        serial = WaveletOp(ComplexF32, wavelet(WT.db2), dims, 3; threaded = false)
+        P = typeof(serial).parameters
+        threaded = typeof(serial).name.wrapper{P[1:4]..., true}(serial.wavelet, serial.dim_in, serial.levels)
+        x = randn(ComplexF32, dims)
+        y, ys, z, zs = similar(x), similar(x), similar(x), similar(x)
+        mul!(ys, serial, x)
+        mul!(zs, serial', ys)
+        bad = 0
+        for round in 1:300
+            mul!(y, threaded, x)
+            mul!(z, threaded', y)
+            (y == ys && z == zs) || (bad += 1)
+            round % 50 == 0 && GC.gc(false)
+        end
+        @test bad == 0
+    end
+end
+
 @testitem "WaveletOp constructor errors" tags = [:wavelet, :WaveletOp] setup = [TestUtils] begin
     using Wavelets, WaveletOperators
     wt = wavelet(WT.db4)
