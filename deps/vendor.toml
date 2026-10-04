@@ -361,6 +361,12 @@ branch = "fix/spreading-copying-normal-op"
 parent = "unified-threading"
 pr = "hakkelt/AbstractOperators.jl#37"
 
+# A batch with fewer items than threads leaves the threads to a wrapped operator that threads itself.
+[[AbstractOperators.stack]]
+branch = "perf/batch-inner-threads"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#38"
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
