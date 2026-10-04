@@ -83,7 +83,10 @@ function record_run_rows(
     )
     dir = runs_dir(root)
     mkpath(dir)
-    run_id = "$(ts)_$(backend)_$(threads)threads_$(section)_$(source)_pid$(getpid())"
+    # The SLURM job id lets a job pick out its own files from a results directory that concurrent
+    # jobs on other checkouts also write to (`benchmark/slurm/gpu_refs.sh`).
+    job = haskey(ENV, "SLURM_JOB_ID") ? "_job$(ENV["SLURM_JOB_ID"])" : ""
+    run_id = "$(ts)_$(backend)_$(threads)threads_$(section)_$(source)$(job)_pid$(getpid())"
     path = joinpath(dir, "$run_id.json")
     ispath(path) && (path = joinpath(dir, "$(run_id)_$(rand(UInt32)).json"))
     meta = Dict{String, Any}(string(k) => v for (k, v) in kwargs)

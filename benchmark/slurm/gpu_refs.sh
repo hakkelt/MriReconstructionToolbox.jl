@@ -68,7 +68,7 @@ run_ref() {
     ) || echo "### ref $name, round $round failed"
     if [ "$BENCH" = comparison ]; then
         mkdir -p "$OUT_DIR/$name/runs"
-        find "$path/benchmark/comparison/results/runs" -name '*.json' -newer "$marker" \
+        find "$path/benchmark/comparison/results/runs" -name "*_job${SLURM_JOB_ID:-}_*.json" -newer "$marker" \
             -exec cp {} "$OUT_DIR/$name/runs/" \;
     fi
     rm -f "$marker"
