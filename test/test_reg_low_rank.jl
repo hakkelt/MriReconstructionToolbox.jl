@@ -239,8 +239,8 @@ end
         # The thresholded slices, then the thresholded and the plain nuclear norms, on A's storage.
         function svt(A)
             B = copy(A)
-            thresholded = MriReconstructionToolbox._batched_svt!(B, 1.0f0)
-            nuclear = MriReconstructionToolbox._batched_nuclear_norm(A)
+            thresholded = MriReconstructionToolbox.ProximalOperators.batched_svt!(B, 1.0f0)
+            nuclear = MriReconstructionToolbox.ProximalOperators.batched_nuclear_norm(A)
             return vcat(vec(B), copyto!(similar(B, 2), eltype(A)[thresholded, nuclear]))
         end
         test_on_devices(svt, A; backends = all_backends())

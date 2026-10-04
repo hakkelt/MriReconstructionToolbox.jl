@@ -1,4 +1,4 @@
-# Batched singular value thresholding on a GPU: the Gram-matrix path `_batched_svt!` takes
+# Batched singular value thresholding on a GPU: the path `ProximalOperators.batched_svt!` takes
 # (device Gram matrices, host eigendecompositions in Float64) against CUSOLVER's batched
 # routines, for the slice shapes locally low-rank regularization produces (block voxels × frames).
 # The variants of a case are timed round-robin so that drift on a shared node hits them alike.
@@ -30,7 +30,7 @@ end
 shrink(s, τ) = ifelse(s > τ, 1 - τ / s, zero(s))
 
 # Current path.
-gram_host(A, τ) = MRT._batched_svt!(A, τ)
+gram_host(A, τ) = MRT.ProximalOperators.batched_svt!(A, τ)
 
 # Gram matrices and their eigendecompositions both on the device (`heevjBatched`, n ≤ 32).
 function gram_device(A, τ)

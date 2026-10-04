@@ -96,7 +96,7 @@ function _block_matrix(f::BlockNuclearNorm, ::Type{T}, ranges) where {T}
 end
 
 function (f::BlockNuclearNorm)(x)
-    _is_device(x) && return f.λ * _batched_nuclear_norm(_to_block_stack(f, x))
+    _is_device(x) && return BatchedNuclearNorm(f.λ)(_to_block_stack(f, x))
     xr = _reshaped(f, x)
     R = real(eltype(x))
     value = R(0)
@@ -119,9 +119,9 @@ function ProximalCore.prox!(y, f::BlockNuclearNorm, x, gamma)
     f.shift === :random && (f.offset[] = _draw_offset(f.rng, f.block_size))
     if _is_device(x)
         blocks = _to_block_stack(f, x)
-        value = _batched_svt!(blocks, threshold)
+        value = prox!(blocks, BatchedNuclearNorm(f.λ), blocks, gamma)
         _from_block_stack!(y, f, blocks)
-        return f.λ * value
+        return value
     end
     nblocks = length(f.blocks)
     # One task per (block, batch slice) pair; every task writes into a disjoint part of `y`.
@@ -199,34 +199,6 @@ _interleave(a::NTuple{N, Int}, b::NTuple{N, Int}) where {N} = ntuple(i -> isodd(
 # `(b₁, n₁, …, b_N, n_N, frames, batch)` to `(b₁, …, b_N, frames, n₁, …, n_N, batch)`.
 _block_stack_perm(::Val{N}) where {N} =
     (ntuple(i -> 2i - 1, Val(N))..., 2N + 1, ntuple(i -> 2i, Val(N))..., 2N + 2)
-
-"""
-    _batched_svt!(A::AbstractArray{T,3}, τ) -> Real
-
-Replace every `A[:, :, k]` with its singular value thresholding at `τ` (soft-threshold the
-singular values, keep the vectors) and return the sum of the thresholded singular values.
-The generic method loops over the slices; the GPU extension provides one batched over them.
-"""
-function _batched_svt!(A::AbstractArray{T, 3}, τ) where {T}
-    R = real(T)
-    total = zero(R)
-    for k in axes(A, 3)
-        M = view(A, :, :, k)
-        F = svd!(Matrix(M))
-        σ = max.(zero(R), F.S .- R(τ))
-        copyto!(M, F.U * Diagonal(σ) * F.Vt)
-        total += sum(σ)
-    end
-    return total
-end
-
-"""
-    _batched_nuclear_norm(A::AbstractArray{T,3}) -> Real
-
-`∑ₖ ‖A[:, :, k]‖_*`; batched over the slices in the GPU extension.
-"""
-_batched_nuclear_norm(A::AbstractArray{T, 3}) where {T} =
-    sum(k -> sum(svdvals!(Matrix(view(A, :, :, k)))), axes(A, 3); init = zero(real(T)))
 
 """
 	LocallyLowRank(λ; block_size, time_dim=nothing, shift=:none, rng=Random.default_rng())

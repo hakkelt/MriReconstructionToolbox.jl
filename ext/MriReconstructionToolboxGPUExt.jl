@@ -36,102 +36,15 @@ module ProximalOperatorsGPU
     include(joinpath(@__DIR__, "..", "deps", "ProximalOperators", "ext", "GpuExt", "GpuExt.jl"))
 end
 
+include(joinpath(@__DIR__, "..", "deps", "ProximalOperators", "ext", "GpuRecursiveArrayToolsExt.jl"))
+
 using MriReconstructionToolbox: MriReconstructionToolbox as MRT
 using GPUArrays: AbstractGPUArray
 using KernelAbstractions: KernelAbstractions as KA, @kernel, @index, @Const
 
-using LinearAlgebra: LinearAlgebra, Hermitian, eigen, Diagonal
-using MriReconstructionToolbox: ArrayPartition
 
 MRT._is_device(::AbstractGPUArray) = true
 MRT._device_adaptor(x::AbstractGPUArray) = KA.get_backend(x)
-
-# RecursiveArrayTools has no `dot`, `axpy!`, `axpby!` or `norm` for an `ArrayPartition`, so the
-# generic ones iterate it element by element, which a device array refuses. A multi-variable
-# problem (TGV's auxiliary field, image decompositions) keeps its iterates in one, and the
-# solvers' inner products and updates run on them. Each is taken part by part here.
-const _DevicePartition = ArrayPartition{<:Any, <:Tuple{Vararg{AbstractGPUArray}}}
-LinearAlgebra.dot(x::_DevicePartition, y::_DevicePartition) = sum(map(LinearAlgebra.dot, x.x, y.x))
-function LinearAlgebra.axpy!(α::Number, x::_DevicePartition, y::_DevicePartition)
-    foreach((xi, yi) -> LinearAlgebra.axpy!(α, xi, yi), x.x, y.x)
-    return y
-end
-function LinearAlgebra.axpby!(α::Number, x::_DevicePartition, β::Number, y::_DevicePartition)
-    foreach((xi, yi) -> LinearAlgebra.axpby!(α, xi, β, yi), x.x, y.x)
-    return y
-end
-LinearAlgebra.norm(x::_DevicePartition) = sqrt(sum(xi -> LinearAlgebra.norm(xi)^2, x.x))
-
-# ─── Batched singular value operations ──────────────────────────────────────────────────────
-#
-# The slices of a low-rank block stack are tall and thin (voxels × frames), so each slice's
-# singular value thresholding is done through its small Gram matrix: `Aᴴ A = V S² Vᴴ`, and
-# `svt(A) = A V diag(max(1 - τ/s, 0)) Vᴴ`. The Gram matrices and the product with the weight
-# matrices are two batched kernels on the device; the eigendecompositions of the `n × n` Gram
-# matrices, `n` the number of frames, run on the host in double precision, which only moves
-# `n² × nslices` numbers each way.
-
-@kernel function _gram_kernel!(G, @Const(A))
-    i, j, b = @index(Global, NTuple)
-    acc = zero(eltype(G))
-    for k in axes(A, 1)
-        acc += conj(A[k, i, b]) * A[k, j, b]
-    end
-    G[i, j, b] = acc
-end
-
-@kernel function _right_multiply_kernel!(Y, @Const(A), @Const(W))
-    k, j, b = @index(Global, NTuple)
-    acc = zero(eltype(Y))
-    for i in axes(W, 1)
-        acc += A[k, i, b] * W[i, j, b]
-    end
-    Y[k, j, b] = acc
-end
-
-function _batched_gram(A::AbstractGPUArray{T, 3}) where {T}
-    n = size(A, 2)
-    G = similar(A, n, n, size(A, 3))
-    backend = KA.get_backend(A)
-    _gram_kernel!(backend)(G, A; ndrange = size(G))
-    return Array{complex(Float64)}(Array(G))
-end
-
-# The singular values of every slice, from its host Gram matrix, and the eigenvectors.
-function _slice_spectrum(G::Array, b)
-    E = eigen(Hermitian(view(G, :, :, b)))
-    return sqrt.(max.(E.values, 0.0)), E.vectors
-end
-
-# Slices wider than they are tall are handled through their adjoint, whose thresholding is the
-# adjoint of theirs.
-_tall(A) = size(A, 1) >= size(A, 2) ? A : conj.(permutedims(A, (2, 1, 3)))
-
-function MRT._batched_svt!(A::AbstractGPUArray{T, 3}, τ) where {T}
-    size(A, 1) >= size(A, 2) || return _svt_through_adjoint!(A, τ)
-    G = _batched_gram(A)
-    n, nb = size(G, 1), size(G, 3)
-    W = Array{complex(Float64)}(undef, n, n, nb)
-    total = 0.0
-    for b in 1:nb
-        s, V = _slice_spectrum(G, b)
-        w = map(si -> si > τ ? 1 - τ / si : 0.0, s)
-        W[:, :, b] = V * Diagonal(w) * V'
-        total += sum(si -> max(si - τ, 0.0), s)
-    end
-    Wd = copyto!(similar(A, n, n, nb), convert(Array{T}, T <: Real ? real.(W) : W))
-    Y = similar(A)
-    _right_multiply_kernel!(KA.get_backend(A))(Y, A, Wd; ndrange = size(Y))
-    copyto!(A, Y)
-    return real(T)(total)
-end
-
-function _svt_through_adjoint!(A, τ)
-    At = _tall(A)
-    total = MRT._batched_svt!(At, τ)
-    A .= conj.(permutedims(At, (2, 1, 3)))
-    return total
-end
 
 # ─── LORAKS lifts ───────────────────────────────────────────────────────────────────────────
 #
@@ -282,10 +195,5 @@ MRT._loraks_unlift!(y::AbstractArray, lift::MRT.LoraksLift, M::AbstractGPUArray,
     _loraks_unlift_device!(y, lift, M, _loraks_unlift_s_kernel!)
 MRT._loraks_unlift!(y::AbstractArray, lift::MRT.LoraksLift, M::AbstractGPUArray, ::Val{:g}) =
     _loraks_unlift_device!(y, lift, M, _loraks_unlift_g_kernel!, lift.nchannels)
-
-function MRT._batched_nuclear_norm(A::AbstractGPUArray{T, 3}) where {T}
-    G = _batched_gram(_tall(A))
-    return real(T)(sum(b -> sum(first(_slice_spectrum(G, b))), axes(G, 3); init = 0.0))
-end
 
 end # module MriReconstructionToolboxGPUExt

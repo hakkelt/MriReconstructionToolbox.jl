@@ -71,8 +71,11 @@ They are inlined as **submodules** of `MriReconstructionToolbox` (see the `inclu
   `RecursiveArrayToolsExt` is (`deps/ProximalOperators/src/recursive_array_tools.jl`), or dropped
   when MRT does not need it — OSQP, and with it `IndPolyhedral`, is not vendored for that reason.
   The GPU extensions (AbstractOperators', FFTWOperators' and ProximalOperators' `ext/GpuExt`,
-  NFFTOperators' `NFFTOperatorsGPUArraysExt`, NFFT's `NFFTGPUArraysExt`) are the third case: they stay under `deps/` and
-  `ext/MriReconstructionToolboxGPUExt.jl` `include`s each one into a module of its own.
+  ProximalOperators' `GpuRecursiveArrayToolsExt`, NFFTOperators' `NFFTOperatorsGPUArraysExt`, NFFT's
+  `NFFTGPUArraysExt`) are the third case: they stay under `deps/` and
+  `ext/MriReconstructionToolboxGPUExt.jl` `include`s each one, into a module of its own where it
+  imports relatively. ProximalOperators' `ProximalOperatorsCUDAExt` is included the same way by
+  `ext/MriReconstructionToolboxCUDAExt.jl`.
 
 Only what MRT compiles is vendored. Each package's own `test/`, `docs/`, `benchmark/`, CI config
 and every `ext/` except the GPU ones are pruned on every sync (`prune` in `deps/vendor.toml`);
