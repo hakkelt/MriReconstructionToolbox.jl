@@ -164,8 +164,11 @@ gap. Overshoot costs convergence rate; a value below `‖𝒜‖` costs converge
 
 POGM gets the tightest margin because it is the least forgiving: an estimate 1.2% low has been
 observed to diverge it, where the forward-backward family only slows down. Where the closed-form
-[`AbstractOperators.opnorm_bound`](@ref) is finite and tight — every Cartesian SENSE operator —
-the margin is met on iteration zero and costs nothing either way.
+[`AbstractOperators.opnorm_bound`](@ref) is finite — every Cartesian SENSE operator — that bound is
+the value returned whatever the margin, and the margin only sets how many Lanczos steps certify it:
+on the 2D, cine and 3D Cartesian cases the bound is within 0.06% of `‖𝒜‖`, and certifying it takes
+7-10 steps at 1% and 22-47 at 0.1%. A bound looser than the margin ends on the residual test
+instead, with a warning.
 """
 opnorm_rel_margin(
     ::ProximalAlgorithms.IterativeAlgorithm{<:ProximalAlgorithms.POGMIteration}

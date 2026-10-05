@@ -599,7 +599,12 @@ end
     E = get_encoding_operator(
         AcquisitionInfo(ksp; sensitivity_maps = maps, image_size = (nx, ny)); threaded = false
     )
-    truth = AbstractOperators.powerit(E; maxit = 500, rel_margin = 1.0e-12)
+    # The norm itself from the same operator in double precision: a single-precision iteration
+    # run this long carries rounding of its own, which may put it an ulp above the norm.
+    E64 = get_encoding_operator(
+        AcquisitionInfo(ComplexF64.(ksp); sensitivity_maps = ComplexF64.(maps), image_size = (nx, ny)); threaded = false
+    )
+    truth = AbstractOperators.powerit(E64; maxit = 500, rel_margin = 1.0e-12)
     for margin in (1.0e-3, 0.01, 0.05)
         @test AbstractOperators.estimate_opnorm(E; rel_margin = margin) >= truth
     end
