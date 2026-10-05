@@ -472,13 +472,13 @@ LinearAlgebra.diag(L::AbstractOperator) = error("cannot get diagonal of operator
 	LinearAlgebra.opnorm(A::AbstractOperator)
 
 Returns the operator norm of `A`. The operator norm is defined as the maximum singular value of `A`.
-It is computed using the power method by default, unless the operator has a fast implementation.
+It is computed with Lanczos (see `powerit`), unless the operator has a fast implementation.
 
 The operator norm is defined as: `‖A‖ = sup_{x != 0} ‖A*x‖ / ‖x‖`.
 
 Unless the operator has a fast implementation, this runs `powerit` with `maxit = 100` and
 `rel_margin = 1e-6`, from a fixed pseudo-random start vector — so it is a deterministic function
-of `A`, and, like every power iteration, it approaches the norm from below.
+of `A`, and, like every Krylov iteration, it approaches the norm from below.
 
 Use `estimate_opnorm` to trade accuracy for time, to ask for a value that is guaranteed *not* to
 fall below `‖A‖`, or to set the margin explicitly.
