@@ -189,6 +189,74 @@ end
     @test estimate_opnorm(S32) >= powerit(S32; maxit = 2000, rel_margin = 1.0f-7)
 end
 
+@testitem "estimate_opnorm: Lanczos and the power method" tags = [:calculus, :OpnormBound] begin
+    using LinearAlgebra, Random
+    using AbstractOperators
+    using AbstractOperators: estimate_opnorm, opnorm_bound, powerit, _powerit, _powerit_rng
+
+    # Operators with a known spectrum: `Q diag(σ) Qᴴ` for a fixed random unitary `Q`.
+    n = 300
+    u(rng, a, b, k) = a .+ (b - a) .* rand(rng, k)
+    spectra(rng) = [
+        "separated" => [1.0; u(rng, 0, 0.7, n - 1)],
+        "slow gap" => [1.0; sqrt(0.99); u(rng, 0, 0.9, n - 2)],
+        "flat cluster" => [1.0; u(rng, 0.99, 1, 29); u(rng, 0, 0.9, n - 30)],
+        "doubled top" => [1.0; 1.0; u(rng, 0, 0.9, n - 2)],
+        "geometric" => 0.98 .^ (0:(n - 1)),
+        "uniform" => [1.0; u(rng, 0, 1, n - 1)],
+        "rank deficient" => [1.0; u(rng, 0, 1, n ÷ 2 - 1); zeros(n - n ÷ 2)],
+    ]
+    run(L; kw...) = _powerit(L; maxit = 100, rng = _powerit_rng(), upper = Inf, kw...)
+    for T in (Float64, Float32, ComplexF64)
+        rng = Xoshiro(3)
+        Q = Matrix(qr(randn(rng, T, n, n)).Q)
+        for (name, σ) in spectra(rng)
+            L = MatrixOp(Q * Diagonal(T.(σ)) * Q')
+            # Both lower bounds stay at or below the norm, to rounding.
+            for method in (:lanczos, :power)
+                @test powerit(L; maxit = 500, rel_margin = 1.0e-10, method) <= 1 + 10 * 500 * eps(real(T))
+            end
+            # Lanczos never needs more steps than the power method to the same margin, and on a
+            # slow-gapped, clustered or flat top it is within 1% in 25 steps.
+            λ, θ, r = run(L; maxit = 25, rel_margin = 0.01, method = :lanczos)
+            name in ("slow gap", "flat cluster", "doubled top", "uniform", "rank deficient") &&
+                @test r / (2θ) <= 0.01
+            @test run(L; rel_margin = 1.0e-3, method = :lanczos)[1] >= run(L; rel_margin = 1.0e-3, method = :power)[1] * (1 - 1.0e-6)
+            # Forced Lanczos measures the residual it returns where the residual enters the value.
+            λ, θ, r = run(L; rel_margin = 1.0e-3, method = :lanczos, residual_in_value = true)
+            @test sqrt(θ + r) >= 1 - 10 * 100 * eps(real(T))
+        end
+    end
+
+    # The residual is the measured one on a run past convergence, where the Lanczos estimate is not.
+    σ = [1.0; u(Xoshiro(5), 0, 0.7, n - 1)]
+    L = MatrixOp(Matrix(Diagonal(Float32.(σ))))
+    measured = run(L; maxit = 200, rel_margin = 0.0, method = :lanczos, residual_in_value = true)[3]
+    @test measured >= run(L; maxit = 200, rel_margin = 0.0, method = :lanczos)[3]
+
+    # `:auto` runs Lanczos unless the residual enters the value, where it runs the power method.
+    F = FiniteDiff((16, 16))
+    @test opnorm_bound(F) == Inf
+    @test estimate_opnorm(F) == estimate_opnorm(F; method = :power)
+    @test estimate_opnorm(F; side = :accurate) == estimate_opnorm(F; side = :accurate, method = :lanczos)
+    @test powerit(F) == powerit(F; method = :lanczos)
+    @test estimate_opnorm(F; method = :lanczos) >= powerit(F; maxit = 500, rel_margin = 1.0e-12)
+    @test_throws ArgumentError estimate_opnorm(F; method = :arnoldi)
+    @test_throws ArgumentError powerit(F; method = :arnoldi)
+
+    # A finite certificate is returned as it is whichever iteration certifies it.
+    w = randn(Xoshiro(2), ComplexF64, 12, 10, 6)
+    S = DiagOp(w) * BroadCast(Eye(@view(w[:, :, 1])), size(w))
+    A = GetIndex(ComplexF64, size(w), (1:6, 1:10, 1:6)) * S
+    @test estimate_opnorm(A; method = :lanczos) == estimate_opnorm(A; method = :power) == opnorm_bound(A)
+
+    # Repeated calls agree, and a null operator is zero for either iteration.
+    @test powerit(F) == powerit(F)
+    Z = Zeros(Float64, (5,), Float64, (5,))
+    @test powerit(Z; method = :lanczos) == 0
+    @test powerit(Z; method = :power) == 0
+end
+
 @testitem "opnorm_bound: randomized certificate" tags = [:calculus, :OpnormBound] begin
     using LinearAlgebra, Random
     using AbstractOperators
