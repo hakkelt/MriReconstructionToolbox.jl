@@ -224,11 +224,13 @@ end
             name in ("slow gap", "flat cluster", "doubled top", "uniform", "rank deficient") &&
                 @test r / (2θ) <= 0.01
             @test run(L; rel_margin = 1.0e-3, method = :lanczos)[1] >= run(L; rel_margin = 1.0e-3, method = :power)[1] * (1 - 1.0e-6)
-            # Where the residual enters the value (`U = Inf`), `sqrt(θ + resid)` stays at or
-            # above the norm, both stopping on a margin and long past convergence.
-            for (maxit, rel_margin) in ((100, 1.0e-2), (100, 1.0e-3), (300, 0.0))
-                λ, θ, r = run(L; maxit, rel_margin, method = :lanczos)
-                @test sqrt(θ + r) >= 1 - 10 * eps(real(T))
+            # Without a certificate the value is at or above the norm and within the margin.
+            for rel_margin in (1.0e-2, 1.0e-3)
+                v = AbstractOperators._probable_upper_bound(
+                    L; rel_margin, failure_probability = 1.0e-3, maxit = nothing, rng = _powerit_rng(),
+                    threaded = true, method = :lanczos,
+                )
+                @test 1 <= v <= (1 + rel_margin) * (1 + 10 * eps(real(T)))
             end
         end
     end
@@ -249,6 +251,32 @@ end
     @test estimate_opnorm(F; method = :lanczos) >= powerit(F; maxit = 500, rel_margin = 1.0e-12)
     @test_throws ArgumentError estimate_opnorm(F; method = :arnoldi)
     @test_throws ArgumentError powerit(F; method = :arnoldi)
+
+    # One isolated top singular value over a dense band: the residual stop converges on the band
+    # and stops below the norm; the step count of the failure probability does not.
+    nb = 1_000_000
+    λb = 0.95 .* rand(Xoshiro(3), nb)
+    λb[1] = 1.0
+    S = DiagOp(sqrt.(λb))
+    λ, θ, r = run(S; rel_margin = 1.0e-2, method = :lanczos)
+    @test sqrt(θ + r) < 1
+    for method in (:lanczos, :power)
+        v = AbstractOperators._probable_upper_bound(
+            S; rel_margin = 1.0e-2, failure_probability = 1.0e-3, maxit = nothing, rng = _powerit_rng(),
+            threaded = true, method,
+        )
+        @test 1 <= v <= 1.01 * (1 + 1.0e-12)
+    end
+    # The step count follows the probability bound, and Lanczos needs far fewer.
+    ε = 1 - 1 / 1.01^2
+    k = AbstractOperators._guaranteed_steps(:lanczos, nb, ε, 1.0e-3)
+    @test AbstractOperators._failure_probability(:lanczos, nb, ε, k) <= 1.0e-3 < AbstractOperators._failure_probability(:lanczos, nb, ε, k - 1)
+    @test AbstractOperators._guaranteed_steps(:power, nb, ε, 1.0e-3) > 10k
+    @test AbstractOperators._real_dimension(ComplexF64, (10, 3)) == 60
+    # A margin of zero has no finite step count, and a `maxit` below it warns.
+    @test_throws ArgumentError estimate_opnorm(F; rel_margin = 0)
+    @test_throws ArgumentError estimate_opnorm(F; failure_probability = 1)
+    @test_logs (:warn, r"failure probability") match_mode = :any estimate_opnorm(F; maxit = 3)
 
     # A finite certificate is returned as it is whichever iteration certifies it.
     w = randn(Xoshiro(2), ComplexF64, 12, 10, 6)

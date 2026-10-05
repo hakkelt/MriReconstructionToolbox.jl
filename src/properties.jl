@@ -544,12 +544,16 @@ The operator norm is defined as: `‖A‖ = sup_{x != 0} ‖A*x‖ / ‖x‖`.
 - `side = :upper`: `:upper` never returns a value below `‖A‖`, which is what a Lipschitz
   constant needs; `:accurate` returns the closest value instead, which is what a rescaling
   needs. See "Which side to ask for".
-- `maxit = 100`: iteration cap.
+- `maxit`: iteration cap, 100 by default. Without a closed-form bound the iteration runs the
+  number of steps `failure_probability` needs instead, and a smaller `maxit` raises that
+  probability, with a warning.
 - `rng`: start vector source, a **fixed-seed** generator by default (see `powerit`), so
   repeated calls on the same operator return the same number.
 - `threaded = true`: whether the iteration's own vector updates may thread. The applications
   of `A` follow `A`'s own threading.
 - `method = :auto`: the iteration, `:lanczos`, `:power` or `:auto`. See "Which iteration runs".
+- `failure_probability = 1e-3`: without a closed-form bound, the probability over the start
+  vector that the `:upper` value falls below `‖A‖`. See "Without a certificate".
 
 ## What is returned
 
@@ -560,7 +564,7 @@ The operator norm is defined as: `‖A‖ = sup_{x != 0} ‖A*x‖ / ‖x‖`.
 |:-----|:-------|:----------|
 | `has_fast_opnorm(A)` | `opnorm(A)` | exact, no iteration |
 | `side = :upper`, `U` finite | `U` | `U ≥ ‖A‖`, certified |
-| `side = :upper`, `U = Inf` | `sqrt(θ + ‖r‖)` | heuristic, see below |
+| `side = :upper`, `U = Inf` | `sqrt(θₖ) (1 + rel_margin)` | `≥ ‖A‖` with probability `1 - failure_probability`, see below |
 | `side = :accurate` | `L` | `≤ ‖A‖` |
 
 `rel_margin` is a promise about the value returned, and it is kept in every row. A certificate is
@@ -569,36 +573,46 @@ statement of that — so the iteration runs until it holds, and `U` is loose exa
 be made to. If `maxit` runs out first, `U` is returned with a warning naming the achieved slack:
 still safe, merely loose, and loose costs convergence rate while low costs convergence.
 
-**The `U = Inf` branch is a heuristic, not a certificate.** `minᵢ |λᵢ - θ| ≤ ‖r‖` is exact
-[2, Thm 4.5.1], but it localises *some* eigenvalue near `θ`, so `λmax ≤ θ + ‖r‖` needs that one
-to be `λmax`; the rigorous form is Kato–Temple's `|θ - λ| ≤ ‖r‖²/δ` [2, Thm 4.6.1], whose gap `δ`
-costs a second eigenvalue. `sqrt(θ + ‖r‖)` is also a much looser *estimate* than `sqrt(θ)` —
-`O(ε)` against `O(ε²)` in the eigenvector angle [2, §4.3]. What it buys is the sign.
+## Without a certificate
+
+With `U = Inf` no computable quantity bounds `‖A‖` from above: `θ + ‖r‖` bounds *some* eigenvalue
+near `θ` [2, Thm 4.5.1], not necessarily the largest, and an iteration that has not yet seen the
+top eigenvector cannot tell. One isolated top singular value over a dense band of the rest, which a
+random start vector meets with weight `1/√n`, makes both iterations converge on the band and stop:
+with the band at 95% of `λmax` and `n = 10⁶`, the residual bound came out 1.9% (Lanczos) and 2.5%
+(power method) below `‖A‖` at a 1% margin.
+
+What can be bounded is the probability. From a start vector uniform on the sphere, the top
+estimate `θₖ` after `k` steps falls below `(1 - ε) λmax` with probability at most
+`1.648 √n e^{-√ε (2k - 1)}` for Lanczos and `0.824 √n (1 - ε)^{k - 1/2}` for the power method [3],
+`n` the real dimension of the domain. With `1 - ε = (1 + rel_margin)^{-2}`, running the `k` that
+brings this to `failure_probability` and returning `sqrt(θₖ) (1 + rel_margin)` gives a value that is
+at or above `‖A‖` with that probability, and, since `θₖ ≤ λmax`, never above
+`‖A‖ (1 + rel_margin)`. The step count depends only on `n`, the margin and the probability:
+
+| `rel_margin` | Lanczos, `n = 10⁴ … 10⁷` | power method |
+|:-------------|:--------------------------|:-------------|
+| `0.1` | 15-20 | 60-79 |
+| `0.01` | 44-56 | 570-743 |
+| `0.001` | 135-174 | 5663-7391 |
+
+(at `failure_probability = 1e-3`). The probability is over start vectors: the default start vector
+comes from a fixed seed, so an operator built against that vector can still defeat it.
 
 ## Which iteration runs
 
-`:auto` and `:lanczos` run Lanczos; `:power` runs the power method. Both give a certified lower
-bound and a residual.
+`:auto` and `:lanczos` run Lanczos; `:power` runs the power method. Lanczos builds the Krylov space
+the power method moves in and takes its best vector, so it never needs more applications of `AᴴA`,
+and on a slow-gapped, clustered or flat top of the spectrum it needs several times fewer
+[2, ch. 13]; without a certificate the guarantee above costs it 4 to 40 times fewer steps.
 
-- **Lanczos** builds the Krylov space the power method moves in and takes its best vector. It
-  never needs more applications of `AᴴA`, and on a slow-gapped, clustered or flat top of the
-  spectrum it needs several times fewer [2, ch. 13]. Without reorthogonalisation its residual is
-  the estimate `βₖ |sₖ|`, exact while the basis stays orthogonal; once a run goes past
-  convergence and the basis loses orthogonality (Paige; the Ritz values stay inside the
-  spectrum), the estimate can fall far below the true residual. The residual returned is
-  therefore floored at `k ε θ`, the order of the rounding after `k` steps.
-- **The power method** forms its residual as a vector at every step, so the residual is exact,
-  but it belongs to a worse vector.
+Without reorthogonalisation the Lanczos residual is the estimate `βₖ |sₖ|`, exact while the basis
+stays orthogonal; past convergence, once the basis loses orthogonality (Paige; the Ritz values stay
+inside the spectrum), it can fall far below the true residual, so the residual returned is floored
+at `k ε θ`, the order of the rounding after `k` steps. The power method forms its residual as a
+vector at every step. The residual only decides when the iteration stops; no value returned is
+built from it.
 
-Where the residual enters the value — `side = :upper` with `U = Inf` — Lanczos is still the
-default. A run that stops on the margin stops as its top Ritz pair converges, before
-orthogonality is lost, and there the estimate and the measured residual agree. On spectra of
-every shape tried (separated, slow-gapped, clustered, doubled, geometric, uniform, rank deficient;
-real and complex, single and double precision), at margins of `1e-2` and below, `sqrt(θ + resid)`
-from Lanczos never fell below `‖A‖`, while the power method's fell below it by up to `7e-4`
-relative on the flat-topped ones.
-
-## Which side to ask for
 ## Which side to ask for
 
 `:upper` is right for a **Lipschitz constant**: Beck and Teboulle [1, §4] require `L ≥ L(∇f)`,
@@ -611,6 +625,8 @@ unsafe — pass `:accurate` there, and never for a step size.
 1. Beck, Teboulle, "A Fast Iterative Shrinkage-Thresholding Algorithm for Linear Inverse
    Problems", SIAM J. Imaging Sciences 2(1), 183-202 (2009).
 2. Parlett, "The Symmetric Eigenvalue Problem", SIAM Classics in Applied Mathematics 20 (1998).
+3. Kuczyński, Woźniakowski, "Estimating the largest eigenvalue by the power and Lanczos algorithms
+   with a random start", SIAM J. Matrix Anal. Appl. 13(4), 1094-1122 (1992).
 
 See also: [`opnorm_bound`](@ref), `powerit`, `has_fast_opnorm`.
 """
@@ -618,10 +634,11 @@ function estimate_opnorm(
         A::AbstractOperator;
         rel_margin = 0.01,
         side::Symbol = :upper,
-        maxit = 100,
+        maxit = nothing,
         rng = _powerit_rng(),
         threaded::Bool = true,
         method::Symbol = :auto,
+        failure_probability = 1.0e-3,
     )
     side in (:upper, :accurate) ||
         throw(ArgumentError("`side` must be `:upper` or `:accurate`, got $(repr(side))"))
@@ -631,31 +648,66 @@ function estimate_opnorm(
     # falls short of `‖A‖` by the square of the iterate's angle error, whereas `opnorm_bound` is a
     # structural over-estimate that no amount of iteration improves. Since the bound can never
     # come out below the iterate, it has nothing to contribute here and is not even computed.
-    side === :accurate && return first(_powerit(A; maxit, rel_margin, rng, upper = Inf, threaded, method))
+    side === :accurate &&
+        return first(_powerit(A; maxit = something(maxit, 100), rel_margin, rng, upper = Inf, threaded, method))
 
     upper = opnorm_bound(A)
+    isfinite(upper) || return _probable_upper_bound(A; rel_margin, failure_probability, maxit, rng, threaded, method)
     # `rel_margin` is a promise about the value returned, so it is checked against the value
     # returned. A certificate is only known to be within the margin once the iteration has
     # climbed to meet it, which is what `_powerit` is asked to do when `upper` is finite.
+    maxit = something(maxit, 100)
     lower, θ, resid = _powerit(A; maxit, rel_margin, rng, upper, threaded, method)
 
-    if isfinite(upper)
-        if upper > lower * (1 + rel_margin) && lower > 0
-            @warn "estimate_opnorm: the closed-form bound is looser than the requested margin" achieved =
-                upper / lower - 1 rel_margin maxit maxlog = 1
-        end
-        # `:upper` promises a value at or above `‖A‖`. Narrowing the `Float64` bound to a
-        # `Float32` iterate rounds to nearest, which can land below the bound and so below `‖A‖`,
-        # so it is rounded up instead. Nor is the value ever less than the iteration certified:
-        # a bound that is only structurally justified is no proof against a `lower` that came
-        # out above it.
-        U = oftype(lower, upper)
-        U < upper && (U = nextfloat(U))
-        return max(U, lower)
+    if upper > lower * (1 + rel_margin) && lower > 0
+        @warn "estimate_opnorm: the closed-form bound is looser than the requested margin" achieved =
+            upper / lower - 1 rel_margin maxit maxlog = 1
     end
-    # No certificate available: the residual heuristic, which at least errs upwards.
-    return sqrt(θ + resid)
+    # `:upper` promises a value at or above `‖A‖`. Narrowing the `Float64` bound to a
+    # `Float32` iterate rounds to nearest, which can land below the bound and so below `‖A‖`,
+    # so it is rounded up instead. Nor is the value ever less than the iteration certified:
+    # a bound that is only structurally justified is no proof against a `lower` that came
+    # out above it.
+    U = oftype(lower, upper)
+    U < upper && (U = nextfloat(U))
+    return max(U, lower)
 end
+
+# `side = :upper` without a closed-form bound: `sqrt(θₖ) (1 + rel_margin)` after the number of steps
+# `k` that makes it fall below `‖A‖` with probability at most `failure_probability` over the start
+# vector. `θₖ` never exceeds `λmax(AᴴA)`, so the value never exceeds `‖A‖ (1 + rel_margin)`.
+function _probable_upper_bound(A; rel_margin, failure_probability, maxit, rng, threaded, method)
+    rel_margin > 0 || throw(ArgumentError("`rel_margin` must be positive without a closed-form bound, got $rel_margin"))
+    0 < failure_probability < 1 ||
+        throw(ArgumentError("`failure_probability` must lie in (0, 1), got $failure_probability"))
+    m = _norm_method(method)
+    n = _real_dimension(domain_type(A), size(A, 2))
+    ε = 1 - 1 / (1 + rel_margin)^2
+    k = _guaranteed_steps(m, n, ε, failure_probability)
+    if maxit !== nothing && maxit < k
+        @warn "estimate_opnorm: `maxit` is below the steps the failure probability needs" maxit needed = k achieved =
+            _failure_probability(m, n, ε, maxit) failure_probability maxlog = 1
+        k = maxit
+    end
+    _, θ, _ = _powerit(A; maxit = k, rel_margin, rng, upper = Inf, threaded, method, steps = k)
+    return sqrt(θ) * (1 + oftype(θ, rel_margin))
+end
+
+# Kuczyński and Woźniakowski [3, Thm 4.2 and Thm 3.1]: from a start vector uniform on the sphere of
+# a real `n`-dimensional space, after `k` steps the estimate `θₖ` of the top eigenvalue of a
+# positive semidefinite matrix falls below `(1 - ε) λmax` with probability at most
+# `1.648 √n e^{-√ε (2k - 1)}` for Lanczos and `0.824 √n (1 - ε)^{k - 1/2}` for the power method.
+_failure_probability(m::Symbol, n, ε, k) =
+    m === :power ? 0.824 * sqrt(n) * (1 - ε)^(k - 0.5) : 1.648 * sqrt(n) * exp(-sqrt(ε) * (2k - 1))
+_guaranteed_steps(m::Symbol, n, ε, δ) = max(
+    1, m === :power ? ceil(Int, log(δ / (0.824 * sqrt(n))) / log(1 - ε) + 0.5) :
+        ceil(Int, (log(1.648 * sqrt(n) / δ) / sqrt(ε) + 1) / 2),
+)
+
+# The dimension of the domain as a real space: a complex entry is two real ones, and a complex
+# Gaussian start vector is a real Gaussian one there.
+_real_dimension(T::Type, sz::Tuple{Vararg{Int}}) = prod(sz; init = 1) * (T <: Complex ? 2 : 1)
+_real_dimension(T::Tuple, sz::Tuple) = sum(map(_real_dimension, T, sz))
 
 # A fresh, fixed-seed generator per call, so the start vector does not depend on the global
 # RNG's state and therefore not on what the caller happened to draw before.
@@ -737,9 +789,10 @@ gain from the other's criterion.
 """
 function _powerit(
         A::AbstractOperator; maxit, rel_margin, rng, upper, threaded::Bool = true, method::Symbol = :auto,
+        steps::Union{Nothing, Int} = nothing,
     )
-    _norm_method(method) === :power && return _power_iteration(A; maxit, rel_margin, rng, upper, threaded)
-    return _lanczos(A; maxit, rel_margin, rng, upper, threaded)
+    _norm_method(method) === :power && return _power_iteration(A; maxit, rel_margin, rng, upper, threaded, steps)
+    return _lanczos(A; maxit, rel_margin, rng, upper, threaded, steps)
 end
 
 const _NORM_METHODS = (:auto, :lanczos, :power)
@@ -751,7 +804,7 @@ function _norm_method(method::Symbol)
     return method === :auto ? :lanczos : method
 end
 
-function _power_iteration(A::AbstractOperator; maxit, rel_margin, rng, upper, threaded::Bool)
+function _power_iteration(A::AbstractOperator; maxit, rel_margin, rng, upper, threaded::Bool, steps = nothing)
     AHA = A' * A
     x = allocate_in_domain(A)
     y = similar(x)
@@ -775,8 +828,10 @@ function _power_iteration(A::AbstractOperator; maxit, rel_margin, rng, upper, th
             @.. r = y - θ * x
         end
         resid = norm(r)
-        θ > 0 && resid / (2θ) <= rel_margin && break
-        isfinite(upper) && upper <= sqrt(nrm) * (1 + rel_margin) && break
+        if steps === nothing
+            θ > 0 && resid / (2θ) <= rel_margin && break
+            isfinite(upper) && upper <= sqrt(nrm) * (1 + rel_margin) && break
+        end
         if threaded
             @.. thread = true x = y / nrm
         else
@@ -790,7 +845,7 @@ end
 # Lanczos on `B = AᴴA` without reorthogonalisation, from the same start vector as the power
 # iteration. The tridiagonal coefficients are kept on the host in `Float64`; the vectors stay in
 # `A`'s domain storage.
-function _lanczos(A::AbstractOperator; maxit, rel_margin, rng, upper, threaded::Bool)
+function _lanczos(A::AbstractOperator; maxit, rel_margin, rng, upper, threaded::Bool, steps = nothing)
     AHA = A' * A
     q = allocate_in_domain(A)
     copyto!(q, randn(rng, eltype(q), size(q)))
@@ -822,8 +877,10 @@ function _lanczos(A::AbstractOperator; maxit, rel_margin, rng, upper, threaded::
         resid = b * abs(s[end])
         # `β = 0`: the Krylov space is invariant and `θ` is an eigenvalue of `B`.
         b == 0 && break
-        θ > 0 && resid / (2θ) <= rel_margin && break
-        isfinite(upper) && upper <= sqrt(θ) * (1 + rel_margin) && break
+        if steps === nothing
+            θ > 0 && resid / (2θ) <= rel_margin && break
+            isfinite(upper) && upper <= sqrt(θ) * (1 + rel_margin) && break
+        end
         q, q_prev = q_prev, q
         if threaded
             @.. thread = true q = w / R(b)
