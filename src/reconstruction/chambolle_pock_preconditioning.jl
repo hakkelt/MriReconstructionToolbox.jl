@@ -3,7 +3,27 @@
 
 The dual step of the data block of a `ChambollePock` reconstruction, in units of the inverse
 curvature of the data term, per unit density-compensation weight (see
-[`_ChambollePockPreconditioner`](@ref)).
+[`_ChambollePockPreconditioner`](@ref)). With the product of the steps fixed, it sets their ratio.
+
+The best value depends on the regularization weight λ. The regularization block's dual is bounded
+by λ, so a weaker penalty wants a smaller data step and a stronger one a larger step. Measured on
+every benchmark case with a PDHG row (2D 1- and 8-coil, multislice and 3D Cartesian, 2D and
+multislice radial with `TotalVariation`/`AnisotropicTotalVariation`; Cartesian cine with
+`TemporalTotalVariation`), at a tenth, one and ten times each case's calibrated λ, distance after
+200 iterations to a 1500-iteration solution:
+
+| λ | best | 0.3 | 1 |
+|---|---|---|---|
+| 10× | 1, 2-4× closer than 0.3 | slower; NRMSE to the truth within 1e-3 of the best | best |
+| 1× | 1, 1.3-4× closer than 0.3 | NRMSE to the truth within 1e-3 of the best | best |
+| 0.1× | 0.1 | close on most cases; NRMSE 0.043 against 0.008 on the cine, 0.021 against 0.016 on 2D TV | fails: NRMSE 0.09-0.24 against 0.008-0.035 |
+
+0.3 is the one value that does not fail at any of these weights: too large a step stalls the
+solve, too small a step only slows it. The calibrated λ itself differs some twentyfold between the
+radial and the Cartesian cases, so the crossover follows λ relative to the scale of each problem,
+not λ itself, and no rule of λ alone picks the step. For a weak penalty pass smaller steps, for a
+strong one larger: give `ChambollePock` its own `tau` and `sigma`, or `ratio`, and the
+preconditioning is not applied.
 """
 const CHAMBOLLE_POCK_DATA_STEP = 0.3
 
@@ -27,7 +47,7 @@ changes fix that without touching the objective:
   takes the per-sample dual step ``a W`` and the step budget ``τσ‖K‖² < 1`` is split evenly between
   the data and the regularization blocks.
 
-`a` is [`CHAMBOLLE_POCK_DATA_STEP`](@ref), the best of 0.01, 0.03, 0.1, 0.3 and 1 on both 2D 8-coil cases
+`a` is [`CHAMBOLLE_POCK_DATA_STEP`](@ref). Against Vũ-Condat on the two 2D 8-coil cases
 (anisotropic TV, default λ; NRMSE after 25 / 50 / 200 iterations):
 
 | | radial | Cartesian |
@@ -133,13 +153,13 @@ function _preconditioned_data_term(𝒜, y, x, reg_terms, p::_ChambollePockPreco
     # `‖W^{1/2}𝒜‖` from above, since the step budget `τσ‖K‖² < 1` must hold. On a Cartesian grid
     # the value returned is the closed-form bound of the SENSE operator, and the margin only sets how
     # many Lanczos steps certify it: 2-4 at 10%, 7-10 at the default 1%, for the same value. A loose
-    # bound would cost this solver rate, not safety. Otherwise twenty power steps give the residual
-    # bound, which errs upwards; iterating to the default margin took 30-33 NFFT pairs for a value
-    # 1% lower.
+    # bound would cost this solver rate, not safety. Otherwise the value is the residual bound,
+    # which errs upwards; Lanczos reaches the default margin in 13-15 NFFT pairs on the radial
+    # cases.
     nA2 = with_serial_blas() do
         isnothing(p.weights) && return Float64(AbstractOperators.estimate_opnorm(𝒜; rel_margin = 0.1))^2
         W½𝒜 = DiagOp(codomain_type(𝒜), size(y), _storage_like(y, sqrt.(p.weights))) * 𝒜
-        return Float64(AbstractOperators.estimate_opnorm(W½𝒜; maxit = 20))^2
+        return Float64(AbstractOperators.estimate_opnorm(W½𝒜))^2
     end
     c = sqrt(nD2 / nA2)
     a = CHAMBOLLE_POCK_DATA_STEP

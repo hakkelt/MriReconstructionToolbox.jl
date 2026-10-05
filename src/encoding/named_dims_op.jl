@@ -133,7 +133,7 @@ has_optimized_normalop(L::NamedDimsOp) = has_optimized_normalop(L.L)
 has_fast_opnorm(L::NamedDimsOp) = has_fast_opnorm(L.L)
 opnorm_bound(L::NamedDimsOp) = opnorm_bound(L.L)
 LinearAlgebra.opnorm(L::NamedDimsOp) = LinearAlgebra.opnorm(L.L)
-# On a device the power iteration runs on the unnamed operator: names add nothing to a norm, and a
+# On a device the norm iteration runs on the unnamed operator: names add nothing to a norm, and a
 # named start vector would be drawn element by element, which a device array does not allow. On
 # the host it stays on named arrays, whose broadcasts and inner products are plain serial loops.
 # Unnamed, they are threaded `@..` broadcasts and BLAS calls, and the Polyester workers they wake

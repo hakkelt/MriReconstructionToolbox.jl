@@ -570,7 +570,7 @@ _admm_curvature(𝒜, acq_data, config) =
 
 # `‖𝒜‖`, for use as `Lf = n‖𝒜‖²` and/or to scale-correct the default warm start.
 #
-# `estimate_opnorm` returns a value at or above `‖𝒜‖`: it pairs the power iteration, which
+# `estimate_opnorm` returns a value at or above `‖𝒜‖`: it pairs a Lanczos iteration, which
 # converges from below, with the closed-form `opnorm_bound`, which is above, and returns the bound
 # whenever it is finite. That is the direction a step size needs, since `gamma = 1/Lf` is fixed and
 # no backtracking runs to catch a value that came out too low. How much overshoot to accept comes
@@ -581,7 +581,7 @@ function _operator_norm_for_stepsize(𝒜, method::IterativeReconstruction, conf
     # `@printing_step`, not `@step`: the latter runs its body in a `@spawn`, so `L` would be
     # bound only inside that task's closure.
     #
-    # The power iteration is level-1 BLAS on one work item, like the solve, so it runs under the
+    # The iteration is level-1 BLAS on one work item, like the solve, so it runs under the
     # same serial-BLAS scope. Outside it, its `dot` and `norm` start MKL's OpenMP team at full
     # width, which re-pins the Julia threads: the 2D 8-coil L1-wavelet FISTA row at 8 threads went
     # from 64 to 196 ms once the iteration ran on plain arrays. OpenBLAS was unaffected.
