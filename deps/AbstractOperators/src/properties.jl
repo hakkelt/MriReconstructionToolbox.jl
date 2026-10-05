@@ -642,11 +642,14 @@ function estimate_opnorm(
             @warn "estimate_opnorm: the closed-form bound is looser than the requested margin" achieved =
                 upper / lower - 1 rel_margin maxit maxlog = 1
         end
-        # Never return less than the power iteration already certified: `oftype` rounds to
-        # nearest, so narrowing the `Float64` bound to a `Float32` iterate can land just below
-        # it, and a bound that is only structurally justified is no proof against a `lower` that
-        # came out above it. `:upper` promises a value at or above `‖A‖`; this keeps it.
-        return max(oftype(lower, upper), lower)
+        # `:upper` promises a value at or above `‖A‖`. Narrowing the `Float64` bound to a
+        # `Float32` iterate rounds to nearest, which can land below the bound and so below `‖A‖`,
+        # so it is rounded up instead. Nor is the value ever less than the iteration certified:
+        # a bound that is only structurally justified is no proof against a `lower` that came
+        # out above it.
+        U = oftype(lower, upper)
+        U < upper && (U = nextfloat(U))
+        return max(U, lower)
     end
     # No certificate available: the residual heuristic, which at least errs upwards.
     return sqrt(θ + resid)
