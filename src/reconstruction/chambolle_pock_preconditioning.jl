@@ -144,22 +144,19 @@ function _preconditioned_data_term(𝒜, y, x, reg_terms, p::_ChambollePockPreco
     R = real(eltype(y))
     terms = Iterators.flatten(map(_term_list, reg_terms))
     nD2 = with_serial_blas() do
-        sum(t -> Float64(AbstractOperators.estimate_opnorm(StructuredOptimization.operator(t)))^2, terms; init = 0.0)
+        sum(t -> Float64(AbstractOperators.estimate_opnorm(StructuredOptimization.operator(t); rel_margin = OPNORM_REL_MARGIN))^2, terms; init = 0.0)
     end
     if iszero(nD2)
         p.steps = nothing
         return @term ls(𝒜 * x - y)
     end
-    # `‖W^{1/2}𝒜‖` from above, since the step budget `τσ‖K‖² < 1` must hold. On a Cartesian grid
-    # the value returned is the closed-form bound of the SENSE operator, and the margin only sets how
-    # many Lanczos steps certify it: 2-4 at 10%, 7-10 at the default 1%, for the same value. A loose
-    # bound would cost this solver rate, not safety. Otherwise the value is the residual bound,
-    # which errs upwards; Lanczos reaches the default margin in 13-15 NFFT pairs on the radial
-    # cases.
+    # `‖W^{1/2}𝒜‖` from above, since the step budget `τσ‖K‖² < 1` must hold: the closed-form bound
+    # of the SENSE operator on a Cartesian grid, the probabilistic bound otherwise (see
+    # `OPNORM_REL_MARGIN`).
     nA2 = with_serial_blas() do
-        isnothing(p.weights) && return Float64(AbstractOperators.estimate_opnorm(𝒜; rel_margin = 0.1))^2
+        isnothing(p.weights) && return Float64(AbstractOperators.estimate_opnorm(𝒜; rel_margin = OPNORM_REL_MARGIN))^2
         W½𝒜 = DiagOp(codomain_type(𝒜), size(y), _storage_like(y, sqrt.(p.weights))) * 𝒜
-        return Float64(AbstractOperators.estimate_opnorm(W½𝒜))^2
+        return Float64(AbstractOperators.estimate_opnorm(W½𝒜; rel_margin = OPNORM_REL_MARGIN))^2
     end
     c = sqrt(nD2 / nA2)
     a = CHAMBOLLE_POCK_DATA_STEP

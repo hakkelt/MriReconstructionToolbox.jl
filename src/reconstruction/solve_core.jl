@@ -570,11 +570,11 @@ _admm_curvature(𝒜, acq_data, config) =
 
 # `‖𝒜‖`, for use as `Lf = n‖𝒜‖²` and/or to scale-correct the default warm start.
 #
-# `estimate_opnorm` returns a value at or above `‖𝒜‖`: it pairs a Lanczos iteration, which
-# converges from below, with the closed-form `opnorm_bound`, which is above, and returns the bound
-# whenever it is finite. That is the direction a step size needs, since `gamma = 1/Lf` is fixed and
+# `estimate_opnorm` returns a value at or above `‖𝒜‖`: the closed-form `opnorm_bound` whenever it
+# is finite, and otherwise a Lanczos estimate scaled up by the margin after enough steps that it
+# falls below `‖𝒜‖` only with a small probability. That is the direction a step size needs, since `gamma = 1/Lf` is fixed and
 # no backtracking runs to catch a value that came out too low. How much overshoot to accept comes
-# from the algorithm, via `opnorm_rel_margin`. `exact_opnorm = true` still swaps in the converged
+# from `OPNORM_REL_MARGIN`. `exact_opnorm = true` still swaps in the converged
 # `opnorm` for callers who want the number itself.
 function _operator_norm_for_stepsize(𝒜, method::IterativeReconstruction, config)
     local L
@@ -589,7 +589,7 @@ function _operator_norm_for_stepsize(𝒜, method::IterativeReconstruction, conf
         L = with_serial_blas() do
             method.exact_opnorm ? LinearAlgebra.opnorm(𝒜) :
                 AbstractOperators.estimate_opnorm(
-                    𝒜; rel_margin = opnorm_rel_margin(method.algorithm)
+                    𝒜; rel_margin = OPNORM_REL_MARGIN
                 )
         end
     end
@@ -620,7 +620,7 @@ function _term_gradient_lipschitz(t::StructuredOptimization.Term)
     L_f = _gradient_lipschitz(t.f)
     iszero(L_f) && return 0.0
     K = StructuredOptimization.operator(t)
-    normK = with_serial_blas(() -> AbstractOperators.estimate_opnorm(K))  # see `_operator_norm_for_stepsize`
+    normK = with_serial_blas(() -> AbstractOperators.estimate_opnorm(K; rel_margin = OPNORM_REL_MARGIN))  # see `_operator_norm_for_stepsize`
     return Float64(t.lambda * L_f * normK^2)
 end
 

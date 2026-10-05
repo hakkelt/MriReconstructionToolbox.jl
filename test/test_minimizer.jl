@@ -577,19 +577,11 @@ end
     end
 end
 
-@testitem "The operator-norm margin is chosen per algorithm" tags = [:minimizer, :reconstruction] begin
+@testitem "The operator-norm estimate is at or above the norm" tags = [:minimizer, :reconstruction] begin
     using LinearAlgebra, Random
-    using MriReconstructionToolbox: opnorm_rel_margin, get_encoding_operator
+    using MriReconstructionToolbox: OPNORM_REL_MARGIN, get_encoding_operator
     import MriReconstructionToolbox.AbstractOperators as AbstractOperators
 
-    # POGM is the algorithm that diverges on an under-estimated `Lf`, so it asks for the tightest
-    # margin; everything else takes the conservative default.
-    @test opnorm_rel_margin(POGM()) == 1.0e-3
-    @test opnorm_rel_margin(FISTA()) == 0.01
-    @test opnorm_rel_margin(ISTA()) == 0.01
-    @test opnorm_rel_margin(CGNR()) == 0.01
-    # A tuple of algorithms takes the tightest of them: the number is handed to all of them.
-    @test opnorm_rel_margin((FISTA(), POGM())) == 1.0e-3
 
     # Whatever the margin, the value is at or above `‖𝒜‖` — that is what a fixed step `1/Lf` needs.
     Random.seed!(19)
@@ -605,7 +597,7 @@ end
         AcquisitionInfo(ComplexF64.(ksp); sensitivity_maps = ComplexF64.(maps), image_size = (nx, ny)); threaded = false
     )
     truth = AbstractOperators.powerit(E64; maxit = 500, rel_margin = 1.0e-12)
-    for margin in (1.0e-3, 0.01, 0.05)
+    for margin in (1.0e-3, 0.01, OPNORM_REL_MARGIN, 0.1)
         @test AbstractOperators.estimate_opnorm(E; rel_margin = margin) >= truth
     end
     # A name for the axes is an isometry, so the bound sees through it rather than giving up.

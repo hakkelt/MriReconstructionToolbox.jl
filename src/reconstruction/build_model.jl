@@ -150,33 +150,38 @@ consumes_lf(algorithms::Tuple) = any(consumes_lf, algorithms)
 consumes_lf(::Any) = false
 
 """
-	opnorm_rel_margin(algorithm) -> Real
+	OPNORM_REL_MARGIN
 
-How far above `‖𝒜‖` the estimate handed to this algorithm as `Lf` may sit, as a relative margin
-for `AbstractOperators.estimate_opnorm`.
+The relative margin every `AbstractOperators.estimate_opnorm` call of a reconstruction asks for:
+for `Lf` (`_operator_norm_for_stepsize`, `_term_gradient_lipschitz`) and for the norms of the
+`ChambollePock` preconditioning.
 
-Every algorithm that reads `Lf` here takes the step size to be exactly `1 / Lf`
-(`forward_backward.jl:37`, `fast_forward_backward.jl:44`, `pogm.jl:50`) and none of them
-backtracks while `Lf` is supplied, so nothing corrects a value that came out too low. The estimate
-is therefore always asked for from above — that is `estimate_opnorm`'s `side = :upper` default —
-and this margin only says how much overshoot to accept before spending more iterations closing the
-gap. Overshoot costs convergence rate; a value below `‖𝒜‖` costs convergence itself.
+The estimate is asked for from above (`side = :upper`), since no algorithm here backtracks while
+`Lf` is supplied and a value below `‖𝒜‖` costs convergence itself. The margin is how far above it
+may sit, and its effect depends on what the estimate returns:
 
-POGM gets the tightest margin because it is the least forgiving: an estimate 1.2% low has been
-observed to diverge it, where the forward-backward family only slows down. Where the closed-form
-[`AbstractOperators.opnorm_bound`](@ref) is finite — every Cartesian SENSE operator — that bound is
-the value returned whatever the margin, and the margin only sets how many Lanczos steps certify it:
-on the 2D, cine and 3D Cartesian cases the bound is within 0.06% of `‖𝒜‖`, and certifying it takes
-7-10 steps at 1% and 22-47 at 0.1%. A bound looser than the margin ends on the residual test
-instead, with a warning.
+- a finite closed-form [`AbstractOperators.opnorm_bound`](@ref) — every Cartesian SENSE operator,
+  within 0.06% of `‖𝒜‖` on the 2D, cine and 3D cases — is returned whatever the margin, and the
+  margin only sets how many Lanczos steps certify it;
+- otherwise — the NFFT, the regularization operators — the value is `sqrt(θₖ)` from the number of
+  Lanczos steps that makes it fall below the norm with probability 10⁻³, times `1 + margin`. A
+  looser margin means fewer steps and a larger `Lf`, which is a smaller step.
+
+Measured as the time to reach 1.05× the NRMSE of a long run, on every benchmark case for the
+FISTA, POGM, ADMM and Chambolle-Pock rows (8 threads, 2026-10-05), against the per-algorithm
+margins this replaced (1% for FISTA, ADMM and the preconditioning, 0.1% for POGM, 10% for the
+Cartesian data block):
+
+| margin | effect |
+|---|---|
+| 0.03 | never slower beyond noise; radial POGM 1265 → 707 ms, multislice POGM 485 → 357 ms, radial FISTA −10-12%, radial cine PDHG −8% |
+| 0.1 | FISTA a few percent faster still; radial PDHG needs more iterations, radial POGM never reaches the target |
+| 0.3 | slower |
+
+POGM, which once diverged on an `Lf` 1.2% low, is covered by the same margin: its value cannot
+fall below `‖𝒜‖` except with that probability, and it restarts adaptively.
 """
-opnorm_rel_margin(
-    ::ProximalAlgorithms.IterativeAlgorithm{<:ProximalAlgorithms.POGMIteration}
-) = 1.0e-3
-# `init` so an empty candidate list falls back to the default margin rather than throwing from
-# inside `minimum`; the error a caller needs then is about having no algorithm, not about a margin.
-opnorm_rel_margin(algorithms::Tuple) = minimum(opnorm_rel_margin, algorithms; init = 0.01)
-opnorm_rel_margin(::Any) = 0.01
+const OPNORM_REL_MARGIN = 0.03
 
 function build_model(
         𝒜::AbstractOperator, y::AbstractArray, regs::Tuple;
