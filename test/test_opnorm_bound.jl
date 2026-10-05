@@ -187,6 +187,8 @@ end
     S32 = DiagOp(w32) * BroadCast(Eye(@view(w32[:, :, 1])), size(w32))
     @test estimate_opnorm(S32) isa Float32
     @test estimate_opnorm(S32) >= powerit(S32; maxit = 2000, rel_margin = 1.0f-7)
+    # Narrowing the `Float64` bound rounds up, never to nearest.
+    @test estimate_opnorm(S32) >= opnorm_bound(S32)
 end
 
 @testitem "estimate_opnorm: Lanczos and the power method" tags = [:calculus, :OpnormBound] begin
