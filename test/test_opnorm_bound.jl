@@ -224,22 +224,26 @@ end
             name in ("slow gap", "flat cluster", "doubled top", "uniform", "rank deficient") &&
                 @test r / (2θ) <= 0.01
             @test run(L; rel_margin = 1.0e-3, method = :lanczos)[1] >= run(L; rel_margin = 1.0e-3, method = :power)[1] * (1 - 1.0e-6)
-            # Forced Lanczos measures the residual it returns where the residual enters the value.
-            λ, θ, r = run(L; rel_margin = 1.0e-3, method = :lanczos, residual_in_value = true)
-            @test sqrt(θ + r) >= 1 - 10 * 100 * eps(real(T))
+            # Where the residual enters the value (`U = Inf`), `sqrt(θ + resid)` stays at or
+            # above the norm, both stopping on a margin and long past convergence.
+            for (maxit, rel_margin) in ((100, 1.0e-2), (100, 1.0e-3), (300, 0.0))
+                λ, θ, r = run(L; maxit, rel_margin, method = :lanczos)
+                @test sqrt(θ + r) >= 1 - 10 * eps(real(T))
+            end
         end
     end
 
-    # The residual is the measured one on a run past convergence, where the Lanczos estimate is not.
+    # Past convergence the residual returned is floored at `k ε θ`.
     σ = [1.0; u(Xoshiro(5), 0, 0.7, n - 1)]
     L = MatrixOp(Matrix(Diagonal(Float32.(σ))))
-    measured = run(L; maxit = 200, rel_margin = 0.0, method = :lanczos, residual_in_value = true)[3]
-    @test measured >= run(L; maxit = 200, rel_margin = 0.0, method = :lanczos)[3]
+    λ, θ, r = run(L; maxit = 200, rel_margin = 0.0, method = :lanczos)
+    @test r >= 200 * eps(Float32) * θ
 
-    # `:auto` runs Lanczos unless the residual enters the value, where it runs the power method.
+    # `:auto` is Lanczos, with or without a certificate; `:power` overrides it.
     F = FiniteDiff((16, 16))
     @test opnorm_bound(F) == Inf
-    @test estimate_opnorm(F) == estimate_opnorm(F; method = :power)
+    @test estimate_opnorm(F) == estimate_opnorm(F; method = :lanczos)
+    @test estimate_opnorm(F) != estimate_opnorm(F; method = :power)
     @test estimate_opnorm(F; side = :accurate) == estimate_opnorm(F; side = :accurate, method = :lanczos)
     @test powerit(F) == powerit(F; method = :lanczos)
     @test estimate_opnorm(F; method = :lanczos) >= powerit(F; maxit = 500, rel_margin = 1.0e-12)
