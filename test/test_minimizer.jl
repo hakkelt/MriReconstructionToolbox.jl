@@ -623,6 +623,8 @@ end
         v = _encoding_opnorm(E)
         @test truth * (1 - 1.0e-5) <= v <= truth * (1 + OPNORM_REL_MARGIN)
         @test v < AbstractOperators.estimate_opnorm(E; rel_margin = OPNORM_REL_MARGIN)
+        # The tighter margin FISTA and POGM ask for.
+        @test truth * (1 - 1.0e-5) <= _encoding_opnorm(E; residual_margin = 1.0e-3) <= truth * (1 + 1.0e-3)
     end
 end
 

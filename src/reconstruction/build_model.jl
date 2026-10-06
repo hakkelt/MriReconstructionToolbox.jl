@@ -164,9 +164,10 @@ may sit, and its effect depends on what the estimate returns:
   within 0.06% of `‖𝒜‖` on the 2D, cine and 3D cases — is returned whatever the margin, and the
   margin only sets how many Lanczos steps certify it;
 - a non-Cartesian encoding operator gets the Lanczos residual estimate `sqrt(θₖ + ‖rₖ‖)`, stopped
-  once `‖rₖ‖/(2θₖ)` is within the margin (see `_encoding_opnorm` for why its spectrum allows it);
-  the value is at most `1 + margin` times the norm, and is usually far closer, since the residual
-  shrinks quickly once the top eigenvalue is found;
+  once `‖rₖ‖/(2θₖ)` is within the margin (see `_encoding_opnorm` for why its spectrum allows it),
+  so at most `1 + margin` times the norm. The `Lf` of FISTA and POGM asks it for 0.1% instead,
+  which costs two or three more steps than this margin and keeps their step within 0.1% of the
+  longest safe one;
 - otherwise — the regularization operators — the value is `sqrt(θₖ)` from the number of Lanczos
   steps that makes it fall below the norm with probability 10⁻³, times `1 + margin`. A looser
   margin means fewer steps and a larger `Lf`, which is a smaller step.

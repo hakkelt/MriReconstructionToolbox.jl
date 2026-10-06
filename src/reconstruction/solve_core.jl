@@ -585,8 +585,18 @@ _admm_curvature(𝒜, acq_data, config) =
 # PDHG. It is not a certificate: a top eigenvalue the start vector barely sees would go unnoticed.
 # FISTA and POGM shorten their step when successive gradients show it was too long
 # (`lipschitz_safeguard`), which covers the rest.
-_encoding_opnorm(𝒜) =
-    AbstractOperators.estimate_opnorm(𝒜; rel_margin = OPNORM_REL_MARGIN, failure_probability = nothing)
+#
+# `residual_margin` is the residual test's margin when there is no closed-form bound; a closed-form
+# bound is certified at `OPNORM_REL_MARGIN` whatever it is, since certifying it more tightly costs
+# 22-47 steps and changes nothing returned. The residual estimate stops as soon as it is within the
+# margin, so the margin is also how high it may come out: at 3% it was 1-2.3% above `‖𝒜‖` without
+# density compensation (4-5 steps), at 0.1% within 0.1% (6-7 steps), on radial, spiral, the
+# harness and the real breast radial and speech spiral operators.
+function _encoding_opnorm(𝒜; residual_margin = OPNORM_REL_MARGIN)
+    isfinite(AbstractOperators.opnorm_bound(𝒜)) &&
+        return AbstractOperators.estimate_opnorm(𝒜; rel_margin = OPNORM_REL_MARGIN)
+    return AbstractOperators.estimate_opnorm(𝒜; rel_margin = residual_margin, failure_probability = nothing)
+end
 
 # `‖𝒜‖`, for use as `Lf = n‖𝒜‖²` and/or to scale-correct the default warm start, from above (see
 # `_encoding_opnorm`): that is the direction a step size needs. How much overshoot to accept comes
@@ -603,7 +613,9 @@ function _operator_norm_for_stepsize(𝒜, method::IterativeReconstruction, conf
     # from 64 to 196 ms once the iteration ran on plain arrays. OpenBLAS was unaffected.
     @printing_step "Estimating the operator norm" config begin
         L = with_serial_blas() do
-            method.exact_opnorm ? LinearAlgebra.opnorm(𝒜) : _encoding_opnorm(𝒜)
+            # 0.1%: two or three more steps than at `OPNORM_REL_MARGIN` buy a step size within 0.1%
+            # of `1/‖𝒜‖²` instead of up to 6% short of it (see `_encoding_opnorm`).
+            method.exact_opnorm ? LinearAlgebra.opnorm(𝒜) : _encoding_opnorm(𝒜; residual_margin = 1.0e-3)
         end
     end
     @argcheck L != 0 "Cannot reconstruct with an encoding operator of zero norm"
