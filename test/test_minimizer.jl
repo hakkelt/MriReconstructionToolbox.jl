@@ -607,24 +607,22 @@ end
     # norm (the top eigenvalue of `𝒜ᴴ𝒜` stands clear of the rest), within the margin, and below the
     # probabilistic bound, which is scaled up by the full margin. With and without density
     # compensation, on radial and spiral.
-    using MriReconstructionToolbox: _encoding_opnorm
-    for traj in (radial_trajectory(64, 40), spiral_trajectory(600, 6; nturns = 4)), dcf in (false, true)
-        acq = AcquisitionInfo(; trajectory = traj, image_size = (nx, ny), sensitivity_maps = maps)
-        data = simulate_acquisition(zeros(ComplexF32, nx, ny), acq)
+    using MriReconstructionToolbox: _encoding_opnorm, LF_REL_MARGIN
+    function encoding(T, traj, dcf)
+        acq = AcquisitionInfo(; trajectory = T.(traj), image_size = (nx, ny), sensitivity_maps = Complex{T}.(maps))
+        data = simulate_acquisition(zeros(Complex{T}, nx, ny), acq)
         dcf && (data = density_compensation(data))
-        E = get_encoding_operator(data; threaded = false)
+        return get_encoding_operator(data; threaded = false)
+    end
+    for traj in (radial_trajectory(64, 40), spiral_trajectory(600, 6; nturns = 4)), dcf in (false, true)
+        E = encoding(Float32, traj, dcf)
         @test !isfinite(AbstractOperators.opnorm_bound(E))
-        data64 = AcquisitionInfo(;
-            trajectory = Float64.(traj), image_size = (nx, ny), sensitivity_maps = ComplexF64.(maps),
-        )
-        data64 = simulate_acquisition(zeros(ComplexF64, nx, ny), data64)
-        dcf && (data64 = density_compensation(data64))
-        truth = AbstractOperators.powerit(get_encoding_operator(data64; threaded = false); maxit = 2000, rel_margin = 1.0e-12)
+        truth = AbstractOperators.powerit(encoding(Float64, traj, dcf); maxit = 2000, rel_margin = 1.0e-12)
         v = _encoding_opnorm(E)
         @test truth * (1 - 1.0e-5) <= v <= truth * (1 + OPNORM_REL_MARGIN)
         @test v < AbstractOperators.estimate_opnorm(E; rel_margin = OPNORM_REL_MARGIN)
         # The tighter margin FISTA and POGM ask for.
-        @test truth * (1 - 1.0e-5) <= _encoding_opnorm(E; residual_margin = 1.0e-3) <= truth * (1 + 1.0e-3)
+        @test truth * (1 - 1.0e-5) <= _encoding_opnorm(E; residual_margin = LF_REL_MARGIN) <= truth * (1 + LF_REL_MARGIN)
     end
 end
 

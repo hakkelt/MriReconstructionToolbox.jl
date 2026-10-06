@@ -165,9 +165,8 @@ may sit, and its effect depends on what the estimate returns:
   margin only sets how many Lanczos steps certify it;
 - a non-Cartesian encoding operator gets the Lanczos residual estimate `sqrt(θₖ + ‖rₖ‖)`, stopped
   once `‖rₖ‖/(2θₖ)` is within the margin (see `_encoding_opnorm` for why its spectrum allows it),
-  so at most `1 + margin` times the norm. The `Lf` of FISTA and POGM asks it for 0.1% instead,
-  which costs two or three more steps than this margin and keeps their step within 0.1% of the
-  longest safe one;
+  so at most `1 + margin` times the norm. The `Lf` of FISTA and POGM asks it for
+  [`LF_REL_MARGIN`](@ref) instead;
 - otherwise — the regularization operators — the value is `sqrt(θₖ)` from the number of Lanczos
   steps that makes it fall below the norm with probability 10⁻³, times `1 + margin`. A looser
   margin means fewer steps and a larger `Lf`, which is a smaller step.
@@ -188,6 +187,17 @@ POGM, which once diverged on an `Lf` 1.2% low, restarts adaptively, and both it 
 their step whenever two successive gradients show `Lf` was too small (`lipschitz_safeguard`).
 """
 const OPNORM_REL_MARGIN = 0.03
+
+"""
+	LF_REL_MARGIN
+
+The residual-test margin of the non-Cartesian encoding operator's norm when it sets `Lf`
+(`_operator_norm_for_stepsize`), in place of [`OPNORM_REL_MARGIN`](@ref). It costs two or three
+more Lanczos steps and keeps the FISTA and POGM step within 0.2% of `1/‖𝒜‖²` instead of up to 6%
+short of it (the margin bounds `‖𝒜‖`, so `‖𝒜‖²` carries twice it). A Cartesian operator's
+closed-form bound is unaffected.
+"""
+const LF_REL_MARGIN = 1.0e-3
 
 function build_model(
         𝒜::AbstractOperator, y::AbstractArray, regs::Tuple;

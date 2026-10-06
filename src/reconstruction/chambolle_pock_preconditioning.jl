@@ -144,7 +144,7 @@ function _preconditioned_data_term(𝒜, y, x, reg_terms, p::_ChambollePockPreco
     R = real(eltype(y))
     terms = Iterators.flatten(map(_term_list, reg_terms))
     nD2 = with_serial_blas() do
-        sum(t -> Float64(AbstractOperators.estimate_opnorm(StructuredOptimization.operator(t); rel_margin = OPNORM_REL_MARGIN))^2, terms; init = 0.0)
+        sum(t -> Float64(_regularization_opnorm(StructuredOptimization.operator(t)))^2, terms; init = 0.0)
     end
     if iszero(nD2)
         p.steps = nothing
@@ -153,11 +153,8 @@ function _preconditioned_data_term(𝒜, y, x, reg_terms, p::_ChambollePockPreco
     # `‖W^{1/2}𝒜‖` from above, since the step budget `τσ‖K‖² < 1` must hold: the closed-form bound
     # of the SENSE operator on a Cartesian grid, the Lanczos residual estimate otherwise (see
     # `_encoding_opnorm`).
-    nA2 = with_serial_blas() do
-        isnothing(p.weights) && return Float64(_encoding_opnorm(𝒜))^2
-        W½𝒜 = DiagOp(codomain_type(𝒜), size(y), _storage_like(y, sqrt.(p.weights))) * 𝒜
-        return Float64(_encoding_opnorm(W½𝒜))^2
-    end
+    W½𝒜 = isnothing(p.weights) ? 𝒜 : DiagOp(codomain_type(𝒜), size(y), _storage_like(y, sqrt.(p.weights))) * 𝒜
+    nA2 = Float64(with_serial_blas(() -> _encoding_opnorm(W½𝒜)))^2
     c = sqrt(nD2 / nA2)
     a = CHAMBOLLE_POCK_DATA_STEP
     p.steps = (; tau = R(0.99 / (2 * a * nA2)), sigma = R(a * nA2 / nD2), normL = R(sqrt(2 * nD2)))

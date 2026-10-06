@@ -598,6 +598,9 @@ function _encoding_opnorm(𝒜; residual_margin = OPNORM_REL_MARGIN)
     return AbstractOperators.estimate_opnorm(𝒜; rel_margin = residual_margin, failure_probability = nothing)
 end
 
+# `‖K‖` of a regularization operator from above, at the margin every reconstruction norm asks for.
+_regularization_opnorm(K) = AbstractOperators.estimate_opnorm(K; rel_margin = OPNORM_REL_MARGIN)
+
 # `‖𝒜‖`, for use as `Lf = n‖𝒜‖²` and/or to scale-correct the default warm start, from above (see
 # `_encoding_opnorm`): that is the direction a step size needs. How much overshoot to accept comes
 # from `OPNORM_REL_MARGIN`. `exact_opnorm = true` still swaps in the converged `opnorm` for callers
@@ -613,9 +616,7 @@ function _operator_norm_for_stepsize(𝒜, method::IterativeReconstruction, conf
     # from 64 to 196 ms once the iteration ran on plain arrays. OpenBLAS was unaffected.
     @printing_step "Estimating the operator norm" config begin
         L = with_serial_blas() do
-            # 0.1%: two or three more steps than at `OPNORM_REL_MARGIN` buy a step size within 0.1%
-            # of `1/‖𝒜‖²` instead of up to 6% short of it (see `_encoding_opnorm`).
-            method.exact_opnorm ? LinearAlgebra.opnorm(𝒜) : _encoding_opnorm(𝒜; residual_margin = 1.0e-3)
+            method.exact_opnorm ? LinearAlgebra.opnorm(𝒜) : _encoding_opnorm(𝒜; residual_margin = LF_REL_MARGIN)
         end
     end
     @argcheck L != 0 "Cannot reconstruct with an encoding operator of zero norm"
@@ -645,7 +646,7 @@ function _term_gradient_lipschitz(t::StructuredOptimization.Term)
     L_f = _gradient_lipschitz(t.f)
     iszero(L_f) && return 0.0
     K = StructuredOptimization.operator(t)
-    normK = with_serial_blas(() -> AbstractOperators.estimate_opnorm(K; rel_margin = OPNORM_REL_MARGIN))  # see `_operator_norm_for_stepsize`
+    normK = with_serial_blas(() -> _regularization_opnorm(K))  # see `_operator_norm_for_stepsize`
     return Float64(t.lambda * L_f * normK^2)
 end
 
