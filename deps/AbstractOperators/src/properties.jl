@@ -553,7 +553,9 @@ The operator norm is defined as: `‖A‖ = sup_{x != 0} ‖A*x‖ / ‖x‖`.
   of `A` follow `A`'s own threading.
 - `method = :auto`: the iteration, `:lanczos`, `:power` or `:auto`. See "Which iteration runs".
 - `failure_probability = 1e-3`: without a closed-form bound, the probability over the start
-  vector that the `:upper` value falls below `‖A‖`. See "Without a certificate".
+  vector that the `:upper` value falls below `‖A‖`. `nothing` gives up that guarantee for the
+  residual estimate `sqrt(θₖ + ‖rₖ‖)`, which is exact when the iteration has found the top
+  eigenvalue and below `‖A‖` when it has not. See "Without a certificate".
 
 ## What is returned
 
@@ -565,6 +567,7 @@ The operator norm is defined as: `‖A‖ = sup_{x != 0} ‖A*x‖ / ‖x‖`.
 | `has_fast_opnorm(A)` | `opnorm(A)` | exact, no iteration |
 | `side = :upper`, `U` finite | `U` | `U ≥ ‖A‖`, certified |
 | `side = :upper`, `U = Inf` | `sqrt(θₖ) (1 + rel_margin)` | `≥ ‖A‖` with probability `1 - failure_probability`, see below |
+| `side = :upper`, `U = Inf`, `failure_probability = nothing` | `sqrt(θₖ + ‖rₖ‖)` | none, see below |
 | `side = :accurate` | `L` | `≤ ‖A‖` |
 
 `rel_margin` is a promise about the value returned, and it is kept in every row. A certificate is
@@ -599,6 +602,14 @@ at or above `‖A‖` with that probability, and, since `θₖ ≤ λmax`, never
 (at `failure_probability = 1e-3`). The probability is over start vectors: the default start vector
 comes from a fixed seed, so an operator built against that vector can still defeat it.
 
+These counts are for the worst spectrum of each size. A spectrum whose top eigenvalue stands well
+clear of the rest is resolved in a handful of steps, and a caller who knows its operators are of
+that kind can pass `failure_probability = nothing`: the iteration then stops on the residual test
+`‖rₖ‖ / (2θₖ) ≤ rel_margin`, as with a certificate, and returns `sqrt(θₖ + ‖rₖ‖)`, at most
+`‖A‖ (1 + rel_margin)` and at or above `‖A‖` whenever the iteration has converged to the top
+eigenvalue. Nothing checks that it has: on the isolated-eigenvalue example above it is the value
+that came out 1.9% low.
+
 ## Which iteration runs
 
 `:auto` and `:lanczos` run Lanczos; `:power` runs the power method. Lanczos builds the Krylov space
@@ -610,8 +621,8 @@ Without reorthogonalisation the Lanczos residual is the estimate `βₖ |sₖ|`,
 stays orthogonal; past convergence, once the basis loses orthogonality (Paige; the Ritz values stay
 inside the spectrum), it can fall far below the true residual, so the residual returned is floored
 at `k ε θ`, the order of the rounding after `k` steps. The power method forms its residual as a
-vector at every step. The residual only decides when the iteration stops; no value returned is
-built from it.
+vector at every step. The residual decides when the iteration stops, and enters the value returned
+only with `failure_probability = nothing`, where the floor keeps it from coming out too small.
 
 ## Which side to ask for
 
@@ -675,9 +686,14 @@ end
 
 # `side = :upper` without a closed-form bound: `sqrt(θₖ) (1 + rel_margin)` after the number of steps
 # `k` that makes it fall below `‖A‖` with probability at most `failure_probability` over the start
-# vector. `θₖ` never exceeds `λmax(AᴴA)`, so the value never exceeds `‖A‖ (1 + rel_margin)`.
+# vector. `θₖ` never exceeds `λmax(AᴴA)`, so the value never exceeds `‖A‖ (1 + rel_margin)`. With
+# `failure_probability = nothing`, the residual estimate after the residual test instead.
 function _probable_upper_bound(A; rel_margin, failure_probability, maxit, rng, threaded, method)
     rel_margin > 0 || throw(ArgumentError("`rel_margin` must be positive without a closed-form bound, got $rel_margin"))
+    if failure_probability === nothing
+        _, θ, resid = _powerit(A; maxit = something(maxit, 100), rel_margin, rng, upper = Inf, threaded, method)
+        return sqrt(θ + resid)
+    end
     0 < failure_probability < 1 ||
         throw(ArgumentError("`failure_probability` must lie in (0, 1), got $failure_probability"))
     m = _norm_method(method)
