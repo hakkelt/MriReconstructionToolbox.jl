@@ -121,6 +121,34 @@ end
     end
 end
 
+@testitem "Threading contract: HigherOrderDiff" tags = [:linearoperator, :Threading, :HigherOrderDiff] setup = [
+    TestUtils, ThreadingContract,
+] begin
+    using AbstractOperators, LinearAlgebra, Random
+    Random.seed!(0)
+
+    n = 1 << 16
+    x = randn(n)
+    y = randn(n - 3)
+    test_threading_contract((; threaded) -> HigherOrderDiff(Float64, (n,), 1, 3; threaded), x; adjoint_input = y)
+
+    function check_allocation_free(threaded, x, y, n)
+        op = HigherOrderDiff(Float64, (n,), 1, 3; threaded)
+        adj = op'
+        out = zeros(n - 3)
+        adj_out = zeros(n)
+        mul!(out, op, x)                      # compile
+        mul!(adj_out, adj, y)                 # compile
+        return (@allocated mul!(out, op, x)), (@allocated mul!(adj_out, adj, y))
+    end
+
+    for threaded in (false, true)
+        fwd_alloc, adj_alloc = check_allocation_free(threaded, x, y, n)
+        @test fwd_alloc == 0
+        @test adj_alloc == 0
+    end
+end
+
 @testitem "Threading contract: forwarders report and forward threading" tags = [
     :calculus, :Threading, :Compose, :Sum, :Scale,
 ] setup = [TestUtils] begin

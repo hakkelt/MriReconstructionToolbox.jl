@@ -105,6 +105,10 @@
     @test_call target_modules = (AO,) mul!(zeros(n - 1), FiniteDiff((n,)), x)
     @test_call target_modules = (AO,) mul!(x, AdjointOperator(FiniteDiff((n,))), zeros(n - 1))
 
+    # HigherOrderDiff forward and adjoint
+    @test_call target_modules = (AO,) mul!(zeros(n - 2), HigherOrderDiff((n,), 1, 2), x)
+    @test_call target_modules = (AO,) mul!(x, AdjointOperator(HigherOrderDiff((n,), 1, 2)), zeros(n - 2))
+
     # HCAT, VCAT, DCAT (ArrayPartition I/O)
     @test_call target_modules = (AO,) mul!(y, HCAT(Eye(n), DiagOp(d)), ArrayPartition(randn(n), randn(n)))
     @test_call target_modules = (AO,) mul!(ArrayPartition(zeros(n), zeros(n)), VCAT(Eye(n), DiagOp(d)), x)

@@ -86,6 +86,40 @@ end
     @test size(FiniteDiff(Float64, (3, 4, 5), 2)) == ((3, 3, 5), (3, 4, 5))
 end
 
+@testitem "FiniteDiff: every direction and shape" tags = [:linearoperator, :FiniteDiff] setup = [TestUtils] begin
+    using Random, LinearAlgebra, AbstractOperators
+    Random.seed!(0)
+
+    # The adjoint of the forward difference along `d` is the difference of `y` padded by a
+    # zero slab on either side, which `cat` states independently of the operator's indexing.
+    function adjoint_reference(y, d)
+        z = zeros(eltype(y), ntuple(i -> i == d ? 1 : size(y, i), ndims(y)))
+        return cat(z, y; dims = d) - cat(y, z; dims = d)
+    end
+
+    shapes = [(7,), (1, 9), (9, 1), (2, 40, 6), (3, 17, 5), (6, 5, 4, 3), (2, 3)]
+    for T in (Float32, Float64, ComplexF64), dims in shapes, d in eachindex(dims), threaded in (false, true)
+        dims[d] < 2 && continue
+        op = FiniteDiff(T, dims, d; threaded)
+        x = randn(T, dims)
+        y = op * x
+        @test y == diff(x; dims = d)
+        g = randn(T, size(y))
+        @test op' * g == adjoint_reference(g, d)
+        @test dot(op * x, g) ≈ dot(x, op' * g)
+    end
+
+    # The threaded and serial kernels agree exactly, on a size where the policy threads.
+    for dims in [(2, 512, 64), (64, 64, 32)], d in eachindex(dims)
+        x = randn(dims)
+        serial = FiniteDiff(Float64, dims, d; threaded = false)
+        threaded = FiniteDiff(Float64, dims, d; threaded = true)
+        @test threaded * x == serial * x
+        g = randn(size(serial, 1))
+        @test threaded' * g == serial' * g
+    end
+end
+
 @testitem "FiniteDiff (GPU)" tags = [:gpu, :linearoperator, :FiniteDiff] setup = [TestUtils, GpuEnvSetup] begin
     using Random, AbstractOperators, GPUEnv
 

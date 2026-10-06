@@ -23,6 +23,7 @@ Hankel
 
 ```@docs
 FiniteDiff
+HigherOrderDiff
 Variation
 ```
 

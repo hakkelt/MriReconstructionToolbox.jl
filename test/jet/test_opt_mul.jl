@@ -61,6 +61,10 @@
     @test_opt target_modules = (AO,) mul!(zeros(n - 1), FiniteDiff((n,)), x)
     @test_opt target_modules = (AO,) mul!(x, AdjointOperator(FiniteDiff((n,))), zeros(n - 1))
 
+    # HigherOrderDiff forward (codomain = ℝ^(n-2)) and adjoint (domain = ℝ^(n-2))
+    @test_opt target_modules = (AO,) mul!(zeros(n - 2), HigherOrderDiff((n,), 1, 2), x)
+    @test_opt target_modules = (AO,) mul!(x, AdjointOperator(HigherOrderDiff((n,), 1, 2)), zeros(n - 2))
+
     # HCAT: ArrayPartition → Vector (forward)
     @test_opt target_modules = (AO,) mul!(y, HCAT(Eye(n), DiagOp(d)), ArrayPartition(randn(n), randn(n)))
     # HCAT adjoint: Vector → ArrayPartition (backward)

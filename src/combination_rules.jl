@@ -95,7 +95,7 @@ end
 function combine(L::Compose, R::Scale{Th}) where {Th}
     threaded = Th == FastBroadcast.True()
     if can_be_combined(L.A[1], R.A)
-        S = Scale(R.coeff, R.coeff_conj, combine(L.A[1], R); threaded) # forward optimization task to combine function
+        S = Scale(R.coeff, R.coeff_conj, combine(L.A[1], R.A); threaded) # forward optimization task to combine function
         return Compose((S, L.A[2:end]...), L.buf)
     else
         return Scale(R.coeff, L * R.A; threaded) # forward optimization task to the specialized constructor of Scale(coeff, L::Compose)
@@ -549,3 +549,30 @@ function combine(L::BatchOp, R::AffineAdd{L2, D2, S2}) where {L2, D2, S2}
 end
 can_be_combined(L::BatchOp, R::AdjointOperator{<:Scale}) = can_be_combined(R.A.A, L')
 combine(L::BatchOp, R::AdjointOperator{<:Scale}) = Scale(R.A.coeff, combine(R.A.A, L'))'
+
+# Forward differences along one direction compose into one of the summed order: `L * R` with
+# `R` applied first is `HigherOrderDiff` of order `K_L + K_R` on `R`'s domain, and the adjoints
+# `L' * R'` are `(R * L)'`. Both must share direction, element type and storage. The result is
+# threaded when either operator was, subject to the policy at its own size.
+const _ForwardDiff = Union{FiniteDiff, HigherOrderDiff}
+_diff_direction(::FiniteDiff{N, D}) where {N, D} = D
+_diff_direction(::HigherOrderDiff{N, D}) where {N, D} = D
+_diff_order(::FiniteDiff) = 1
+_diff_order(::HigherOrderDiff{N, D, K}) where {N, D, K} = K
+
+function can_be_combined(L::_ForwardDiff, R::_ForwardDiff)
+    return _diff_direction(L) == _diff_direction(R) &&
+        domain_type(L) == domain_type(R) &&
+        domain_array_type(L) == domain_array_type(R) &&
+        size(R, 1) == size(L, 2)
+end
+function can_be_combined(L::AdjointOperator{<:_ForwardDiff}, R::AdjointOperator{<:_ForwardDiff})
+    return can_be_combined(R.A, L.A)
+end
+function combine(L::_ForwardDiff, R::_ForwardDiff)
+    return HigherOrderDiff(
+        domain_type(R), size(R, 2), Val(_diff_direction(R)), Val(_diff_order(L) + _diff_order(R));
+        array_type = domain_array_type(R), threaded = is_threaded(L) || is_threaded(R)
+    )
+end
+combine(L::AdjointOperator{<:_ForwardDiff}, R::AdjointOperator{<:_ForwardDiff}) = combine(R.A, L.A)'

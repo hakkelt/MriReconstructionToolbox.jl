@@ -481,12 +481,18 @@ end
     x2 = randn(n)
     @test result_90 * x2 ≈ adj_L * (comp2 * x2)
 
-    # Lines 98-99 else: combine(Compose, Scale) when can_be_combined(comp.A[1]=FD(n), FD(n+1)) = false
-    scale_inner = Scale(2.0, FiniteDiff((n + 1,)))  # domain (n+1,) → codomain (n,)
+    # Lines 98-99 else: combine(Compose, Scale) when can_be_combined(comp.A[1]=FD(n), GetIndex) = false
+    scale_inner = Scale(2.0, GetIndex(Float64, (n + 1,), (1:n,)))  # domain (n+1,) → codomain (n,)
+    @test !can_be_combined(comp.A[1], scale_inner.A)
     @test can_be_combined(comp, scale_inner)
     result_98 = combine(comp, scale_inner)
     x3 = randn(n + 1)
     @test result_98 * x3 ≈ comp * (scale_inner * x3)
+
+    # The other branch, where comp.A[1]=FD(n) and FD(n+1) combine: the coefficient applies once.
+    scale_fd = Scale(2.0, FiniteDiff((n + 1,)))  # domain (n+1,) → codomain (n,)
+    @test can_be_combined(comp.A[1], scale_fd.A)
+    @test combine(comp, scale_fd) * x3 ≈ comp * (scale_fd * x3)
 
     # Lines 109-110 else: combine(Compose, AdjointScale) when can_be_combined(comp.A[1]=FD(n), FD(n)') = false
     adj_scale_inner = Scale(2.0, FiniteDiff((n,)))'  # domain (n-1,) → codomain (n,)

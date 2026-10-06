@@ -43,8 +43,8 @@ function FiniteDiff(
     ) where {T, N, D}
     S = _normalize_array_type(array_type, T)
     return _finitediff_threaded(threaded, T, dim_in, S) ?
-           FiniteDiff{N, D, T, S, true}(dim_in) :
-           FiniteDiff{N, D, T, S, false}(dim_in)
+        FiniteDiff{N, D, T, S, true}(dim_in) :
+        FiniteDiff{N, D, T, S, false}(dim_in)
 end
 
 # Specialized no-direction constructor: D=1 is a compile-time literal — fully type-stable
@@ -53,8 +53,8 @@ function FiniteDiff(
     ) where {N}
     S = _normalize_array_type(array_type, Float64)
     return _finitediff_threaded(threaded, Float64, dim_in, S) ?
-           FiniteDiff{N, 1, Float64, S, true}(dim_in) :
-           FiniteDiff{N, 1, Float64, S, false}(dim_in)
+        FiniteDiff{N, 1, Float64, S, true}(dim_in) :
+        FiniteDiff{N, 1, Float64, S, false}(dim_in)
 end
 
 # Specialized no-direction constructor: D=1 is a compile-time literal, so this stays fully
@@ -66,8 +66,8 @@ function FiniteDiff(
     ) where {T, N}
     S = _normalize_array_type(array_type, T)
     return _finitediff_threaded(threaded, T, dim_in, S) ?
-           FiniteDiff{N, 1, T, S, true}(dim_in) :
-           FiniteDiff{N, 1, T, S, false}(dim_in)
+        FiniteDiff{N, 1, T, S, true}(dim_in) :
+        FiniteDiff{N, 1, T, S, false}(dim_in)
 end
 
 # Direction as a runtime Int — necessarily delegates through `Val`, so this path is
@@ -93,26 +93,58 @@ end
 
 # Mappings
 
-# `@views` keeps the whole forward difference allocation-free -- plain indexing would
-# materialise a temporary for each side of the subtraction -- which is also what makes it
-# worth threading.
-function _finitediff_indices(dim_in::NTuple{N, Int}, ::Val{D}) where {N, D}
-    idx_1 = CartesianIndices(ntuple(i -> i == D ? (2:dim_in[i]) : (1:dim_in[i]), Val(N)))
-    idx_2 = CartesianIndices(ntuple(i -> i == D ? (1:(dim_in[i] - 1)) : (1:dim_in[i]), Val(N)))
-    return idx_1, idx_2
+# An array of size `dim_in` is a `(pre * n, post)` matrix, with `n = dim_in[D]`, `pre` the
+# product of the dimensions before `D` and `post` of those after it. A step of one along `D`
+# is a shift of `pre` rows, so the difference of each column is the difference of two
+# contiguous row ranges, and the innermost loop runs over `pre * (n - 1)` elements. Indexing
+# the N-dimensional array along `D` instead runs the innermost loop over `dim_in[1]` alone,
+# which is short when the leading dimension is (a 2- or 3-vector of coordinates, say).
+@inline function _finitediff_slabs(dim_in::NTuple{N, Int}, ::Val{D}) where {N, D}
+    pre = post = 1
+    for i in 1:(D - 1)
+        pre *= dim_in[i]
+    end
+    for i in (D + 1):N
+        post *= dim_in[i]
+    end
+    return pre, dim_in[D], post
 end
 
+# `reshape` of an `Array` allocates a new array header on every call; a `ReshapedArray` over
+# an `IndexLinear` parent needs no index arithmetic beyond the column offset and allocates
+# nothing. Other arrays, device arrays among them, keep their own `reshape`.
+_slab_view(a::Array, dims::Dims) = Base.ReshapedArray(a, dims, ())
+_slab_view(a::AbstractArray, dims::Dims) = reshape(a, dims)
+
+# `@views` keeps the whole forward difference allocation-free -- plain indexing would
+# materialise a temporary for each side of the subtraction -- which is also what makes it
+# worth threading. The index ranges are computed before the broadcast: inside it `@.` would
+# dot their arithmetic too, and spelled as `end` and `:` inference widens them to a union of
+# index types.
 function mul!(y::AbstractArray, L::FiniteDiff{N, D, T, S, false}, b::AbstractArray) where {N, D, T, S}
     check(y, L, b)
-    idx_1, idx_2 = _finitediff_indices(L.dim_in, Val(D))
-    @views @. y = b[idx_1] - b[idx_2]
+    pre, n, post = _finitediff_slabs(L.dim_in, Val(D))
+    m = pre * (n - 1)
+    ahead, behind, cols = (pre + 1):(pre + m), 1:m, 1:post
+    B, Y = _slab_view(b, (pre * n, post)), _slab_view(y, (m, post))
+    @views @. Y = B[ahead, cols] - B[behind, cols]
     return y
 end
 
+# A threaded broadcast splits its last axis, so with a single column (`D` the last dimension)
+# the difference is written over vectors instead.
 function mul!(y::AbstractArray, L::FiniteDiff{N, D, T, S, true}, b::AbstractArray) where {N, D, T, S}
     check(y, L, b)
-    idx_1, idx_2 = _finitediff_indices(L.dim_in, Val(D))
-    @views @.. thread = true y = b[idx_1] - b[idx_2]
+    pre, n, post = _finitediff_slabs(L.dim_in, Val(D))
+    m = pre * (n - 1)
+    ahead, behind, cols = (pre + 1):(pre + m), 1:m, 1:post
+    if post == 1
+        Bv, Yv = _slab_view(b, (pre * n,)), _slab_view(y, (m,))
+        @views @.. thread = true Yv = Bv[ahead] - Bv[behind]
+    else
+        B, Y = _slab_view(b, (pre * n, post)), _slab_view(y, (m, post))
+        @views @.. thread = true Y = B[ahead, cols] - B[behind, cols]
+    end
     return y
 end
 
@@ -120,21 +152,28 @@ function mul!(
         y::AbstractArray, L::AdjointOperator{<:FiniteDiff{N, D, T, S, Th}}, b::AbstractArray
     ) where {N, D, T, S, Th}
     check(y, L, b)
-    dim_in = L.A.dim_in
-    idx_start = CartesianIndices(ntuple(i -> i == D ? (1:1) : (1:dim_in[i]), Val(N)))
-    idx_between_1 = CartesianIndices(ntuple(i -> i == D ? (1:(dim_in[i] - 2)) : (1:dim_in[i]), Val(N)))
-    idx_between_2 = CartesianIndices(ntuple(i -> i == D ? (2:(dim_in[i] - 1)) : (1:dim_in[i]), Val(N)))
-    idx_end_1 = CartesianIndices(ntuple(i -> i == D ? ((dim_in[i] - 1):(dim_in[i] - 1)) : (1:dim_in[i]), Val(N)))
-    idx_end_2 = CartesianIndices(ntuple(i -> i == D ? (dim_in[i]:dim_in[i]) : (1:dim_in[i]), Val(N)))
+    pre, n, post = _finitediff_slabs(L.A.dim_in, Val(D))
+    m = pre * (n - 1)
+    # Rows of `y` along `D`: the first, the middle ones, the last; and the rows of `b` they read.
+    top, middle, bottom = 1:pre, (pre + 1):m, (m + 1):(m + pre)
+    middle_behind, bottom_in, cols = 1:(m - pre), (m - pre + 1):m, 1:post
+    Y, B = _slab_view(y, (pre * n, post)), _slab_view(b, (m, post))
     # Same story as the forward pass: `@views` removes the temporaries, and the middle
     # block -- the only one whose size grows with `dim_in` -- is the part worth threading.
-    @views @. y[idx_start] = -b[idx_start]
-    if Th
-        @views @.. thread = true y[idx_between_2] = b[idx_between_1] - b[idx_between_2]
-    else
-        @views @. y[idx_between_2] = b[idx_between_1] - b[idx_between_2]
+    @views @. Y[top, cols] = -B[top, cols]
+    # With two samples along `D` there are no middle rows, and a threaded broadcast would
+    # still split the empty block's columns across the threads.
+    if n > 2
+        if Th && post == 1
+            Yv, Bv = _slab_view(y, (pre * n,)), _slab_view(b, (m,))
+            @views @.. thread = true Yv[middle] = Bv[middle_behind] - Bv[middle]
+        elseif Th
+            @views @.. thread = true Y[middle, cols] = B[middle_behind, cols] - B[middle, cols]
+        else
+            @views @. Y[middle, cols] = B[middle_behind, cols] - B[middle, cols]
+        end
     end
-    @views @. y[idx_end_2] = b[idx_end_1]
+    @views @. Y[bottom, cols] = B[bottom_in, cols]
     return y
 end
 
