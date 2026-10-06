@@ -233,9 +233,15 @@ end
     @test all(isfinite, ~vars[1]) && all(isfinite, ~vars[2])
 
     terms2, vars2, _ = build_model(𝒜, y, components; threaded = false, x₀s = (zero(x_true), zero(y_true)))
-    bad_alg = FISTA(Lf = 1)
+    bad_alg = FISTA(Lf = 1, lipschitz_safeguard = false)
     solve(terms2, bad_alg; maxit = 500)
     @test any(!isfinite, ~vars2[1]) || any(!isfinite, ~vars2[2]) || norm(~vars2[1]) > 1.0e6
+    # FISTA's secant safeguard, on by default, catches the same wrong `Lf` from two gradients and
+    # shortens the step, so the run stays finite.
+    terms3, vars3, _ = build_model(𝒜, y, components; threaded = false, x₀s = (zero(x_true), zero(y_true)))
+    solve(terms3, FISTA(Lf = 1); maxit = 500)
+    @test all(isfinite, ~vars3[1]) && all(isfinite, ~vars3[2])
+    @test norm(~vars3[1]) < 1.0e3
 
     # ADMM only gets `cg_maxit`. Pinning `rho` would override ADMM's adaptive penalty, which
     # converges much faster here, and pinning `cg_tol` would break its coupling to the outer `tol`.

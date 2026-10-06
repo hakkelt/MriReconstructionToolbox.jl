@@ -568,14 +568,30 @@ end
 _admm_curvature(𝒜, acq_data, config) =
     _warm_start_scale_proxy(𝒜, 𝒜' * _measurement(acq_data.kspace_data), config, _adjoint_measurement(acq_data))
 
-# `‖𝒜‖`, for use as `Lf = n‖𝒜‖²` and/or to scale-correct the default warm start.
+# `‖𝒜‖` (or `‖W½𝒜‖`) from above, for a step size.
 #
-# `estimate_opnorm` returns a value at or above `‖𝒜‖`: the closed-form `opnorm_bound` whenever it
-# is finite, and otherwise a Lanczos estimate scaled up by the margin after enough steps that it
-# falls below `‖𝒜‖` only with a small probability. That is the direction a step size needs, since `gamma = 1/Lf` is fixed and
-# no backtracking runs to catch a value that came out too low. How much overshoot to accept comes
-# from `OPNORM_REL_MARGIN`. `exact_opnorm = true` still swaps in the converged
-# `opnorm` for callers who want the number itself.
+# On a Cartesian grid `estimate_opnorm` returns the closed-form `opnorm_bound`, at or above `‖𝒜‖`
+# by construction. A non-Cartesian `𝒜` has none, and there the residual estimate `sqrt(θ + ‖r‖)` of
+# Lanczos is taken (`failure_probability = nothing`) instead of the probabilistic bound. The
+# probabilistic bound's step count is set by the worst spectrum of the size, and encoding operators
+# are far from it: every non-Cartesian trajectory oversamples the k-space centre, so without
+# density compensation the top eigenvalue of `𝒜ᴴ𝒜` stands clear of the rest (`λ₂/λ₁` = 0.13-0.86
+# over radial full and half spokes, spirals, SPARKLING, stack of stars, kooshball, phyllotaxis and
+# FLORET, 1-16 coils, 1-16× undersampling, and the real breast radial and speech spiral data), and
+# with it the top few are within 1% of each other with nothing above them. Over those 61 operators
+# Lanczos met the 1% stop in 4-21 steps and was never below `‖𝒜‖`, against 26-29 steps for the
+# probabilistic bound at 3%, whose value is moreover `(1 + OPNORM_REL_MARGIN)` high; the margin race
+# measured the residual estimate 12-21% faster to a target error on non-Cartesian FISTA, POGM and
+# PDHG. It is not a certificate: a top eigenvalue the start vector barely sees would go unnoticed.
+# FISTA and POGM shorten their step when successive gradients show it was too long
+# (`lipschitz_safeguard`), which covers the rest.
+_encoding_opnorm(𝒜) =
+    AbstractOperators.estimate_opnorm(𝒜; rel_margin = OPNORM_REL_MARGIN, failure_probability = nothing)
+
+# `‖𝒜‖`, for use as `Lf = n‖𝒜‖²` and/or to scale-correct the default warm start, from above (see
+# `_encoding_opnorm`): that is the direction a step size needs. How much overshoot to accept comes
+# from `OPNORM_REL_MARGIN`. `exact_opnorm = true` still swaps in the converged `opnorm` for callers
+# who want the number itself.
 function _operator_norm_for_stepsize(𝒜, method::IterativeReconstruction, config)
     local L
     # `@printing_step`, not `@step`: the latter runs its body in a `@spawn`, so `L` would be
@@ -587,10 +603,7 @@ function _operator_norm_for_stepsize(𝒜, method::IterativeReconstruction, conf
     # from 64 to 196 ms once the iteration ran on plain arrays. OpenBLAS was unaffected.
     @printing_step "Estimating the operator norm" config begin
         L = with_serial_blas() do
-            method.exact_opnorm ? LinearAlgebra.opnorm(𝒜) :
-                AbstractOperators.estimate_opnorm(
-                    𝒜; rel_margin = OPNORM_REL_MARGIN
-                )
+            method.exact_opnorm ? LinearAlgebra.opnorm(𝒜) : _encoding_opnorm(𝒜)
         end
     end
     @argcheck L != 0 "Cannot reconstruct with an encoding operator of zero norm"

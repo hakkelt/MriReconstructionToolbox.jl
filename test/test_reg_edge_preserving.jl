@@ -165,7 +165,8 @@ end
     ∇ = MriReconstructionToolbox.get_operator(reg, ~x; threaded = false)
     L = MriReconstructionToolbox._term_gradient_lipschitz(term)
     @test L >= λ / δ * opnorm(∇)^2 * (1 - 1.0e-4)
-    @test L ≈ λ / δ * opnorm(∇)^2 rtol = 0.05
+    # `‖∇‖` from above within the margin, so its square within the margin squared.
+    @test L <= λ / δ * opnorm(∇)^2 * (1 + MriReconstructionToolbox.OPNORM_REL_MARGIN)^2 * (1 + 1.0e-4)
     @test MriReconstructionToolbox._term_gradient_lipschitz(
         MriReconstructionToolbox.materialize(L1Image(0.02f0), x; threaded = false)
     ) == 0

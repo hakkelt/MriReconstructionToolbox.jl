@@ -602,6 +602,28 @@ end
     end
     # A name for the axes is an isometry, so the bound sees through it rather than giving up.
     @test isfinite(AbstractOperators.opnorm_bound(E))
+
+    # Non-Cartesian: no closed-form bound, and the Lanczos residual estimate is at or above the
+    # norm (the top eigenvalue of `𝒜ᴴ𝒜` stands clear of the rest), within the margin, and below the
+    # probabilistic bound, which is scaled up by the full margin. With and without density
+    # compensation, on radial and spiral.
+    using MriReconstructionToolbox: _encoding_opnorm
+    for traj in (radial_trajectory(64, 40), spiral_trajectory(600, 6; nturns = 4)), dcf in (false, true)
+        acq = AcquisitionInfo(; trajectory = traj, image_size = (nx, ny), sensitivity_maps = maps)
+        data = simulate_acquisition(zeros(ComplexF32, nx, ny), acq)
+        dcf && (data = density_compensation(data))
+        E = get_encoding_operator(data; threaded = false)
+        @test !isfinite(AbstractOperators.opnorm_bound(E))
+        data64 = AcquisitionInfo(;
+            trajectory = Float64.(traj), image_size = (nx, ny), sensitivity_maps = ComplexF64.(maps),
+        )
+        data64 = simulate_acquisition(zeros(ComplexF64, nx, ny), data64)
+        dcf && (data64 = density_compensation(data64))
+        truth = AbstractOperators.powerit(get_encoding_operator(data64; threaded = false); maxit = 2000, rel_margin = 1.0e-12)
+        v = _encoding_opnorm(E)
+        @test truth * (1 - 1.0e-5) <= v <= truth * (1 + OPNORM_REL_MARGIN)
+        @test v < AbstractOperators.estimate_opnorm(E; rel_margin = OPNORM_REL_MARGIN)
+    end
 end
 
 @testitem "ADMM's penalty is relative to the curvature of the data term" tags = [:minimizer] begin

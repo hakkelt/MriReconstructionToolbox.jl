@@ -163,12 +163,17 @@ may sit, and its effect depends on what the estimate returns:
 - a finite closed-form [`AbstractOperators.opnorm_bound`](@ref) — every Cartesian SENSE operator,
   within 0.06% of `‖𝒜‖` on the 2D, cine and 3D cases — is returned whatever the margin, and the
   margin only sets how many Lanczos steps certify it;
-- otherwise — the NFFT, the regularization operators — the value is `sqrt(θₖ)` from the number of
-  Lanczos steps that makes it fall below the norm with probability 10⁻³, times `1 + margin`. A
-  looser margin means fewer steps and a larger `Lf`, which is a smaller step.
+- a non-Cartesian encoding operator gets the Lanczos residual estimate `sqrt(θₖ + ‖rₖ‖)`, stopped
+  once `‖rₖ‖/(2θₖ)` is within the margin (see `_encoding_opnorm` for why its spectrum allows it);
+  the value is at most `1 + margin` times the norm, and is usually far closer, since the residual
+  shrinks quickly once the top eigenvalue is found;
+- otherwise — the regularization operators — the value is `sqrt(θₖ)` from the number of Lanczos
+  steps that makes it fall below the norm with probability 10⁻³, times `1 + margin`. A looser
+  margin means fewer steps and a larger `Lf`, which is a smaller step.
 
 Measured as the time to reach 1.05× the NRMSE of a long run, on every benchmark case for the
-FISTA, POGM, ADMM and Chambolle-Pock rows (8 threads, 2026-10-05), against the per-algorithm
+FISTA, POGM, ADMM and Chambolle-Pock rows (8 threads, 2026-10-05, with the probabilistic bound on
+the non-Cartesian encoding operators too), against the per-algorithm
 margins this replaced (1% for FISTA, ADMM and the preconditioning, 0.1% for POGM, 10% for the
 Cartesian data block):
 
@@ -178,8 +183,8 @@ Cartesian data block):
 | 0.1 | FISTA a few percent faster still; radial PDHG needs more iterations, radial POGM never reaches the target |
 | 0.3 | slower |
 
-POGM, which once diverged on an `Lf` 1.2% low, is covered by the same margin: its value cannot
-fall below `‖𝒜‖` except with that probability, and it restarts adaptively.
+POGM, which once diverged on an `Lf` 1.2% low, restarts adaptively, and both it and FISTA shorten
+their step whenever two successive gradients show `Lf` was too small (`lipschitz_safeguard`).
 """
 const OPNORM_REL_MARGIN = 0.03
 

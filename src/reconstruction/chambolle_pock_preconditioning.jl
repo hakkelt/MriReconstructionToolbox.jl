@@ -151,12 +151,12 @@ function _preconditioned_data_term(𝒜, y, x, reg_terms, p::_ChambollePockPreco
         return @term ls(𝒜 * x - y)
     end
     # `‖W^{1/2}𝒜‖` from above, since the step budget `τσ‖K‖² < 1` must hold: the closed-form bound
-    # of the SENSE operator on a Cartesian grid, the probabilistic bound otherwise (see
-    # `OPNORM_REL_MARGIN`).
+    # of the SENSE operator on a Cartesian grid, the Lanczos residual estimate otherwise (see
+    # `_encoding_opnorm`).
     nA2 = with_serial_blas() do
-        isnothing(p.weights) && return Float64(AbstractOperators.estimate_opnorm(𝒜; rel_margin = OPNORM_REL_MARGIN))^2
+        isnothing(p.weights) && return Float64(_encoding_opnorm(𝒜))^2
         W½𝒜 = DiagOp(codomain_type(𝒜), size(y), _storage_like(y, sqrt.(p.weights))) * 𝒜
-        return Float64(AbstractOperators.estimate_opnorm(W½𝒜; rel_margin = OPNORM_REL_MARGIN))^2
+        return Float64(_encoding_opnorm(W½𝒜))^2
     end
     c = sqrt(nD2 / nA2)
     a = CHAMBOLLE_POCK_DATA_STEP
