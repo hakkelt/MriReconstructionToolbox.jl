@@ -38,6 +38,7 @@ See also: [`POGM`](@ref).
 - `adaptive=(gamma === nothing)`: backtrack the stepsize against a descent condition every iteration, at the cost of one extra evaluation of `f`. On by default exactly when no stepsize was supplied, since the fallback `gamma` is then derived from a *lower* bound on the smoothness constant and is unsafe for POGM.
 - `reduce_gamma=0.5`: factor the stepsize is multiplied by when that backoff fires.
 - `minimum_gamma=1e-7`: floor for the stepsize backoff.
+- `lipschitz_safeguard=true`: with a fixed stepsize, shorten it and restart whenever two successive gradients show `Lf` was too small: the secant quotient `‖∇f(x) - ∇f(x')‖ / ‖x - x'‖` of the points the iteration evaluates `∇f` at bounds the Lipschitz constant from below, and a quotient above `1/gamma` beyond rounding sets `gamma = 1/(1.01 q)`. Free of extra evaluations of `f`; see [`FastForwardBackwardIteration`](@ref).
 
 # References
 1. Kim, Fessler, "Adaptive Restart of the Optimized Gradient Method for Convex Optimization", Journal of Optimization Theory and Applications (2018).
@@ -52,7 +53,10 @@ Base.@kwdef struct POGMIteration{Tx,Tf,Tg,TLf,Tgamma}
     adaptive::Bool = gamma === nothing
     reduce_gamma::Float64 = 0.5
     minimum_gamma::Float64 = 1.0e-7
+    lipschitz_safeguard::Bool = true
 end
+
+_uses_safeguard(iter::POGMIteration) = iter.lipschitz_safeguard && !iter.adaptive
 
 Base.IteratorSize(::Type{<:POGMIteration}) = Base.IsInfinite()
 
@@ -71,6 +75,8 @@ Base.@kwdef mutable struct POGMState{R,Tx}
     zeta_prev::R = gamma   # prox stepsize at the previous iteration
     F_prev::R = oftype(gamma, Inf)  # f + g at the previous iterate, for the function-based restart
     bad_streak::Int = 0    # consecutive function-restart triggers, for the stepsize backoff
+    x_prev::Union{Nothing,Tx} = nothing       # previous gradient point, for the safeguard
+    grad_f_prev::Union{Nothing,Tx} = nothing  # gradient there
 end
 
 function Base.iterate(iter::POGMIteration)
@@ -108,6 +114,8 @@ function Base.iterate(iter::POGMIteration)
         y_prev = copy(y),
         w_prev = w,
         zeta_prev = zeta,
+        x_prev = _uses_safeguard(iter) ? copy(x) : nothing,
+        grad_f_prev = _uses_safeguard(iter) ? copy(grad_f_x) : nothing,
     )
     return state, state
 end
@@ -118,6 +126,16 @@ function Base.iterate(iter::POGMIteration, state::POGMState{R,Tx}) where {R,Tx}
     # the momentum is folded directly into the pre-prox point below.
     state.x .= state.z
     state.f_x = value_and_gradient!(state.grad_f_x, iter.f, state.x)
+    if _uses_safeguard(iter)
+        gamma = lipschitz_safeguard(state.gamma, state.x, state.x_prev, state.grad_f_x, state.grad_f_prev)
+        # The momentum was built with the stepsize just found too long; drop it with the stepsize.
+        if gamma < state.gamma
+            state.gamma = gamma
+            state.theta = one(R)
+        end
+        state.x_prev .= state.x
+        state.grad_f_prev .= state.grad_f_x
+    end
     state.y .= state.x .- state.gamma .* state.grad_f_x
     if iter.adaptive
         state.gamma, state.y, state.f_x =
