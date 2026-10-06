@@ -373,6 +373,21 @@ branch = "fix/getindex-cartesian-dim-out"
 parent = "unified-threading"
 pr = "hakkelt/AbstractOperators.jl#39"
 
+# FiniteDiff's kernels difference contiguous row ranges of a (pre * n, post) view, so a short
+# leading dimension no longer makes the innermost loop short. `unified-threading` owns the
+# threaded kernels and is frozen.
+[[AbstractOperators.stack]]
+branch = "perf/finitediff-slab-kernels"
+parent = "unified-threading"
+pr = "hakkelt/AbstractOperators.jl#40"
+
+# HigherOrderDiff, the order-K forward difference in one pass, which chained FiniteDiffs along
+# one direction combine into. Reuses the slab layout of the branch below it.
+[[AbstractOperators.stack]]
+branch = "feat/higher-order-diff"
+parent = "perf/finitediff-slab-kernels"
+pr = "hakkelt/AbstractOperators.jl#41"
+
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
 upstream = "https://github.com/JuliaFirstOrder/ProximalOperators.jl.git"
