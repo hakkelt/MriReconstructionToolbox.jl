@@ -133,6 +133,79 @@ plot(
 )
 
 # %% [markdown]
+# ### Half spokes, phyllotaxis, FLORET and SPARKLING
+#
+# - `center_out = true` (on `radial_trajectory`, `stack_of_stars_trajectory`,
+#   `kooshball_trajectory` and `phyllotaxis_trajectory`) acquires half spokes, from the k-space
+#   center outwards, as UTE and ZTE-like sequences do. A half spoke is a ray, so the angle
+#   increments double: the golden angle becomes `2π/φ ≈ 222.5°`.
+# - `phyllotaxis_trajectory(nsamples, nspokes; interleaves)` — 3D radial with the spoke tips on a
+#   spiral phyllotaxis (Piccini et al. 2011): golden-angle azimuths, polar angle `(π/2)√(n/N)`.
+#   With a Fibonacci number of interleaves each interleave is a smooth spiral from the pole to the
+#   equator, one per heartbeat in whole-heart imaging.
+# - `floret_trajectory(nsamples, ninterleaves; nhubs = 3)` — FLORET (Pipe et al. 2011):
+#   center-out Fermat spirals wound on cones about up to three orthogonal hub axes.
+# - `sparkling_trajectory(nsamples, nshots; ndims)` — SPARKLING (Lazarus et al. 2019): shots
+#   optimized so their samples follow a variable target density, within a maximum step (gradient
+#   amplitude) and a maximum change of step (slew rate) per sample. The optimization takes some
+#   seconds, more for 3D.
+
+# %%
+traj_half = radial_trajectory(48, 21; center_out = true)
+traj_spark = sparkling_trajectory(512, 12; iterations = 100)
+
+function traj_lines(traj; title = "", kwargs...)
+    t = unname(traj)
+    return plot(
+        [t[1, :, s] for s in axes(t, 3)], [t[2, :, s] for s in axes(t, 3)];
+        lw = 0.8, legend = false, aspect_ratio = 1, xlabel = "kx", ylabel = "ky",
+        xlim = (-0.55, 0.55), ylim = (-0.55, 0.55), title, kwargs...
+    )
+end
+
+plot(
+    traj_scatter(traj_half; title = "half spokes, golden angle"),
+    traj_lines(traj_spark; title = "SPARKLING, 12 shots"),
+    traj_scatter(traj_spark; title = "SPARKLING samples");
+    layout = (1, 3), size = (1050, 360)
+)
+
+# %%
+# Each interleave of the phyllotaxis, each hub of FLORET and each shot of 3D SPARKLING in its own
+# colour. A 3D line per arm shows the path the gradients trace; the phyllotaxis interleave is
+# drawn through its spoke tips.
+traj_phyllo = phyllotaxis_trajectory(32, 377; interleaves = 13)
+traj_floret = floret_trajectory(256, 4)
+traj_spark3d = sparkling_trajectory(256, 16; ndims = 3, iterations = 60)
+
+function phyllotaxis_tips(traj, interleaves)
+    tips = unname(traj)[:, end, :]
+    per = size(tips, 2) ÷ interleaves
+    p = plot(; xlabel = "kx", ylabel = "ky", zlabel = "kz", legend = false, title = "phyllotaxis, $interleaves interleaves")
+    for i in 1:interleaves
+        sel = ((i - 1) * per + 1):(i * per)
+        plot!(p, tips[1, sel], tips[2, sel], tips[3, sel]; marker = :circle, markersize = 1.5, markerstrokewidth = 0, lw = 0.6, color = i)
+    end
+    return p
+end
+
+function arms3d(t, title; color_by = s -> 1)
+    p = plot(; xlabel = "kx", ylabel = "ky", zlabel = "kz", legend = false, title)
+    for s in axes(t, 3)
+        plot!(p, t[1, :, s], t[2, :, s], t[3, :, s]; lw = 0.6, color = color_by(s))
+    end
+    return p
+end
+
+floret_arms = reshape(unname(traj_floret), 3, 256, :)
+plot(
+    phyllotaxis_tips(traj_phyllo, 13),
+    arms3d(floret_arms, "FLORET, 3 hubs × 4 arms"; color_by = s -> (s - 1) ÷ 4 + 1),
+    arms3d(unname(traj_spark3d), "3D SPARKLING, 16 shots"; color_by = identity);
+    layout = (1, 3), size = (1200, 420)
+)
+
+# %% [markdown]
 # ## 2. Simulating a non-Cartesian acquisition
 #
 # `AcquisitionInfo(; trajectory, image_size, sensitivity_maps)` is the advertised constructor —

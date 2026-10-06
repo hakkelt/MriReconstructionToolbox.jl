@@ -304,8 +304,14 @@ Ready-made generators for the common non-Cartesian sampling patterns, returned a
 radial_trajectory
 stack_of_stars_trajectory
 kooshball_trajectory
+phyllotaxis_trajectory
 spiral_trajectory
+floret_trajectory
+sparkling_trajectory
 ```
+
+`radial_trajectory`, `stack_of_stars_trajectory`, `kooshball_trajectory` and `phyllotaxis_trajectory` take
+`center_out = true` for half spokes (center-out radial, as in UTE), which start on `k = 0`.
 
 The spoke ordering and the spiral growth law are chosen with a type rather than a symbol, so each
 carries its own parameters and a typo is a `MethodError` instead of a runtime `ArgumentError`:

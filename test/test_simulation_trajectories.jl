@@ -189,6 +189,25 @@ end
         @test_throws ArgumentError TinyGoldenAngle(0)
     end
 
+    @testset "center-out half spokes" begin
+        traj = unname(radial_trajectory(16, 8; center_out = true))
+        @test size(traj) == (2, 16, 8)
+        @test all(iszero, traj[:, 1, :])
+        radii = [norm(traj[:, i, s]) for i in 1:16, s in 1:8]
+        @test all(r -> r ≈ 0.5 * 15 / 16, radii[end, :])
+        @test all(diff(radii; dims = 1) .> 0)
+        # Linear half spokes cover the full circle: spoke s points at 2π(s - 1)/8.
+        lin = unname(radial_trajectory(4, 8; ordering = LinearOrdering(), center_out = true))
+        @test atan(lin[2, end, 5], lin[1, end, 5]) ≈ π
+        # The golden angle for rays is 2π/φ, double the one for lines.
+        ga = unname(radial_trajectory(4, 2; center_out = true))
+        @test mod(atan(ga[2, end, 2], ga[1, end, 2]), 2π) ≈ 2π * (sqrt(5) - 1) / 2 atol = 1.0e-5
+        tiny = unname(radial_trajectory(4, 2; ordering = TinyGoldenAngle(3), center_out = true))
+        @test mod(atan(tiny[2, end, 2], tiny[1, end, 2]), 2π) ≈ 2π / ((1 + sqrt(5)) / 2 + 2) atol = 1.0e-5
+        sos = unname(stack_of_stars_trajectory(8, 4, 2; center_out = true))
+        @test all(iszero, sos[1:2, 1, :, :])
+    end
+
     @testset "simulate_acquisition + direct NFFT reconstruction is sane" begin
         using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
         nx, ny = 48, 48
@@ -240,6 +259,16 @@ end
         outer = raw[:, end, :]
         dirs = outer ./ mapslices(norm, outer; dims = 1)
         @test norm(sum(dirs; dims = 2)) / size(dirs, 2) < 0.15
+    end
+
+    @testset "half spokes" begin
+        full = unname(kooshball_trajectory(8, 50))
+        half = unname(kooshball_trajectory(8, 50; center_out = true))
+        @test all(iszero, half[:, 1, :])
+        # Same directions as the full spokes, from the center outwards.
+        dir(t) = t[:, end, :] ./ mapslices(norm, t[:, end, :]; dims = 1)
+        @test dir(half) ≈ dir(full)
+        @test all(x -> -0.5 <= x < 0.5, half)
     end
 
     @testset "simulate_acquisition + direct NFFT reconstruction of a 3D phantom is sane" begin
@@ -305,6 +334,117 @@ end
         a, r = abs.(rec), abs.(img)
         α = sum(a .* r) / sum(abs2, a)
         @test norm(α .* a .- r) / norm(r) < 0.35
+    end
+end
+
+@testitem "phyllotaxis_trajectory" tags = [:simulation, :nfft] begin
+    using MriReconstructionToolbox
+    using NamedDims
+    using LinearAlgebra
+
+    unit(t) = (o = unname(t)[:, end, :]; o ./ mapslices(norm, o; dims = 1))
+    traj = phyllotaxis_trajectory(8, 610)
+    @test size(traj) == (3, 8, 610)
+    @test dimnames(traj) == (:coord, :sample, :spoke)
+    @test all(x -> -0.5 <= x < 0.5, unname(traj))
+    # Full-spoke directions fill the upper hemisphere; spoke 1 is the pole.
+    phy = unit(traj)
+    @test all(>=(-1.0e-6), phy[3, :])
+    @test phy[:, 1] ≈ [0, 0, 1]
+    # Consecutive spokes turn by the golden angle and descend monotonically towards the equator.
+    @test all(diff(phy[3, :]) .< 0)
+    # Interleaves reorder the same directions.
+    phy21 = unit(phyllotaxis_trajectory(8, 610; interleaves = 21))
+    @test sortslices(phy21; dims = 2) ≈ sortslices(phy; dims = 2)
+    @test phy21[:, 2] ≈ phy[:, 22]
+    @test_throws ArgumentError phyllotaxis_trajectory(8, 10; interleaves = 0)
+    # Half spokes start on the center and spread over the whole sphere.
+    half = phyllotaxis_trajectory(8, 1000; center_out = true)
+    @test all(iszero, unname(half)[:, 1, :])
+    d = unit(half)
+    @test norm(sum(d; dims = 2)) / size(d, 2) < 0.01
+    @test count(<(0), d[3, :]) == 500
+    @test all(x -> -0.5 <= x < 0.5, unname(half))
+end
+
+@testitem "floret_trajectory" tags = [:simulation, :nfft] begin
+    using MriReconstructionToolbox
+    using NamedDims
+    using LinearAlgebra
+
+    traj = floret_trajectory(64, 20)
+    @test size(traj) == (3, 64, 20, 3)
+    @test dimnames(traj) == (:coord, :sample, :interleave, :hub)
+    raw = unname(traj)
+    @test all(x -> -0.5 <= x < 0.5, raw)
+    @test all(iszero, raw[:, 1, :, :])
+    # Radius grows as √t; every arm stays within 45° of the plane normal to its hub axis.
+    @test norm(raw[:, 17, 1, 1]) ≈ 0.5 * sqrt(16 / 64) rtol = 1.0e-5
+    for (h, axis) in enumerate((3, 1, 2))
+        elevation = [asin(abs(raw[axis, end, j, h]) / norm(raw[:, end, j, h])) for j in 1:20]
+        @test maximum(elevation) <= π / 4 + 1.0e-5
+    end
+    # The hubs are the same arms about orthogonal axes.
+    @test raw[[2, 3, 1], :, :, 2] ≈ raw[:, :, :, 1]
+    one_hub = unname(floret_trajectory(32, 50; nhubs = 1))
+    @test size(one_hub, 4) == 1
+    @test maximum(abs, one_hub[3, end, :]) > 0.45
+    @test_throws ArgumentError floret_trajectory(32, 4; nhubs = 4)
+
+    @testset "simulate_acquisition through a 4D trajectory layout" begin
+        img = rand(ComplexF32, 12, 12, 12)
+        acq = AcquisitionInfo(; trajectory = floret_trajectory(32, 30), image_size = (12, 12, 12))
+        @test size(simulate_acquisition(img, acq).kspace_data) == (32, 30, 3)
+    end
+end
+
+@testitem "sparkling_trajectory" tags = [:simulation, :nfft] begin
+    using MriReconstructionToolbox
+    using NamedDims
+    using LinearAlgebra
+
+    function constraints(k)
+        steps = [norm(k[:, i + 1, s] - k[:, i, s]) for i in 1:(size(k, 2) - 1), s in axes(k, 3)]
+        bends = [norm(k[:, i + 1, s] - 2k[:, i, s] + k[:, i - 1, s]) for i in 2:(size(k, 2) - 1), s in axes(k, 3)]
+        return maximum(steps), maximum(bends)
+    end
+    # Radius-binned sample counts against those of the target density, both normalised.
+    function radial_profile(k, edges)
+        r = vec(sqrt.(sum(abs2, k; dims = 1)))
+        return [count(x -> lo <= x < hi, r) for (lo, hi) in zip(edges[1:(end - 1)], edges[2:end])] ./ length(r)
+    end
+
+    @testset "2D: shape, constraints, start on the center" begin
+        traj = sparkling_trajectory(128, 12; iterations = 40)
+        @test size(traj) == (2, 128, 12)
+        @test dimnames(traj) == (:coord, :sample, :shot)
+        k = unname(traj)
+        @test all(x -> -0.5 <= x < 0.5, k)
+        @test all(iszero, k[:, 1, :])
+        α = max(0.5 / 64, 2 * 0.5 / 128)
+        step, bend = constraints(k)
+        @test step <= α * (1 + 1.0e-5)
+        @test bend <= α / 10 * (1 + 1.0e-4)
+        @test sparkling_trajectory(128, 12; iterations = 40) == traj
+    end
+
+    @testset "2D: iterations move the samples towards the target density" begin
+        edges = range(0, 0.5; length = 6)
+        before = radial_profile(unname(sparkling_trajectory(256, 16; iterations = 0)), edges)
+        after = radial_profile(unname(sparkling_trajectory(256, 16; iterations = 60)), edges)
+        # The target decays as |k|⁻², so the samples concentrate at the center.
+        @test after[1] > before[1]
+        @test after[end] < before[end]
+    end
+
+    @testset "3D and argument checks" begin
+        traj = sparkling_trajectory(64, 8; ndims = 3, iterations = 5, grid_size = 16)
+        @test size(traj) == (3, 64, 8)
+        k = unname(traj)
+        @test all(x -> -0.5 <= x < 0.5, k)
+        @test all(iszero, k[:, 1, :])
+        @test_throws ArgumentError sparkling_trajectory(64, 8; ndims = 4)
+        @test_throws ArgumentError sparkling_trajectory(64, 8; max_step = 0.001)
     end
 end
 
