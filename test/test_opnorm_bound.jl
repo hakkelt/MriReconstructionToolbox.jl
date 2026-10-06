@@ -232,6 +232,13 @@ end
                 )
                 @test 1 <= v <= (1 + rel_margin) * (1 + 10 * eps(real(T)))
             end
+            # With the guarantee given up, a top eigenvalue the start vector sees is resolved:
+            # the residual estimate is at or above the norm and within the margin.
+            v = AbstractOperators._probable_upper_bound(
+                L; rel_margin = 1.0e-2, failure_probability = nothing, maxit = nothing, rng = _powerit_rng(),
+                threaded = true, method = :lanczos,
+            )
+            @test 1 - 10 * eps(real(T)) <= v <= 1.01 * (1 + 10 * eps(real(T)))
         end
     end
 
@@ -260,6 +267,14 @@ end
     S = DiagOp(sqrt.(λb))
     λ, θ, r = run(S; rel_margin = 1.0e-2, method = :lanczos)
     @test sqrt(θ + r) < 1
+    # `failure_probability = nothing` returns exactly that residual estimate, documented as unsafe.
+    @test AbstractOperators._probable_upper_bound(
+            S; rel_margin = 1.0e-2, failure_probability = nothing, maxit = nothing, rng = _powerit_rng(),
+            threaded = true, method = :lanczos,
+        ) == sqrt(θ + r) < 1
+    # Through the public entry point, on an operator without a closed-form bound.
+    @test estimate_opnorm(F; failure_probability = nothing) ==
+        sqrt(sum(_powerit(F; maxit = 100, rel_margin = 0.01, rng = _powerit_rng(), upper = Inf)[2:3]))
     for method in (:lanczos, :power)
         v = AbstractOperators._probable_upper_bound(
             S; rel_margin = 1.0e-2, failure_probability = 1.0e-3, maxit = nothing, rng = _powerit_rng(),
