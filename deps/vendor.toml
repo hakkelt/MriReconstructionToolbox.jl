@@ -556,6 +556,13 @@ branch = "fix/pogm-restart-device"
 parent = "master"
 pr = "hakkelt/ProximalAlgorithms.jl#5"
 
+# FISTA and POGM shorten a fixed stepsize when successive gradients show `Lf` was too small.
+# Stacked on `fix/pogm-restart-device`, which last touched POGM.
+[[ProximalAlgorithms.stack]]
+branch = "feat/lipschitz-safeguard"
+parent = "fix/pogm-restart-device"
+pr = "hakkelt/ProximalAlgorithms.jl#8"
+
 # `ChambollePock` gets an iteration of its own (Chambolle-Pock 2011, `g + h(Lx)`): it was AFBA with
 # a defaulted `f = Zero()`, so a smooth data term went to `f` and the run was Vu-Condat. `master`
 # owns `primal_dual.jl` and is frozen.
