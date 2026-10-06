@@ -38,6 +38,7 @@ using .ContourletOperators: ContourletOp, NSCTOp, ContourletParams, parabolic_le
 using .FFTWOperators: FFTWOperators, DFT, fftshift_op, ifftshift_op, alternate_sign!
 using RecursiveArrayTools: ArrayPartition
 using FFTW: FFTW, fft, ifft, fftshift, ifftshift
+using FastBroadcast: @..
 import Scratch
 using ArgCheck: @argcheck
 import Adapt

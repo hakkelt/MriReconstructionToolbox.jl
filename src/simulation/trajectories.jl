@@ -199,13 +199,18 @@ function phyllotaxis_trajectory(
     @argcheck nspokes > 0 "nspokes must be positive"
     @argcheck interleaves >= 1 "a spiral phyllotaxis needs at least one interleave"
     @argcheck 0 < extent <= 0.5 "extent must be in (0, 0.5]"
-    golden = 2π * (1 - 2 / (1 + sqrt(5)))
-    polar(n) = center_out ? acos(clamp(1 - (2n + 1) / nspokes, -1.0, 1.0)) : (π / 2) * sqrt(n / nspokes)
+    direction(n) = center_out ? _fibonacci_direction(n, nspokes) :
+        _unit_vector((π / 2) * sqrt(n / nspokes), n * _GOLDEN_ANGLE)
     order = sort(0:(nspokes - 1); by = n -> (mod(n, interleaves), n))
-    return _radial_3d(nsamples, [_unit_vector(polar(n), n * golden) for n in order], extent, center_out)
+    return _radial_3d(nsamples, direction.(order), extent, center_out)
 end
 
+const _GOLDEN_ANGLE = 2π * (1 - 2 / (1 + sqrt(5)))
+
 _unit_vector(θ, ϕ) = (sin(θ) * cos(ϕ), sin(θ) * sin(ϕ), cos(θ))
+
+# Point `n` (from 0) of the `N`-point spherical Fibonacci lattice.
+_fibonacci_direction(n, N) = _unit_vector(acos(clamp(1 - (2n + 1) / N, -1.0, 1.0)), n * _GOLDEN_ANGLE)
 
 function _radial_3d(nsamples, directions, extent, center_out)
     r = _spoke_radii(nsamples, extent, center_out)
@@ -323,20 +328,17 @@ function floret_trajectory(
     @argcheck 1 <= nhubs <= 3 "nhubs must be 1, 2 or 3"
     @argcheck 0 < max_elevation <= π / 2 "max_elevation must be in (0, π/2]"
     @argcheck 0 < extent <= 0.5 "extent must be in (0, 0.5]"
-    golden = 2π * (1 - 2 / (1 + sqrt(5)))
     t = range(0, 1; length = nsamples + 1)[1:nsamples]
     ρ = extent .* sqrt.(t)
     ϕ = 2π * nturns .* t
     traj = Array{Float32}(undef, 3, nsamples, ninterleaves, nhubs)
     for j in 0:(ninterleaves - 1)
         e = asin(sin(max_elevation) * (2 * (j + 0.5) / ninterleaves - 1))
-        ψ = j * golden
-        a = ρ .* cos(e) .* cos.(ϕ .+ ψ)
-        b = ρ .* cos(e) .* sin.(ϕ .+ ψ)
-        c = ρ .* sin(e)
+        ψ = j * _GOLDEN_ANGLE
+        abc = (ρ .* cos(e) .* cos.(ϕ .+ ψ), ρ .* cos(e) .* sin.(ϕ .+ ψ), ρ .* sin(e))
         # Hub `h` has its axis along the third coordinate of the cyclic shift by `h - 1`.
-        for h in 1:nhubs, (d, v) in enumerate(circshift([a, b, c], h - 1))
-            traj[d, :, j + 1, h] .= v
+        for h in 1:nhubs, d in 1:3
+            traj[d, :, j + 1, h] .= abc[mod1(d - h + 1, 3)]
         end
     end
     return NamedDimsArray{(:coord, :sample, :interleave, :hub)}(traj)
@@ -365,8 +367,9 @@ and its step changes by at most `max_curvature` between samples (slew rate), all
 units of the trajectory. The gradient comes from a particle-mesh evaluation on a `grid_size^ndims`
 grid (the two densities are deposited by cloud-in-cell and convolved with the kernel's gradient by
 FFT), so an iteration costs `O(nshots · nsamples + grid_size^ndims log grid_size)`. The projection
-is a constrained tracking pass along each shot, which keeps every iterate feasible but is not the
-exact Euclidean projection of the paper. The result is deterministic.
+is the Euclidean one of the paper, solved approximately by a fixed number of primal-dual steps; a
+final tracking pass along each shot makes the result satisfy the constraints exactly. The result
+is deterministic.
 
 Returned as a `NamedDimsArray` with dimension names `(:coord, :sample, :shot)`.
 """
@@ -393,11 +396,13 @@ function sparkling_trajectory(
     step0 = 0.5 * extent / M^(1 / D)
     pts = reshape(k, D, M)
     duals = (zeros(D, nsamples - 1, nshots), zeros(D, max(nsamples - 2, 0), nshots))
+    g = similar(pts)
     for it in 1:iterations
-        g = _sparkling_gradient(mesh, pts)
+        _sparkling_gradient!(g, mesh, pts)
         gmax = maximum(sqrt(sum(abs2, view(g, :, i))) for i in 1:M)
         gmax > 0 || break
-        pts .-= (step0 * (1 - (it - 1) / iterations) / gmax) .* g
+        c = step0 * (1 - (it - 1) / iterations) / gmax
+        @.. pts = pts - c * g
         _sparkling_project!(k, duals, extent, max_step, max_curvature)
     end
     _sparkling_make_feasible!(k, extent, max_step, max_curvature)
@@ -409,9 +414,8 @@ end
 # directions, which avoids the mirror symmetries of evenly spaced ones (their forces would cancel and
 # freeze the shots on the symmetry axes). Shots that only reach `extent` at the slowest speed would
 # keep their samples packed along a line, since the energy cannot lengthen a shot by itself.
-function _sparkling_initial(nsamples, nshots, D, extent, max_step)
+function _sparkling_initial(nsamples::Int, nshots::Int, D::Int, extent, max_step)
     k = zeros(Float64, D, nsamples, nshots)
-    golden = 2π * (1 - 2 / (1 + sqrt(5)))
     cone = D == 2 ? 1.0 : sin(π / 6)
     L = 0.9 * max_step * (nsamples - 1)
     Θ = max(2L / (extent * cone), 1.0)
@@ -420,11 +424,11 @@ function _sparkling_initial(nsamples, nshots, D, extent, max_step)
     r = 0.99 * extent .* θ ./ Θ
     for s in 1:nshots
         if D == 2
-            ϕ = θ .+ (s - 1) * golden
+            ϕ = θ .+ (s - 1) * _GOLDEN_ANGLE
             k[1, :, s] .= r .* cos.(ϕ)
             k[2, :, s] .= r .* sin.(ϕ)
         else
-            a = collect(_unit_vector(acos(clamp(1 - (2(s - 1) + 1) / nshots, -1.0, 1.0)), (s - 1) * golden))
+            a = collect(_fibonacci_direction(s - 1, nshots))
             u = normalize(cross(a, abs(a[3]) < 0.9 ? [0.0, 0.0, 1.0] : [1.0, 0.0, 0.0]))
             w = cross(a, u)
             for i in 1:nsamples
@@ -437,18 +441,28 @@ function _sparkling_initial(nsamples, nshots, D, extent, max_step)
 end
 
 # The target density on the mesh nodes and the FFT of the kernel gradient `x/|x|`, on a grid padded
-# so the circular convolution equals the linear one for every pair of nodes.
-struct _SparklingMesh{D}
+# so the circular convolution equals the linear one for every pair of nodes, together with the FFT
+# plans and work arrays of the convolution.
+struct _SparklingMesh{D, F, B}
     G::Int
-    P::Int
     h::Float64
     target::Array{Float64, D}
     kernel_hat::Vector{Array{ComplexF64, D}}
+    diff::Array{Float64, D}
+    diff_hat::Array{ComplexF64, D}
+    product_hat::Array{ComplexF64, D}
+    fields::Vector{Array{Float64, D}}
+    forward::F
+    backward::B
 end
 
-function _SparklingMesh(D, G, extent, cutoff, decay)
+_SparklingMesh(D::Int, G, extent, cutoff, decay) = _SparklingMesh(Val(D), G, extent, cutoff, decay)
+
+function _SparklingMesh(::Val{D}, G, extent, cutoff, decay) where {D}
     h = 1 / G
-    P = 2G + 4
+    # Cloud-in-cell touches nodes 1 to G + 2, so node offsets reach G + 1 and a circular convolution
+    # of size 2G + 3 or more is linear; the smallest 7-smooth size keeps the FFTs fast.
+    P = nextprod((2, 3, 5, 7), 2G + 3)
     node(i) = -0.5 + (i - 1) * h
     target = zeros(ntuple(_ -> P, D))
     for I in CartesianIndices(ntuple(_ -> G, D))
@@ -458,7 +472,7 @@ function _SparklingMesh(D, G, extent, cutoff, decay)
         target[I] = r <= cutoff * extent ? 1.0 : (cutoff * extent / r)^decay
     end
     target ./= sum(target)
-    off(i) = (i <= P ÷ 2 ? i - 1 : i - 1 - P) * h
+    off(i) = (i <= cld(P, 2) ? i - 1 : i - 1 - P) * h
     kernel_hat = map(1:D) do d
         K = zeros(ntuple(_ -> P, D))
         for I in CartesianIndices(K)
@@ -466,53 +480,46 @@ function _SparklingMesh(D, G, extent, cutoff, decay)
             r = sqrt(sum(abs2, x))
             K[I] = r > 0 ? x[d] / r : 0.0
         end
-        fft(complex(K))
+        FFTW.rfft(K)
     end
-    return _SparklingMesh{D}(G, P, h, target, kernel_hat)
+    diff = similar(target)
+    diff_hat = similar(first(kernel_hat))
+    forward = FFTW.plan_rfft(diff; flags = FFTW.ESTIMATE)
+    backward = FFTW.plan_irfft(diff_hat, P; flags = FFTW.ESTIMATE)
+    fields = [similar(target) for _ in 1:D]
+    return _SparklingMesh(G, h, target, kernel_hat, diff, diff_hat, similar(diff_hat), fields, forward, backward)
 end
 
-# Cloud-in-cell corner weights of point `x` on the mesh: base index and the per-axis fraction.
-function _cic(mesh::_SparklingMesh{D}, x) where {D}
+# Cloud-in-cell corners of point `x` on the mesh: the node index and weight of each.
+function _cic_corners(mesh::_SparklingMesh{D}, x) where {D}
     u = ntuple(d -> (x[d] + 0.5) / mesh.h, D)
     i0 = ntuple(d -> clamp(floor(Int, u[d]), 0, mesh.G), D)
-    return i0, ntuple(d -> u[d] - i0[d], D)
+    f = ntuple(d -> u[d] - i0[d], D)
+    return (
+        (CartesianIndex(ntuple(d -> i0[d] + c[d] + 1, D)), prod(ntuple(d -> c[d] == 1 ? f[d] : 1 - f[d], D)))
+            for c in CartesianIndices(ntuple(_ -> 0:1, D))
+    )
 end
 
-function _sparkling_gradient(mesh::_SparklingMesh{D}, pts::AbstractMatrix) where {D}
+function _sparkling_gradient!(g, mesh::_SparklingMesh{D}, pts::AbstractMatrix) where {D}
     M = size(pts, 2)
-    diff = copy(mesh.target)
-    corners = CartesianIndices(ntuple(_ -> 0:1, D))
-    for i in 1:M
-        i0, f = _cic(mesh, view(pts, :, i))
-        for c in corners
-            w = prod(ntuple(d -> c[d] == 1 ? f[d] : 1 - f[d], D))
-            diff[CartesianIndex(ntuple(d -> i0[d] + c[d] + 1, D))] -= w / M
-        end
+    copyto!(mesh.diff, mesh.target)
+    for i in 1:M, (I, w) in _cic_corners(mesh, view(pts, :, i))
+        mesh.diff[I] -= w / M
     end
-    diff_hat = fft(complex(diff))
-    fields = [real(ifft(diff_hat .* Kh)) for Kh in mesh.kernel_hat]
-    g = zeros(D, M)
-    for i in 1:M
-        i0, f = _cic(mesh, view(pts, :, i))
-        for c in corners
-            w = prod(ntuple(d -> c[d] == 1 ? f[d] : 1 - f[d], D))
-            I = CartesianIndex(ntuple(d -> i0[d] + c[d] + 1, D))
-            for d in 1:D
-                g[d, i] += w * fields[d][I]
-            end
-        end
+    mul!(mesh.diff_hat, mesh.forward, mesh.diff)
+    for d in 1:D
+        @.. mesh.product_hat = mesh.diff_hat * mesh.kernel_hat[d]
+        mul!(mesh.fields[d], mesh.backward, mesh.product_hat)
+    end
+    fill!(g, 0)
+    for i in 1:M, (I, w) in _cic_corners(mesh, view(pts, :, i)), d in 1:D
+        g[d, i] += w * mesh.fields[d][I]
     end
     return g
 end
 
 _clip(v, r) = (s = sqrt(sum(abs2, v)); s > r ? v .* (r / s) : v)
-function _clip_columns!(y, r)
-    for j in axes(y, 2)
-        c = view(y, :, j)
-        c .= _clip(c, r)
-    end
-    return y
-end
 
 # Euclidean projection of every shot onto the constraint set — `k₁ = 0`, `|kᵢ₊₁ - kᵢ| ≤ α`,
 # `|kᵢ₊₁ - 2kᵢ + kᵢ₋₁| ≤ β`, `|k|∞ ≤ extent` — by the accelerated primal-dual method of Chambolle and
@@ -520,41 +527,60 @@ end
 # differences as the linear operator (`‖[Δ; Δ²]‖² ≤ 20`). The dual variables `duals` persist from
 # one call to the next: successive targets differ by one small gradient step, so the previous duals
 # are a close starting point and the approximation error does not accumulate over the iterations.
-function _sparkling_project!(k::Array{Float64, 3}, duals, extent, α, β; iterations::Int = 50)
+function _sparkling_project!(k::Array{Float64, 3}, duals, extent, α, β)
     D, n, nshots = size(k)
+    x, x̄, xold, g = (similar(k, D, n) for _ in 1:4)
+    # Columns `i + 1`, `i` and `i + 2` of `x̄` for `i` = 1, ..., n - 1 or n - 2, and the columns of `g`
+    # the adjoint differences add into.
+    x̄₊, x̄₀, x̄₊₊, x̄₊₋, x̄₀₋ = view(x̄, :, 2:n), view(x̄, :, 1:(n - 1)), view(x̄, :, 3:n), view(x̄, :, 2:(n - 1)), view(x̄, :, 1:(n - 2))
+    g₊, g₀, g₊₊, g₊₋, g₀₋ = view(g, :, 2:n), view(g, :, 1:(n - 1)), view(g, :, 3:n), view(g, :, 2:(n - 1)), view(g, :, 1:(n - 2))
     for s in 1:nshots
-        p = k[:, :, s]
-        x = copy(p)
-        x̄ = copy(x)
-        y1 = view(duals[1], :, :, s)
-        y2 = view(duals[2], :, :, s)
+        p, y1, y2 = view(k, :, :, s), view(duals[1], :, :, s), view(duals[2], :, :, s)
+        copyto!(x, p)
+        copyto!(x̄, p)
         τ = σ = 0.99 / sqrt(20)
-        for _ in 1:iterations
-            # Dual ascent, then the prox of the ball indicators' conjugates (Moreau).
-            @views y1 .+= σ .* (x̄[:, 2:n] .- x̄[:, 1:(n - 1)])
-            @views n > 2 && (y2 .+= σ .* (x̄[:, 3:n] .- 2 .* x̄[:, 2:(n - 1)] .+ x̄[:, 1:(n - 2)]))
-            y1 .-= σ .* _clip_columns!(y1 ./ σ, α)
-            y2 .-= σ .* _clip_columns!(y2 ./ σ, β)
+        for _ in 1:50
+            # Dual ascent, then the prox of the ball indicators' conjugates, which shrinks every
+            # column's norm by `σ` times the ball's radius.
+            @.. y1 = y1 + σ * (x̄₊ - x̄₀)
+            n > 2 && (@.. y2 = y2 + σ * (x̄₊₊ - 2 * x̄₊₋ + x̄₀₋))
+            _shrink_columns!(y1, σ * α)
+            _shrink_columns!(y2, σ * β)
             # Primal descent along -[Δ; Δ²]ᵀy, then the prox of ½‖· - p‖² plus `k₁ = 0` and the box.
-            g = zeros(D, n)
-            @views g[:, 2:n] .+= y1
-            @views g[:, 1:(n - 1)] .-= y1
+            fill!(g, 0)
+            @.. g₊ = g₊ + y1
+            @.. g₀ = g₀ - y1
             if n > 2
-                @views g[:, 3:n] .+= y2
-                @views g[:, 2:(n - 1)] .-= 2 .* y2
-                @views g[:, 1:(n - 2)] .+= y2
+                @.. g₊₊ = g₊₊ + y2
+                @.. g₊₋ = g₊₋ - 2 * y2
+                @.. g₀₋ = g₀₋ + y2
             end
-            xold = copy(x)
-            x .= clamp.((x .- τ .* g .+ τ .* p) ./ (1 + τ), -extent, extent)
+            copyto!(xold, x)
+            @.. x = clamp((x - τ * g + τ * p) / (1 + τ), -extent, extent)
             x[:, 1] .= 0
             θ = 1 / sqrt(1 + 2τ)
             τ *= θ
             σ /= θ
-            x̄ .= x .+ θ .* (x .- xold)
+            @.. x̄ = x + θ * (x - xold)
         end
-        k[:, :, s] .= x
+        copyto!(p, x)
     end
     return k
+end
+
+function _shrink_columns!(Y, tr)
+    @inbounds for j in axes(Y, 2)
+        r2 = 0.0
+        for d in axes(Y, 1)
+            r2 += abs2(Y[d, j])
+        end
+        r = sqrt(r2)
+        factor = r > tr ? 1 - tr / r : 0.0
+        for d in axes(Y, 1)
+            Y[d, j] *= factor
+        end
+    end
+    return Y
 end
 
 # Track each shot's samples under the constraints exactly: start on `k = 0`, step length at most
