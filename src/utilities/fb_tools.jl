@@ -21,6 +21,28 @@ end
 _mul!(y, L, x) = mul!(y, L, x)
 _mul!(y, ::Nothing, x) = return
 
+# `‖a - b‖`, without materializing the difference, and without indexing scalars so that it works on
+# device arrays.
+_diff_norm(a, b) = sqrt(sum(Broadcast.instantiate(Broadcast.broadcasted((u, v) -> abs2(u - v), a, b))))
+
+# The secant safeguard of a fixed stepsize. `L`-smoothness of `f` means `‖∇f(x) - ∇f(x')‖ ≤ L ‖x - x'‖`
+# for every pair of points, so the gradients an accelerated method evaluates anyway give a lower bound
+# on `L` at every iteration. A fixed `gamma = 1/Lf` from an `Lf` that came out low is exactly what this
+# bound can expose, at the cost of two norms of differences and two copies per iteration, and no extra
+# evaluation of `f`. The quotient is computed from rounded gradients, so the rounding that can
+# accumulate in them is subtracted first: `noise` bounds it by a small multiple of the unit roundoff
+# at the gradients' and the iterates' scales. Returns the stepsize to continue with: `gamma` itself
+# unless the observed quotient exceeds `1/gamma`, and then `1/(1.01 L)` for the observed `L`, since
+# the quotient is only a lower bound on the true constant.
+function lipschitz_safeguard(gamma::R, x, x_prev, grad, grad_prev) where {R}
+    dx = _diff_norm(x, x_prev)
+    dx > 0 || return gamma
+    noise = 64 * eps(R) * (norm(grad) + norm(grad_prev) + (norm(x) + norm(x_prev)) / gamma)
+    L = (_diff_norm(grad, grad_prev) - noise) / dx
+    L * gamma > 1 || return gamma
+    return R(1 / (R(1.01) * L))
+end
+
 function backtrack_stepsize!(
     gamma::R,
     f,

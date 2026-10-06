@@ -30,6 +30,16 @@ See also: [`FastForwardBackward`](@ref), [`POGM`](@ref).
 - `reduce_gamma=0.5`: factor by which to reduce `gamma` in case `adaptive == true`, during backtracking.
 - `increase_gamma=1.0`: factor by which to increase `gamma` in case `adaptive == true`, before backtracking.
 - `extrapolation_sequence=nothing`: sequence (iterator) of extrapolation coefficients to use for acceleration.
+- `lipschitz_safeguard=true`: with a fixed stepsize, shorten it whenever two successive gradients show `Lf` was too small (see below).
+
+With a fixed stepsize `gamma = 1/Lf`, convergence needs `Lf` at or above the Lipschitz constant of
+`∇f`, and an estimated `Lf` can come out below it. The gradients the iteration evaluates anyway
+bound that constant from below: `‖∇f(x) - ∇f(x')‖ / ‖x - x'‖` for successive points. With
+`lipschitz_safeguard`, whenever that quotient exceeds `1/gamma` beyond rounding, `gamma` drops to
+`1/(1.01 q)` for the observed quotient `q`. The stepsize only ever decreases, which is the
+condition under which the backtracking variant of [2] keeps its rate. It costs two copies and a
+few norms per iteration, no evaluation of `f`, and changes nothing when `Lf` is valid; it is not a
+certificate either, since it only sees the pairs of points the iteration visits.
 
 # References
 1. Tseng, "On Accelerated Proximal Gradient Methods for Convex-Concave Optimization" (2008).
@@ -47,6 +57,7 @@ Base.@kwdef struct FastForwardBackwardIteration{R,Tx,Tf,Tg,TLf,Tgamma,Textr}
     reduce_gamma::R = real(eltype(x0))(0.5)
     increase_gamma::R = real(eltype(x0))(1.0)
     extrapolation_sequence::Textr = nothing
+    lipschitz_safeguard::Bool = true
 end
 
 Base.IteratorSize(::Type{<:FastForwardBackwardIteration}) = Base.IsInfinite()
@@ -62,7 +73,11 @@ Base.@kwdef mutable struct FastForwardBackwardState{R,Tx,Textr}
     res::Tx           # fixed-point residual at iterate (= z - x)
     z_prev::Tx = copy(x)
     extrapolation_sequence::Textr
+    x_prev::Union{Nothing,Tx} = nothing          # previous gradient point, for the safeguard
+    grad_f_prev::Union{Nothing,Tx} = nothing     # gradient there
 end
+
+_uses_safeguard(iter::FastForwardBackwardIteration) = iter.lipschitz_safeguard && !iter.adaptive
 
 function Base.iterate(iter::FastForwardBackwardIteration)
     x = copy(iter.x0)
@@ -86,6 +101,8 @@ function Base.iterate(iter::FastForwardBackwardIteration)
         else
             AdaptiveNesterovSequence(iter.mf)
         end,
+        x_prev = _uses_safeguard(iter) ? copy(x) : nothing,
+        grad_f_prev = _uses_safeguard(iter) ? copy(grad_f_x) : nothing,
     )
     return state, state
 end
@@ -122,7 +139,7 @@ function Base.iterate(
         )
         gamma
     else
-        iter.gamma
+        state.gamma
     end
 
     beta = get_next_extrapolation_coefficient!(state)
@@ -130,6 +147,11 @@ function Base.iterate(
     state.z_prev, state.z = state.z, state.z_prev
 
     state.f_x = value_and_gradient!(state.grad_f_x, iter.f, state.x)
+    if _uses_safeguard(iter)
+        state.gamma = lipschitz_safeguard(state.gamma, state.x, state.x_prev, state.grad_f_x, state.grad_f_prev)
+        state.x_prev .= state.x
+        state.grad_f_prev .= state.grad_f_x
+    end
     state.y .= state.x .- state.gamma .* state.grad_f_x
     state.g_z = prox!(state.z, iter.g, state.y, state.gamma)
     state.res .= state.x .- state.z

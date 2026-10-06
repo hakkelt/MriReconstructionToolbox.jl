@@ -28,6 +28,7 @@ end
     include("problems/test_elasticnet.jl")
     include("problems/test_lasso_small.jl")
     include("problems/test_lasso_small_strongly_convex.jl")
+    include("problems/test_lipschitz_safeguard.jl")
     include("problems/test_linear_programs.jl")
     include("problems/test_sparse_logistic_small.jl")
     include("problems/test_nonconvex_qp.jl")
