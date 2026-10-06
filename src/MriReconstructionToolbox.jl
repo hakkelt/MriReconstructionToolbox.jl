@@ -113,7 +113,7 @@ export pseudo_replica, estimate_snr, snr_masks
 export simulate_acquisition, coil_sensitivities, add_noise
 export UniformRandomSampling, VariableDensitySampling, PoissonDiskSampling, RegularLatticeSampling, PartialFourierSampling, GaussianDistribution, PolynomialDistribution
 export create_sampling_pattern, to_displayable_mask
-export radial_trajectory, stack_of_stars_trajectory, kooshball_trajectory, spiral_trajectory
+export radial_trajectory, stack_of_stars_trajectory, kooshball_trajectory, phyllotaxis_trajectory, spiral_trajectory, floret_trajectory, sparkling_trajectory
 export LinearOrdering, GoldenAngle, TinyGoldenAngle, Archimedean, VariableDensity
 
 # Individual names reexported from dependencies because a non-expert has to type them.

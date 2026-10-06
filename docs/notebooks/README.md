@@ -14,7 +14,7 @@ tracked in git — see [Editing workflow](#editing-workflow-jupytext) for why, a
 | `05_regularization` | Every spatial regularizer: ℓ₂/ℓ₁, wavelets, contourlets, TV (isotropic and anisotropic), second-order TV, TGV, Huber, hard thresholding, plug-and-play, joint sparsity, reference priors, constraints |
 | `06_algorithms_and_configuration` | CG/CGNR (and preconditioned CG-SENSE), ISTA/FISTA, ADMM, Douglas–Rachford; `maxit`/`tol`, verbosity, `ReconstructionConfig`, scaling, warm starts, operator-norm options, task splitting |
 | `07_dynamic_and_decomposition` | Temporal and low-rank regularizers, image decomposition (L+S), infimal-convolution TV |
-| `08_non_cartesian` | Radial and spiral trajectories, NFFT encoding, Pipe–Menon and Voronoi density compensation, gradient-delay correction, gridding accuracy vs. speed |
+| `08_non_cartesian` | Radial (full and half spokes), spiral, phyllotaxis, FLORET and SPARKLING trajectories, NFFT encoding, Pipe–Menon and Voronoi density compensation, gradient-delay correction, gridding accuracy vs. speed |
 | `09_real_data_cartesian` | Real 0.3 T brain data (M4Raw) end to end: assembly, prewhitening, coil compression, ESPIRiT, retrospective undersampling, CS and parallel imaging, pseudo-replica noise analysis |
 | `10_real_data_dynamic` | Real 1.5 T cardiac cine (OCMR): temporal, low-rank and L+S reconstruction, temporal profiles, real spiral real-time speech data (USC SPAN) |
 | `11_advanced_reconstruction` | Data-fidelity choices, `TemporalBasis` and `KSpaceToImage` signal models, calibrationless structured low-rank (SAKE / LORAKS-C) |

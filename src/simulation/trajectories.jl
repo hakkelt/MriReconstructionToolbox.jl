@@ -62,7 +62,7 @@ end
 
 """
     radial_trajectory(nsamples::Int, nspokes::Int;
-        ordering::RadialOrdering = GoldenAngle(), extent::Real = 0.5)
+        ordering::RadialOrdering = GoldenAngle(), extent::Real = 0.5, center_out::Bool = false)
     -> NamedDimsArray{(:coord, :sample, :spoke)}
 
 Generate a 2D radial (projection-reconstruction) k-space trajectory: `nspokes` straight lines
@@ -73,17 +73,22 @@ through the k-space center, each sampled at `nsamples` points spanning `(-extent
 modulo `π`): [`LinearOrdering`](@ref), [`GoldenAngle`](@ref) (the default) or
 [`TinyGoldenAngle`](@ref), which carries its own family index.
 
+`center_out = true` acquires half spokes instead (center-out radial, as in UTE): each spoke runs
+from the k-space center to `extent`, its first sample on `k = 0`. A half spoke is a ray, so angles
+are taken modulo `2π` and every increment above doubles — `2π/φ` for the golden angle, `2π/(φ + N
+- 1)` for the tiny golden angles, `2π/nspokes` for linear ordering.
+
 Returned as a `NamedDimsArray` with dimension names `(:coord, :sample, :spoke)`.
 """
 function radial_trajectory(
         nsamples::Int, nspokes::Int;
-        ordering::RadialOrdering = GoldenAngle(), extent::Real = 0.5,
+        ordering::RadialOrdering = GoldenAngle(), extent::Real = 0.5, center_out::Bool = false,
     )
     @argcheck nsamples > 0 "nsamples must be positive"
     @argcheck nspokes > 0 "nspokes must be positive"
     @argcheck 0 < extent <= 0.5 "extent must be in (0, 0.5]"
-    angles = _radial_spoke_angles(nspokes, ordering)
-    r = _open_range(-extent, extent, nsamples)
+    angles = _radial_spoke_angles(nspokes, ordering, center_out ? 2π : π)
+    r = _spoke_radii(nsamples, extent, center_out)
     traj = Array{Float32}(undef, 2, nsamples, nspokes)
     for (s, θ) in enumerate(angles)
         traj[1, :, s] .= r .* Float32(cos(θ))
@@ -92,12 +97,25 @@ function radial_trajectory(
     return NamedDimsArray{(:coord, :sample, :spoke)}(traj)
 end
 
-_radial_spoke_angles(nspokes::Integer, ::LinearOrdering) = range(0, π; length = nspokes + 1)[1:nspokes]
-_radial_spoke_angles(nspokes::Integer, ::GoldenAngle) = _angle_sequence(nspokes, π * (sqrt(5) - 1) / 2)
-_radial_spoke_angles(nspokes::Integer, o::TinyGoldenAngle) =
-    _angle_sequence(nspokes, π / ((1 + sqrt(5)) / 2 + o.index - 1))
+# `period` is `π` for full spokes (lines) and `2π` for half spokes (rays).
+_radial_spoke_angles(nspokes::Integer, ::LinearOrdering, period::Real) =
+    range(0, period; length = nspokes + 1)[1:nspokes]
+_radial_spoke_angles(nspokes::Integer, ::GoldenAngle, period::Real) =
+    _angle_sequence(nspokes, period * (sqrt(5) - 1) / 2, period)
+_radial_spoke_angles(nspokes::Integer, o::TinyGoldenAngle, period::Real) =
+    _angle_sequence(nspokes, period / ((1 + sqrt(5)) / 2 + o.index - 1), period)
 
-_angle_sequence(nspokes::Integer, step::Real) = [mod((n - 1) * step, π) for n in 1:nspokes]
+_angle_sequence(nspokes::Integer, step::Real, period::Real) = [mod((n - 1) * step, period) for n in 1:nspokes]
+
+"""
+    _spoke_radii(nsamples, extent, center_out) -> Vector{Float32}
+
+Signed readout positions along a spoke: `nsamples` points strictly inside `(-extent, extent)` for a
+full spoke, or `extent · (0, 1, …, nsamples - 1)/nsamples` for a half spoke, which starts on the
+k-space center and stops one sample short of `extent`.
+"""
+_spoke_radii(nsamples::Integer, extent::Real, center_out::Bool) =
+    center_out ? Float32.(extent .* (0:(nsamples - 1)) ./ nsamples) : _open_range(-extent, extent, nsamples)
 
 """
     stack_of_stars_trajectory(nsamples::Int, nspokes::Int, npartitions::Int; kwargs...)
@@ -124,33 +142,78 @@ function stack_of_stars_trajectory(nsamples::Int, nspokes::Int, npartitions::Int
 end
 
 """
-    kooshball_trajectory(nsamples::Int, nspokes::Int; extent::Real = 0.5)
+    kooshball_trajectory(nsamples::Int, nspokes::Int; extent::Real = 0.5, center_out::Bool = false)
     -> NamedDimsArray{(:coord, :sample, :spoke)}
 
 Full 3D radial ("kooshball") trajectory: `nspokes` spokes through the k-space center, each
 sampled at `nsamples` points spanning `(-extent, extent)`, with spoke directions distributed
 quasi-uniformly over the sphere using the multidimensional golden-means ordering of
 Chan et al., "Temporal stability of adaptive 3D radial MRI using multidimensional golden means",
-Magn. Reson. Med. 61(2):354-363, 2009 (golden means Φ₁ ≈ 0.4656, Φ₂ ≈ 0.6823).
+Magn. Reson. Med. 61(2):354-363, 2009 (golden means Φ₁ ≈ 0.4656, Φ₂ ≈ 0.6823): spoke `n` has
+`cos θ = 1 - 2 mod(nΦ₂, 1)` and azimuth `2π mod(nΦ₁, 1)`, so any run of consecutive spokes covers
+the sphere near-uniformly. [`phyllotaxis_trajectory`](@ref) orders the spokes on a spiral instead.
+
+`center_out = true` acquires half spokes, each from the k-space center (first sample on `k = 0`)
+to one sample short of `extent`, as in 3D UTE and ZTE-like radial acquisitions.
 
 Returned as a `NamedDimsArray` with dimension names `(:coord, :sample, :spoke)`.
 """
-function kooshball_trajectory(nsamples::Int, nspokes::Int; extent::Real = 0.5)
+function kooshball_trajectory(nsamples::Int, nspokes::Int; extent::Real = 0.5, center_out::Bool = false)
     @argcheck nsamples > 0 "nsamples must be positive"
     @argcheck nspokes > 0 "nspokes must be positive"
     @argcheck 0 < extent <= 0.5 "extent must be in (0, 0.5]"
     Φ1, Φ2 = 0.4656, 0.6823
-    r = _open_range(-extent, extent, nsamples)
-    traj = Array{Float32}(undef, 3, nsamples, nspokes)
-    for n in 1:nspokes
-        h = mod((n - 1) * Φ2, 1.0)
-        z = 1 - 2h
-        θ = acos(clamp(z, -1.0, 1.0))
-        ϕ = 2π * mod((n - 1) * Φ1, 1.0)
-        dx, dy, dz = sin(θ) * cos(ϕ), sin(θ) * sin(ϕ), cos(θ)
-        traj[1, :, n] .= r .* Float32(dx)
-        traj[2, :, n] .= r .* Float32(dy)
-        traj[3, :, n] .= r .* Float32(dz)
+    directions = [_unit_vector(acos(clamp(1 - 2 * mod(n * Φ2, 1.0), -1.0, 1.0)), 2π * mod(n * Φ1, 1.0)) for n in 0:(nspokes - 1)]
+    return _radial_3d(nsamples, directions, extent, center_out)
+end
+
+"""
+    phyllotaxis_trajectory(nsamples::Int, nspokes::Int;
+        interleaves::Int = 1, extent::Real = 0.5, center_out::Bool = false)
+    -> NamedDimsArray{(:coord, :sample, :spoke)}
+
+3D radial trajectory on a spiral phyllotaxis (Piccini et al., "Spiral phyllotaxis: the natural way
+to construct a 3D radial trajectory in MRI", Magn. Reson. Med. 66(4):1049-1056, 2011): `nspokes`
+spokes through the k-space center, each sampled at `nsamples` points spanning `(-extent, extent)`.
+Spoke `n` of `N` has azimuth `n · 2π(1 - 1/φ)` (the golden angle, 137.5°) and polar angle
+`(π/2)√(n/N)`, which fills the upper hemisphere — a full spoke covers the opposite direction as
+well.
+
+The spokes are dealt into `interleaves` interleaves, spoke `n` to interleave `mod(n, interleaves)`,
+and returned interleave by interleave. With a Fibonacci number of interleaves each one is a smooth
+spiral from the pole to the equator, which is how the trajectory is acquired: one interleave per
+heartbeat or per segment. (The self-gating `k_z` spoke Piccini et al. prepend to every interleave is
+not added.)
+
+`center_out = true` acquires half spokes, from the k-space center (first sample on `k = 0`) to one
+sample short of `extent`. Half spokes need the whole sphere, so there the polar angle follows the
+spherical Fibonacci lattice, `cos θ = 1 - (2n + 1)/N`, on the same golden-angle azimuths.
+
+Returned as a `NamedDimsArray` with dimension names `(:coord, :sample, :spoke)`.
+"""
+function phyllotaxis_trajectory(
+        nsamples::Int, nspokes::Int;
+        interleaves::Int = 1, extent::Real = 0.5, center_out::Bool = false,
+    )
+    @argcheck nsamples > 0 "nsamples must be positive"
+    @argcheck nspokes > 0 "nspokes must be positive"
+    @argcheck interleaves >= 1 "a spiral phyllotaxis needs at least one interleave"
+    @argcheck 0 < extent <= 0.5 "extent must be in (0, 0.5]"
+    golden = 2π * (1 - 2 / (1 + sqrt(5)))
+    polar(n) = center_out ? acos(clamp(1 - (2n + 1) / nspokes, -1.0, 1.0)) : (π / 2) * sqrt(n / nspokes)
+    order = sort(0:(nspokes - 1); by = n -> (mod(n, interleaves), n))
+    return _radial_3d(nsamples, [_unit_vector(polar(n), n * golden) for n in order], extent, center_out)
+end
+
+_unit_vector(θ, ϕ) = (sin(θ) * cos(ϕ), sin(θ) * sin(ϕ), cos(θ))
+
+function _radial_3d(nsamples, directions, extent, center_out)
+    r = _spoke_radii(nsamples, extent, center_out)
+    traj = Array{Float32}(undef, 3, nsamples, length(directions))
+    for (s, (dx, dy, dz)) in enumerate(directions)
+        traj[1, :, s] .= r .* Float32(dx)
+        traj[2, :, s] .= r .* Float32(dy)
+        traj[3, :, s] .= r .* Float32(dz)
     end
     return NamedDimsArray{(:coord, :sample, :spoke)}(traj)
 end
@@ -225,3 +288,295 @@ end
 
 _spiral_radius(::Archimedean, extent::Real, t) = Float32.(extent .* t)
 _spiral_radius(v::VariableDensity, extent::Real, t) = Float32.(extent .* t .^ v.exponent)
+
+"""
+    floret_trajectory(nsamples::Int, ninterleaves::Int;
+        nhubs::Int = 3, nturns::Real = 4, max_elevation::Real = nhubs == 1 ? π / 2 : π / 4,
+        extent::Real = 0.5)
+    -> NamedDimsArray{(:coord, :sample, :interleave, :hub)}
+
+3D FLORET trajectory (Fermat Looped, ORthogonally Encoded Trajectories; Pipe et al., "A new design
+and rationale for 3D orthogonally oversampled k-space trajectories", Magn. Reson. Med. 66(5):
+1303-1311, 2011): center-out arms, each a Fermat spiral (`ρ ∝ √ϕ`, uniform density within its
+surface) wound on a cone around a hub axis, with `ninterleaves` arms per hub and `nhubs`
+orthogonal hubs (axes `k_z`, `k_x`, `k_y`, in that order).
+
+Arm `j` of a hub lies at elevation `e_j` above the plane normal to the hub axis, with `sin e_j`
+spread evenly over `(-sin max_elevation, sin max_elevation)`, and starts at azimuth `j · 137.5°`
+(the golden angle). Its radius grows as `extent · √t` while its azimuth turns `2π · nturns · t`, for
+`t` sampled evenly on `[0, 1)`. Three hubs with `|e| ≤ 45°` cover the sphere with the overlap the
+design calls orthogonal oversampling; a single hub needs `max_elevation = π/2`, which is the default
+for `nhubs = 1`.
+
+This reproduces the geometry of FLORET, not a gradient waveform: samples are evenly spaced in `t`,
+not limited by gradient amplitude or slew rate.
+
+Returned as a `NamedDimsArray` with dimension names `(:coord, :sample, :interleave, :hub)`.
+"""
+function floret_trajectory(
+        nsamples::Int, ninterleaves::Int;
+        nhubs::Int = 3, nturns::Real = 4, max_elevation::Real = nhubs == 1 ? π / 2 : π / 4,
+        extent::Real = 0.5,
+    )
+    @argcheck nsamples > 1 "nsamples must be > 1"
+    @argcheck ninterleaves > 0 "ninterleaves must be positive"
+    @argcheck 1 <= nhubs <= 3 "nhubs must be 1, 2 or 3"
+    @argcheck 0 < max_elevation <= π / 2 "max_elevation must be in (0, π/2]"
+    @argcheck 0 < extent <= 0.5 "extent must be in (0, 0.5]"
+    golden = 2π * (1 - 2 / (1 + sqrt(5)))
+    t = range(0, 1; length = nsamples + 1)[1:nsamples]
+    ρ = extent .* sqrt.(t)
+    ϕ = 2π * nturns .* t
+    traj = Array{Float32}(undef, 3, nsamples, ninterleaves, nhubs)
+    for j in 0:(ninterleaves - 1)
+        e = asin(sin(max_elevation) * (2 * (j + 0.5) / ninterleaves - 1))
+        ψ = j * golden
+        a = ρ .* cos(e) .* cos.(ϕ .+ ψ)
+        b = ρ .* cos(e) .* sin.(ϕ .+ ψ)
+        c = ρ .* sin(e)
+        # Hub `h` has its axis along the third coordinate of the cyclic shift by `h - 1`.
+        for h in 1:nhubs, (d, v) in enumerate(circshift([a, b, c], h - 1))
+            traj[d, :, j + 1, h] .= v
+        end
+    end
+    return NamedDimsArray{(:coord, :sample, :interleave, :hub)}(traj)
+end
+
+"""
+    sparkling_trajectory(nsamples::Int, nshots::Int;
+        ndims::Int = 2, cutoff::Real = 0.1, decay::Real = 2,
+        max_step::Real = max(extent/64, 2extent/nsamples), max_curvature::Real = max_step/10,
+        iterations::Int = 200, grid_size::Int = ndims == 2 ? 128 : 32, extent::Real = 0.5)
+    -> NamedDimsArray{(:coord, :sample, :shot)}
+
+SPARKLING trajectory (Spreading Projection Algorithm for Rapid K-space sampLING; Lazarus et al.,
+"SPARKLING: variable-density k-space filling curves for accelerated T2*-weighted MRI", Magn. Reson.
+Med. 81(6):3643-3661, 2019; 3D in Chaithya et al., IEEE Trans. Comput. Imaging 8:1-15, 2022):
+`nshots` center-out shots of `nsamples` samples each, in `ndims` (2 or 3) dimensions, whose sample
+distribution is pulled towards a target density while the samples repel each other.
+
+The target density is the isotropic, radially decaying one of Lazarus et al.: `1` up to radius
+`cutoff · extent`, then `(cutoff · extent/|k|)^decay`, restricted to the cube `|k|∞ < extent`.
+
+Each iteration takes a gradient step on the SPARKLING energy — attraction to the target minus
+repulsion between samples, both with the kernel `|x - y|` — and projects every shot back onto the
+constraints: it starts on `k = 0`, moves at most `max_step` between samples (gradient amplitude),
+and its step changes by at most `max_curvature` between samples (slew rate), all in the normalized
+units of the trajectory. The gradient comes from a particle-mesh evaluation on a `grid_size^ndims`
+grid (the two densities are deposited by cloud-in-cell and convolved with the kernel's gradient by
+FFT), so an iteration costs `O(nshots · nsamples + grid_size^ndims log grid_size)`. The projection
+is a constrained tracking pass along each shot, which keeps every iterate feasible but is not the
+exact Euclidean projection of the paper. The result is deterministic.
+
+Returned as a `NamedDimsArray` with dimension names `(:coord, :sample, :shot)`.
+"""
+function sparkling_trajectory(
+        nsamples::Int, nshots::Int;
+        ndims::Int = 2, cutoff::Real = 0.1, decay::Real = 2, extent::Real = 0.5,
+        max_step::Real = max(extent / 64, 2extent / nsamples), max_curvature::Real = max_step / 10,
+        iterations::Int = 200, grid_size::Int = ndims == 2 ? 128 : 32,
+    )
+    @argcheck nsamples > 1 "nsamples must be > 1"
+    @argcheck nshots > 0 "nshots must be positive"
+    @argcheck ndims in (2, 3) "ndims must be 2 or 3"
+    @argcheck 0 < extent <= 0.5 "extent must be in (0, 0.5]"
+    @argcheck 0 < cutoff <= 1 "cutoff must be in (0, 1]"
+    @argcheck decay >= 0 "decay must be non-negative"
+    @argcheck max_step * (nsamples - 1) >= extent "max_step is too small to reach extent"
+    @argcheck max_curvature > 0 "max_curvature must be positive"
+    @argcheck iterations >= 0 "iterations must be non-negative"
+    @argcheck grid_size >= 8 "grid_size must be at least 8"
+    D = ndims
+    k = _sparkling_initial(nsamples, nshots, D, extent, max_step)
+    mesh = _SparklingMesh(D, grid_size, extent, cutoff, decay)
+    M = nsamples * nshots
+    step0 = 0.5 * extent / M^(1 / D)
+    pts = reshape(k, D, M)
+    duals = (zeros(D, nsamples - 1, nshots), zeros(D, max(nsamples - 2, 0), nshots))
+    for it in 1:iterations
+        g = _sparkling_gradient(mesh, pts)
+        gmax = maximum(sqrt(sum(abs2, view(g, :, i))) for i in 1:M)
+        gmax > 0 || break
+        pts .-= (step0 * (1 - (it - 1) / iterations) / gmax) .* g
+        _sparkling_project!(k, duals, extent, max_step, max_curvature)
+    end
+    _sparkling_make_feasible!(k, extent, max_step, max_curvature)
+    return NamedDimsArray{(:coord, :sample, :shot)}(Float32.(k))
+end
+
+# Center-out Archimedean spirals that use most of the path length `max_step` allows — in the plane
+# for 2D, on a cone of half-angle 30° around the shot's axis for 3D — started on golden-angle
+# directions, which avoids the mirror symmetries of evenly spaced ones (their forces would cancel and
+# freeze the shots on the symmetry axes). Shots that only reach `extent` at the slowest speed would
+# keep their samples packed along a line, since the energy cannot lengthen a shot by itself.
+function _sparkling_initial(nsamples, nshots, D, extent, max_step)
+    k = zeros(Float64, D, nsamples, nshots)
+    golden = 2π * (1 - 2 / (1 + sqrt(5)))
+    cone = D == 2 ? 1.0 : sin(π / 6)
+    L = 0.9 * max_step * (nsamples - 1)
+    Θ = max(2L / (extent * cone), 1.0)
+    θ = sqrt.(2Θ .* (L .* (0:(nsamples - 1)) ./ (nsamples - 1)) ./ (extent * cone))
+    θ .*= Θ / θ[end]
+    r = 0.99 * extent .* θ ./ Θ
+    for s in 1:nshots
+        if D == 2
+            ϕ = θ .+ (s - 1) * golden
+            k[1, :, s] .= r .* cos.(ϕ)
+            k[2, :, s] .= r .* sin.(ϕ)
+        else
+            a = collect(_unit_vector(acos(clamp(1 - (2(s - 1) + 1) / nshots, -1.0, 1.0)), (s - 1) * golden))
+            u = normalize(cross(a, abs(a[3]) < 0.9 ? [0.0, 0.0, 1.0] : [1.0, 0.0, 0.0]))
+            w = cross(a, u)
+            for i in 1:nsamples
+                dir = cos(π / 6) .* a .+ cone .* (cos(θ[i]) .* u .+ sin(θ[i]) .* w)
+                k[:, i, s] .= r[i] .* dir
+            end
+        end
+    end
+    return k
+end
+
+# The target density on the mesh nodes and the FFT of the kernel gradient `x/|x|`, on a grid padded
+# so the circular convolution equals the linear one for every pair of nodes.
+struct _SparklingMesh{D}
+    G::Int
+    P::Int
+    h::Float64
+    target::Array{Float64, D}
+    kernel_hat::Vector{Array{ComplexF64, D}}
+end
+
+function _SparklingMesh(D, G, extent, cutoff, decay)
+    h = 1 / G
+    P = 2G + 4
+    node(i) = -0.5 + (i - 1) * h
+    target = zeros(ntuple(_ -> P, D))
+    for I in CartesianIndices(ntuple(_ -> G, D))
+        x = ntuple(d -> node(I[d]), D)
+        maximum(abs, x) < extent || continue
+        r = sqrt(sum(abs2, x))
+        target[I] = r <= cutoff * extent ? 1.0 : (cutoff * extent / r)^decay
+    end
+    target ./= sum(target)
+    off(i) = (i <= P ÷ 2 ? i - 1 : i - 1 - P) * h
+    kernel_hat = map(1:D) do d
+        K = zeros(ntuple(_ -> P, D))
+        for I in CartesianIndices(K)
+            x = ntuple(e -> off(I[e]), D)
+            r = sqrt(sum(abs2, x))
+            K[I] = r > 0 ? x[d] / r : 0.0
+        end
+        fft(complex(K))
+    end
+    return _SparklingMesh{D}(G, P, h, target, kernel_hat)
+end
+
+# Cloud-in-cell corner weights of point `x` on the mesh: base index and the per-axis fraction.
+function _cic(mesh::_SparklingMesh{D}, x) where {D}
+    u = ntuple(d -> (x[d] + 0.5) / mesh.h, D)
+    i0 = ntuple(d -> clamp(floor(Int, u[d]), 0, mesh.G), D)
+    return i0, ntuple(d -> u[d] - i0[d], D)
+end
+
+function _sparkling_gradient(mesh::_SparklingMesh{D}, pts::AbstractMatrix) where {D}
+    M = size(pts, 2)
+    diff = copy(mesh.target)
+    corners = CartesianIndices(ntuple(_ -> 0:1, D))
+    for i in 1:M
+        i0, f = _cic(mesh, view(pts, :, i))
+        for c in corners
+            w = prod(ntuple(d -> c[d] == 1 ? f[d] : 1 - f[d], D))
+            diff[CartesianIndex(ntuple(d -> i0[d] + c[d] + 1, D))] -= w / M
+        end
+    end
+    diff_hat = fft(complex(diff))
+    fields = [real(ifft(diff_hat .* Kh)) for Kh in mesh.kernel_hat]
+    g = zeros(D, M)
+    for i in 1:M
+        i0, f = _cic(mesh, view(pts, :, i))
+        for c in corners
+            w = prod(ntuple(d -> c[d] == 1 ? f[d] : 1 - f[d], D))
+            I = CartesianIndex(ntuple(d -> i0[d] + c[d] + 1, D))
+            for d in 1:D
+                g[d, i] += w * fields[d][I]
+            end
+        end
+    end
+    return g
+end
+
+_clip(v, r) = (s = sqrt(sum(abs2, v)); s > r ? v .* (r / s) : v)
+function _clip_columns!(y, r)
+    for j in axes(y, 2)
+        c = view(y, :, j)
+        c .= _clip(c, r)
+    end
+    return y
+end
+
+# Euclidean projection of every shot onto the constraint set — `k₁ = 0`, `|kᵢ₊₁ - kᵢ| ≤ α`,
+# `|kᵢ₊₁ - 2kᵢ + kᵢ₋₁| ≤ β`, `|k|∞ ≤ extent` — by the accelerated primal-dual method of Chambolle and
+# Pock (2011, Algorithm 2; the objective `½‖k - p‖²` is 1-strongly convex), with the first and second
+# differences as the linear operator (`‖[Δ; Δ²]‖² ≤ 20`). The dual variables `duals` persist from
+# one call to the next: successive targets differ by one small gradient step, so the previous duals
+# are a close starting point and the approximation error does not accumulate over the iterations.
+function _sparkling_project!(k::Array{Float64, 3}, duals, extent, α, β; iterations::Int = 50)
+    D, n, nshots = size(k)
+    for s in 1:nshots
+        p = k[:, :, s]
+        x = copy(p)
+        x̄ = copy(x)
+        y1 = view(duals[1], :, :, s)
+        y2 = view(duals[2], :, :, s)
+        τ = σ = 0.99 / sqrt(20)
+        for _ in 1:iterations
+            # Dual ascent, then the prox of the ball indicators' conjugates (Moreau).
+            @views y1 .+= σ .* (x̄[:, 2:n] .- x̄[:, 1:(n - 1)])
+            @views n > 2 && (y2 .+= σ .* (x̄[:, 3:n] .- 2 .* x̄[:, 2:(n - 1)] .+ x̄[:, 1:(n - 2)]))
+            y1 .-= σ .* _clip_columns!(y1 ./ σ, α)
+            y2 .-= σ .* _clip_columns!(y2 ./ σ, β)
+            # Primal descent along -[Δ; Δ²]ᵀy, then the prox of ½‖· - p‖² plus `k₁ = 0` and the box.
+            g = zeros(D, n)
+            @views g[:, 2:n] .+= y1
+            @views g[:, 1:(n - 1)] .-= y1
+            if n > 2
+                @views g[:, 3:n] .+= y2
+                @views g[:, 2:(n - 1)] .-= 2 .* y2
+                @views g[:, 1:(n - 2)] .+= y2
+            end
+            xold = copy(x)
+            x .= clamp.((x .- τ .* g .+ τ .* p) ./ (1 + τ), -extent, extent)
+            x[:, 1] .= 0
+            θ = 1 / sqrt(1 + 2τ)
+            τ *= θ
+            σ /= θ
+            x̄ .= x .+ θ .* (x .- xold)
+        end
+        k[:, :, s] .= x
+    end
+    return k
+end
+
+# Track each shot's samples under the constraints exactly: start on `k = 0`, step length at most
+# `α`, step change at most `β`. A shot that leaves `[-extent, extent)` is then scaled towards the
+# center as a whole, which keeps both constraints. On a nearly feasible shot this moves samples
+# only by the residual constraint violation.
+function _sparkling_make_feasible!(k::Array{Float64, 3}, extent, α, β)
+    D, n, nshots = size(k)
+    hi = Float64(prevfloat(Float32(extent)))
+    for s in 1:nshots
+        x = zeros(D)
+        v = zeros(D)
+        k[:, 1, s] .= 0
+        for i in 2:n
+            a = _clip(view(k, :, i, s) .- x .- v, β)
+            v = _clip(v .+ a, α)
+            x = x .+ v
+            k[:, i, s] .= x
+        end
+        shot = view(k, :, :, s)
+        reach = maximum(abs, shot)
+        reach > hi && (shot .*= hi / reach)
+    end
+    return k
+end
