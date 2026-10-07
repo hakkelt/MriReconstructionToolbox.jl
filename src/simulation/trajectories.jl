@@ -372,8 +372,9 @@ is the Euclidean one of the paper, solved approximately by a fixed number of pri
 final tracking pass along each shot makes the result satisfy the constraints exactly.
 
 With `threaded = true` the projection of the shots and the interpolation of the gradient at the
-samples are split over Julia's threads. Each shot and each sample is computed exactly as in the
-serial loop, so the result is deterministic and the same for every thread count.
+samples are split over Julia's threads, and the mesh FFTs use FFTW's threads once the mesh is large
+enough for them to pay. Each shot and each sample is computed exactly as in the serial loop, so the
+result is deterministic and the same for every thread count.
 
 Returned as a `NamedDimsArray` with dimension names `(:coord, :sample, :shot)`.
 """
@@ -395,7 +396,7 @@ function sparkling_trajectory(
     @argcheck grid_size >= 8 "grid_size must be at least 8"
     D = ndims
     k = _sparkling_initial(nsamples, nshots, D, extent, max_step)
-    mesh = _SparklingMesh(D, grid_size, extent, cutoff, decay)
+    mesh = _SparklingMesh(D, grid_size, extent, cutoff, decay; threaded)
     M = nsamples * nshots
     step0 = 0.5 * extent / M^(1 / D)
     pts = reshape(k, D, M)
@@ -460,9 +461,10 @@ struct _SparklingMesh{D, F, B}
     backward::B
 end
 
-_SparklingMesh(D::Int, G, extent, cutoff, decay) = _SparklingMesh(Val(D), G, extent, cutoff, decay)
+_SparklingMesh(D::Int, G, extent, cutoff, decay; threaded::Bool = true) =
+    _SparklingMesh(Val(D), G, extent, cutoff, decay; threaded)
 
-function _SparklingMesh(::Val{D}, G, extent, cutoff, decay) where {D}
+function _SparklingMesh(::Val{D}, G, extent, cutoff, decay; threaded::Bool = true) where {D}
     h = 1 / G
     # Cloud-in-cell touches nodes 1 to G + 2, so node offsets reach G + 1 and a circular convolution
     # of size 2G + 3 or more is linear; the smallest 7-smooth size keeps the FFTs fast.
@@ -488,8 +490,10 @@ function _SparklingMesh(::Val{D}, G, extent, cutoff, decay) where {D}
     end
     diff = similar(target)
     diff_hat = similar(first(kernel_hat))
-    forward = FFTW.plan_rfft(diff; flags = FFTW.ESTIMATE)
-    backward = FFTW.plan_irfft(diff_hat, P; flags = FFTW.ESTIMATE)
+    # `ESTIMATE` picks the same plan in every run, so the result does not depend on timings.
+    num_threads = FFTWOperators._fftw_num_threads(:r2c, nothing, threaded, length(diff))
+    forward = FFTW.plan_rfft(diff; flags = FFTW.ESTIMATE, num_threads)
+    backward = FFTW.plan_irfft(diff_hat, P; flags = FFTW.ESTIMATE, num_threads)
     fields = [similar(target) for _ in 1:D]
     return _SparklingMesh(G, h, target, kernel_hat, diff, diff_hat, similar(diff_hat), fields, forward, backward)
 end
