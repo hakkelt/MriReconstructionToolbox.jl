@@ -24,6 +24,15 @@ is then handled through its proximal mapping, so the primal step is limited by `
 by a gradient Lipschitz constant; [`VuCondat`](@ref) is the variant that takes a smooth term by its
 gradient instead.
 
+When `g` is `mg`-strongly convex, `mg > 0` turns on the accelerated variant (Algorithm 2 of [1]):
+after each primal step, with `θ = 1/√(1 + 2 mg τ)`,
+
+    τ ← θ τ,  σ ← σ / θ,  x̄ ← x⁺ + θ (x⁺ - x)
+
+which keeps `τσ` fixed and improves the guaranteed rate on `‖x - x*‖²` from `O(1/N)` to
+`O(1/N²)`. The guarantee is a worst case: on a problem where the unaccelerated iteration already
+converges linearly, the shrinking primal step makes the accelerated one slower.
+
 Points `x0` and `y0` are the initial primal and dual iterates. `y0` defaults to zero.
 
 See also: [`ChambollePock`](@ref).
@@ -40,13 +49,15 @@ See also: [`ChambollePock`](@ref).
   `σ = 0.99√ratio/‖L‖`, so that `τσ‖L‖² < 1`. With `h` a separable sum whose dual is an
   `ArrayPartition`, `sigma` may also be a tuple with one step per block, each a number or an
   array of the block's size (a diagonal preconditioner, as in [2]); `tau` must then be given.
-- `theta=1`: extrapolation parameter.
+- `theta=1`: extrapolation parameter; unused when `mg > 0`, which sets it every iteration.
+- `mg=0`: strong convexity modulus of `g`; positive values select the accelerated variant. The
+  initial steps must still satisfy `τσ‖L‖² < 1`, which the defaults do.
 
 # References
 1. Chambolle, Pock, "A First-Order Primal-Dual Algorithm for Convex Problems with Applications to Imaging", Journal of Mathematical Imaging and Vision, vol. 40, no. 1, pp. 120-145 (2011).
 2. Pock, Chambolle, "Diagonal preconditioning for first order primal-dual algorithms in convex optimization", ICCV (2011).
 """
-Base.@kwdef struct ChambollePockIteration{Tx, Ty, Tg, Th, TL, TLt, Tn, Tr, Tt, Ts, Tθ}
+Base.@kwdef struct ChambollePockIteration{Tx, Ty, Tg, Th, TL, TLt, Tn, Tr, Tt, Ts, Tθ, Tm}
     g::Tg = Zero()
     h::Th = Zero()
     L::TL = I
@@ -58,6 +69,7 @@ Base.@kwdef struct ChambollePockIteration{Tx, Ty, Tg, Th, TL, TLt, Tn, Tr, Tt, T
     tau::Tt = real(eltype(x0))(0.99 / (normL * sqrt(ratio)))
     sigma::Ts = real(eltype(x0))(0.99 * sqrt(ratio) / normL)
     theta::Tθ = real(eltype(x0))(1)
+    mg::Tm = real(eltype(x0))(0)
 end
 
 Base.IteratorSize(::Type{<:ChambollePockIteration}) = Base.IsInfinite()
@@ -67,7 +79,7 @@ get_assumptions(::Type{<:ChambollePockIteration}) = AssumptionGroup(
     SimpleTerm(:g => (is_proximable, is_convex)),
 )
 
-mutable struct ChambollePockState{Tx, Ty, Ts}
+mutable struct ChambollePockState{Tx, Ty, Tt, Ts, Tsi}
     x::Tx
     x_prev::Tx
     xbar::Tx
@@ -75,18 +87,35 @@ mutable struct ChambollePockState{Tx, Ty, Ts}
     y_prev::Ty
     temp_x::Tx
     temp_y::Ty
-    sigma_inv::Ts
+    tau::Tt
+    sigma::Ts
+    sigma_inv::Tsi
+    step_scale::Tt  # σ/σ₀ = τ₀/τ, which the accelerated variant grows from 1
 end
 
 function ChambollePockState(iter::ChambollePockIteration)
     x = copy(iter.x0)
     y = iter.y0 === nothing ? zero(iter.L * x) : copy(iter.y0)
-    return ChambollePockState(x, similar(x), copy(x), y, similar(y), similar(x), similar(y), _inv_step(iter.sigma))
+    # the accelerated variant rescales the dual steps in place, so it works on its own copy
+    sigma = iszero(iter.mg) ? iter.sigma : _copy_step(iter.sigma)
+    return ChambollePockState(
+        x, similar(x), copy(x), y, similar(y), similar(x), similar(y), iter.tau, sigma, _inv_step(sigma),
+        one(iter.tau),
+    )
 end
 
 _inv_step(σ::Number) = inv(σ)
 _inv_step(σ::AbstractArray) = inv.(σ)
 _inv_step(σ::Tuple) = map(_inv_step, σ)
+
+_copy_step(σ::Number) = σ
+_copy_step(σ::AbstractArray) = copy(σ)
+_copy_step(σ::Tuple) = map(_copy_step, σ)
+
+# `σ` times `c`, in place for an array step.
+_scale_step!(σ::Number, c) = σ * c
+_scale_step!(σ::AbstractArray, c) = (σ .*= c; σ)
+_scale_step!(σ::Tuple, c) = map(s -> _scale_step!(s, c), σ)
 
 # `f(blocks..., σ)` over the dual: on the whole of each array under one scalar step, or block by
 # block of `ArrayPartition`s under a tuple of steps, one per block.
@@ -98,19 +127,27 @@ function Base.iterate(iter::ChambollePockIteration, state::ChambollePockState = 
     # prox[σh*](v) = σ (v/σ - prox[h/σ](v/σ)): the prox of `h` itself keeps a separable `h`
     # separable, where its conjugate's prox would go through the generic, allocating path
     mul!(state.temp_y, iter.L, state.xbar)
-    _dual_blocks((t, y, σ) -> (t .= y ./ σ .+ t), iter.sigma, state.temp_y, state.y)
+    _dual_blocks((t, y, σ) -> (t .= y ./ σ .+ t), state.sigma, state.temp_y, state.y)
     state.y, state.y_prev = state.y_prev, state.y
     prox!(state.y, iter.h, state.temp_y, state.sigma_inv)
-    _dual_blocks((y, t, σ) -> (y .= σ .* (t .- y)), iter.sigma, state.y, state.temp_y)
+    _dual_blocks((y, t, σ) -> (y .= σ .* (t .- y)), state.sigma, state.y, state.temp_y)
 
     # primal step
     mul!(state.temp_x, iter.Lt, state.y)
-    state.temp_x .= state.x .- iter.tau .* state.temp_x
+    state.temp_x .= state.x .- state.tau .* state.temp_x
     state.x, state.x_prev = state.x_prev, state.x
-    prox!(state.x, iter.g, state.temp_x, iter.tau)
+    prox!(state.x, iter.g, state.temp_x, state.tau)
 
-    # extrapolation
-    state.xbar .= state.x .+ iter.theta .* (state.x .- state.x_prev)
+    # step update of the accelerated variant, then extrapolation
+    theta = iter.theta
+    if !iszero(iter.mg)
+        theta = oftype(theta, 1 / sqrt(1 + 2 * iter.mg * state.tau))
+        state.tau *= theta
+        state.sigma = _scale_step!(state.sigma, inv(theta))
+        state.sigma_inv = _scale_step!(state.sigma_inv, theta)
+        state.step_scale /= theta
+    end
+    state.xbar .= state.x .+ theta .* (state.x .- state.x_prev)
 
     return state, state
 end
@@ -124,8 +161,13 @@ function _cp_changes(state::ChambollePockState)
     return maximum(abs, state.temp_x), maximum(abs, state.temp_y)
 end
 
-default_stopping_criterion(tol, ::ChambollePockIteration, state::ChambollePockState) =
-    sum(_cp_changes(state)) <= tol
+# Each change is measured in the units of the initial steps: the primal change over `τ/τ₀`, the dual
+# one over `σ/σ₀`. The accelerated variant shrinks `τ` towards zero, so its raw primal change would
+# fall below `tol` long before the iterates settle.
+function default_stopping_criterion(tol, ::ChambollePockIteration, state::ChambollePockState)
+    dx, dy = _cp_changes(state)
+    return dx * state.step_scale + dy / state.step_scale <= tol
+end
 default_solution(::ChambollePockIteration, state::ChambollePockState) = (state.x, state.y)
 function default_iteration_summary(it, ::ChambollePockIteration, state::ChambollePockState)
     dx, dy = _cp_changes(state)
