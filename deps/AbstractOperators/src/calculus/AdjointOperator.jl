@@ -97,19 +97,33 @@ function add_mul!(y::AbstractArray, L::AbstractOperator, b, buf::AbstractArray, 
 end
 
 # `dest = α * src + β * dest`, for `src` an array or a lazy `Broadcasted`, in one pass and on
-# `Th` threads; `dest` is not read when `β` is zero. A same-shape `Array` broadcast runs over the
-# flat arrays, so a small leading dimension does not shorten the innermost loop.
-@inline function _store!(dest, src, α::Number, β::Number, ::Val{Th} = Val(false)) where {Th}
+# `Th` threads; `dest` is not read when `β` is zero. The coefficients are converted to the
+# precision of `dest`, so that a `Float64` coefficient does not widen a `Float32` loop. The
+# combination goes through FastBroadcast, which vectorizes a lazy `src` over views where Base's
+# broadcast does not, and runs over the flat arrays when all of them are `Array`s; for other array
+# styles it falls back to Base's broadcast. Constant propagation is off: the arguments' types
+# already fix the kernel, and the semi-concrete evaluation of the views a caller builds from
+# constant ranges makes JET 0.11 fail on Julia 1.13 with a `TypeError` in its own inference.
+@inline Base.@constprop :none function _store!(dest, src, α::Number, β::Number, ::Val{Th} = Val(false)) where {Th}
+    a, b = _coefficient(dest, α), _coefficient(dest, β)
+    return _store_fast!(dest, src, a, b, _fbthread(_fbbool(Th)))
+end
+
+_coefficient(dest, c::Bool) = c
+_coefficient(dest, c::Real) = convert(real(eltype(dest)), c)
+_coefficient(dest, c::Number) = convert(eltype(dest), c)
+
+@inline function _store_fast!(dest, src, α, β, th)
     if iszero(β)
         if isone(α)
-            @.. thread = Th dest = identity(src)
+            @.. thread = th dest = identity(src)
         else
-            @.. thread = Th dest = α * src
+            @.. thread = th dest = α * src
         end
     elseif isone(α)
-        @.. thread = Th dest = src + β * dest
+        @.. thread = th dest = src + β * dest
     else
-        @.. thread = Th dest = α * src + β * dest
+        @.. thread = th dest = α * src + β * dest
     end
     return dest
 end
@@ -119,7 +133,8 @@ function _scale_output!(y, β::Number)
     if iszero(β)
         fill!(y, zero(eltype(y)))
     elseif !isone(β)
-        @.. y = β * y
+        b = _coefficient(y, β)
+        @.. y = b * y
     end
     return y
 end
