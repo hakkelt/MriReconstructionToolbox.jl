@@ -177,6 +177,48 @@ function mul!(
     return y
 end
 
+# The same slabs as the 3-argument kernels, each written as `α * difference + β * y`.
+function mul!(
+        y::AbstractArray, L::FiniteDiff{N, D, T, S, Th}, b::AbstractArray, α::Number, β::Number
+    ) where {N, D, T, S, Th}
+    check(y, L, b)
+    pre, n, post = _finitediff_slabs(L.dim_in, Val(D))
+    m = pre * (n - 1)
+    ahead, behind, cols = (pre + 1):(pre + m), 1:m, 1:post
+    if Th && post == 1
+        Bv, Yv = _slab_view(b, (pre * n,)), _slab_view(y, (m,))
+        _store!(Yv, Broadcast.broadcasted(-, view(Bv, ahead), view(Bv, behind)), α, β, Val(true))
+    else
+        B, Y = _slab_view(b, (pre * n, post)), _slab_view(y, (m, post))
+        _store!(Y, Broadcast.broadcasted(-, view(B, ahead, cols), view(B, behind, cols)), α, β, Val(Th))
+    end
+    return y
+end
+
+function mul!(
+        y::AbstractArray, L::AdjointOperator{<:FiniteDiff{N, D, T, S, Th}}, b::AbstractArray, α::Number, β::Number
+    ) where {N, D, T, S, Th}
+    check(y, L, b)
+    pre, n, post = _finitediff_slabs(L.A.dim_in, Val(D))
+    m = pre * (n - 1)
+    top, middle, bottom = 1:pre, (pre + 1):m, (m + 1):(m + pre)
+    middle_behind, bottom_in, cols = 1:(m - pre), (m - pre + 1):m, 1:post
+    Y, B = _slab_view(y, (pre * n, post)), _slab_view(b, (m, post))
+    _store!(view(Y, top, cols), Broadcast.broadcasted(-, view(B, top, cols)), α, β)
+    if n > 2
+        if Th && post == 1
+            Yv, Bv = _slab_view(y, (pre * n,)), _slab_view(b, (m,))
+            rhs = Broadcast.broadcasted(-, view(Bv, middle_behind), view(Bv, middle))
+            _store!(view(Yv, middle), rhs, α, β, Val(true))
+        else
+            rhs = Broadcast.broadcasted(-, view(B, middle_behind, cols), view(B, middle, cols))
+            _store!(view(Y, middle, cols), rhs, α, β, Val(Th))
+        end
+    end
+    _store!(view(Y, bottom, cols), view(B, bottom_in, cols), α, β)
+    return y
+end
+
 # Properties
 
 domain_type(::FiniteDiff{<:Any, <:Any, T}) where {T} = T

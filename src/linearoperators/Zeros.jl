@@ -77,6 +77,11 @@ function mul!(y::AbstractArray, A::AdjointOperator{<:Zeros}, b::AbstractArray)
     return fill!(y, zero(domain_type(A.A)))
 end
 
+function mul!(y::AbstractArray, A::Union{Zeros, AdjointOperator{<:Zeros}}, b::AbstractArray, ::Number, β::Number)
+    check(y, A, b)
+    return _scale_output!(y, β)
+end
+
 # Properties
 
 domain_type(::Zeros{C, N, D, M}) where {C, N, D, M} = D

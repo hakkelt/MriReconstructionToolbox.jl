@@ -100,6 +100,20 @@ function mul!(y::AbstractArray, L::AdjointOperator{<:ZeroPad}, b::AbstractArray)
     return y
 end
 
+# The padding only scales `y` by `β`, so `y` is scaled as a whole and `b` added into the block
+# it occupies; both are broadcasts over ranges, so these serve device arrays as well.
+function mul!(y::AbstractArray, L::ZeroPad{N}, b::AbstractArray, α::Number, β::Number) where {N}
+    check(y, L, b)
+    _scale_output!(y, β)
+    _store!(view(y, ntuple(i -> 1:L.dim_in[i], Val(N))...), b, α, true)
+    return y
+end
+
+function mul!(y::AbstractArray, L::AdjointOperator{<:ZeroPad{N}}, b::AbstractArray, α::Number, β::Number) where {N}
+    check(y, L, b)
+    return _store!(y, view(b, ntuple(i -> 1:L.A.dim_in[i], Val(N))...), α, β)
+end
+
 function get_normal_op(L::ZeroPad{N, T, S}) where {N, T, S}
     return Eye(domain_type(L), size(L, 2); array_type = S)
 end

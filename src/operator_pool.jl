@@ -54,15 +54,23 @@ size if there is one, otherwise `allocate_in_codomain(L)`.
 function _pooled_codomain_buffer(L::AbstractOperator)
     pool = _active_pool()
     if pool !== nothing && codomain_array_type(L) <: Array
-        T = codomain_type(L)
-        sz = size(L, 1)
-        buf = @lock pool.lock begin
-            i = findfirst(b -> eltype(b) === T && size(b) == sz, pool.buffers)
-            i === nothing ? nothing : popat!(pool.buffers, i)
-        end
+        buf = @lock pool.lock _take_buffer!(pool.buffers, Array{codomain_type(L), length(size(L, 1))}, size(L, 1))
         buf === nothing || return buf
     end
     return allocate_in_codomain(L)
+end
+
+# Removes and returns the first array of type `B` and size `sz`, or `nothing`. The type test comes
+# first, so `size` is called on a concrete type and the search allocates nothing.
+function _take_buffer!(buffers::Vector{Array}, ::Type{B}, sz) where {B}
+    for i in eachindex(buffers)
+        b = buffers[i]
+        if b isa B && size(b) == sz
+            deleteat!(buffers, i)
+            return b
+        end
+    end
+    return nothing
 end
 
 """

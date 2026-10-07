@@ -74,6 +74,25 @@ function mul!(y::AbstractArray, L::AdjointOperator{<:LMatrixOp}, Y::AbstractMatr
     end
 end
 
+function mul!(y::AbstractArray, L::LMatrixOp, X::AbstractArray, α::Number, β::Number)
+    check(y, L, X)
+    return _with_blas_threading(L.threaded) do
+        mul!(y, X, L.b, α, β)
+    end
+end
+
+function mul!(y::AbstractArray, L::AdjointOperator{<:LMatrixOp}, Y::AbstractVector, α::Number, β::Number)
+    check(y, L, Y)
+    return _store!(y, Broadcast.broadcasted(*, L.A.bt, Y), α, β)
+end
+
+function mul!(y::AbstractArray, L::AdjointOperator{<:LMatrixOp}, Y::AbstractMatrix, α::Number, β::Number)
+    check(y, L, Y)
+    return _with_blas_threading(L.A.threaded) do
+        mul!(y, Y, L.A.b', α, β)
+    end
+end
+
 # Properties
 domain_type(::LMatrixOp{T}) where {T} = T
 codomain_type(::LMatrixOp{T}) where {T} = T

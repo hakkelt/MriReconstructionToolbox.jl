@@ -79,8 +79,7 @@ function mul!(y::AbstractArray, J::AdjointOperator{<:HadamardProdJac}, b::Abstra
     J.A.bufA .*= b
     mul!(y, J.A.B', J.A.bufA)
     J.A.bufB .*= b
-    mul!(J.A.bufD, J.A.A', J.A.bufB)
-    y .+= J.A.bufD
+    add_mul!(y, J.A.A', J.A.bufB, J.A.bufD)
     return y
 end
 

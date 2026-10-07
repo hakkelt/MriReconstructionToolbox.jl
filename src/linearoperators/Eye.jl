@@ -55,6 +55,11 @@ function mul!(y::AbstractArray, L::Eye, b::AbstractArray)
     return y
 end
 
+function mul!(y::AbstractArray, L::Eye, b::AbstractArray, α::Number, β::Number)
+    check(y, L, b)
+    return _store!(y, b, α, β)
+end
+
 # Properties
 # In the operator's own real element type, not `Float64`: these values are consumed as a
 # scaling (`ProximalOperators.Precompose`'s `mu`, say), and a `Float64` handed to a `Float32`

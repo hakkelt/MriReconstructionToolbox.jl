@@ -78,29 +78,48 @@ function _copy_operator_impl(L::AdjointOperator; storage_type = nothing, threade
 end
 
 """
-	add_mul!(y, L::AdjointOperator, b, buf)
+	add_mul!(y, L::AbstractOperator, b, buf, α = true, β = true)
 
-`y .+= L * b`. The generic path writes `L * b` into `buf` and adds, which costs two full passes
-over `y` per call; an operator that can accumulate into `y` directly specializes this method and
-ignores `buf` (`GetIndex` does). Internal, not exported, but the specialization point is part of
-the operator contract: `VCAT`'s adjoint sums its blocks' adjoints through it, so a stack of `N`
-blocks that each touch a small, disjoint part of the domain — a per-frame `GetIndex` stack, say —
-is quadratic in `N` without a specialization and linear with one. Measured on a `128×128×T`
-domain with one `GetIndex` per frame, adjoint wall time went 0.81 → 0.13 ms at `T = 4` and
-162.6 → 2.9 ms at `T = 64`.
+`y = α * (L * b) + β * y`, with `buf`, an array of the codomain of `L`, as the place where
+`L * b` may be written: the generic method writes it there and combines it with `y` in a second
+pass. An operator whose 5-argument `mul!` accumulates into `y` directly uses that and ignores
+`buf`.
+
+Internal, not exported. The combinators sum their blocks through it: `VCAT`'s adjoint does, so a
+stack of `N` blocks that each touch a small, disjoint part of the domain — a per-frame `GetIndex`
+stack, say — is quadratic in `N` without an accumulating block and linear with one. Measured on a
+`128×128×T` domain with one `GetIndex` per frame, adjoint wall time went 0.81 → 0.13 ms at
+`T = 4` and 162.6 → 2.9 ms at `T = 64`.
 """
-function add_mul!(y::AbstractArray, L::AdjointOperator, b, buf::AbstractArray)
+function add_mul!(y::AbstractArray, L::AbstractOperator, b, buf::AbstractArray, α::Number = true, β::Number = true)
     mul!(buf, L, b)
-    y .+= buf
-    return y
+    return _store!(y, buf, α, β)
 end
 
-# `H.A[i]'` is not always an `AdjointOperator`: a self-adjoint operator short-circuits its own
-# `AdjointOperator` constructor back to itself (`Eye`, `NormalGetIndex`) or unwraps a double
-# adjoint, so `VCAT`'s adjoint loop can hand `add_mul!` a bare operator of any type. This is the
-# same buffer-and-add body as the `AdjointOperator` method above, as a fallback for that case.
-function add_mul!(y::AbstractArray, L::AbstractOperator, b, buf::AbstractArray)
-    mul!(buf, L, b)
-    y .+= buf
+# `dest = α * src + β * dest`, for `src` an array or a lazy `Broadcasted`, in one pass and on
+# `Th` threads; `dest` is not read when `β` is zero. A same-shape `Array` broadcast runs over the
+# flat arrays, so a small leading dimension does not shorten the innermost loop.
+@inline function _store!(dest, src, α::Number, β::Number, ::Val{Th} = Val(false)) where {Th}
+    if iszero(β)
+        if isone(α)
+            @.. thread = Th dest = identity(src)
+        else
+            @.. thread = Th dest = α * src
+        end
+    elseif isone(α)
+        @.. thread = Th dest = src + β * dest
+    else
+        @.. thread = Th dest = α * src + β * dest
+    end
+    return dest
+end
+
+# `y = β * y`; `y` is not read when `β` is zero.
+function _scale_output!(y, β::Number)
+    if iszero(β)
+        fill!(y, zero(eltype(y)))
+    elseif !isone(β)
+        @.. y = β * y
+    end
     return y
 end

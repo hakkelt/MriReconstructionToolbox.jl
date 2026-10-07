@@ -189,6 +189,10 @@ All custom operators must implement:
 
 Beyond the mandatory functions, you can optionally define various properties and traits to enable optimizations and provide additional information about your operator. These include:
 
+- **Accumulating multiplication**: `mul!(y, L::YourOperator, x, α, β)`, computing
+  `y = α * (L * x) + β * y` in one pass and not reading `y` when `β` is zero. Without it the
+  generic method computes `L * x` and combines it with `y` in a second pass, using a temporary
+  array when `β` is not zero.
 - **Thread safety**: `is_thread_safe(L::YourOperator) = true`
 - **Storage types**: `domain_array_type`, `codomain_array_type`
 - **Algebraic properties**: `is_diagonal`, `is_symmetric`, `is_invertible`, etc.

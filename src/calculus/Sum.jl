@@ -113,14 +113,12 @@ end
 
 # Mappings
 
+# Every term after the first adds into `y`, through the buffer only when it cannot accumulate by
+# itself; in the 5-argument form the first term applies `β`.
 @generated function mul!(y::AbstractArray, S::Sum{K}, b::AbstractArray) where {K}
     ex = :(mul!(y, S.A[1], b))
     for i in 2:K
-        ex = quote
-            $ex
-            mul!(S.bufC, S.A[$i], b)
-        end
-        ex = :($ex; y .+= S.bufC)
+        ex = :($ex; add_mul!(y, S.A[$i], b, S.bufC))
     end
     return ex = quote
         check(y, S, b)
@@ -132,11 +130,33 @@ end
 @generated function mul!(y::AbstractArray, A::AdjointOperator{<:Sum{K}}, b::AbstractArray) where {K}
     ex = :(S = A.A; mul!(y, S.A[1]', b))
     for i in 2:K
-        ex = quote
-            $ex
-            mul!(S.bufD, S.A[$i]', b)
-        end
-        ex = :($ex; y .+= S.bufD)
+        ex = :($ex; add_mul!(y, S.A[$i]', b, S.bufD))
+    end
+    return ex = quote
+        check(y, A, b)
+        $ex
+        return y
+    end
+end
+
+@generated function mul!(y::AbstractArray, S::Sum{K}, b::AbstractArray, α::Number, β::Number) where {K}
+    ex = :(add_mul!(y, S.A[1], b, S.bufC, α, β))
+    for i in 2:K
+        ex = :($ex; add_mul!(y, S.A[$i], b, S.bufC, α, true))
+    end
+    return ex = quote
+        check(y, S, b)
+        $ex
+        return y
+    end
+end
+
+@generated function mul!(
+        y::AbstractArray, A::AdjointOperator{<:Sum{K}}, b::AbstractArray, α::Number, β::Number
+    ) where {K}
+    ex = :(S = A.A; add_mul!(y, S.A[1]', b, S.bufD, α, β))
+    for i in 2:K
+        ex = :($ex; add_mul!(y, S.A[$i]', b, S.bufD, α, true))
     end
     return ex = quote
         check(y, A, b)

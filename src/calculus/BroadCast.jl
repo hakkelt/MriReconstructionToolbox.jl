@@ -309,11 +309,11 @@ function mul!(y, A::AdjointOperator{<:OperatorBroadCast{T, N, M, false}}, b) whe
         if size(b_slice) != size(R.A, 1)
             b_slice = reshape(b_slice, size(R.A, 1))
         end
-        mul!(R.bufD, R.A', b_slice)
         if idx == first(R.idxs)
+            mul!(R.bufD, R.A', b_slice)
             y .= R.bufD
         else
-            y .+= R.bufD
+            add_mul!(y, R.A', b_slice, R.bufD)
         end
     end
     return y
@@ -337,7 +337,7 @@ function mul!(y, A::AdjointOperator{<:OperatorBroadCast{T, N, M, true}}, b) wher
                 b_slice = reshape(b_slice, size(R.A[t], 1))
             end
             mul!(R.bufD[t], R.A[t]', b_slice)
-            @lock lock y .+= R.bufD[t]
+            @lock lock _store!(y, R.bufD[t], true, true)
         end
     end
     return y

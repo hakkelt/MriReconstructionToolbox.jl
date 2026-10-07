@@ -157,13 +157,36 @@ function mul!(y::AbstractArray, L::AdjointOperator{<:GetIndex}, b::AbstractArray
     return y
 end
 
-# Additive adjoint: touch only the selected samples instead of writing a full-domain buffer and
-# adding it. Gather-add-scatter rather than a broadcast into a `view`, so the index forms this
-# operator accepts on a GPU backend stay exactly the ones `mul!` above accepts (`view` with a
-# Bool mask or an integer vector is not universally supported). `buf` is unused.
-function add_mul!(y::AbstractArray, L::AdjointOperator{<:GetIndex}, b::AbstractArray, ::AbstractArray)
+# The selected samples in the order the 3-argument kernels visit them, read through a `view`.
+function mul!(y::AbstractArray, L::GetIndex, b::AbstractArray, α::Number, β::Number)
     check(y, L, b)
-    @inbounds setindex!(y, getindex(y, L.A.idx...) .+ b, L.A.idx...)
+    src = view(b, L.idx...)
+    k = 0
+    if iszero(β)
+        @inbounds for v in src
+            k += 1
+            y[k] = α * v
+        end
+    else
+        @inbounds for v in src
+            k += 1
+            y[k] = α * v + β * y[k]
+        end
+    end
+    return y
+end
+
+# Additive adjoint: touch only the selected samples instead of writing a full-domain buffer and
+# adding it. A sample selected more than once receives the sum of its entries of `b`.
+function mul!(y::AbstractArray, L::AdjointOperator{<:GetIndex}, b::AbstractArray, α::Number, β::Number)
+    check(y, L, b)
+    _scale_output!(y, β)
+    dst = view(y, L.A.idx...)
+    k = 0
+    @inbounds for j in eachindex(dst)
+        k += 1
+        dst[j] += α * b[k]
+    end
     return y
 end
 

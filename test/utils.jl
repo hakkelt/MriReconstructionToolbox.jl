@@ -91,7 +91,25 @@
         assert_cpu_approx(Acy, Acy2)
         assert_adjoint_invariant(x, Ax2, y, Acy2)
 
+        assert_accumulating_mul(A, x, Ax)
+        assert_accumulating_mul(At, y, Acy)
+
         return Ax
+    end
+
+    # `mul!(y, A, x, α, β)` against `α * (A * x) + β * y`; with `β = false` the `NaN`s in `y`
+    # must not reach the result.
+    function assert_accumulating_mul(A::AbstractOperator, x, Ax)
+        α, β = 0.7, -1.3
+        y0 = similar(Ax)
+        y0 .= 0.25 .* Ax .+ 1
+        y = copy(y0)
+        mul!(y, A, x, α, β)
+        assert_cpu_approx(y, α .* Ax .+ β .* y0)
+        fill!(y, NaN)
+        mul!(y, A, x, α, false)
+        assert_cpu_approx(y, α .* Ax)
+        return nothing
     end
 
     ########### Test for NonLinearOperators

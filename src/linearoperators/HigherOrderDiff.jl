@@ -178,6 +178,73 @@ function _hod_tap!(dest, src, c, accumulate::Bool, ::Val{Th}) where {Th}
     return dest
 end
 
+# The stencil of `_hod_stencil!` as a lazy broadcast, with the taps summed in the same order.
+@generated function _hod_rhs(src, rows::NTuple{M, UnitRange{Int}}, cols) where {M}
+    K = M - 1
+    tap(j) = cols === Nothing ? :(view(src, rows[$(j + 1)])) : :(view(src, rows[$(j + 1)], cols))
+    term(j) = abs(_hod_coef(K, j)) == 1 ? tap(j) : :(Broadcast.broadcasted(*, $(abs(_hod_coef(K, j))), $(tap(j))))
+    rhs = term(K)
+    for j in (K - 1):-1:0
+        op = _hod_coef(K, j) > 0 ? :+ : :-
+        rhs = :(Broadcast.broadcasted($op, $rhs, $(term(j))))
+    end
+    return rhs
+end
+
+function mul!(
+        y::AbstractArray, L::HigherOrderDiff{N, D, K, T, S, Th}, b::AbstractArray, α::Number, β::Number
+    ) where {N, D, K, T, S, Th}
+    check(y, L, b)
+    pre, n, post = _finitediff_slabs(L.dim_in, Val(D))
+    m = pre * (n - K)
+    rows = ntuple(j -> ((j - 1) * pre + 1):((j - 1) * pre + m), Val(K + 1))
+    if Th && post == 1
+        _store!(_slab_view(y, (m,)), _hod_rhs(_slab_view(b, (pre * n,)), rows, nothing), α, β, Val(true))
+    else
+        _store!(_slab_view(y, (m, post)), _hod_rhs(_slab_view(b, (pre * n, post)), rows, 1:post), α, β, Val(Th))
+    end
+    return y
+end
+
+# The rows of the 3-argument adjoint, each written as `α * stencil + β * y`; a boundary row's
+# first tap applies `β`, the further ones add to it.
+function mul!(
+        y::AbstractArray, L::AdjointOperator{<:HigherOrderDiff{N, D, K, T, S, Th}}, b::AbstractArray,
+        α::Number, β::Number
+    ) where {N, D, K, T, S, Th}
+    check(y, L, b)
+    pre, n, post = _finitediff_slabs(L.A.dim_in, Val(D))
+    nout = n - K
+    cols = 1:post
+    vectors = Th && post == 1
+    Y, B = _slab_view(y, (pre * n, post)), _slab_view(b, (pre * nout, post))
+    Yv, Bv = _slab_view(y, (length(y),)), _slab_view(b, (length(b),))
+    if nout > K
+        rows = ntuple(j -> ((K - j + 1) * pre + 1):((nout - j + 1) * pre), Val(K + 1))
+        interior = (K * pre + 1):(nout * pre)
+        if vectors
+            _store!(view(Yv, interior), _hod_rhs(Bv, rows, nothing), α, β, Val(true))
+        else
+            _store!(view(Y, interior, cols), _hod_rhs(B, rows, cols), α, β, Val(Th))
+        end
+    end
+    for r in Iterators.flatten((0:(K - 1), max(K, nout):(n - 1)))
+        out = (r * pre + 1):((r + 1) * pre)
+        jlo, jhi = max(0, r - nout + 1), min(K, r)
+        for j in jhi:-1:jlo
+            tap = ((r - j) * pre + 1):((r - j + 1) * pre)
+            c = _hod_coef(K, j)
+            βj = j < jhi ? one(β) : β
+            if vectors
+                _store!(view(Yv, out), Broadcast.broadcasted(*, c, view(Bv, tap)), α, βj, Val(true))
+            else
+                _store!(view(Y, out, cols), Broadcast.broadcasted(*, c, view(B, tap, cols)), α, βj, Val(Th))
+            end
+        end
+    end
+    return y
+end
+
 # Properties
 
 domain_type(::HigherOrderDiff{N, D, K, T}) where {N, D, K, T} = T
