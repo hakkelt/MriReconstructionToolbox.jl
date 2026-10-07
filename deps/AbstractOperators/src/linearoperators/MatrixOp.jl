@@ -169,6 +169,50 @@ function mul!(y::AbstractArray, L::AdjointOperator{<:MatrixOp{D, T, M, 1, <:Any,
     return y .= real.(yc)
 end
 
+function mul!(y::AbstractArray, L::MatrixOp, b::AbstractArray, α::Number, β::Number)
+    check(y, L, b)
+    return _with_blas_threading(L.threaded) do
+        mul!(y, L.A, b, α, β)
+    end
+end
+function mul!(y::AbstractArray, L::MatrixOp{<:Any, <:Any, <:Any, 1}, b::AbstractArray, α::Number, β::Number)
+    return _with_blas_threading(L.threaded) do
+        mul!(y, L.A, b, α, β)
+    end
+end
+function mul!(y::AbstractArray, L::AdjointOperator{<:MatrixOp}, b::AbstractArray, α::Number, β::Number)
+    check(y, L, b)
+    return _with_blas_threading(L.A.threaded) do
+        mul!(y, L.A.A', b, α, β)
+    end
+end
+function mul!(
+        y::AbstractArray, L::AdjointOperator{<:MatrixOp{<:Any, <:Any, <:Any, 1}}, b::AbstractArray, α::Number, β::Number
+    )
+    return _with_blas_threading(L.A.threaded) do
+        mul!(y, L.A.A', b, α, β)
+    end
+end
+function mul!(
+        y::AbstractArray, L::AdjointOperator{<:MatrixOp{D, T}}, b::AbstractArray, α::Number, β::Number
+    ) where {D <: Real, T <: Complex}
+    check(y, L, b)
+    yc = similar(y, T, size(y))
+    _with_blas_threading(L.A.threaded) do
+        mul!(yc, L.A.A', b)
+    end
+    return _store!(y, Broadcast.broadcasted(real, yc), α, β)
+end
+function mul!(
+        y::AbstractArray, L::AdjointOperator{<:MatrixOp{D, T, M, 1, <:Any, <:Any}}, b::AbstractArray, α::Number, β::Number
+    ) where {D <: Real, T <: Complex, M}
+    yc = similar(y, T, size(y))
+    _with_blas_threading(L.A.threaded) do
+        mul!(yc, L.A.A', b)
+    end
+    return _store!(y, Broadcast.broadcasted(real, yc), α, β)
+end
+
 # Properties
 
 domain_type(::MatrixOp{D}) where {D} = D

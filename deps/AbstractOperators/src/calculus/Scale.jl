@@ -127,6 +127,16 @@ function mul!(y::Tuple, S::AdjointOperator{<:Scale{Th}}, x::AbstractArray) where
     return y
 end
 
+function mul!(y::AbstractArray, L::Scale, x::AbstractArray, α::Number, β::Number)
+    check(y, L, x)
+    return mul!(y, L.A, x, α * L.coeff, β)
+end
+
+function mul!(y::AbstractArray, S::AdjointOperator{<:Scale}, x::AbstractArray, α::Number, β::Number)
+    check(y, S, x)
+    return mul!(y, S.A.A', x, α * S.A.coeff_conj, β)
+end
+
 # Rebuilds a `Scale` around new coeffs/wrapped operator, preserving `S`'s own threading flag.
 _rethread_scale(::Scale{Th}, coeff, coeff_conj, A) where {Th} = Scale(coeff, coeff_conj, A; threaded = _fbbool(Th))
 

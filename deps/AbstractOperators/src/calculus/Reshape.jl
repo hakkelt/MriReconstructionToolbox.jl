@@ -53,6 +53,18 @@ function mul!(y::AbstractArray, A::AdjointOperator{<:Reshape}, b::AbstractArray)
     return mul!(y, R.A', b_res)
 end
 
+function mul!(y::AbstractArray, R::Reshape, b::AbstractArray, α::Number, β::Number)
+    check(y, R, b)
+    mul!(reshape(y, size(R.A, 1)), R.A, b, α, β)
+    return y
+end
+
+function mul!(y::AbstractArray, A::AdjointOperator{<:Reshape}, b::AbstractArray, α::Number, β::Number)
+    check(y, A, b)
+    R = A.A
+    return mul!(y, R.A', reshape(b, size(R.A, 1)), α, β)
+end
+
 has_optimized_normalop(R::Reshape) = true
 get_normal_op(R::Reshape) = get_normal_op(R.A)
 

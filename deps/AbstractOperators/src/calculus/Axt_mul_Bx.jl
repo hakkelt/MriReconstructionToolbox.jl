@@ -112,8 +112,7 @@ function mul!(y::AbstractArray, J::AdjointOperator{<:Axt_mul_BxJac{2}}, b::Abstr
     mul!(J.A.bufC, J.A.bufB, b')
     mul!(y, J.A.A', J.A.bufC)
     mul!(J.A.bufB, J.A.bufA, b)
-    mul!(J.A.bufD, J.A.B', J.A.bufB)
-    y .+= J.A.bufD
+    add_mul!(y, J.A.B', J.A.bufB, J.A.bufD)
     return y
 end
 

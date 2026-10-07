@@ -108,6 +108,24 @@ _pw_steps(L::AdjointOperator{<:DiagOp}) = (PwConjLeftMul{codomain_type(L)}(L.A.d
 _pw_steps(L::AdjointOperator{<:DiagOp{<:Any, <:Real, <:Complex}}) =
     (PwRealConjLeftMul{codomain_type(L)}(L.A.d),)
 
+function mul!(y::AbstractArray, L::DiagOp{B}, b::AbstractArray, α::Number, β::Number) where {B}
+    check(y, L, b)
+    return _store!(y, Broadcast.broadcasted(*, L.d, b), α, β, Val(B))
+end
+
+function mul!(y::AbstractArray, L::AdjointOperator{<:DiagOp{B}}, b::AbstractArray, α::Number, β::Number) where {B}
+    check(y, L, b)
+    return _store!(y, Broadcast.broadcasted(*, Broadcast.broadcasted(conj, L.A.d), b), α, β, Val(B))
+end
+
+function mul!(
+        y::AbstractArray, L::AdjointOperator{<:DiagOp{B, <:Real, <:Complex}}, b::AbstractArray, α::Number, β::Number
+    ) where {B}
+    check(y, L, b)
+    rhs = Broadcast.broadcasted(real, Broadcast.broadcasted(*, Broadcast.broadcasted(conj, L.A.d), b))
+    return _store!(y, rhs, α, β, Val(B))
+end
+
 # Transformations (we'll see about this)
 # inv(L::DiagOp) = DiagOp(L.domain_type, L.dim_in, (L.d).^(-1))
 

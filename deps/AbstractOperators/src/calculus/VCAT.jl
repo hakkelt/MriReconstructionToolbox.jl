@@ -124,6 +124,17 @@ VCAT(A::AbstractOperator) = A
     return ex
 end
 
+# Every block owns its part of `y`, so each accumulates there by itself.
+@generated function mul!(
+        y::ArrayPartition, H::VCAT{N}, b::AbstractArray, α::Number, β::Number
+    ) where {N}
+    ex = :(check(y, H, b))
+    for i in 1:N
+        ex = :($ex; mul!(y.x[H.idxs[$i]], H.A[$i], b, α, β))
+    end
+    return :($ex; return y)
+end
+
 # Threaded forward. As in DCAT, the parallel loop cannot live in a `@generated` body (those
 # must be pure, and the threading macros expand to closures), so only the single-block call
 # is generated and selected by `Val(i)`.
@@ -161,6 +172,17 @@ end
     end
     ex = :($ex; return y)
     return ex
+end
+
+@generated function mul!(
+        y::AbstractArray, A::AdjointOperator{<:VCAT{N, L, P}}, b::ArrayPartition, α::Number, β::Number
+    ) where {N, L, P}
+    ex = :(check(y, A, b); H = A.A)
+    ex = :($ex; add_mul!(y, H.A[1]', b.x[H.idxs[1]], H.buf, α, β))
+    for i in 2:N
+        ex = :($ex; add_mul!(y, H.A[$i]', b.x[H.idxs[$i]], H.buf, α, true))
+    end
+    return :($ex; return y)
 end
 
 # Properties

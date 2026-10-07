@@ -213,6 +213,37 @@ function mul!(y::AbstractArray, L::AdjointOperator{<:Compose}, b::AbstractArray)
     return y
 end
 
+# The intermediate stages as in the 3-argument form; the last one accumulates into `y`.
+@generated function mul!(
+        y::AbstractArray, L::Compose{N, M, T1, T2}, b::AbstractArray, α::Number, β::Number
+    ) where {N, M, T1, T2}
+    ex = :(mul!(L.buf[1], L.A[1], b))
+    for i in 2:M
+        ex = :($ex; mul!(L.buf[$i], L.A[$i], L.buf[$(i - 1)]))
+    end
+    return quote
+        check(y, L, b)
+        $ex
+        mul!(y, L.A[N], L.buf[M], α, β)
+        return y
+    end
+end
+
+@generated function mul!(
+        y::AbstractArray, L::AdjointOperator{Compose{N, M, T1, T2}}, b::AbstractArray, α::Number, β::Number
+    ) where {N, M, T1, T2}
+    ex = :(mul!(L.A.buf[M], L.A.A[N]', b))
+    for i in M:-1:2
+        ex = :($ex; mul!(L.A.buf[$(i - 1)], L.A.A[$i]', L.A.buf[$i]))
+    end
+    return quote
+        check(y, L, b)
+        $ex
+        mul!(y, L.A.A[1]', L.A.buf[1], α, β)
+        return y
+    end
+end
+
 has_optimized_normalop(L::Compose) = has_optimized_normalop(L.A[end])
 function get_normal_op(L::Compose)
     if has_optimized_normalop(L.A[end])
