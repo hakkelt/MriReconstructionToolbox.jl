@@ -176,11 +176,6 @@ parent = "fix/compose-getindex-multivar"
 pr = "hakkelt/AbstractOperators.jl#19"
 
 [[AbstractOperators.stack]]
-branch = "perf/vcat-additive-adjoint"
-parent = "fix/compose-getindex-multivar"
-pr = "hakkelt/AbstractOperators.jl#22"
-
-[[AbstractOperators.stack]]
 branch = "fix/spreadingbatchop-normal-op-size"
 parent = "fix/compose-getindex-multivar"
 pr = "hakkelt/AbstractOperators.jl#23"
@@ -254,13 +249,6 @@ pr = ""
 # is frozen, so this is a branch of its own stacked on it.
 [[AbstractOperators.stack]]
 branch = "perf/dft-threaded-scaling"
-parent = "unified-threading"
-pr = ""
-
-# OperatorPool: operators built one after another reuse Compose buffers and DFT plans. Touches
-# Compose and the DFT constructor, both owned by the frozen `unified-threading`.
-[[AbstractOperators.stack]]
-branch = "perf/operator-pool"
 parent = "unified-threading"
 pr = ""
 
@@ -387,6 +375,36 @@ pr = "hakkelt/AbstractOperators.jl#40"
 branch = "feat/higher-order-diff"
 parent = "perf/finitediff-slab-kernels"
 pr = "hakkelt/AbstractOperators.jl#41"
+
+# VCAT's adjoint sums its blocks through `add_mul!`, which GetIndex specialises. Rebased onto
+# `feat/higher-order-diff` (from `fix/compose-getindex-multivar`) so the accumulating `mul!`
+# below can build on it, the slab kernels and the pool in one line of descent.
+[[AbstractOperators.stack]]
+branch = "perf/vcat-additive-adjoint"
+parent = "feat/higher-order-diff"
+pr = "hakkelt/AbstractOperators.jl#22"
+
+# OperatorPool: operators built one after another reuse Compose buffers and DFT plans. Touches
+# Compose and the DFT constructor, both owned by the frozen `unified-threading`. Rebased onto
+# `perf/vcat-additive-adjoint` for the same reason.
+[[AbstractOperators.stack]]
+branch = "perf/operator-pool"
+parent = "perf/vcat-additive-adjoint"
+pr = ""
+
+# LinearAlgebra's 5-argument `mul!(y, L, x, α, β)` for every operator: one pass for the
+# elementwise and indexing kernels, the pool's arrays for the rest; `add_mul!` generalised.
+[[AbstractOperators.stack]]
+branch = "feat/accumulating-mul"
+parent = "perf/operator-pool"
+pr = "hakkelt/AbstractOperators.jl#42"
+
+# HCAT, Sum, the VCAT adjoint, BroadCast and the Jacobians add their blocks through `add_mul!`
+# instead of a buffer and a second pass; 5-argument `mul!` for the combinators.
+[[AbstractOperators.stack]]
+branch = "perf/combinators-accumulate"
+parent = "feat/accumulating-mul"
+pr = "hakkelt/AbstractOperators.jl#43"
 
 [ProximalOperators]
 fork = "https://github.com/hakkelt/ProximalOperators.jl.git"
