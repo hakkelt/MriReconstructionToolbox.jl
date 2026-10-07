@@ -62,6 +62,30 @@ using ProximalAlgorithms
         @test x0 == x0_backup
     end
 
+    @testset "ChambollePock" begin
+        # g = ½‖Ax - b‖² is mf-strongly convex, h = λ‖·‖₁ with L = I
+        for mg in (zero(T), mf)
+            solver = ProximalAlgorithms.ChambollePock(tol = TOL, maxit = 100_000, mg = mg)
+            (x, y), it = @inferred solver(x0 = x0, g = fA_prox, h = g, L = I, normL = T(1))
+            @test eltype(x) == T
+            @test norm(x - x_star) <= 10 * TOL
+            @test it < 100_000
+            @test x0 == x0_backup
+        end
+
+        # The accelerated variant rescales an array dual step on a copy of its own, and an array of
+        # equal entries gives the iterates of the scalar step.
+        sigma = fill(T(0.49), dim)
+        sigma_backup = copy(sigma)
+        solve(sigma) = ProximalAlgorithms.ChambollePock(tol = T(0), maxit = 300, mg = mf)(
+            x0 = x0, g = fA_prox, h = g, L = I, normL = T(1), tau = T(0.49), sigma = sigma,
+        )
+        (x_array, _), _ = solve(sigma)
+        (x_scalar, _), _ = solve(T(0.49))
+        @test sigma == sigma_backup
+        @test x_array ≈ x_scalar
+    end
+
     @testset "ForwardBackward" begin
         solver = ProximalAlgorithms.ForwardBackward(tol = TOL)
         y, it = solver(x0 = x0, f = fA_autodiff, g = g, Lf = Lf)

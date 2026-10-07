@@ -94,6 +94,7 @@ import ProximalAlgorithms:
             nothing,     # y0
             nothing,     # z0
             penalty_seq,  # penalty_sequence
+            false,       # threaded
         )
     end
 
