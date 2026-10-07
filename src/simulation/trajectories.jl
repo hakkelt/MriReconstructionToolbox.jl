@@ -366,13 +366,13 @@ repulsion between samples, both with the kernel `|x - y|` — and projects every
 constraints: it starts on `k = 0`, moves at most `max_step` between samples (gradient amplitude),
 and its step changes by at most `max_curvature` between samples (slew rate), all in the normalized
 units of the trajectory. The gradient comes from a particle-mesh evaluation on a `grid_size^ndims`
-grid (the two densities are deposited by cloud-in-cell and convolved with the kernel's gradient by
-FFT), so an iteration costs `O(nshots · nsamples + grid_size^ndims log grid_size)`. The projection
+grid: the two densities are deposited by cloud-in-cell and convolved with the kernel by FFT, and
+the resulting potential is differentiated through each sample's cloud-in-cell weights, which makes
+it the exact gradient of the energy on the mesh. An iteration costs `O(nshots · nsamples + grid_size^ndims log grid_size)`. The projection
 is the Euclidean one of the paper, solved approximately by a fixed number of primal-dual steps; a
 final tracking pass along each shot makes the result satisfy the constraints exactly.
 
-With `threaded = true` the projection of the shots and the interpolation of the gradient at the
-samples are split over Julia's threads, and the mesh FFTs use FFTW's threads once the mesh is large
+With `threaded = true` the projection of the shots and the gradient at the samples are split over Julia's threads, and the mesh FFTs use FFTW's threads once the mesh is large
 enough for them to pay. Each shot and each sample is computed exactly as in the serial loop, so the
 result is deterministic and the same for every thread count.
 
@@ -445,18 +445,17 @@ function _sparkling_initial(nsamples::Int, nshots::Int, D::Int, extent, max_step
     return k
 end
 
-# The target density on the mesh nodes and the FFT of the kernel gradient `x/|x|`, on a grid padded
-# so the circular convolution equals the linear one for every pair of nodes, together with the FFT
-# plans and work arrays of the convolution.
+# The target density on the mesh nodes and the FFT of the kernel `|x|`, on a grid padded so the
+# circular convolution equals the linear one for every pair of nodes, together with the FFT plans and
+# work arrays of the convolution.
 struct _SparklingMesh{D, F, B}
     G::Int
     h::Float64
     target::Array{Float64, D}
-    kernel_hat::Vector{Array{ComplexF64, D}}
+    kernel_hat::Array{ComplexF64, D}
     diff::Array{Float64, D}
     diff_hat::Array{ComplexF64, D}
-    product_hat::Array{ComplexF64, D}
-    fields::Vector{Array{Float64, D}}
+    potential::Array{Float64, D}
     forward::F
     backward::B
 end
@@ -479,23 +478,18 @@ function _SparklingMesh(::Val{D}, G, extent, cutoff, decay; threaded::Bool = tru
     end
     target ./= sum(target)
     off(i) = (i <= cld(P, 2) ? i - 1 : i - 1 - P) * h
-    kernel_hat = map(1:D) do d
-        K = zeros(ntuple(_ -> P, D))
-        for I in CartesianIndices(K)
-            x = ntuple(e -> off(I[e]), D)
-            r = sqrt(sum(abs2, x))
-            K[I] = r > 0 ? x[d] / r : 0.0
-        end
-        FFTW.rfft(K)
+    K = zeros(ntuple(_ -> P, D))
+    for I in CartesianIndices(K)
+        K[I] = sqrt(sum(abs2, ntuple(e -> off(I[e]), D)))
     end
+    kernel_hat = FFTW.rfft(K)
     diff = similar(target)
-    diff_hat = similar(first(kernel_hat))
+    diff_hat = similar(kernel_hat)
     # `ESTIMATE` picks the same plan in every run, so the result does not depend on timings.
     num_threads = FFTWOperators._fftw_num_threads(:r2c, nothing, threaded, length(diff))
     forward = FFTW.plan_rfft(diff; flags = FFTW.ESTIMATE, num_threads)
     backward = FFTW.plan_irfft(diff_hat, P; flags = FFTW.ESTIMATE, num_threads)
-    fields = [similar(target) for _ in 1:D]
-    return _SparklingMesh(G, h, target, kernel_hat, diff, diff_hat, similar(diff_hat), fields, forward, backward)
+    return _SparklingMesh(G, h, target, kernel_hat, diff, diff_hat, similar(target), forward, backward)
 end
 
 # Cloud-in-cell corners of point `x` on the mesh: the node index and weight of each.
@@ -509,8 +503,10 @@ function _cic_corners(mesh::_SparklingMesh{D}, x) where {D}
     )
 end
 
-# The deposit stays serial: samples share mesh nodes, so splitting it would change the order of the
-# sums. The interpolation writes each sample's own column and is split over threads with `threaded`.
+# The gradient of the discretised energy: the potential `|x| * (target - samples)` on the mesh, from
+# one forward and one inverse FFT, differentiated through each sample's cloud-in-cell weights. The
+# deposit stays serial: samples share mesh nodes, so splitting it would change the order of the sums.
+# The derivative writes each sample's own column and is split over threads with `threaded`.
 function _sparkling_gradient!(g, mesh::_SparklingMesh{D}, pts::AbstractMatrix; threaded::Bool = true) where {D}
     M = size(pts, 2)
     copyto!(mesh.diff, mesh.target)
@@ -518,21 +514,35 @@ function _sparkling_gradient!(g, mesh::_SparklingMesh{D}, pts::AbstractMatrix; t
         mesh.diff[I] -= w / M
     end
     mul!(mesh.diff_hat, mesh.forward, mesh.diff)
-    for d in 1:D
-        @.. mesh.product_hat = mesh.diff_hat * mesh.kernel_hat[d]
-        mul!(mesh.fields[d], mesh.backward, mesh.product_hat)
-    end
-    fill!(g, 0)
+    @.. mesh.diff_hat = mesh.diff_hat * mesh.kernel_hat
+    mul!(mesh.potential, mesh.backward, mesh.diff_hat)
     nblocks = threaded ? min(capacity(), M) : 1
     @budgeted_threads threads = nblocks > 1 for b in 1:nblocks
-        _cic_interpolate!(g, mesh, pts, (div((b - 1) * M, nblocks) + 1):div(b * M, nblocks))
+        _cic_gradient!(g, mesh, pts, (div((b - 1) * M, nblocks) + 1):div(b * M, nblocks))
     end
     return g
 end
 
-function _cic_interpolate!(g, mesh::_SparklingMesh{D}, pts, samples) where {D}
-    for i in samples, (I, w) in _cic_corners(mesh, view(pts, :, i)), d in 1:D
-        g[d, i] += w * mesh.fields[d][I]
+# The derivative of the cloud-in-cell weight of corner `c` along axis `d` is `±1/h` times the weights
+# of the other axes.
+function _cic_gradient!(g, mesh::_SparklingMesh{D}, pts, samples) where {D}
+    ϕ = mesh.potential
+    corners = CartesianIndices(ntuple(_ -> 0:1, Val(D)))
+    @inbounds for i in samples
+        u = ntuple(d -> (pts[d, i] + 0.5) / mesh.h, Val(D))
+        i0 = ntuple(d -> clamp(floor(Int, u[d]), 0, mesh.G), Val(D))
+        f = ntuple(d -> u[d] - i0[d], Val(D))
+        for d in 1:D
+            s = 0.0
+            for c in corners
+                w = c[d] == 1 ? 1.0 : -1.0
+                for e in 1:D
+                    e == d || (w *= c[e] == 1 ? f[e] : 1 - f[e])
+                end
+                s += w * ϕ[CartesianIndex(ntuple(e -> i0[e] + c[e] + 1, Val(D)))]
+            end
+            g[d, i] = s / mesh.h
+        end
     end
     return g
 end
