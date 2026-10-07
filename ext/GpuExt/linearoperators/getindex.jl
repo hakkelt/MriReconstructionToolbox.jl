@@ -107,6 +107,7 @@ function mul!(
     check(y, Lc, b)
     AbstractOperators._scale_output!(y, β)
     dst = view(y, Lc.A.idx...)
-    dst .+= α .* b
+    a = AbstractOperators._coefficient(y, α)
+    dst .+= a .* b
     return y
 end

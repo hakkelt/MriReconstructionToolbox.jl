@@ -130,6 +130,16 @@
         randn(2, 3, 4),
     )
 
+    # Accumulating mul!: native methods and the generic one
+    @test_call target_modules = (AO,) mul!(y, Eye(n), x, 0.5, 2.0)
+    @test_call target_modules = (AO,) mul!(y, DiagOp(d), x, 0.5, false)
+    @test_call target_modules = (AO,) mul!(y, AdjointOperator(MatrixOp(M)), x, 0.5, 2.0)
+    @test_call target_modules = (AO,) mul!(zeros(n + m), ZeroPad((n,), (m,)), x, 0.5, 2.0)
+    @test_call target_modules = (AO,) mul!(x, AdjointOperator(GetIndex((n,), 1:m)), zeros(m), 0.5, 2.0)
+    @test_call target_modules = (AO,) mul!(zeros(n - 1), FiniteDiff((n,)), x, 0.5, 2.0)
+    @test_call target_modules = (AO,) mul!(x, AdjointOperator(HigherOrderDiff((n,), 1, 2)), zeros(n - 2), 0.5, 2.0)
+    @test_call target_modules = (AO,) mul!(zeros(9, 2), Variation(3, 3), randn(3, 3), 0.5, 2.0)
+
     # ── Exported utility functions ────────────────────────────────────────────
     @test_call target_modules = (AO,) update!(LBFGS(zeros(n), 3), randn(n), randn(n), randn(n), randn(n))
     @test_call target_modules = (AO,) reset!(LBFGS(zeros(n), 3))

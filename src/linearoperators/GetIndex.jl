@@ -161,16 +161,17 @@ end
 function mul!(y::AbstractArray, L::GetIndex, b::AbstractArray, α::Number, β::Number)
     check(y, L, b)
     src = view(b, L.idx...)
+    a, c = _coefficient(y, α), _coefficient(y, β)
     k = 0
-    if iszero(β)
+    if iszero(c)
         @inbounds for v in src
             k += 1
-            y[k] = α * v
+            y[k] = a * v
         end
     else
         @inbounds for v in src
             k += 1
-            y[k] = α * v + β * y[k]
+            y[k] = a * v + c * y[k]
         end
     end
     return y
@@ -182,10 +183,11 @@ function mul!(y::AbstractArray, L::AdjointOperator{<:GetIndex}, b::AbstractArray
     check(y, L, b)
     _scale_output!(y, β)
     dst = view(y, L.A.idx...)
+    a = _coefficient(y, α)
     k = 0
     @inbounds for j in eachindex(dst)
         k += 1
-        dst[j] += α * b[k]
+        dst[j] += a * b[k]
     end
     return y
 end

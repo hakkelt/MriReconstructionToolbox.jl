@@ -77,7 +77,7 @@ end
 function mul!(y::AbstractArray, L::LMatrixOp, X::AbstractArray, α::Number, β::Number)
     check(y, L, X)
     return _with_blas_threading(L.threaded) do
-        mul!(y, X, L.b, α, β)
+        mul!(y, X, L.b, _coefficient(y, α), _coefficient(y, β))
     end
 end
 
@@ -89,7 +89,7 @@ end
 function mul!(y::AbstractArray, L::AdjointOperator{<:LMatrixOp}, Y::AbstractMatrix, α::Number, β::Number)
     check(y, L, Y)
     return _with_blas_threading(L.A.threaded) do
-        mul!(y, Y, L.A.b', α, β)
+        mul!(y, Y, L.A.b', _coefficient(y, α), _coefficient(y, β))
     end
 end
 
