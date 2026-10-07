@@ -348,7 +348,8 @@ end
     sparkling_trajectory(nsamples::Int, nshots::Int;
         ndims::Int = 2, cutoff::Real = 0.1, decay::Real = 2,
         max_step::Real = max(extent/64, 2extent/nsamples), max_curvature::Real = max_step/10,
-        iterations::Int = 200, grid_size::Int = ndims == 2 ? 128 : 32, extent::Real = 0.5)
+        iterations::Int = 200, grid_size::Int = ndims == 2 ? 128 : 32, extent::Real = 0.5,
+        threaded::Bool = true)
     -> NamedDimsArray{(:coord, :sample, :shot)}
 
 SPARKLING trajectory (Spreading Projection Algorithm for Rapid K-space sampLING; Lazarus et al.,
@@ -368,8 +369,11 @@ units of the trajectory. The gradient comes from a particle-mesh evaluation on a
 grid (the two densities are deposited by cloud-in-cell and convolved with the kernel's gradient by
 FFT), so an iteration costs `O(nshots · nsamples + grid_size^ndims log grid_size)`. The projection
 is the Euclidean one of the paper, solved approximately by a fixed number of primal-dual steps; a
-final tracking pass along each shot makes the result satisfy the constraints exactly. The result
-is deterministic.
+final tracking pass along each shot makes the result satisfy the constraints exactly.
+
+With `threaded = true` the projection of the shots and the interpolation of the gradient at the
+samples are split over Julia's threads. Each shot and each sample is computed exactly as in the
+serial loop, so the result is deterministic and the same for every thread count.
 
 Returned as a `NamedDimsArray` with dimension names `(:coord, :sample, :shot)`.
 """
@@ -377,7 +381,7 @@ function sparkling_trajectory(
         nsamples::Int, nshots::Int;
         ndims::Int = 2, cutoff::Real = 0.1, decay::Real = 2, extent::Real = 0.5,
         max_step::Real = max(extent / 64, 2extent / nsamples), max_curvature::Real = max_step / 10,
-        iterations::Int = 200, grid_size::Int = ndims == 2 ? 128 : 32,
+        iterations::Int = 200, grid_size::Int = ndims == 2 ? 128 : 32, threaded::Bool = true,
     )
     @argcheck nsamples > 1 "nsamples must be > 1"
     @argcheck nshots > 0 "nshots must be positive"
@@ -398,12 +402,12 @@ function sparkling_trajectory(
     duals = (zeros(D, nsamples - 1, nshots), zeros(D, max(nsamples - 2, 0), nshots))
     g = similar(pts)
     for it in 1:iterations
-        _sparkling_gradient!(g, mesh, pts)
+        _sparkling_gradient!(g, mesh, pts; threaded)
         gmax = maximum(sqrt(sum(abs2, view(g, :, i))) for i in 1:M)
         gmax > 0 || break
         c = step0 * (1 - (it - 1) / iterations) / gmax
         @.. pts = pts - c * g
-        _sparkling_project!(k, duals, extent, max_step, max_curvature)
+        _sparkling_project!(k, duals, extent, max_step, max_curvature; threaded)
     end
     _sparkling_make_feasible!(k, extent, max_step, max_curvature)
     return NamedDimsArray{(:coord, :sample, :shot)}(Float32.(k))
@@ -501,7 +505,9 @@ function _cic_corners(mesh::_SparklingMesh{D}, x) where {D}
     )
 end
 
-function _sparkling_gradient!(g, mesh::_SparklingMesh{D}, pts::AbstractMatrix) where {D}
+# The deposit stays serial: samples share mesh nodes, so splitting it would change the order of the
+# sums. The interpolation writes each sample's own column and is split over threads with `threaded`.
+function _sparkling_gradient!(g, mesh::_SparklingMesh{D}, pts::AbstractMatrix; threaded::Bool = true) where {D}
     M = size(pts, 2)
     copyto!(mesh.diff, mesh.target)
     for i in 1:M, (I, w) in _cic_corners(mesh, view(pts, :, i))
@@ -513,7 +519,15 @@ function _sparkling_gradient!(g, mesh::_SparklingMesh{D}, pts::AbstractMatrix) w
         mul!(mesh.fields[d], mesh.backward, mesh.product_hat)
     end
     fill!(g, 0)
-    for i in 1:M, (I, w) in _cic_corners(mesh, view(pts, :, i)), d in 1:D
+    nblocks = threaded ? min(capacity(), M) : 1
+    @budgeted_threads threads = nblocks > 1 for b in 1:nblocks
+        _cic_interpolate!(g, mesh, pts, (div((b - 1) * M, nblocks) + 1):div(b * M, nblocks))
+    end
+    return g
+end
+
+function _cic_interpolate!(g, mesh::_SparklingMesh{D}, pts, samples) where {D}
+    for i in samples, (I, w) in _cic_corners(mesh, view(pts, :, i)), d in 1:D
         g[d, i] += w * mesh.fields[d][I]
     end
     return g
@@ -527,14 +541,26 @@ _clip(v, r) = (s = sqrt(sum(abs2, v)); s > r ? v .* (r / s) : v)
 # differences as the linear operator (`‖[Δ; Δ²]‖² ≤ 20`). The dual variables `duals` persist from
 # one call to the next: successive targets differ by one small gradient step, so the previous duals
 # are a close starting point and the approximation error does not accumulate over the iterations.
-function _sparkling_project!(k::Array{Float64, 3}, duals, extent, α, β)
-    D, n, nshots = size(k)
+# Shots are independent, so with `threaded` each thread projects a contiguous block of them with work
+# arrays of its own; every shot's arithmetic is the same as in the serial loop.
+function _sparkling_project!(k::Array{Float64, 3}, duals, extent, α, β; threaded::Bool = true)
+    nshots = size(k, 3)
+    nblocks = threaded ? min(capacity(), nshots) : 1
+    @budgeted_threads threads = nblocks > 1 for b in 1:nblocks
+        shots = (div((b - 1) * nshots, nblocks) + 1):div(b * nshots, nblocks)
+        _sparkling_project_shots!(k, duals, shots, extent, α, β)
+    end
+    return k
+end
+
+function _sparkling_project_shots!(k::Array{Float64, 3}, duals, shots, extent, α, β)
+    D, n, _ = size(k)
     x, x̄, xold, g = (similar(k, D, n) for _ in 1:4)
     # Columns `i + 1`, `i` and `i + 2` of `x̄` for `i` = 1, ..., n - 1 or n - 2, and the columns of `g`
     # the adjoint differences add into.
     x̄₊, x̄₀, x̄₊₊, x̄₊₋, x̄₀₋ = view(x̄, :, 2:n), view(x̄, :, 1:(n - 1)), view(x̄, :, 3:n), view(x̄, :, 2:(n - 1)), view(x̄, :, 1:(n - 2))
     g₊, g₀, g₊₊, g₊₋, g₀₋ = view(g, :, 2:n), view(g, :, 1:(n - 1)), view(g, :, 3:n), view(g, :, 2:(n - 1)), view(g, :, 1:(n - 2))
-    for s in 1:nshots
+    for s in shots
         p, y1, y2 = view(k, :, :, s), view(duals[1], :, :, s), view(duals[2], :, :, s)
         copyto!(x, p)
         copyto!(x̄, p)

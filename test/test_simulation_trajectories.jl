@@ -426,6 +426,7 @@ end
         @test step <= α * (1 + 1.0e-5)
         @test bend <= α / 10 * (1 + 1.0e-4)
         @test sparkling_trajectory(128, 12; iterations = 40) == traj
+        @test sparkling_trajectory(128, 12; iterations = 40, threaded = false) == traj
     end
 
     @testset "2D: iterations move the samples towards the target density" begin
