@@ -593,6 +593,20 @@ branch = "feat/smooth-line-search"
 parent = "master"
 pr = "hakkelt/ProximalAlgorithms.jl#7"
 
+# `ChambollePock(mg = μ)`: the accelerated iteration (Chambolle-Pock 2011, Algorithm 2) for a
+# μ-strongly convex `g`, and a stopping criterion in units of the initial steps.
+[[ProximalAlgorithms.stack]]
+branch = "feat/accelerated-chambolle-pock"
+parent = "feat/chambolle-pock-iteration"
+pr = "hakkelt/ProximalAlgorithms.jl#9"
+
+# The ADMM penalty-sequence test mock passes the `threaded` field `master` added. Test-only, so the
+# vendored copy does not change; listed so the fork has no unreferenced branch.
+[[ProximalAlgorithms.stack]]
+branch = "fix/admm-mock-threaded"
+parent = "master"
+pr = "hakkelt/ProximalAlgorithms.jl#10"
+
 # `pogm-algorithm` is deliberately absent: it added POGM as a `pogm::Bool` variant of
 # `FastForwardBackward`, and `master` (#100) supersedes it with a `src/algorithms/pogm.jl` of its
 # own. Merging it would only re-add the old path. The branch is still on the fork, unmerged.
