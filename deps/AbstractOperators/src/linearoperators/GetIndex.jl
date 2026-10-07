@@ -157,21 +157,29 @@ function mul!(y::AbstractArray, L::AdjointOperator{<:GetIndex}, b::AbstractArray
     return y
 end
 
-# The selected samples in the order the 3-argument kernels visit them, read through a `view`.
-function mul!(y::AbstractArray, L::GetIndex, b::AbstractArray, α::Number, β::Number)
+# The selected samples read through a `view`, which has the shape of `y`. A `view` through a mask
+# collects its indices, so a mask is walked as the 3-argument kernel does.
+function mul!(y::AbstractArray, L::GetIndex{I}, b::AbstractArray, α::Number, β::Number) where {I}
     check(y, L, b)
-    src = view(b, L.idx...)
+    I <: Tuple{AbstractArray{Bool}} && return _getindex_mask_mul!(y, L, b, α, β)
+    return _store!(y, view(b, L.idx...), α, β)
+end
+
+function _getindex_mask_mul!(y, L::GetIndex, b, α, β)
     a, c = _coefficient(y, α), _coefficient(y, β)
+    mask = L.idx[1]
     k = 0
     if iszero(c)
-        @inbounds for v in src
+        @inbounds for j in eachindex(IndexLinear(), mask)
+            mask[j] || continue
             k += 1
-            y[k] = a * v
+            y[k] = a * b[j]
         end
     else
-        @inbounds for v in src
+        @inbounds for j in eachindex(IndexLinear(), mask)
+            mask[j] || continue
             k += 1
-            y[k] = a * v + c * y[k]
+            y[k] = a * b[j] + c * y[k]
         end
     end
     return y
