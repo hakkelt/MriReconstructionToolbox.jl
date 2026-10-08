@@ -1,8 +1,8 @@
 @testitem "Signal model operator: TemporalBasis forward and adjoint" tags = [:encoding, :reconstruction] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: build_encoding_operator, signal_model_operator
+    using Ristretto
+    using Ristretto: build_encoding_operator, signal_model_operator
     using LinearAlgebra
     using NamedDims
 
@@ -17,7 +17,7 @@
     model = TemporalBasis(Φ; time_dim = :time)
     ℳ = signal_model_operator(model, acq)
     @test !isnothing(ℳ)
-    @test ℳ isa MriReconstructionToolbox.NamedDimsOp
+    @test ℳ isa Ristretto.NamedDimsOp
 
     # Check forward evaluation
     c = NamedDimsArray{(:x, :y, :coeff)}(randn(ComplexF32, Nx, Ny, K))
@@ -38,10 +38,10 @@
 end
 
 @testitem "build_encoding_operator with signal model" tags = [:encoding] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: build_encoding_operator, signal_model_operator
+    using Ristretto
+    using Ristretto: build_encoding_operator, signal_model_operator
     using LinearAlgebra
     using NamedDims
 
@@ -55,22 +55,21 @@ end
 
     method_nomodel = IterativeReconstruction()
     𝒜_nomodel = build_encoding_operator(acq, method_nomodel)
-    @test 𝒜_nomodel isa MriReconstructionToolbox.NamedDimsOp
+    @test 𝒜_nomodel isa Ristretto.NamedDimsOp
 
     method_model = IterativeReconstruction(signal_model = TemporalBasis(Φ; time_dim = :time))
     𝒜_model = build_encoding_operator(acq, method_model)
-    @test 𝒜_model isa MriReconstructionToolbox.NamedDimsOp
+    @test 𝒜_model isa Ristretto.NamedDimsOp
     @test dimnames(𝒜_model, 2) == (:x, :y, :coeff)
     @test dimnames(𝒜_model, 1) == (:kx, :ky, :time)
 end
 
 @testitem "KSpaceToImage signal model: dim queries and encoding operator" tags = [:encoding, :reconstruction] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: build_encoding_operator, signal_model_operator
+    using Ristretto
+    using Ristretto: build_encoding_operator, signal_model_operator
     using NamedDims
-    const MRT = MriReconstructionToolbox
 
     Nx, Ny, Nc = 8, 8, 4
     ksp = NamedDimsArray{(:kx, :ky, :coil)}(zeros(ComplexF32, Nx, Ny, Nc))
@@ -79,25 +78,25 @@ end
     @test KSpaceToImage().coil_combination === RootSumSquares()
 
     m_rss = IterativeReconstruction(signal_model = KSpaceToImage(RootSumSquares()))
-    @test MRT.variable_dims(m_rss, acq) == (:kx, :ky, :coil)
-    @test MRT.variable_size(m_rss, acq) == (Nx, Ny, Nc)
-    @test MRT.output_dims(m_rss, acq) == (:x, :y)
+    @test Ristretto.variable_dims(m_rss, acq) == (:kx, :ky, :coil)
+    @test Ristretto.variable_size(m_rss, acq) == (Nx, Ny, Nc)
+    @test Ristretto.output_dims(m_rss, acq) == (:x, :y)
 
     m_nocc = IterativeReconstruction(signal_model = KSpaceToImage(NoCoilCombination()))
-    @test MRT.output_dims(m_nocc, acq) == (:x, :y, :coil)
+    @test Ristretto.output_dims(m_nocc, acq) == (:x, :y, :coil)
 
     # Fully sampled ⇒ identity encoding operator (variable is k-space, no subsampling)
     𝒜 = build_encoding_operator(acq, m_rss)
-    @test 𝒜 isa MriReconstructionToolbox.NamedDimsOp
+    @test 𝒜 isa Ristretto.NamedDimsOp
     @test dimnames(𝒜, 1) == (:kx, :ky, :coil)
     @test dimnames(𝒜, 2) == (:kx, :ky, :coil)
 end
 
 @testitem "Subspace reconstruction with TemporalBasis identity and permutation" tags = [:reconstruction, :minimizer] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: build_encoding_operator, signal_model_operator
+    using Ristretto
+    using Ristretto: build_encoding_operator, signal_model_operator
     using LinearAlgebra
     using NamedDims
 
@@ -128,10 +127,10 @@ end
 end
 
 @testitem "Signal model: non-trailing time dimension" tags = [:reconstruction, :minimizer] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: build_encoding_operator, signal_model_operator
+    using Ristretto
+    using Ristretto: build_encoding_operator, signal_model_operator
     using LinearAlgebra
     using NamedDims
     using FFTW
@@ -152,7 +151,7 @@ end
         signal_model = TemporalBasis(Φ; time_dim = :time),   # not the last image dim
     )
     # 1. operator forward matches the manual Φ expansion along a non-trailing axis
-    op = MriReconstructionToolbox.signal_model_operator(method, acq)
+    op = Ristretto.signal_model_operator(method, acq)
     c = NamedDimsArray{(:x, :y, :coeff, :slice)}(randn(ComplexF64, Nx, Ny, K, Nsl))
     y = op * c
     man = similar(unname(c), Nx, Ny, Nt, Nsl)

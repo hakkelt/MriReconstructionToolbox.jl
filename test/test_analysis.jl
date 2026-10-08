@@ -1,7 +1,7 @@
 @testitem "Pseudo-replica analysis and g-factor maps" tags = [:reconstruction, :acquisition] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using LinearAlgebra
     using NamedDims
     using Random
@@ -33,9 +33,9 @@
 end
 
 @testitem "Subspace reconstruction: T2 decay simulation with TemporalBasis" tags = [:reconstruction, :simulation] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using LinearAlgebra
     using NamedDims
 
@@ -86,8 +86,8 @@ end
 
 @testitem "Pseudo-replica: non-Cartesian acquisition" tags = [:analysis, :nfft] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: NonCartesianAcquisitionInfo
 
     Nsamples, Nspokes, Nc = 48, 21, 4
     angles = range(0, π, length = Nspokes + 1)[1:Nspokes]

@@ -11,7 +11,7 @@ using TestItems
         x = rand(32, 32)
         reg = L1Contourlet(0.1; params = ContourletParams(J = 2, L_array = parabolic_levels(2)))
         op = get_operator(reg, x; threaded)
-        @test op isa MriReconstructionToolbox.StackedNSCTOp
+        @test op isa Ristretto.StackedNSCTOp
 
         result = op * x
         @test size(result, 1) == 32
@@ -59,7 +59,7 @@ using TestItems
         x = rand(32, 32)
         λ = 0.2
         reg = L1Contourlet(λ; params = ContourletParams(J = 2, L_array = parabolic_levels(2)))
-        result = MriReconstructionToolbox.calculate(reg, x; threaded)
+        result = Ristretto.calculate(reg, x; threaded)
         @test result isa Real
         @test result ≥ 0  # L1 norm is non-negative
 

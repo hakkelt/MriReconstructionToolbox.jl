@@ -16,7 +16,7 @@ using TestItems
         x = rand(5, 5)
         λ = 0.5
         reg = L2Image(λ)
-        result = MriReconstructionToolbox.calculate(reg, x; threaded)
+        result = Ristretto.calculate(reg, x; threaded)
         manual_result = sum(abs2, λ .* x)
         @test result ≈ manual_result
     end
@@ -25,7 +25,7 @@ using TestItems
         x = ones(3, 3)
         λ_matrix = [0.1 0.2 0.3; 0.4 0.5 0.6; 0.7 0.8 0.9]
         reg = L2Image(λ_matrix)
-        result = MriReconstructionToolbox.calculate(reg, x; threaded)
+        result = Ristretto.calculate(reg, x; threaded)
         manual_result = sum(abs2, λ_matrix .* x)
         @test result ≈ manual_result
     end
@@ -47,7 +47,7 @@ end
         x = rand(6, 6)
         λ = 0.3
         reg = L1Image(λ)
-        result = MriReconstructionToolbox.calculate(reg, x; threaded)
+        result = Ristretto.calculate(reg, x; threaded)
         manual_result = λ * norm(x, 1)
         @test result ≈ manual_result
     end
@@ -56,7 +56,7 @@ end
         x = randn(ComplexF64, 4, 4)
         λ = 0.5
         reg = L1Image(λ)
-        result = MriReconstructionToolbox.calculate(reg, x; threaded)
+        result = Ristretto.calculate(reg, x; threaded)
         manual_result = λ * norm(x, 1)
         @test result ≈ manual_result
     end

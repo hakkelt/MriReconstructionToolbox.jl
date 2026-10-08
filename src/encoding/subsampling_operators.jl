@@ -95,7 +95,7 @@ use `get_subsampled_fourier_operator`.
 
 # Examples
 ```julia
-using MriReconstructionToolbox
+using Ristretto
 
 # 2D mask, array input
 ksp_full = rand(ComplexF32, 64, 64, 8)

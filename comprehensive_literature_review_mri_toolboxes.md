@@ -2,17 +2,17 @@
 
 ## Executive Summary
 
-**MriReconstructionToolbox.jl (MRT)** is a modern, modular Julia package designed for regularized MRI reconstruction via proximal optimization algorithms (`ISTA`, `FISTA`, `ADMM`, `CG`, `CGNR`), forward operator algebra (`AbstractOperators.jl`), and flexible multi-variable decompositions (`Component`, $X = \sum_i C_i$ such as $L+S$).
+**Ristretto.jl** is a modern, modular Julia package designed for regularized MRI reconstruction via proximal optimization algorithms (`ISTA`, `FISTA`, `ADMM`, `CG`, `CGNR`), forward operator algebra (`AbstractOperators.jl`), and flexible multi-variable decompositions (`Component`, $X = \sum_i C_i$ such as $L+S$).
 
-While MRT offers strong variational regularization tools (Wavelets, Total Variation, Locally Low-Rank, Multi-Scale Low-Rank, Total Generalized Variation, Temporal Fourier/TV, Plug-and-Play), it currently lacks several fundamental **k-space interpolation methods**, **autocalibration algorithms**, **pre-processing/channel reduction pipelines**, **physical artifact correction operators (off-resonance, gradient non-linearity)**, **motion correction models**, **subspace/temporal-basis reconstruction**, and **quantitative parameter mapping routines** standard in established toolboxes like **BART**, **SigPy**, **Gadgetron**, **MRIReco.jl**, and **MIRT.jl**.
+While Ristretto offers strong variational regularization tools (Wavelets, Total Variation, Locally Low-Rank, Multi-Scale Low-Rank, Total Generalized Variation, Temporal Fourier/TV, Plug-and-Play), it currently lacks several fundamental **k-space interpolation methods**, **autocalibration algorithms**, **pre-processing/channel reduction pipelines**, **physical artifact correction operators (off-resonance, gradient non-linearity)**, **motion correction models**, **subspace/temporal-basis reconstruction**, and **quantitative parameter mapping routines** standard in established toolboxes like **BART**, **SigPy**, **Gadgetron**, **MRIReco.jl**, and **MIRT.jl**.
 
-This document presents a review of the state of computational MRI reconstruction, provides a feature matrix of existing open-source toolboxes, reviews the foundational literature for missing methods, and outlines an architectural roadmap for MRT — including a concrete redesign of the `reconstruct` entry point around an explicit `AbstractReconstructionMethod`.
+This document presents a review of the state of computational MRI reconstruction, provides a feature matrix of existing open-source toolboxes, reviews the foundational literature for missing methods, and outlines an architectural roadmap for Ristretto — including a concrete redesign of the `reconstruct` entry point around an explicit `AbstractReconstructionMethod`.
 
 ---
 
 ## 1. Feature Set Matrix of Major MRI Reconstruction Toolboxes
 
-| Category / Feature | BART (C/Python) | SigPy (Python/C) | Gadgetron (C++/Python) | MRIReco.jl (Julia) | MIRT.jl (Julia) | MRT (Julia) |
+| Category / Feature | BART (C/Python) | SigPy (Python/C) | Gadgetron (C++/Python) | MRIReco.jl (Julia) | MIRT.jl (Julia) | Ristretto (Julia) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Language & Backend** | C / CUDA | Python / CuPy | C++ / CUDA | Julia / Multi-threaded | Julia / OpenCL/CUDA | Julia / Multi-threaded |
 | **SENSE (Iterative)** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -44,9 +44,9 @@ This document presents a review of the state of computational MRI reconstruction
 **Notes on the matrix**
 
 * ⚠️ **(unverified)** marks cells that could not be confirmed against the upstream source at the time of writing and must be checked before this table is published anywhere.
-* **BART TGV:** BART's `pics` supports TGV and infimal-convolution TGV directly (`-R TGV`, `-R ICTGV`, parameterized by `alpha1:alpha0` and `gamma1:gamma2`). MRT's `TotalGeneralizedVariation2D` is therefore *not* a unique capability — the distinguishing MRT feature is that TGV composes with the same `Component`/decomposition machinery as every other regularizer.
-* **MRT DCF:** as built (Stage 5), MRT provides `density_compensation(acq; method = PipeMenonDCF() | VoronoiDCF())` for **non-Cartesian** acquisitions, returning a `NonCartesianAcquisitionInfo` with `dcf` populated. Cartesian acquisitions reject it with an informative `ArgumentError` — uniform Cartesian sampling needs no density compensation, deliberately not implemented. (Earlier drafts said MRT had none at all.)
-* **MRT learned recon:** `PlugAndPlay` covers denoiser-as-prox, but not unrolled networks with learned data-consistency steps (MoDL, VarNet). The distinction matters; see §2.7.2.
+* **BART TGV:** BART's `pics` supports TGV and infimal-convolution TGV directly (`-R TGV`, `-R ICTGV`, parameterized by `alpha1:alpha0` and `gamma1:gamma2`). Ristretto's `TotalGeneralizedVariation2D` is therefore *not* a unique capability — the distinguishing Ristretto feature is that TGV composes with the same `Component`/decomposition machinery as every other regularizer.
+* **Ristretto DCF:** as built (Stage 5), Ristretto provides `density_compensation(acq; method = PipeMenonDCF() | VoronoiDCF())` for **non-Cartesian** acquisitions, returning a `NonCartesianAcquisitionInfo` with `dcf` populated. Cartesian acquisitions reject it with an informative `ArgumentError` — uniform Cartesian sampling needs no density compensation, deliberately not implemented. (Earlier drafts said Ristretto had none at all.)
+* **Ristretto learned recon:** `PlugAndPlay` covers denoiser-as-prox, but not unrolled networks with learned data-consistency steps (MoDL, VarNet). The distinction matters; see §2.7.2.
 
 ---
 
@@ -58,24 +58,24 @@ This document presents a review of the state of computational MRI reconstruction
 * **Seminal Paper:** Griswold, M. A., et al. (2002). *Generalized autocalibrating partially parallel acquisitions (GRAPPA).* Magnetic Resonance in Medicine, 47(6), 1202–1210. [DOI: 10.1002/mrm.10171](https://doi.org/10.1002/mrm.10171).
 * **Concept:** Instead of unaliasing in the image domain using sensitivity maps (like SENSE), GRAPPA estimates missing k-space points as linear combinations of neighboring acquired lines across all receiver coils. The convolution kernel weights are fitted via least squares from a fully sampled central Auto-Calibration Signal (ACS) region.
 * **Constraints:** Requires uniform Cartesian undersampling with a fixed acceleration factor along the phase-encoding direction(s), plus an ACS region. It is not applicable to arbitrary or non-Cartesian sampling — this constraint must be checkable *before* reconstruction starts (see §5.9).
-* **Missing in MRT:** MRT operates exclusively via image-domain proximal minimization. Adding GRAPPA requires a k-space kernel estimation and convolution routine.
+* **Missing in Ristretto:** Ristretto operates exclusively via image-domain proximal minimization. Adding GRAPPA requires a k-space kernel estimation and convolution routine.
 
 #### 2. SPIRiT (Iterative Self-Consistent Parallel Imaging)
 * **Seminal Paper:** Lustig, M., & Pauly, J. M. (2010). *SPIRiT: Iterative self-consistent parallel imaging reconstruction from arbitrary k-space.* Magnetic Resonance in Medicine, 64(2), 457–471. [DOI: 10.1002/mrm.22428](https://doi.org/10.1002/mrm.22428).
 * **Concept:** Formulates k-space interpolation as an inverse problem enforcing consistency with convolution kernels across all coils ($k = G k$) combined with data fidelity ($\mathcal{D} k = y$) and regularizers (L1-Wavelets/TV). It bridges GRAPPA and compressed sensing for arbitrary Cartesian and non-Cartesian trajectories.
-* **Missing in MRT:** No k-space convolution operator or self-consistency model.
+* **Missing in Ristretto:** No k-space convolution operator or self-consistency model.
 
 #### 3. ESPIRiT (Eigenvalue Approach to Autocalibrating Parallel MRI)
 * **Seminal Paper:** Uecker, M., et al. (2014). *ESPIRiT—an eigenvalue approach to autocalibrating parallel MRI: Where SENSE meets GRAPPA.* Magnetic Resonance in Medicine, 71(3), 990–1001. [DOI: 10.1002/mrm.24751](https://doi.org/10.1002/mrm.24751).
 * **Concept:** Computes local calibration matrices in k-space from ACS data, constructs a block-Hankel matrix, and performs an SVD to yield null-space/signal-space kernels. Transforming signal-space kernels to the image domain produces an eigenvalue problem at each pixel: eigenvectors with eigenvalue $\approx 1$ represent smooth, high-fidelity sensitivity maps, with multi-map support resolving FOV-aliasing and phase wraps.
-* **Missing in MRT:** MRT currently requires users to supply pre-computed sensitivity maps or uses analytical birdcage simulations (`coil_sensitivities`). An autocalibration module is absent.
+* **Missing in Ristretto:** Ristretto currently requires users to supply pre-computed sensitivity maps or uses analytical birdcage simulations (`coil_sensitivities`). An autocalibration module is absent.
 
 #### 4. JSENSE & NLINV (Nonlinear Joint Estimation of Image and Sensitivity Maps)
 * **Seminal Papers:**
   - Ying, L., & Sheng, J. (2007). *Joint image reconstruction and sensitivity estimation in SENSE (JSENSE).* Magnetic Resonance in Medicine, 57(6), 1196–1202. [DOI: 10.1002/mrm.21245](https://doi.org/10.1002/mrm.21245).
   - Uecker, M., Hohage, T., Block, K. T., & Frahm, J. (2008). *Nonlinear inverse reconstruction for parallel MRI.* Magnetic Resonance in Medicine, 60(3), 674–682. [DOI: 10.1002/mrm.21692](https://doi.org/10.1002/mrm.21692).
 * **Concept:** Replaces sequential sensitivity calibration with joint non-linear optimization: $\min_{m, c} \| \mathcal{F}(c \cdot m) - y \|_2^2 + \alpha R_m(m) + \beta R_c(c)$, typically solved via alternating minimization or the iteratively regularized Gauss-Newton method (IRGNM).
-* **Missing in MRT:** MRT models assume linear forward operators with fixed sensitivity maps. Bilinear/non-linear solvers are not yet abstracted, and `StructuredOptimization.jl` terms are built against a linear operator algebra.
+* **Missing in Ristretto:** Ristretto models assume linear forward operators with fixed sensitivity maps. Bilinear/non-linear solvers are not yet abstracted, and `StructuredOptimization.jl` terms are built against a linear operator algebra.
 
 #### 5. SAKE & LORAKS (Calibrationless Structured Low-Rank Matrix Completion)
 * **Seminal Papers:**
@@ -84,7 +84,7 @@ This document presents a review of the state of computational MRI reconstruction
   - Jin, K. H., et al. (2016). *A general framework for compressed sensing and parallel imaging using annihilating filter based low-rank Hankel matrix approach (ALOHA).* IEEE Transactions on Image Processing, 25(11), 5363–5376. [DOI: 10.1109/TIP.2016.2601243](https://doi.org/10.1109/TIP.2016.2601243).
 * **Concept:** Exploits the property that local k-space patches across multi-channel arrays form a rank-deficient block-Hankel/Toeplitz matrix. Calibrationless parallel imaging recovers undersampled k-space directly, without explicit sensitivity calibration.
 * **Formulation caveat (important for §5.5):** SAKE as published is *not* nuclear-norm minimization. It is a **Cadzow-type alternating projection**: project onto the fixed-rank set (hard truncation of the SVD to rank $r$), then project onto the data-consistency set. LORAKS likewise uses a rank-$r$ constraint or a rank penalty $J_r$, not $\min \operatorname{rank}$. Both are therefore **non-convex**: any splitting algorithm applied to them (Douglas–Rachford, ADMM) is a heuristic with no convergence guarantee, and this must be documented rather than implied away by reusing the convex-solver API. A convex nuclear-norm relaxation is a legitimate *alternative* formulation, but it is a different algorithm and should be named differently.
-* **Missing in MRT:** Hankel lifting operators and structured matrix completion projections.
+* **Missing in Ristretto:** Hankel lifting operators and structured matrix completion projections.
 
 ---
 
@@ -93,7 +93,7 @@ This document presents a review of the state of computational MRI reconstruction
 #### 1. Noise Pre-Whitening & SNR Normalization
 * **Seminal Paper:** Kellman, P., & McVeigh, E. R. (2005). *Image reconstruction in SNR units: A general method for SNR measurement.* Magnetic Resonance in Medicine, 54(6), 1439–1447. [DOI: 10.1002/mrm.20713](https://doi.org/10.1002/mrm.20713).
 * **Concept:** Multi-channel coil arrays suffer from inductive coupling, resulting in correlated noise across channels. Acquiring a noise-only prescan measures the noise covariance matrix $\mathbf{\Psi} \in \mathbb{C}^{N_c \times N_c}$. Pre-multiplying data by $\mathbf{L}^{-1}$ (where $\mathbf{\Psi} = \mathbf{L}\mathbf{L}^H$ is the Cholesky factorization) whitens the noise, so that $\operatorname{Cov}(\mathbf{L}^{-1} n) = \mathbf{I}$. The data fidelity term then becomes a standard Euclidean distance and the least-squares solution is the maximum-likelihood estimate.
-* **Missing in MRT:** No noise covariance estimation or pre-whitening utility in `acquisition_data/`.
+* **Missing in Ristretto:** No noise covariance estimation or pre-whitening utility in `acquisition_data/`.
 
 #### 2. Software Coil Compression (SVD & Geometric Coil Compression)
 * **Seminal Papers:**
@@ -101,14 +101,14 @@ This document presents a review of the state of computational MRI reconstruction
   - Huang, F., Vijayakumar, S., Li, Y., Hertel, S., & Duensing, G. R. (2008). *A software channel compression technique for faster reconstruction with many channels.* Magnetic Resonance Imaging, 26(1), 133–141. [DOI: 10.1016/j.mri.2007.04.010](https://doi.org/10.1016/j.mri.2007.04.010).
   - Zhang, T., Pauly, J. M., Vasanawala, S. S., & Lustig, M. (2013). *Coil compression for accelerated imaging with Cartesian and non-Cartesian sampling.* Magnetic Resonance in Medicine, 69(2), 571–582. [DOI: 10.1002/mrm.24267](https://doi.org/10.1002/mrm.24267).
 * **Concept:** Modern receiver arrays (32–128 coils) introduce heavy computational and memory footprints. SVD-based virtual coil compression linearly combines channels into a reduced set (e.g. 8–12 virtual coils). **Geometric Coil Compression (GCC)** performs alignment along a fully sampled spatial readout dimension via local SVD, preserving $>99\%$ SNR while speeding up iterative reconstruction by 3–10×.
-* **Missing in MRT:** Pre-processing transforms to compress `AcquisitionInfo.kspace_data` and the corresponding sensitivity maps consistently, before operator creation.
+* **Missing in Ristretto:** Pre-processing transforms to compress `AcquisitionInfo.kspace_data` and the corresponding sensitivity maps consistently, before operator creation.
 
 #### 3. Density Compensation Functions (DCF) for Non-Cartesian Trajectories
 * **Seminal Papers:**
   - Pipe, J. G., & Menon, P. (1999). *Sampling density compensation in MRI: Rationale and an iterative numerical solution.* Magnetic Resonance in Medicine, 41(1), 179–186. [DOI: 10.1002/(SICI)1522-2594(199901)41:1<179::AID-MRM25>3.0.CO;2-V](https://doi.org/10.1002/(SICI)1522-2594(199901)41:1%3C179::AID-MRM25%3E3.0.CO;2-V).
   - Jackson, J. I., Meyer, C. H., Nishimura, D. G., & Macovski, A. (1991). *Selection of a convolution function for Fourier inversion using gridding.* IEEE Transactions on Medical Imaging, 10(3), 473–478. [DOI: 10.1109/42.97598](https://doi.org/10.1109/42.97598).
 * **Concept:** Non-Cartesian trajectories (radial, spiral) oversample the center of k-space. Direct adjoint operations and initial estimates $\mathcal{A}^H y$ require weighting k-space by density compensation weights (Voronoi cell area or Pipe's iterative method).
-* **Missing in MRT:** MRT uses raw NFFT adjoints with no integrated DCF, which degrades both the direct reconstruction and the default initial guess $x_0 = \mathcal{A}^H y$ for iterative solves.
+* **Missing in Ristretto:** Ristretto uses raw NFFT adjoints with no integrated DCF, which degrades both the direct reconstruction and the default initial guess $x_0 = \mathcal{A}^H y$ for iterative solves.
 
 ---
 
@@ -122,12 +122,12 @@ This document presents a review of the state of computational MRI reconstruction
   - **Homodyne:** Estimates a low-resolution phase map $\phi_0$ from the central symmetric band, applies asymmetric ramp weighting to k-space, transforms to image domain, demodulates by $e^{-i\phi_0}$ and takes the real part. Fast and non-iterative, but discards residual phase — it is not equivalent to the iterative variants and is more sensitive to rapid phase variation.
   - **POCS:** Iteratively alternates between enforcing the estimated phase in image space and data consistency on the *acquired* samples in k-space.
 * **Asymmetry note:** partial Fourier is asymmetric along **one** encoding direction, and the width of the symmetric band is determined by the sampled fraction. An isotropic, user-supplied `low_freq_size` default is therefore a poor API default (see §5.6).
-* **Missing in MRT:** Asymmetric filtering operators, phase map extraction, and POCS / phase-constrained reconstruction.
+* **Missing in Ristretto:** Asymmetric filtering operators, phase map extraction, and POCS / phase-constrained reconstruction.
 
 #### 2. Virtual Conjugate Coils (VCC-SENSE / VCC-GRAPPA)
 * **Seminal Paper:** Blaimer, M., et al. (2009). *Virtual coil concept for improved parallel MRI employing conjugate symmetric signals.* Magnetic Resonance in Medicine, 61(1), 93–102. [DOI: 10.1002/mrm.21652](https://doi.org/10.1002/mrm.21652).
 * **Concept:** Synthesizes virtual conjugate channels from the complex conjugate of the reversed k-space. Combined with SENSE or GRAPPA, this incorporates phase constraints to improve parallel imaging acceleration without explicit phase estimation.
-* **Missing in MRT:** Operator abstraction for conjugate channels.
+* **Missing in Ristretto:** Operator abstraction for conjugate channels.
 
 ---
 
@@ -142,12 +142,12 @@ This document presents a review of the state of computational MRI reconstruction
   $$ (\mathcal{A} x)(t) = \int x(r)\, c(r)\, e^{-i 2\pi k(t) \cdot r}\, e^{-\left(R_2^*(r) \,+\, i\,\omega_0(r)\right) t} \, \mathrm{d}r, \qquad \omega_0(r) = \gamma \Delta B_0(r) = 2\pi \Delta f_0(r). $$
 
   Note the structure: $R_2^*$ is a **real** decay rate, and the off-resonance frequency enters as the **imaginary** part. (An earlier revision of this document had these two swapped, which would produce decay where there should be precession and vice versa.) Fast forward operators use **time-segmentation** or **multi-frequency interpolation (MFI)** with min-max or Taylor approximations to decompose the off-resonance forward model into a short series of standard NFFTs, $\mathcal{A} \approx \sum_{l} \operatorname{diag}(b_l)\, \mathcal{F}\, \operatorname{diag}(c_l)$.
-* **Missing in MRT:** No off-resonance forward operator or $B_0$ map integration. This is a natural first consumer of the `signal_model` slot proposed in §5.4.
+* **Missing in Ristretto:** No off-resonance forward operator or $B_0$ map integration. This is a natural first consumer of the `signal_model` slot proposed in §5.4.
 
 #### 2. EPI Nyquist Ghost Correction (Phase Correction)
 * **Seminal Paper:** Bruder, H., Fischer, H., Reinfelder, H.-E., & Schmitt, F. (1992). *Image reconstruction for echo planar imaging with nonequidistant k-space sampling.* Magnetic Resonance in Medicine, 23(2), 311–323. [DOI: 10.1002/mrm.1910230211](https://doi.org/10.1002/mrm.1910230211).
 * **Concept:** EPI alternates gradient polarities, causing 1D/2D linear phase discrepancies between even and odd echoes that produce $N/2$ Nyquist ghosting. 1D navigator lines, SVD-based unmixing, or entropy-minimization phase corrections are standard prerequisites.
-* **Missing in MRT:** EPI phase-correction pre-processing.
+* **Missing in Ristretto:** EPI phase-correction pre-processing.
 
 #### 3. Gradient Delay Correction & RING (Radial Intersections)
 * **Seminal Paper:** Rosenzweig, S., Holme, H. C. M., & Uecker, M. (2019). *Simple auto-calibrated gradient delay estimation from few spokes using radial intersections (RING).* Magnetic Resonance in Medicine, 81(3), 1898–1906. [DOI: 10.1002/mrm.27506](https://doi.org/10.1002/mrm.27506).
@@ -157,7 +157,7 @@ This document presents a review of the state of computational MRI reconstruction
 * **Toolbox Status:**
   - **BART:** Natively implements RING via `bart estdelay -R` (and trajectory correction via `bart traj -c / -q`).
   - **Gadgetron:** Supports gradient delay estimation via cross-correlation calibration modules.
-  - **MRT & MRIReco.jl:** Missing native auto-calibrated gradient delay estimation. Nominal trajectories are assumed exact.
+  - **Ristretto & MRIReco.jl:** Missing native auto-calibrated gradient delay estimation. Nominal trajectories are assumed exact.
 
 ---
 
@@ -166,13 +166,13 @@ This document presents a review of the state of computational MRI reconstruction
 #### 1. PROPELLER / BLADE Reconstruction
 * **Seminal Paper:** Pipe, J. G. (1999). *Motion correction with PROPELLER MRI: Application to head motion and free-breathing cardiac imaging.* Magnetic Resonance in Medicine, 42(5), 963–969. [DOI: 10.1002/(SICI)1522-2594(199911)42:5<963::AID-MRM17>3.0.CO;2-L](https://doi.org/10.1002/(SICI)1522-2594(199911)42:5%3C963::AID-MRM17%3E3.0.CO;2-L).
 * **Concept:** Collects k-space in rotating rectangular strips (blades). The central circular disc is sampled by every blade, allowing blade-to-blade estimation of 2D rigid-body rotation, translation, and phase variation. Corrupted blades are re-weighted or rejected before gridding.
-* **Missing in MRT:** Inter-blade registration, phase correction, and correlation-weighted reconstruction.
+* **Missing in Ristretto:** Inter-blade registration, phase correction, and correlation-weighted reconstruction.
 
 #### 2. XD-GRASP (Extra-Dimensional Golden-Angle Radial Sparse Parallel MRI)
 * **Seminal Paper:** Feng, L., et al. (2016). *XD-GRASP: Golden-angle radial MRI with reconstruction of extra motion-state dimensions using compressed sensing.* Magnetic Resonance in Medicine, 75(2), 775–788. [DOI: 10.1002/mrm.25665](https://doi.org/10.1002/mrm.25665).
 * **Concept:** Uses continuous golden-angle radial acquisition to extract self-navigation signals (respiratory or cardiac motion curves from the k-space center) and sorts data into multi-dimensional motion-state bins (e.g. contrast × respiratory × cardiac), followed by multi-dimensional regularized reconstruction (TV across the extra dimensions).
-* **Fit with MRT:** the *reconstruction* half of XD-GRASP is already expressible today — once data are binned, `TemporalTotalVariation` over the extra dimension plus the existing task-splitting machinery covers it. What is missing is the **binning half**: self-gating signal extraction, motion-state sorting, and the resulting non-uniform per-bin trajectories.
-* **Missing in MRT:** Self-gating signal extraction and multi-dimensional binning utilities.
+* **Fit with Ristretto:** the *reconstruction* half of XD-GRASP is already expressible today — once data are binned, `TemporalTotalVariation` over the extra dimension plus the existing task-splitting machinery covers it. What is missing is the **binning half**: self-gating signal extraction, motion-state sorting, and the resulting non-uniform per-bin trajectories.
+* **Missing in Ristretto:** Self-gating signal extraction and multi-dimensional binning utilities.
 
 ---
 
@@ -184,7 +184,7 @@ This document presents a review of the state of computational MRI reconstruction
   - Sumpf, T. J., et al. (2011). *Model-based nonlinear inverse reconstruction for T2 mapping using highly undersampled spin-echo MRI.* Journal of Magnetic Resonance Imaging, 34(2), 420–428. [DOI: 10.1002/jmri.22633](https://doi.org/10.1002/jmri.22633).
   - Wang, X., et al. (2018). *Model-based T1 mapping with sparsity constraints using single-shot inversion-recovery radial FLASH.* Magnetic Resonance in Medicine, 79(2), 730–740. [DOI: 10.1002/mrm.26726](https://doi.org/10.1002/mrm.26726).
 * **Concept:** Instead of reconstructing a series of contrast images and subsequently fitting relaxation models pixel-by-pixel, model-based reconstruction integrates the physical signal equation (e.g. $S(t) = M_0 (1 - 2 e^{-t/T_1})$ for ideal inversion recovery, $S(t) = M_0 e^{-t/T_2}$ for spin echo) directly into a non-linear forward model, and solves for the parameter maps.
-* **Missing in MRT:** Physics-based non-linear forward models for quantitative MRI. Note that MRT's existing `NonNegative` and `BoxConstraint` regularizers were designed with parameter maps in mind, so the regularization side is partly ready; the solver side is not.
+* **Missing in Ristretto:** Physics-based non-linear forward models for quantitative MRI. Note that Ristretto's existing `NonNegative` and `BoxConstraint` regularizers were designed with parameter maps in mind, so the regularization side is partly ready; the solver side is not.
 
 #### 2. Water-Fat Separation (Dixon Techniques & IDEAL)
 * **Seminal Papers:**
@@ -195,7 +195,7 @@ This document presents a review of the state of computational MRI reconstruction
   $$ s(t_n) = \Big(W + F \sum_p \alpha_p e^{i 2\pi \Delta f_p t_n}\Big)\, e^{\left(i 2\pi \psi - R_2^*\right) t_n}. $$
 
   Graph-cut or non-linear multi-variable optimization estimates water, fat, and the field map jointly; the field map is the source of the well-known water/fat swap ambiguity.
-* **Missing in MRT:** Multi-chemical species modeling and graph-cut field map estimators.
+* **Missing in Ristretto:** Multi-chemical species modeling and graph-cut field map estimators.
 
 ---
 
@@ -206,37 +206,37 @@ This document presents a review of the state of computational MRI reconstruction
   - Liang, Z.-P. (2007). *Spatiotemporal imaging with partially separable functions.* IEEE ISBI 2007, 988–991. [DOI: 10.1109/ISBI.2007.357020](https://doi.org/10.1109/ISBI.2007.357020).
   - Tamir, J. I., et al. (2017). *T2 shuffling: Sharp, multicontrast, volumetric fast spin-echo imaging.* Magnetic Resonance in Medicine, 77(1), 180–195. [DOI: 10.1002/mrm.26102](https://doi.org/10.1002/mrm.26102).
 * **Concept:** Model the image time-series as $X = \Phi \alpha$, where $\Phi \in \mathbb{C}^{N_t \times K}$ is a *pre-computed* low-dimensional temporal basis (from Bloch simulations or an SVD of a signal dictionary) and $\alpha$ holds $K \ll N_t$ spatial coefficient maps. Reconstruction solves $\min_\alpha \tfrac{1}{2}\|\mathcal{A}\Phi\alpha - y\|_2^2 + R(\alpha)$, drastically reducing the number of unknowns while remaining fully linear and convex. BART exposes this as `pics -B <basis>`.
-* **Why this matters most for MRT:** unlike almost every other gap in this document, subspace reconstruction needs **no new solver and no new non-linear machinery**. It is a linear operator $\Phi$ composed into $\mathcal{A}$ — exactly the `signal_model` slot proposed in §5.4 — and it composes directly with MRT's existing `LowRank`, `LocallyLowRank`, `MultiScaleLowRank` and `Component` infrastructure, which is where MRT is already strongest. It is arguably the highest value-per-effort addition in the whole roadmap and is scheduled accordingly in §3.
-* **Missing in MRT:** temporal basis operator and basis-estimation utilities.
+* **Why this matters most for Ristretto:** unlike almost every other gap in this document, subspace reconstruction needs **no new solver and no new non-linear machinery**. It is a linear operator $\Phi$ composed into $\mathcal{A}$ — exactly the `signal_model` slot proposed in §5.4 — and it composes directly with Ristretto's existing `LowRank`, `LocallyLowRank`, `MultiScaleLowRank` and `Component` infrastructure, which is where Ristretto is already strongest. It is arguably the highest value-per-effort addition in the whole roadmap and is scheduled accordingly in §3.
+* **Missing in Ristretto:** temporal basis operator and basis-estimation utilities.
 
 #### 2. Unrolled / Learned Reconstruction
 * **Seminal Papers:**
   - Hammernik, K., et al. (2018). *Learning a variational network for reconstruction of accelerated MRI data.* Magnetic Resonance in Medicine, 79(6), 3055–3071. [DOI: 10.1002/mrm.26977](https://doi.org/10.1002/mrm.26977).
   - Aggarwal, H. K., Mani, M. P., & Jacob, M. (2019). *MoDL: Model-based deep learning architecture for inverse problems.* IEEE Transactions on Medical Imaging, 38(2), 394–405. [DOI: 10.1109/TMI.2018.2865356](https://doi.org/10.1109/TMI.2018.2865356).
   - Venkatakrishnan, S. V., Bouman, C. A., & Wohlberg, B. (2013). *Plug-and-play priors for model based reconstruction.* IEEE GlobalSIP 2013, 945–948. [DOI: 10.1109/GlobalSIP.2013.6737048](https://doi.org/10.1109/GlobalSIP.2013.6737048).
-* **Concept:** Replace hand-crafted priors with learned ones. **Plug-and-Play** substitutes a denoiser for the proximal operator inside an otherwise standard splitting algorithm — MRT already supports this via `PlugAndPlay`. **Unrolled networks** (VarNet, MoDL) go further: they unroll a fixed number of gradient/data-consistency steps into a differentiable graph and train the regularizer *and* step sizes end-to-end. The latter is a fundamentally different execution model (training loop, autodiff through the forward operator) and does not fit the current `reconstruct` contract.
-* **Missing in MRT:** unrolled architectures and any training infrastructure. Whether this belongs in MRT at all, or in a downstream package depending on it, is an open scoping question (§5.10).
+* **Concept:** Replace hand-crafted priors with learned ones. **Plug-and-Play** substitutes a denoiser for the proximal operator inside an otherwise standard splitting algorithm — Ristretto already supports this via `PlugAndPlay`. **Unrolled networks** (VarNet, MoDL) go further: they unroll a fixed number of gradient/data-consistency steps into a differentiable graph and train the regularizer *and* step sizes end-to-end. The latter is a fundamentally different execution model (training loop, autodiff through the forward operator) and does not fit the current `reconstruct` contract.
+* **Missing in Ristretto:** unrolled architectures and any training infrastructure. Whether this belongs in Ristretto at all, or in a downstream package depending on it, is an open scoping question (§5.10).
 
 #### 3. Simultaneous Multi-Slice (SMS) / Slice-GRAPPA
 * **Seminal Papers:**
   - Setsompop, K., et al. (2012). *Blipped-controlled aliasing in parallel imaging for simultaneous multislice echo planar imaging with reduced g-factor penalty.* Magnetic Resonance in Medicine, 67(5), 1210–1224. [DOI: 10.1002/mrm.23097](https://doi.org/10.1002/mrm.23097).
   - Cauley, S. F., et al. (2014). *Interslice leakage artifact reduction technique for simultaneous multislice acquisitions.* Magnetic Resonance in Medicine, 72(1), 93–102. [DOI: 10.1002/mrm.24898](https://doi.org/10.1002/mrm.24898).
 * **Concept:** Excite several slices simultaneously and separate them using coil sensitivity differences, enhanced by blipped-CAIPI inter-slice shifts. Split slice-GRAPPA additionally suppresses inter-slice signal leakage.
-* **Missing in MRT:** SMS encoding model and slice-GRAPPA kernels. Notably, SMS interacts badly with MRT's automatic task splitting over slices (§5.8) — slices are no longer separable subproblems, and the task-splitting planner would need to know this.
+* **Missing in Ristretto:** SMS encoding model and slice-GRAPPA kernels. Notably, SMS interacts badly with Ristretto's automatic task splitting over slices (§5.8) — slices are no longer separable subproblems, and the task-splitting planner would need to know this.
 
 #### 4. g-Factor & Noise Propagation (Pseudo-Replica)
 * **Seminal Papers:**
   - Pruessmann, K. P., Weiger, M., Scheidegger, M. B., & Boesiger, P. (1999). *SENSE: Sensitivity encoding for fast MRI.* Magnetic Resonance in Medicine, 42(5), 952–962. [DOI: 10.1002/(SICI)1522-2594(199911)42:5<952::AID-MRM16>3.0.CO;2-S](https://doi.org/10.1002/(SICI)1522-2594(199911)42:5%3C952::AID-MRM16%3E3.0.CO;2-S).
   - Robson, P. M., et al. (2008). *Comprehensive quantification of signal-to-noise ratio and g-factor for image-based and k-space-based parallel imaging reconstructions.* Magnetic Resonance in Medicine, 60(4), 895–907. [DOI: 10.1002/mrm.21728](https://doi.org/10.1002/mrm.21728).
 * **Concept:** The g-factor quantifies spatially varying noise amplification from parallel imaging. For non-linear or iterative reconstructions no closed form exists, and the **pseudo-replica** method estimates it empirically by repeating the reconstruction with synthetic noise realizations added to the data.
-* **Fit with MRT:** the pseudo-replica method is embarrassingly parallel and maps cleanly onto MRT's existing `ReconstructionExecutor` / task-splitting infrastructure — it is a loop over the same `reconstruct` call with perturbed data. Low implementation cost, high diagnostic value, and it applies to *every* method in this document.
-* **Missing in MRT:** g-factor and SNR-map utilities.
+* **Fit with Ristretto:** the pseudo-replica method is embarrassingly parallel and maps cleanly onto Ristretto's existing `ReconstructionExecutor` / task-splitting infrastructure — it is a loop over the same `reconstruct` call with perturbed data. Low implementation cost, high diagnostic value, and it applies to *every* method in this document.
+* **Missing in Ristretto:** g-factor and SNR-map utilities.
 
 ---
 
-## 3. Prioritized Implementation Roadmap for MRT
+## 3. Prioritized Implementation Roadmap for Ristretto
 
-To expand MRT's utility while preserving its clean, Julia-idiomatic architecture, we recommend phased development. **Phase 0 is new and blocking**: several formulations in §5.5 depend on solvers and API surface that do not yet exist in MRT.
+To expand Ristretto's utility while preserving its clean, Julia-idiomatic architecture, we recommend phased development. **Phase 0 is new and blocking**: several formulations in §5.5 depend on solvers and API surface that do not yet exist in Ristretto.
 
 ```
 Phase 0: Enabling Infrastructure (blocking prerequisites)
@@ -275,16 +275,16 @@ Out of scope for now (see §5.10): unrolled/learned reconstruction, SMS, PROPELL
 streaming pipelines.
 ```
 
-**Rationale for the reordering versus the previous draft:** DCF moved up into Phase 1 because it silently degrades every existing non-Cartesian reconstruction today, including the default initial guess. Subspace reconstruction and pseudo-replica g-factor were promoted to Phase 2 because they are linear, need no new solver, and reuse infrastructure MRT already has — they deliver more per unit of effort than GRAPPA does.
+**Rationale for the reordering versus the previous draft:** DCF moved up into Phase 1 because it silently degrades every existing non-Cartesian reconstruction today, including the default initial guess. Subspace reconstruction and pseudo-replica g-factor were promoted to Phase 2 because they are linear, need no new solver, and reuse infrastructure Ristretto already has — they deliver more per unit of effort than GRAPPA does.
 
 ---
 
 ## 4. Key Takeaways & Recommendations
 
-1. **Leverage Julia ecosystem strengths.** MRT's operator-composition framework (`AbstractOperators.jl`) and proximal solvers (`StructuredOptimization.jl` / `ProximalAlgorithms.jl`) are well suited to variational problems, and the `Component` decomposition API is genuinely differentiating.
+1. **Leverage Julia ecosystem strengths.** Ristretto's operator-composition framework (`AbstractOperators.jl`) and proximal solvers (`StructuredOptimization.jl` / `ProximalAlgorithms.jl`) are well suited to variational problems, and the `Component` decomposition API is genuinely differentiating.
 2. **Separate the three concepts that the current API conflates.** A reconstruction is specified by (a) a **forward/signal model** (what maps the unknown to the data: sensitivities, Fourier, phase, $B_0$, temporal basis), (b) an **objective** (data fidelity plus regularizers/constraints), and (c) a **solver**. Today all three are entangled in `reconstruct`'s positional arguments, which is precisely why GRAPPA, POCS and homodyne cannot be expressed. §5 separates them.
 3. **Keep modular separation for pre-processing.** Pre-processing transforms (whitening, GCC, ESPIRiT, RING, DCF) should return updated `AcquisitionInfo` instances so they chain seamlessly ahead of the reconstruction pipeline, rather than becoming keyword arguments of `reconstruct`.
-4. **Prefer types over symbols on every dispatch axis.** MRT already dispatches on `Regularization` subtypes and on tuple shape; the new API should not introduce stringly-typed configuration that defeats that (§5.3).
+4. **Prefer types over symbols on every dispatch axis.** Ristretto already dispatches on `Regularization` subtypes and on tuple shape; the new API should not introduce stringly-typed configuration that defeats that (§5.3).
 5. **Be explicit about convexity.** Several attractive methods (SAKE, LORAKS, rank-constrained variants) are non-convex heuristics. Reusing a convex solver's API for them is fine; silently implying convergence guarantees is not.
 
 ---
@@ -338,7 +338,7 @@ AbstractReconstructionMethod
 """
     AbstractReconstructionMethod
 
-Abstract supertype for all MRI reconstruction methods in MRT.
+Abstract supertype for all MRI reconstruction methods in Ristretto.
 
 # Interface
 
@@ -429,7 +429,7 @@ struct HardConsistency <: DataFidelity end
 struct NoFidelity      <: DataFidelity end
 ```
 
-**Notation.** $\mathcal{A}$ denotes the full image-domain encoding operator (sensitivities ∘ Fourier ∘ sampling), as built by `get_encoding_operator`. $\mathcal{P}$ denotes the **sampling and data-consistency operator** (was $\Gamma$ / $\mathcal{D}$): the restriction of a full multi-channel Cartesian k-space array to the acquired samples, i.e. the sampling operator alone, with no sensitivity or Fourier factor. $\mathcal{P}$ is the k-space-domain counterpart of $\mathcal{A}$ and is what appears in every `KSpaceDomain` formulation below. MRT's existing `get_subsampling_operator` already treats trailing dimensions as batch dimensions and carries the coil dimension through unchanged.
+**Notation.** $\mathcal{A}$ denotes the full image-domain encoding operator (sensitivities ∘ Fourier ∘ sampling), as built by `get_encoding_operator`. $\mathcal{P}$ denotes the **sampling and data-consistency operator** (was $\Gamma$ / $\mathcal{D}$): the restriction of a full multi-channel Cartesian k-space array to the acquired samples, i.e. the sampling operator alone, with no sensitivity or Fourier factor. $\mathcal{P}$ is the k-space-domain counterpart of $\mathcal{A}$ and is what appears in every `KSpaceDomain` formulation below. Ristretto's existing `get_subsampling_operator` already treats trailing dimensions as batch dimensions and carries the coil dimension through unchanged.
 
 ---
 
@@ -606,7 +606,7 @@ post-review follow-up (`IMPLEMENTATION_PLAN.md`, Part 1).
 * **SAKE** previously used the nuclear norm $\|\mathcal{H}(k)\|_*$ in the table while the accompanying preset used a hard rank limit. The published algorithm is hard-rank (Cadzow); the table now matches the code, and the non-convexity is flagged.
 * **LORAKS** previously wrote $\min \operatorname{rank}(\mathcal{C}(k))$, which is not a proximal-solvable objective and is not what LORAKS does. Replaced with the penalized form from Haldar (2014).
 * **PRUNO** previously combined `data_fidelity = :none` with a `HardDataConstraint()` term in the regularizer list — the same constraint expressed twice, in two different places. It now uses `HardConsistency`, which is what that combination meant. This redundancy is the clearest evidence that fidelity belongs on its own axis rather than as an ordinary term.
-* **Solver column** no longer lists `AFBA`, which MRT does not expose. `DouglasRachford` **is now aliased, exported and patched** (`patch_algorithm_with_default_values` supplies `gamma`); it is part of `DEFAULT_ALGORITHMS`. `HardConsistency` is general via an inner CG when `𝒜𝒜'` is not diagonal, not restricted to the diagonal case.
+* **Solver column** no longer lists `AFBA`, which Ristretto does not expose. `DouglasRachford` **is now aliased, exported and patched** (`patch_algorithm_with_default_values` supplies `gamma`); it is part of `DEFAULT_ALGORITHMS`. `HardConsistency` is general via an inner CG when `𝒜𝒜'` is not diagonal, not restricted to the diagonal case.
 
 ---
 
@@ -869,10 +869,10 @@ Automatic task splitting integrates with the method and its domain:
 
 1. **Scope of learned reconstruction.** `PlugAndPlay` fits the current architecture; unrolled
    networks (MoDL, VarNet) need a training loop and autodiff through the forward operator, which is
-   a different execution model. Does this belong in MRT, in a downstream package, or nowhere?
+   a different execution model. Does this belong in Ristretto, in a downstream package, or nowhere?
 2. **Non-linear solver strategy.** JSENSE/NLINV, quantitative mapping and graph-cut water/fat all
    need machinery outside `StructuredOptimization.jl`'s linear-operator term algebra. Options are an
-   IRGNM implementation inside MRT, an alternating-minimization layer over the existing solvers, or
+   IRGNM implementation inside Ristretto, an alternating-minimization layer over the existing solvers, or
    a dependency on a general non-linear optimizer. This choice shapes all of Phase 5 and should be
    made before Phase 4 concludes.
 3. **`AcquisitionInfo` versus method for model factors.** `signal_model` places $B_0$ maps and

@@ -1,9 +1,9 @@
 # Named Dimensions Workflow
 
-Named dimensions provide a type-safe, self-documenting way to work with MRI data. This guide explains how to use NamedDims.jl with MriReconstructionToolbox for clearer, less error-prone code.
+Named dimensions provide a type-safe, self-documenting way to work with MRI data. This guide explains how to use NamedDims.jl with Ristretto for clearer, less error-prone code.
 
 ```@setup imports
-using MriReconstructionToolbox
+using Ristretto
 ```
 
 ## Why Named Dimensions?
@@ -51,10 +51,10 @@ nothing # hide
 
 ### Installation
 
-NamedDims.jl is re-exported by MriReconstructionToolbox:
+NamedDims.jl is re-exported by Ristretto:
 
 ```julia
-using MriReconstructionToolbox
+using Ristretto
 # NamedDims is now available
 ```
 
@@ -183,7 +183,7 @@ dimnames(ksp)  # Returns (:kx, :ky, :coil, :time)
 :z in dimnames(ksp)     # false
 ```
 
-## Using with MriReconstructionToolbox
+## Using with Ristretto
 
 ### Automatic Operator Creation
 
@@ -241,7 +241,7 @@ E_3d = get_encoding_operator(ksp_3d)  # Creates 3D operator
 ### Example 1: Basic 2D Reconstruction
 
 ```@example
-using MriReconstructionToolbox
+using Ristretto
 using GeometricMedicalPhantoms
 
 # 1. Create phantom with names

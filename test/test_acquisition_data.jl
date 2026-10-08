@@ -1,6 +1,6 @@
 @testitem "NonCartesianAcquisitionInfo" tags = [:acquisition, :nfft] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: get_encoding_operator, get_fourier_operator, NonCartesianAcquisitionInfo
     using NamedDims
 
     @testset "Basic 2D construction" begin
@@ -78,9 +78,9 @@
 end
 
 @testitem "AcquisitionInfo copy constructors field round-trips" tags = [:acquisition] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, NonCartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: get_encoding_operator, get_fourier_operator, NonCartesianAcquisitionInfo
 
     @testset "CartesianAcquisitionInfo individual field round-trips" begin
         mask = rand(Bool, 16, 16)
@@ -207,10 +207,10 @@ end
 end
 
 @testitem "Dimension utilities" tags = [:acquisition] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator
+    using Ristretto
+    using Ristretto: get_encoding_operator, get_fourier_operator
     using NamedDims
-    import MriReconstructionToolbox: get_image_size, get_time_dim,
+    import Ristretto: get_image_size, get_time_dim,
         get_fourier_kspace_dims, get_fourier_image_dims,
         get_nonfourier_image_dims, get_nonfourier_kspace_dims, get_image_dims
 
@@ -297,8 +297,8 @@ end
 end
 
 @testitem "RegularLatticeSampling" tags = [:simulation] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: check_applicable
+    using Ristretto
+    using Ristretto: check_applicable
 
     @testset "plain regular lattice" begin
         _, mask = create_sampling_pattern(RegularLatticeSampling(4), (128, 128))
@@ -353,7 +353,7 @@ end
 end
 
 @testitem "PartialFourierSampling" tags = [:simulation] begin
-    using MriReconstructionToolbox
+    using Ristretto
 
     @testset "contiguous band from the first index" begin
         _, mask = create_sampling_pattern(PartialFourierSampling(0.7), (128, 128))
@@ -381,8 +381,8 @@ end
 end
 
 @testitem "Sampling patterns" tags = [:simulation] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator
+    using Ristretto
+    using Ristretto: get_encoding_operator, get_fourier_operator
 
     @testset "PoissonDiskSampling" begin
         pattern = PoissonDiskSampling(4.0)
@@ -481,9 +481,9 @@ end
 end
 
 @testitem "CartesianAcquisitionInfo shifted dims" tags = [:acquisition] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator
+    using Ristretto: CartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: get_encoding_operator, get_fourier_operator
     using NamedDims
 
     @testset "shifted_kspace_dims as single Integer" begin
@@ -546,8 +546,8 @@ end
 end
 
 @testitem "3D k-space subsampled over ky–kz with sensitivity maps" tags = [:acquisition] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: CartesianAcquisitionInfo
     using NamedDims
     using Random
 
@@ -588,8 +588,8 @@ end
 end
 
 @testitem "GRAPPA on a phase-encode index vector" tags = [:acquisition, :reconstruction] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: CartesianAcquisitionInfo
     using NamedDims
 
     # GRAPPA reads the pattern through `to_displayable_mask`, which used to reject an index vector
@@ -604,8 +604,8 @@ end
 end
 
 @testitem "Adapt: an acquisition moves to a device and back" tags = [:acquisition, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo, PartitionedKSpace
+    using Ristretto
+    using Ristretto: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo, PartitionedKSpace
     using NamedDims
 
     ksp = NamedDimsArray{(:kx, :ky, :coil)}(rand(ComplexF32, 8, 6, 2))
@@ -643,8 +643,8 @@ end
 end
 
 @testitem "Device storage: mismatches and the settings a device run resolves to" tags = [:acquisition, :reconstruction, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: CartesianAcquisitionInfo, resolve_config, DEVICE_DISABLES_TASK_SPLITTING
+    using Ristretto
+    using Ristretto: CartesianAcquisitionInfo, resolve_config, DEVICE_DISABLES_TASK_SPLITTING
     using NamedDims
 
     ksp = NamedDimsArray{(:kx, :ky, :coil, :z)}(rand(ComplexF32, 8, 8, 2, 3))

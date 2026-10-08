@@ -201,7 +201,7 @@ the exported set only — an internal or `public` name may be short and generic.
 ## 7. Proximal operators belong upstream
 
 **Rule 7.1** — Before writing a `ProximalCore.prox!` in this package, check
-`deps/ProximalOperators/src/functions/` and `.../calculus/` for an existing function. MRT already
+`deps/ProximalOperators/src/functions/` and `.../calculus/` for an existing function. Ristretto already
 reuses `NormL1`, `NormL0`, `NormL21`, `NuclearNorm`, `SqrNormL2`, `IndBox`, `IndNonnegative`,
 `IndBallL0`, `IndBallRank`, `SeparableHuberLoss`, `Translate` and `SlicedSeparableSum`.
 
@@ -211,7 +211,7 @@ there in commit `274b63a`; `ProximalAverage` (the proximal-average calculus rule
 `MultiScaleLowRank`) and `IndAffineCG` (the matrix-free affine projection behind `HardConsistency`)
 followed. A proximal function that only makes sense given an image layout
 (spatial dims, frames, coils) stays here; where possible, split it into a generic core upstream and
-a thin layout wrapper in MRT. `BlockNuclearNorm` is the case that stays: it is defined against the
+a thin layout wrapper in Ristretto. `BlockNuclearNorm` is the case that stays: it is defined against the
 `(spatial…, frames, batch)` image layout throughout, so there is no generic core to lift out;
 `HankelLowRankProx` (behind `StructuredLowRank`) is the same case for the
 `(k-space grid…, channels, batch)` layout, and `LoraksLowRankProx` doubly so: the LORAKS S- and
@@ -225,4 +225,4 @@ the `is_AAc_diagonal`/`diag_AAc` shortcut — which is knowledge about MRI encod
 `AbstractOperators` (or the relevant `*Operators` fork) so that both packages and any third party
 can use it. Precedent: the block-Hankel lift used by `StructuredLowRank` went upstream as
 `AbstractOperators.Hankel` — it is the generic sliding-window embedding, with no MRI content —
-while the MRI-layout Cadzow prox around it stayed in MRT.
+while the MRI-layout Cadzow prox around it stayed in Ristretto.

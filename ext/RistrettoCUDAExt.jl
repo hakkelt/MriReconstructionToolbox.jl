@@ -1,12 +1,12 @@
-module MriReconstructionToolboxCUDAExt
+module RistrettoCUDAExt
 
-using MriReconstructionToolbox: MriReconstructionToolbox as MRT
+using Ristretto: Ristretto
 using CUDA: CuArray, CUFFT
 
-# ProximalOperators is a submodule of MriReconstructionToolbox, so its CUDA extension is included
+# ProximalOperators is a submodule of Ristretto, so its CUDA extension is included
 # here, in a module that binds the package it extends.
 module ProximalOperatorsCUDA
-    using MriReconstructionToolbox: ProximalOperators
+    using Ristretto: ProximalOperators
     include(joinpath(@__DIR__, "..", "deps", "ProximalOperators", "ext", "ProximalOperatorsCUDAExt.jl"))
 end
 
@@ -16,7 +16,7 @@ end
 # there the next plan of the same shape takes it in microseconds. An operator is a tree of
 # structs, tuples and arrays of operators; every plan found in it is finalized once.
 
-function MRT._release_device_plans!(op, ::CuArray)
+function Ristretto._release_device_plans!(op, ::CuArray)
     _release_plans!(Base.IdSet{Any}(), op)
     return nothing
 end
@@ -42,4 +42,4 @@ function _release_plans!(seen, x)
     return nothing
 end
 
-end # module MriReconstructionToolboxCUDAExt
+end # module RistrettoCUDAExt

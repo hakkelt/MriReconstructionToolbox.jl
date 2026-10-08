@@ -9,7 +9,7 @@
 # What makes it worth its own example is the header: `center_sample = 0` in every profile.
 # Several exporters, this GE one included, spell "echo position not recorded" that way rather
 # than leaving the field out, and taking it literally puts the readout outside the encoded
-# matrix. MRT detects that case, assumes a symmetric readout, and says so in a warning —
+# matrix. Ristretto detects that case, assumes a symmetric readout, and says so in a warning —
 # which is the right assumption for a full-echo readout and the wrong one for a
 # partial-Fourier acquisition, hence the warning rather than silence. Expect it on load.
 #
@@ -21,7 +21,7 @@
 
 isdefined(Main, :ExampleUtils) || include(joinpath(@__DIR__, "..", "ExampleUtils.jl"))
 using .ExampleUtils
-using MriReconstructionToolbox
+using Ristretto
 using MRITestData
 using MRIBase
 

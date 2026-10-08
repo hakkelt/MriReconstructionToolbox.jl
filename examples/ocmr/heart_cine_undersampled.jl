@@ -21,7 +21,7 @@
 
 isdefined(Main, :ExampleUtils) || include(joinpath(@__DIR__, "..", "ExampleUtils.jl"))
 using .ExampleUtils
-using MriReconstructionToolbox
+using Ristretto
 using MRITestData
 using MRIBase  # loads the extension that turns a RawAcquisitionData into an AcquisitionInfo
 

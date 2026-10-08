@@ -1,7 +1,7 @@
 @testitem "Prewhitening and noise covariance estimation" tags = [:acquisition, :encoding, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using LinearAlgebra
     using NamedDims
 
@@ -51,9 +51,9 @@
 end
 
 @testitem "Coil compression with SVDCompression" tags = [:acquisition, :encoding, :gpu] setup = [SyntheticCoils, GpuEnvSetup, GpuHelpers] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using LinearAlgebra
     using NamedDims
 
@@ -94,13 +94,13 @@ end
     for method in (SVDCompression(), GeometricCompression())
         test_on_devices(a -> compress_coils(a, Nv; method), acq_sim; backends = all_backends())
     end
-    test_on_devices(k -> MriReconstructionToolbox.compress_coils_with_matrix(k, C), acq_sim.kspace_data; backends = all_backends())
+    test_on_devices(k -> Ristretto.compress_coils_with_matrix(k, C), acq_sim.kspace_data; backends = all_backends())
 end
 
 @testitem "Sensitivity map estimation: SelfCalibrating, AdaptiveCombine, ESPIRiT" tags = [:acquisition, :encoding, :simulation, :gpu] setup = [SyntheticCoils, GpuEnvSetup, GpuHelpers] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using LinearAlgebra
     using NamedDims
 
@@ -162,8 +162,8 @@ end
 
 @testitem "Sensitivity estimation: batch dimensions get their own maps" tags = [:preprocessing, :acquisition, :simulation] setup = [SyntheticCoils] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: CartesianAcquisitionInfo
     using LinearAlgebra: norm
     using NamedDims
 
@@ -215,8 +215,8 @@ end
 
 @testitem "Sensitivity estimation: non-Cartesian data calibrates through gridding" tags = [:preprocessing, :acquisition, :nfft, :gpu] setup = [RadialCalibration, GpuEnvSetup, GpuHelpers] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: NonCartesianAcquisitionInfo
     using NamedDims
 
     case = radial_case()
@@ -260,8 +260,8 @@ end
 
 @testitem "Sensitivity estimation: non-Cartesian batch dimensions and average_dims" tags = [:preprocessing, :acquisition, :nfft] setup = [RadialCalibration] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: NonCartesianAcquisitionInfo
     using NamedDims
 
     case = radial_case()
@@ -294,7 +294,7 @@ end
 
 @testitem "Sensitivity estimation: ESPIRiT maps are phase-referenced to the first coil" tags = [:preprocessing, :acquisition] begin
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
     using FFTW: fft, fftshift, ifftshift
 
@@ -322,7 +322,7 @@ end
 
 @testitem "Sensitivity estimation: all-zero maps are reported, not returned silently" tags = [:preprocessing, :acquisition] begin
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
 
     # K-space whose signal sits away from the centre of the encoded matrix — a file whose
@@ -349,9 +349,9 @@ end
 end
 
 @testitem "Sensitivity estimation: measured k-space smaller than image_size is zero-padded" tags = [:preprocessing, :acquisition] setup = [SyntheticCoils] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
 
     Nx, Ny, Nc, measured = 64, 64, 4, 41
@@ -387,15 +387,15 @@ end
 end
 
 @testitem "Sensitivity estimation follows the acquisition's shifted_image_dims" tags = [:preprocessing, :acquisition, :reconstruction] setup = [SyntheticCoils] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims: NamedDimsArray, unname
     using FFTW: fft, fftshift, ifftshift
     using LinearAlgebra: norm
 
     # Scanner data reconstructs in the CENTERED image convention (`shifted_image_dims`), while
-    # every estimator inverts k-space into MRT's plain-DFT default. Maps handed back for such an
+    # every estimator inverts k-space into Ristretto's plain-DFT default. Maps handed back for such an
     # acquisition must therefore be shifted onto the same grid — otherwise they are rolled by half
     # the FOV relative to the images they multiply, and the reconstruction is not merely displaced
     # but wrong everywhere.
@@ -437,7 +437,7 @@ end
 
 @testitem "Sensitivity estimation: coil axis need not be trailing" tags = [:preprocessing] begin
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using LinearAlgebra
     using NamedDims
 
@@ -496,8 +496,8 @@ end
     :preprocessing, :acquisition, :encoding,
 ] begin
     using LinearAlgebra, Random
-    using MriReconstructionToolbox: get_encoding_operator
-    import MriReconstructionToolbox.AbstractOperators as AbstractOperators
+    using Ristretto: get_encoding_operator
+    import Ristretto.AbstractOperators as AbstractOperators
 
     Random.seed!(3)
     nx, ny, nc = 16, 16, 4
@@ -523,8 +523,8 @@ end
 
 @testitem "Gradient delays: multi-coil k-space is combined over the coil axis" tags = [:preprocessing, :acquisition, :nfft, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: NonCartesianAcquisitionInfo
 
     Nsamples, Nspokes, Nc = 64, 30, 8
     angles = range(0, 2π, length = Nspokes + 1)[1:Nspokes]
@@ -565,10 +565,10 @@ end
 end
 
 @testitem "Gradient delay correction in non-Cartesian MRI" tags = [:preprocessing, :acquisition, :nfft] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: NonCartesianAcquisitionInfo
     using LinearAlgebra
     using NamedDims
 
@@ -652,8 +652,8 @@ end
 
 @testitem "Gradient delay estimation on a readout shorter than ±0.5" tags = [:preprocessing, :acquisition, :nfft] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: NonCartesianAcquisitionInfo
 
     # `_extract_spoke_angles_and_shifts` used to hardcode `range(-0.5, 0.5, length = Nsamples)` as
     # the readout's radial extent, so every estimate on a readout that does not span the full

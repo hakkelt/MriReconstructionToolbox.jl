@@ -37,7 +37,7 @@ The following constructors (all exported) cover the majority of regularization n
 ## Quick Usage Examples
 
 ```@example
-using MriReconstructionToolbox.ProximalOperators
+using Ristretto.ProximalOperators
 x = randn(10)
 
 # L1 norm
@@ -79,7 +79,7 @@ Key steps:
 
 ```@example proxops
 import ProximalCore: is_proximable, is_separable, is_convex, is_locally_smooth, prox!, gradient!
-using MriReconstructionToolbox.ProximalOperators
+using Ristretto.ProximalOperators
 using LinearAlgebra: norm
 
 struct MyNormL2{R}
@@ -136,8 +136,8 @@ provide. These are defined here and used through the corresponding regularizatio
 rather than directly.
 
 ```@docs
-MriReconstructionToolbox.BlockNuclearNorm
-MriReconstructionToolbox.DenoiserProx
+Ristretto.BlockNuclearNorm
+Ristretto.DenoiserProx
 ```
 
 Two of them started here and were moved upstream, because nothing about either is MRI-specific:

@@ -1,6 +1,6 @@
 @testitem "Scaling rules" tags = [:reconstruction, :gpu] setup = [TestHelpers, GpuEnvSetup, GpuHelpers] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_scale, get_encoding_operator, _measurement, _quantile_select!
+    using Ristretto
+    using Ristretto: get_scale, get_encoding_operator, _measurement, _quantile_select!
     using LinearAlgebra, Random, Statistics
     using GeometricMedicalPhantoms
 
@@ -57,7 +57,7 @@
         @test get_scale(StdScaling(), acq, x̂, A) ≈ std(vec(x̂)) rtol = 1.0e-5
         @test get_scale(KSpaceNormScaling(), acq, x̂, A) ≈ norm(acq.kspace_data) / 100 rtol = 1.0e-6
         # A unitary operator has trace(𝒜ᴴ𝒜)/N = 1, whatever the probes.
-        @test get_scale(SystemMatrixBasedScaling(), acq, x̂, MriReconstructionToolbox.AbstractOperators.Eye(ComplexF32, size(x̂))) ≈ 1
+        @test get_scale(SystemMatrixBasedScaling(), acq, x̂, Ristretto.AbstractOperators.Eye(ComplexF32, size(x̂))) ≈ 1
         # The noise level of pure noise is its (complex) standard deviation.
         σ = 0.3f0
         noise = σ .* randn(Xoshiro(1), ComplexF32, 256, 256)
@@ -72,7 +72,7 @@
         hot[randperm(Xoshiro(3), length(v))[1:(length(v) ÷ 1000)]] .= 100 * maximum(v)
         @test get_scale(QuantileScaling(), acq, hot, nothing) ≈ q rtol = 0.02
         @test get_scale(MaxScaling(), acq, hot, nothing) > 50 * q
-        stride(k, n) = MriReconstructionToolbox._coprime_prime_stride(k, n)
+        stride(k, n) = Ristretto._coprime_prime_stride(k, n)
         @test stride.(0:12, 1) == [3, 3, 3, 3, 5, 5, 7, 7, 11, 11, 11, 11, 13]
         # Never a factor of the length, so it never aliases with an axis: 192 = 2⁶·3, 385 = 5·7·11.
         @test stride(2, 192 * 192 * 8) == 5

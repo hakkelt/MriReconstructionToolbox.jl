@@ -45,7 +45,7 @@ arguments.
   adjoint.
 - `m`, `sigma`, `precompute`: NFFT gridding operating point (kernel half-width, oversampling
   factor, `NFFT.PrecomputeFlags`), forwarded to `NFFTOp`/NFFT.jl. Left at `nothing` (the
-  default), MRT's own default operating point is used (`DEFAULT_NFFT_M`, `DEFAULT_NFFT_SIGMA`,
+  default), Ristretto's own default operating point is used (`DEFAULT_NFFT_M`, `DEFAULT_NFFT_SIGMA`,
   `DEFAULT_NFFT_PRECOMPUTE` -- a lower-accuracy, faster point than NFFT.jl's own default). See
   "Non-Cartesian accuracy / speed trade-off" in `docs/src/high-level/performance.md` for the
   measured accuracy/speed table this default is picked from.
@@ -198,7 +198,7 @@ end
 Non-Cartesian (NFFT-backed) Fourier operator. `m`, `sigma` (`σ`) and `precompute` expose the
 gridding operating point: `m` is the interpolation kernel's half-width, `sigma` its oversampling
 factor, `precompute` the `NFFT.PrecomputeFlags` gridding strategy. Leaving them at `nothing` (the
-default) uses MRT's own default operating point (`m=3, σ=1.5, precompute=NFFT.POLYNOMIAL` —
+default) uses Ristretto's own default operating point (`m=3, σ=1.5, precompute=NFFT.POLYNOMIAL` —
 `DEFAULT_NFFT_M`/`DEFAULT_NFFT_SIGMA`/`DEFAULT_NFFT_PRECOMPUTE`), chosen for speed at negligible
 accuracy cost; pass explicit values for a different point on the accuracy/speed curve, e.g.
 NFFT.jl's own higher-accuracy default (`m=5, sigma=2.0`) or MRIReco's faster, less accurate one
@@ -295,7 +295,7 @@ end
 """
     DEFAULT_NFFT_M, DEFAULT_NFFT_SIGMA, DEFAULT_NFFT_PRECOMPUTE
 
-MRT's own default NFFT gridding operating point, applied whenever `m`/`sigma`/`precompute` are
+Ristretto's own default NFFT gridding operating point, applied whenever `m`/`sigma`/`precompute` are
 left at `nothing` on `get_fourier_operator`/`get_encoding_operator`. Measured on a 128×128 radial
 phantom (`GeometricMedicalPhantoms`'s Shepp-Logan, 256 samples × 128 spokes), single thread,
 interleaved runs (`benchmark/comparison`-style methodology; a single measurement on this shared
@@ -305,9 +305,9 @@ node can swing 30-60%, so configs were timed round-robin rather than one after a
 |---|---|---|---|---|---|
 | 5 | 2.00 | POLYNOMIAL (NFFT.jl's own default) | 8.5 / 9.7 | 7.5 / 8.6 | 0 (reference) |
 | 4 | 2.00 | POLYNOMIAL | 7.0 / 8.1 | 5.5 / 6.4 | 3.8e-8 |
-| 4 | 1.50 | POLYNOMIAL (former MRT default) | 4.0 / 4.5 | 4.6 / 5.3 | 2.5e-7 |
+| 4 | 1.50 | POLYNOMIAL (former Ristretto default) | 4.0 / 4.5 | 4.6 / 5.3 | 2.5e-7 |
 | 3 | 2.00 | POLYNOMIAL | 6.0 / 6.8 | 4.3 / 4.9 | 2.4e-6 |
-| **3** | **1.50** | **POLYNOMIAL (MRT default)** | **2.8 / 3.2** | **3.3 / 3.8** | **1.7e-5** |
+| **3** | **1.50** | **POLYNOMIAL (Ristretto default)** | **2.8 / 3.2** | **3.3 / 3.8** | **1.7e-5** |
 | 3 | 1.25 | TENSOR (MRIReco's point) | 2.5 / 2.9 | 2.8 / 3.1 | 7.1e-5 |
 | 2 | 1.50 | POLYNOMIAL | 2.3 / 2.6 | 2.4 / 2.8 | 7.4e-4 |
 | 2 | 1.25 | TENSOR | 2.0 / 2.3 | 1.9 / 2.2 | 2.1e-3 |
@@ -331,7 +331,7 @@ const DEFAULT_NFFT_SIGMA = 1.5
 const DEFAULT_NFFT_PRECOMPUTE = NFFT.POLYNOMIAL
 
 # Always forward a concrete operating point: leaving `m`/`sigma`/`precompute` at `nothing` now
-# substitutes MRT's own (lower-accuracy, faster) default rather than NFFT.jl's own default -- see
+# substitutes Ristretto's own (lower-accuracy, faster) default rather than NFFT.jl's own default -- see
 # `DEFAULT_NFFT_M` and friends for the measured justification. The FFT inside the NFFT is planned
 # like the Cartesian DFT: `MEASURE` unless `fast_planning`. `ESTIMATE`, NFFT.jl's own default, picks
 # a 3.3x slower plan for the 192×192 oversampled grid of a 128×128 image on an EPYC 7352.

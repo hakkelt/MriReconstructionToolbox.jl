@@ -3,9 +3,9 @@ using TestItems
 @testitem "EdgePreservingRoughness regularization" tags = [:regularization] setup = [RegTestSetup, ProxOf] begin
     using Test
     using LinearAlgebra
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_operator, calculate, materialize, get_affected_dims, scale_regularization
-    using MriReconstructionToolbox.AbstractOperators
+    using Ristretto
+    using Ristretto: get_operator, calculate, materialize, get_affected_dims, scale_regularization
+    using Ristretto.AbstractOperators
     using NamedDims
 
     huber(t, λ, δ) = abs(t) <= δ ? λ * abs(t)^2 / (2δ) : λ * (abs(t) - δ / 2)
@@ -34,7 +34,7 @@ using TestItems
         λ, δ = 0.3, 0.4
         gradient = get_operator(EdgePreservingRoughness2D(λ), x; threaded = false) * x
         expected = sum(t -> huber(t, λ, δ), gradient)
-        @test MriReconstructionToolbox.calculate(EdgePreservingRoughness2D(λ; δ), x) ≈ expected
+        @test Ristretto.calculate(EdgePreservingRoughness2D(λ; δ), x) ≈ expected
     end
 
     @testset "δ interpolates between L2Image-like and TV-like behaviour" begin
@@ -45,12 +45,12 @@ using TestItems
         # δ → 0: λ ∑|∂x| − λδ/2 per element, i.e. anisotropic total variation
         tiny = 1.0e-8
         anisotropic_tv = λ * sum(abs, gradient)
-        @test MriReconstructionToolbox.calculate(EdgePreservingRoughness2D(λ; δ = tiny), x) ≈
+        @test Ristretto.calculate(EdgePreservingRoughness2D(λ; δ = tiny), x) ≈
             anisotropic_tv rtol = 1.0e-6
 
         # δ → ∞: λ/(2δ) ∑|∂x|², i.e. a quadratic roughness penalty
         huge = 1.0e8
-        @test MriReconstructionToolbox.calculate(EdgePreservingRoughness2D(λ; δ = huge), x) ≈
+        @test Ristretto.calculate(EdgePreservingRoughness2D(λ; δ = huge), x) ≈
             λ / (2 * huge) * sum(abs2, gradient) rtol = 1.0e-8
     end
 
@@ -73,23 +73,23 @@ using TestItems
         x = randn(ComplexF64, 6, 6)
         λ, δ = 0.2, 0.3
         gradient = get_operator(EdgePreservingRoughness2D(λ), x; threaded = false) * x
-        @test MriReconstructionToolbox.calculate(EdgePreservingRoughness2D(λ; δ), x) ≈
+        @test Ristretto.calculate(EdgePreservingRoughness2D(λ; δ), x) ≈
             sum(t -> huber(t, λ, δ), gradient)
     end
 
     @testset "NamedDimsArray input" begin
         x = NamedDimsArray{(:x, :y)}(randn(6, 6))
         reg = EdgePreservingRoughness2D(0.1; δ = 0.2)
-        @test get_operator(reg, x; threaded = false) isa MriReconstructionToolbox.NamedDimsOp
-        @test MriReconstructionToolbox.calculate(reg, x; threaded = false) ≈
-            MriReconstructionToolbox.calculate(reg, unname(x); threaded = false)
+        @test get_operator(reg, x; threaded = false) isa Ristretto.NamedDimsOp
+        @test Ristretto.calculate(reg, x; threaded = false) ≈
+            Ristretto.calculate(reg, unname(x); threaded = false)
     end
 
     @testset "get_affected_dims" begin
         ksp = randn(ComplexF32, 8, 8, 4)
         info = AcquisitionInfo(ksp; image_size = (8, 8))
-        @test MriReconstructionToolbox.get_affected_dims(EdgePreservingRoughness2D(0.1f0), info, 1:3) == 1:2
-        @test MriReconstructionToolbox.get_affected_dims(
+        @test Ristretto.get_affected_dims(EdgePreservingRoughness2D(0.1f0), info, 1:3) == 1:2
+        @test Ristretto.get_affected_dims(
             EdgePreservingRoughness3D(0.1f0), info, (:x, :y, :z, :time)
         ) == (:x, :y, :z)
     end
@@ -98,7 +98,7 @@ using TestItems
         # δ is an absolute intensity, not a weight, so scaling the image by `factor` has to scale δ by the
         # same factor for the term to keep its meaning.
         original = EdgePreservingRoughness2D(0.2; δ = 0.1)
-        scaled = MriReconstructionToolbox.scale_regularization(original, 2.5)
+        scaled = Ristretto.scale_regularization(original, 2.5)
         @test scaled.λ ≈ 0.5
         @test scaled.δ ≈ 0.25
 
@@ -107,44 +107,44 @@ using TestItems
         # least-squares data term itself scales, so the balance between the two is preserved. The ℓ₁-type
         # terms satisfy the same identity.
         x = randn(6, 6)
-        @test MriReconstructionToolbox.calculate(scaled, x .* 2.5) ≈
-            2.5^2 * MriReconstructionToolbox.calculate(original, x)
-        l1_original, l1_scaled = L1Image(0.2), MriReconstructionToolbox.scale_regularization(L1Image(0.2), 2.5)
-        @test MriReconstructionToolbox.calculate(l1_scaled, x .* 2.5) ≈
-            2.5^2 * MriReconstructionToolbox.calculate(l1_original, x)
+        @test Ristretto.calculate(scaled, x .* 2.5) ≈
+            2.5^2 * Ristretto.calculate(original, x)
+        l1_original, l1_scaled = L1Image(0.2), Ristretto.scale_regularization(L1Image(0.2), 2.5)
+        @test Ristretto.calculate(l1_scaled, x .* 2.5) ≈
+            2.5^2 * Ristretto.calculate(l1_original, x)
     end
 end
 
 @testitem "EdgePreservingRoughness with λ = 0 is a no-op" tags = [:regularization] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_operator, calculate, materialize, get_affected_dims, scale_regularization
-    using MriReconstructionToolbox.StructuredOptimization
+    using Ristretto
+    using Ristretto: get_operator, calculate, materialize, get_affected_dims, scale_regularization
+    using Ristretto.StructuredOptimization
 
     # Regression: the constructor accepts λ >= 0, but materialize built SeparableHuberLoss(δ, λ/δ),
     # which rejects μ == 0 -- so disabling the term raised an opaque error from inside
     # ProximalOperators. Every other term in the package treats λ = 0 as a disabled no-op.
     x = Variable(rand(ComplexF32, 8, 8))
     for reg in (EdgePreservingRoughness2D(0.0), EdgePreservingRoughness2D(0.0; δ = 0.5))
-        term = MriReconstructionToolbox.materialize(reg, x; threaded = false)
+        term = Ristretto.materialize(reg, x; threaded = false)
         @test term isa StructuredOptimization.Term
-        @test MriReconstructionToolbox.calculate(reg, ~x; threaded = false) ≈ 0 atol = 1.0e-12
+        @test Ristretto.calculate(reg, ~x; threaded = false) ≈ 0 atol = 1.0e-12
     end
 
     x3 = Variable(rand(ComplexF32, 6, 6, 6))
-    term3 = MriReconstructionToolbox.materialize(EdgePreservingRoughness3D(0.0), x3; threaded = false)
+    term3 = Ristretto.materialize(EdgePreservingRoughness3D(0.0), x3; threaded = false)
     @test term3 isa StructuredOptimization.Term
 
     # A non-zero λ must still build the Huber term.
-    nz = MriReconstructionToolbox.materialize(EdgePreservingRoughness2D(0.1), x; threaded = false)
-    @test nz.f isa MriReconstructionToolbox.ProximalOperators.SeparableHuberLoss
+    nz = Ristretto.materialize(EdgePreservingRoughness2D(0.1), x; threaded = false)
+    @test nz.f isa Ristretto.ProximalOperators.SeparableHuberLoss
 end
 
 @testitem "EdgePreservingRoughness at the default δ converges" tags = [:regularization, :reconstruction] begin
     using Test
     using LinearAlgebra
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox.StructuredOptimization
+    using Ristretto
+    using Ristretto.StructuredOptimization
 
     # Regression: the step size counted only the data term's curvature ‖𝒜‖², while the Huber term
     # adds λ/δ⋅‖∇‖², about twenty times as much at the default δ. The iterates then alternated between
@@ -161,16 +161,16 @@ end
 
     x = Variable(zeros(ComplexF32, 16, 16))
     λ, δ = 0.02, 0.01
-    term = MriReconstructionToolbox.materialize(reg, x; threaded = false)
-    ∇ = MriReconstructionToolbox.get_operator(reg, ~x; threaded = false)
-    L = MriReconstructionToolbox._term_gradient_lipschitz(term)
+    term = Ristretto.materialize(reg, x; threaded = false)
+    ∇ = Ristretto.get_operator(reg, ~x; threaded = false)
+    L = Ristretto._term_gradient_lipschitz(term)
     @test L >= λ / δ * opnorm(∇)^2 * (1 - 1.0e-4)
     # `‖∇‖` from above within the margin, so its square within the margin squared.
-    @test L <= λ / δ * opnorm(∇)^2 * (1 + MriReconstructionToolbox.OPNORM_REL_MARGIN)^2 * (1 + 1.0e-4)
-    @test MriReconstructionToolbox._term_gradient_lipschitz(
-        MriReconstructionToolbox.materialize(L1Image(0.02f0), x; threaded = false)
+    @test L <= λ / δ * opnorm(∇)^2 * (1 + Ristretto.OPNORM_REL_MARGIN)^2 * (1 + 1.0e-4)
+    @test Ristretto._term_gradient_lipschitz(
+        Ristretto.materialize(L1Image(0.02f0), x; threaded = false)
     ) == 0
-    @test MriReconstructionToolbox._term_gradient_lipschitz(
-        MriReconstructionToolbox.materialize(L2Image(0.1f0), x; threaded = false)
+    @test Ristretto._term_gradient_lipschitz(
+        Ristretto.materialize(L2Image(0.1f0), x; threaded = false)
     ) ≈ 2 * 0.1^2 rtol = 1.0e-5
 end

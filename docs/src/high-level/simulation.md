@@ -1,6 +1,6 @@
 # Simulation Tools
 
-MriReconstructionToolbox provides comprehensive tools for simulating MRI acquisitions. These are essential for testing reconstruction algorithms, teaching MRI concepts, and prototyping new acquisition strategies.
+Ristretto provides comprehensive tools for simulating MRI acquisitions. These are essential for testing reconstruction algorithms, teaching MRI concepts, and prototyping new acquisition strategies.
 
 ## Why Simulate?
 
@@ -15,7 +15,7 @@ Simulation is useful for:
 ## Overview: Complete Simulation Pipeline
 
 ```@setup imports
-using MriReconstructionToolbox
+using Ristretto
 using GeometricMedicalPhantoms
 using MIRTjim: jim
 using Plots
@@ -27,7 +27,7 @@ Random.seed!(0)
 A typical simulation workflow:
 
 ```@example imports
-using MriReconstructionToolbox
+using Ristretto
 
 # 1. Create a phantom (ground truth image)
 img = create_shepp_logan_phantom(256, 256, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
@@ -56,7 +56,7 @@ Phantoms are synthetic images that serve as ground truth for testing.
 
 ### Shepp-Logan Phantom
 
-The classic test phantom for MRI reconstruction. MriReconstructionToolbox uses phantoms from the [GeometricMedicalPhantoms.jl](https://github.com/hakkelt/GeometricMedicalPhantoms.jl) package.
+The classic test phantom for MRI reconstruction. Ristretto uses phantoms from the [GeometricMedicalPhantoms.jl](https://github.com/hakkelt/GeometricMedicalPhantoms.jl) package.
 
 ```@example imports
 using MIRTjim: jim
@@ -165,7 +165,7 @@ VariableDensitySampling
 ```@example imports
 gaussian_pdf₁ = VariableDensitySampling(GaussianDistribution(1/3), 3.0)
 gaussian_pattern₁ = create_sampling_pattern(gaussian_pdf₁, (256, 256))
-W = MriReconstructionToolbox.construct_weights(gaussian_pdf₁, (256,))
+W = Ristretto.construct_weights(gaussian_pdf₁, (256,))
 
 p1 = plot(W; legend = false)
 p2 = jim(to_displayable_mask(gaussian_pattern₁, (256, 256)))
@@ -178,7 +178,7 @@ savefig("gaussian_sampling_pattern_1.png"); nothing # hide
 ```@example imports
 gaussian_pdf₂ = VariableDensitySampling(GaussianDistribution(1/5), 3.0)
 gaussian_pattern₂ = create_sampling_pattern(gaussian_pdf₂, (256, 256))
-W = MriReconstructionToolbox.construct_weights(gaussian_pdf₂, (256,))
+W = Ristretto.construct_weights(gaussian_pdf₂, (256,))
 
 p1 = plot(W; legend = false)
 p2 = jim(to_displayable_mask(gaussian_pattern₂, (256, 256)))
@@ -192,7 +192,7 @@ savefig("gaussian_sampling_pattern_2.png"); nothing # hide
 poly_pdf₁ = VariableDensitySampling(PolynomialDistribution(2), 3.0)
 poly_pattern₁ = create_sampling_pattern(poly_pdf₁, (256, 256))
 
-W = MriReconstructionToolbox.construct_weights(poly_pdf₁, (256,))
+W = Ristretto.construct_weights(poly_pdf₁, (256,))
 p1 = plot(W; legend = false)
 p2 = jim(to_displayable_mask(poly_pattern₁, (256, 256)))
 jim(p1, p2; layout=(1,2), plot_title="Polynomial p=2", size = (700, 300))
@@ -204,7 +204,7 @@ savefig("polynomial_sampling_pattern_1.png"); nothing # hide
 ```@example imports
 poly_pdf₂ = VariableDensitySampling(PolynomialDistribution(4), 3.0)
 poly_pattern₂ = create_sampling_pattern(poly_pdf₂, (256, 256))
-W = MriReconstructionToolbox.construct_weights(poly_pdf₂, (256,))
+W = Ristretto.construct_weights(poly_pdf₂, (256,))
 p1 = plot(W; legend = false)
 p2 = jim(to_displayable_mask(poly_pattern₂, (256, 256)))
 jim(p1, p2; layout=(1,2), plot_title="Polynomial p=4", size = (700, 300))

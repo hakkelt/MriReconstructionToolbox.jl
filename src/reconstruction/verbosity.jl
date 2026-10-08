@@ -54,7 +54,7 @@ the iterative solver's own periodic output.
 - `freq::Union{Nothing, Int} = nothing` — solver output frequency in iterations. `nothing`
   picks a reasonable value from the method's `maxit`, `0` prints only the final summary, and
   `-1` disables solver output entirely.
-- `timing::Bool = true` — print MRT's own phase/timing messages. `false` keeps the solver
+- `timing::Bool = true` — print Ristretto's own phase/timing messages. `false` keeps the solver
   output but drops everything else (this is what per-slice output uses).
 """
 Base.@kwdef struct Verbose <: Verbosity

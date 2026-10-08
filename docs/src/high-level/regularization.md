@@ -27,7 +27,7 @@ The first term ensures the reconstruction is consistent with observed data. The 
 ## Available Regularization Methods
 
 ```@setup imports
-using MriReconstructionToolbox
+using Ristretto
 using MIRTjim: jim
 using Plots
 using Random
@@ -35,13 +35,13 @@ using Random
 Random.seed!(0)
 ```
 
-The code snippets in the following sections assume that `MriReconstructionToolbox` and `MIRTjim` are already imported. `MIRTjim` is a convenience wrapper around `Plots.jl` for displaying multidimensional images. Also, assume you have an `AcquisitionInfo` object `acq` representing your k-space data and acquisition settings for simulated Shepp-Logan phantom:
+The code snippets in the following sections assume that `Ristretto` and `MIRTjim` are already imported. `MIRTjim` is a convenience wrapper around `Plots.jl` for displaying multidimensional images. Also, assume you have an `AcquisitionInfo` object `acq` representing your k-space data and acquisition settings for simulated Shepp-Logan phantom:
 
 ```@example imports
-using MriReconstructionToolbox
+using Ristretto
 using GeometricMedicalPhantoms
 using MIRTjim: jim
-using MriReconstructionToolbox: get_operator
+using Ristretto: get_operator
 
 # Simulate 2D acquisition
 x = create_shepp_logan_phantom(128, 128, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
@@ -621,7 +621,7 @@ partial-Fourier problem (62 % of `ky` from one side) they cut the NRMSE from 0.1
 StructuredLowRank(; λ = 0.02, window = (5, 5), structure = :s)
 ```
 
-The reflection about DC uses MRT's centered k-space convention by default; pass `kspace_center`
+The reflection about DC uses Ristretto's centered k-space convention by default; pass `kspace_center`
 when DC sits elsewhere (an acquisition with `shifted_kspace_dims` has it at index 1). ALOHA's
 `weights` apply to `:c` only. To impose support *and* phase structure at once, as LORAKS does,
 add two terms — one `:c`, one `:s` — each with its own `λ`.

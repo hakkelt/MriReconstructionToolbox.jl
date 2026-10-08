@@ -35,8 +35,8 @@
 include("NotebookUtils.jl")
 using .NotebookUtils
 
-using MriReconstructionToolbox
-using MriReconstructionToolbox: get_encoding_operator
+using Ristretto
+using Ristretto: get_encoding_operator
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
 using MIRTjim: jim
 using Plots
@@ -50,7 +50,7 @@ Random.seed!(0);
 # %% [markdown]
 # ## 1. Trajectory families
 #
-# `MriReconstructionToolbox` ships generators for the common non-Cartesian sampling patterns.
+# `Ristretto` ships generators for the common non-Cartesian sampling patterns.
 # All of them return a `NamedDimsArray` with the coordinate axis first (`:coord`, one of the two
 # names `AcquisitionInfo` accepts for non-Cartesian data), normalized to `[-0.5, 0.5)` (the NFFT.jl
 # convention):
@@ -607,7 +607,7 @@ end
 # ## 7. Accuracy vs. speed of the gridding
 #
 # `get_encoding_operator` (and `get_fourier_operator`) forward `m`, `sigma` and `precompute`
-# straight to NFFT.jl. Left at `nothing`, MRT uses its own default operating point
+# straight to NFFT.jl. Left at `nothing`, Ristretto uses its own default operating point
 # (`DEFAULT_NFFT_M = 4`, `DEFAULT_NFFT_SIGMA = 1.5`, `DEFAULT_NFFT_PRECOMPUTE = NFFT.POLYNOMIAL`),
 # a lower-accuracy, faster point than NFFT.jl's own default (`m = 5`, `σ = 2.0`), chosen because
 # the accuracy loss is negligible for iterative reconstruction while the speed gain compounds
@@ -623,7 +623,7 @@ using BenchmarkTools: @belapsed
 
 configs = (
     ("NFFT.jl default (m=5, σ=2.0, polynomial)", (m = 5, sigma = 2.0, precompute = NFFT.POLYNOMIAL)),
-    ("MRT default (m=4, σ=1.5, polynomial)", (m = nothing, sigma = nothing, precompute = nothing)),
+    ("Ristretto default (m=4, σ=1.5, polynomial)", (m = nothing, sigma = nothing, precompute = nothing)),
     ("fast (m=3, σ=1.25, tensor)", (m = 3, sigma = 1.25, precompute = NFFT.TENSOR)),
 )
 
@@ -644,8 +644,8 @@ for r in results
 end
 
 # %% [markdown]
-# Both MRT's default and the fast operating point stay within a fraction of a percent of NFFT.jl's
-# most accurate default, at a fraction of the cost; the ordering (accurate ≥ MRT default ≥ fast)
+# Both Ristretto's default and the fast operating point stay within a fraction of a percent of NFFT.jl's
+# most accurate default, at a fraction of the cost; the ordering (accurate ≥ Ristretto default ≥ fast)
 # is what to take away.
 
 # %% [markdown]

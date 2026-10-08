@@ -1,4 +1,4 @@
-# MriReconstructionToolbox notebooks
+# Ristretto notebooks
 
 Twelve Jupyter notebooks (Julia kernel) that walk through the package feature by feature, on
 synthetic phantoms and on real scanner data. Only the `docs/notebooks/src/*.jl` scripts are
@@ -181,7 +181,7 @@ send someone who should see the notebook with its output without running Julia.
 
 If notebook 9 or 10 fails at its first `AcquisitionInfo(raw)` call with *"is3D must be provided
 when non-NamedDimsArray k-space is used"*, this environment's `Manifest.toml` predates the
-`MriReconstructionToolboxMRIBaseExt` package extension and is silently not loading it. Run
+`RistrettoMRIBaseExt` package extension and is silently not loading it. Run
 `julia --project=docs/notebooks -e 'using Pkg; Pkg.resolve()'` and re-run.
 
 ## Data licensing

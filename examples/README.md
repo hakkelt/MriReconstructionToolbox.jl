@@ -1,6 +1,6 @@
 # Examples — one real dataset per catalog type
 
-Every script here reconstructs a real scanner dataset with MriReconstructionToolbox. The set
+Every script here reconstructs a real scanner dataset with Ristretto. The set
 covers one representative file from **every (source, type) group of the
 [MRITestData](https://github.com/hakkelt/MRITestData.jl) catalog** — 35 groups over its seven
 sources — so between them the scripts exercise every shape of raw data the package is expected
@@ -39,7 +39,7 @@ repair, slab selection, noise covariance, the printing helpers and the PGM write
 ### Credentials and disk
 
 Downloads are cached (by default in the `MRITestData` Scratch space; override with
-`MRT_EXAMPLES_DOWNLOAD_PATH`). Two sources are gated:
+`RISTRETTO_EXAMPLES_DOWNLOAD_PATH`). Two sources are gated:
 
 | Source | What it needs |
 | --- | --- |

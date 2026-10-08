@@ -91,11 +91,11 @@ Pkg.add(url="https://github.com/hakkelt/AbstractOperators.jl", subdir="WaveletOp
 ### Simple Operator Example
 
 ```@setup imports
-using MriReconstructionToolbox.AbstractOperators, FFTW, MriReconstructionToolbox.FFTWOperators, LinearAlgebra
+using Ristretto.AbstractOperators, FFTW, Ristretto.FFTWOperators, LinearAlgebra
 ```
 
 ```@repl imports
-using MriReconstructionToolbox.AbstractOperators, FFTW, MriReconstructionToolbox.FFTWOperators, LinearAlgebra
+using Ristretto.AbstractOperators, FFTW, Ristretto.FFTWOperators, LinearAlgebra
 
 nx, ny = 64, 64
 F = ℱ = DFT(ComplexF32, (nx, ny)) # A 2D DFT operator for 64x64 images
@@ -173,7 +173,7 @@ println("Image size: $(size(x)), k-space size: $(size(ksp))")
 You can easily define custom operators for domain-specific operations. Here's a minimal example:
 
 ```julia
-using MriReconstructionToolbox.AbstractOperators
+using Ristretto.AbstractOperators
 
 # Define the operator struct
 struct MyCustomLinOp{N,M,D,C} <: LinearOperator
@@ -265,9 +265,9 @@ AbstractOperators.jl provides a rich library of pre-built operators, from which 
 - **`Filt`**: Filtering (via DSPOperators.jl)
 - **`Xcorr`**: Cross-correlation (via DSPOperators.jl)
 
-## Integration with MriReconstructionToolbox
+## Integration with Ristretto
 
-MriReconstructionToolbox.jl is built entirely on AbstractOperators.jl. All encoding operators (`get_encoding_operator`, `get_fourier_operator`, etc.) return AbstractOperators objects, giving you:
+Ristretto.jl is built entirely on AbstractOperators.jl. All encoding operators (`get_encoding_operator`, `get_fourier_operator`, etc.) return AbstractOperators objects, giving you:
 
 - **Seamless integration**: Use operators with any algorithm that supports the interface
 - **Flexibility**: Extract and manipulate individual components of the encoding chain
@@ -305,7 +305,7 @@ MriReconstructionToolbox.jl is built entirely on AbstractOperators.jl. All encod
 𝒲 = MyCustomWavelet(...)  # Your custom operator
 
 # Build optimization problem
-using MriReconstructionToolbox.StructuredOptimization
+using Ristretto.StructuredOptimization
 v = Variable(𝒜' * ksp)  # Initial guess
 
 # Solve custom problem

@@ -3,11 +3,11 @@ using TestItems
 @testitem "Regularization terms in reconstruction" tags = [:regularization, :integration, :gpu] setup = [TestHelpers, GpuEnvSetup, GpuHelpers] begin
     using Test
     using LinearAlgebra
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: Regularization
+    using Ristretto
+    using Ristretto: Regularization
     using NamedDims
     using Random
-    using MriReconstructionToolbox.AbstractOperators
+    using Ristretto.AbstractOperators
 
     Random.seed!(42)
     nx, ny, nt = 16, 16, 6

@@ -9,10 +9,9 @@
 using GPUEnv
 GPUEnv.activate(; include_jlarrays = false)
 using CUDA, Printf, Statistics
-using MriReconstructionToolbox
-using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+using Ristretto
+using Ristretto: NonCartesianAcquisitionInfo
 using NamedDims: unname
-const MRT = MriReconstructionToolbox
 
 CUDA.functional() || error("no functional CUDA device")
 const REPS = length(ARGS) >= 1 ? parse(Int, ARGS[1]) : 10
@@ -41,7 +40,7 @@ const CASES = (
 
 @printf("%-34s %10s %10s %8s\n", "case", "host [ms]", "cuda [ms]", "cuda/host")
 for (name, host) in CASES
-    dev = MRT.Adapt.adapt(CuArray, host)
+    dev = Ristretto.Adapt.adapt(CuArray, host)
     variants = (() -> density_compensation(host), () -> density_compensation(dev))
     foreach(f -> f(), variants)  # compile
     times = [Float64[] for _ in variants]

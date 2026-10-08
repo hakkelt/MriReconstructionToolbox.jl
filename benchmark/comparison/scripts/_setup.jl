@@ -1,6 +1,6 @@
 # Shared prelude for the decomposed comparison suite. Every `run_<section>.jl` does
 # `include(joinpath(@__DIR__, "_setup.jl"))` first: it parses the CLI, pins threads, configures
-# the BART / OpenMP / MKL environment, loads MRT + BART + SigPy + MRIReco and the case catalog
+# the BART / OpenMP / MKL environment, loads Ristretto + BART + SigPy + MRIReco and the case catalog
 # (benchmark/utils/), and defines the timing helpers and `BenchResult`. Sections take their data
 # from the catalog only.
 #
@@ -48,7 +48,7 @@ include(joinpath(@__DIR__, "..", "..", "utils", "config.jl"))
 load_site_env!()
 
 # CUDA.jl comes from a GPUEnv overlay of this environment rather than from its own dependencies, so
-# a CPU run neither resolves nor loads it. Loading it also loads MRT's, NFFT's and
+# a CPU run neither resolves nor loads it. Loading it also loads Ristretto's, NFFT's and
 # RegularizedLeastSquares' GPU extensions.
 if ON_GPU
     using GPUEnv
@@ -63,7 +63,7 @@ if USE_MKL
     @info "Enabling Intel MKL backend via MKL.jl"
     using MKL
 end
-const BART_KEY = ON_GPU ? "MRT_BENCH_BART_CUDA" : USE_MKL ? "MRT_BENCH_BART_MKL" : "MRT_BENCH_BART_OPENBLAS"
+const BART_KEY = ON_GPU ? "RISTRETTO_BENCH_BART_CUDA" : USE_MKL ? "RISTRETTO_BENCH_BART_MKL" : "RISTRETTO_BENCH_BART_OPENBLAS"
 const BART_BINARY = get(ENV, BART_KEY, "")
 const BART_AVAILABLE = !isempty(BART_BINARY) && isfile(BART_BINARY)
 BART_AVAILABLE || @warn "No BART build configured for this backend, so BART rows are skipped" key = BART_KEY value = BART_BINARY
@@ -76,7 +76,7 @@ every framework label.
 """
 const BACKEND = ON_GPU ? "cuda" : USE_MKL ? "mkl" : "openblas"
 const BACKEND_LABEL = ON_GPU ? "CUDA" : USE_MKL ? "MKL" : "OpenBLAS"
-const FW = "MRT ($BACKEND_LABEL)"
+const FW = "Ristretto ($BACKEND_LABEL)"
 const BART_FW = "BART ($BACKEND_LABEL)"
 
 using ThreadPinning
@@ -106,23 +106,23 @@ ENV["KMP_AFFINITY"] = "granularity=fine,proclist=[$CPU_STR],explicit"
 ENV["OMP_PROC_BIND"] = "close"
 ENV["OMP_PLACES"] = "{$CPU_STR}"
 
-using MriReconstructionToolbox
-using MriReconstructionToolbox: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
+using Ristretto
+using Ristretto: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
 using GeometricMedicalPhantoms
 using LinearAlgebra
 using Statistics
 using Random
 using FFTW
 using BartIO
-# SigPy and MRpro run in-process through PythonCall, on the interpreter `MRT_BENCH_SIGPY_PYTHON`
+# SigPy and MRpro run in-process through PythonCall, on the interpreter `RISTRETTO_BENCH_SIGPY_PYTHON`
 # names rather than an environment of CondaPkg's own. PythonCall picks its interpreter when it
 # loads, so both variables are set before it does. It frees a Python object that Julia's GC
 # finalizes on a thread without the GIL later, on the thread that holds it, which is what makes
-# the multithreaded MRT solves between Python calls safe.
+# the multithreaded Ristretto solves between Python calls safe.
 get!(ENV, "JULIA_CONDAPKG_BACKEND", "Null")
-# A GPU run takes the interpreter `MRT_BENCH_GPU_PYTHON` names when one is set: the GPU builds of
+# A GPU run takes the interpreter `RISTRETTO_BENCH_GPU_PYTHON` names when one is set: the GPU builds of
 # PyTorch and CuPy are an environment of their own, separate from the CPU-only one.
-let py = get(ENV, ON_GPU && haskey(ENV, "MRT_BENCH_GPU_PYTHON") ? "MRT_BENCH_GPU_PYTHON" : "MRT_BENCH_SIGPY_PYTHON", "")
+let py = get(ENV, ON_GPU && haskey(ENV, "RISTRETTO_BENCH_GPU_PYTHON") ? "RISTRETTO_BENCH_GPU_PYTHON" : "RISTRETTO_BENCH_SIGPY_PYTHON", "")
     isempty(py) || (ENV["JULIA_PYTHONCALL_EXE"] = py)
 end
 using PythonCall
@@ -171,7 +171,7 @@ The BLAS thread count MRIReco chose for itself, captured before this file overri
 `MRIReco.__init__` sets `BLAS.set_num_threads(1)` when `Threads.nthreads() > 1`
 (MRIReco.jl:20-26 — the other branch is Windows-only). That is a deliberate choice by the
 package under test, and the harness must not silently undo it: setting the count here, *after*
-`using MRIReco`, left every timed MRIReco row at `NUM_THREADS` while MRT pinned BLAS inside its
+`using MRIReco`, left every timed MRIReco row at `NUM_THREADS` while Ristretto pinned BLAS inside its
 own solve, so the two toolkits were compared under different BLAS policies for no reason other
 than the order of two lines in this file.
 
@@ -236,7 +236,7 @@ Run `f()` with BLAS at [`MRIRECO_BLAS_THREADS`](@ref) — what MRIReco set for i
 `NUM_THREADS` afterwards, including on exception.
 
 Every timed MRIReco call goes through this, so MRIReco is measured under its own threading policy
-and MRT under its own, rather than both under whichever one happened to be set last.
+and Ristretto under its own, rather than both under whichever one happened to be set last.
 """
 function with_mrireco_blas(f)
     MRIRECO_BLAS_THREADS == NUM_THREADS && return f()
@@ -251,8 +251,8 @@ end
 include(joinpath(@__DIR__, "..", "src", "ComparisonHarness.jl"))
 using .ComparisonHarness: check_nrmse, run_bart
 
-# The case catalog, MRT's reconstruction of each method, `time_run` and the result store, shared
-# with the MRT harness (benchmark/run.jl). No section prepares data of its own.
+# The case catalog, Ristretto's reconstruction of each method, `time_run` and the result store, shared
+# with the Ristretto harness (benchmark/run.jl). No section prepares data of its own.
 include(joinpath(@__DIR__, "..", "..", "utils", "bench_utils.jl"))
 using .BenchUtils
 
@@ -368,7 +368,7 @@ const WARMUP = Ref(1)
     time_reconstruction(f; num_runs = RUNS[]) -> (t_min_s, t_med_s, result)
 
 `time_run` (`WARMUP[]` warm-ups, then the minimum and median of `num_runs`) for the in-process
-toolkits, MRT's timing function in the harness too. BART goes through [`time_bart`](@ref) instead.
+toolkits, Ristretto's timing function in the harness too. BART goes through [`time_bart`](@ref) instead.
 """
 time_reconstruction(f; num_runs::Int = RUNS[]) = time_run(f; warmup = WARMUP[], runs = num_runs)
 
@@ -385,7 +385,7 @@ struct BenchResult
     threads::Int
     time_ms::Float64
     nrmse_gt::Float64
-    nrmse_mrt::Float64
+    nrmse_ristretto::Float64
     case_id::String
     data_source::String
 end
@@ -444,8 +444,8 @@ end
 
 Parsed from `--frameworks=pat1,pat2,...`, or `nothing`. Each `pat` is a case-insensitive substring
 matched against a framework label (`"BART"` matches `"BART (MKL)"` and `"BART (OpenBLAS)"` alike).
-Gates only the *competitor* toolkits (SigPy/BART/MRIReco/MIRT/MRpro) in each case, never MRT itself: MRT's
-own solve is the reference every other framework's `nrmse_mrt` is computed against, so it always
+Gates only the *competitor* toolkits (SigPy/BART/MRIReco/MIRT/MRpro) in each case, never Ristretto itself: Ristretto's
+own solve is the reference every other framework's `nrmse_ristretto` is computed against, so it always
 runs regardless of this filter, and stays cheap next to whichever toolkit is under suspicion.
 """
 const FRAMEWORK_FILTER = let i = findfirst(a -> startswith(a, "--frameworks="), ARGS)
@@ -459,7 +459,7 @@ True unless [`FRAMEWORK_FILTER`](@ref) is set and no pattern in it is a substrin
 (case-insensitive), or `framework` is BART and no BART build is configured for this backend, or
 MRpro and it does not import ([`MRPRO_AVAILABLE`](@ref)), or SigPy on a GPU run without CuPy
 ([`SIGPY_AVAILABLE`](@ref)). See [`FRAMEWORK_FILTER`](@ref) -- never
-call this for MRT's own row.
+call this for Ristretto's own row.
 """
 function should_run_framework(framework)
     occursin("bart", lowercase(framework)) && !BART_AVAILABLE && return false
@@ -486,7 +486,7 @@ function flush_results!(name::AbstractString)
         hostname = gethostname(), julia_version = string(VERSION),
         julia_threads = Threads.nthreads(), blas_vendor = BLAS.get_config().loaded_libs[1].libname,
         use_mkl = USE_MKL, bart_binary = BART_BINARY, pinned_cpus = CPU_STR,
-        placement = get(ENV, "MRT_BENCH_PLACEMENT", "isolated"),
+        placement = get(ENV, "RISTRETTO_BENCH_PLACEMENT", "isolated"),
         bart_spawn_ms = BART_SPAWN * 1000,
         cases_filter = CASE_FILTER, frameworks_filter = FRAMEWORK_FILTER, data = DATA,
         small = small_mode(), cine_frames = cine_frames(), device = String(DEVICE),
@@ -495,7 +495,7 @@ function flush_results!(name::AbstractString)
     for r in results
         @printf(
             "%-38s | %-26s | %-22s | %3d | %10.2f ms | %10.2e | %10.2e\n",
-            r.case_id, r.method, r.framework, r.threads, r.time_ms, r.nrmse_gt, r.nrmse_mrt
+            r.case_id, r.method, r.framework, r.threads, r.time_ms, r.nrmse_gt, r.nrmse_ristretto
         )
     end
     @info "flushed run" path n = length(results) source = ResultsStore.source_tag()
@@ -543,5 +543,5 @@ const CMP_RTYPE = real(CMP_CTYPE)
 
 # Every section's data comes from the case catalog (`get_case`), in `ComplexF32`. The sensitivity
 # maps are handed to every toolkit exactly as the catalog produces them: `normalize_sensitivity_maps`
-# is deliberately not called, since it would give MRT a known operator norm and so a free step size,
+# is deliberately not called, since it would give Ristretto a known operator norm and so a free step size,
 # while MRIReco's `SensitivityOp` and BART's `pics` normalize nothing.

@@ -1,4 +1,4 @@
-# Section: spatial sparsity — isotropic / anisotropic TV, L1-wavelet, TGV — on every static catalog case, MRT vs BART vs
+# Section: spatial sparsity — isotropic / anisotropic TV, L1-wavelet, TGV — on every static catalog case, Ristretto vs BART vs
 # SigPy vs MRIReco vs MRpro (MRpro in the PDHG and wavelet rows only).
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_sparsity.jl --threads=N [--use-mkl] [--data=synthetic|real|all]
 #
@@ -25,7 +25,7 @@
 # * **`-F` changes the algorithm, not the iteration count.** The eps_pri/eps_dual break it disables
 #   is already dead in `pics` (`src/grecon/italgo.c:142-143` hardcodes `ABSTOL = RELTOL = 0`); what
 #   `-F` actually does is switch off over-relaxation, α 1.6 → 1.0 (`admm.c:341-354`). Kept because
-#   plain ADMM is what MRT, MRIReco and SigPy run.
+#   plain ADMM is what Ristretto, MRIReco and SigPy run.
 # * **`-e` is mandatory for the FISTA (wavelet) path.** Without it `pics` assumes λ_max = 1 and uses
 #   a hardcoded step of 0.95 (`src/pics.c:793-794, 801`); with `-w 1` the true λ_max(𝒜ᴴ𝒜) is above
 #   2/0.95 here and the recon stalls for every λ. `-e` runs a 30-iteration power method

@@ -11,7 +11,7 @@
 # BASH_SOURCE.
 REPO_ROOT="${REPO_ROOT:-${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}}"
 if [ ! -f "$REPO_ROOT/benchmark/slurm/common.sh" ]; then
-    echo "### $REPO_ROOT is not the MriReconstructionToolbox repository root" >&2
+    echo "### $REPO_ROOT is not the Ristretto repository root" >&2
     exit 1
 fi
 cd "$REPO_ROOT" || exit 1

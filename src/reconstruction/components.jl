@@ -7,7 +7,7 @@ passed to `reconstruct`. At least one regularization is required.
 
 # Example
 ```julia
-julia> using MriReconstructionToolbox
+julia> using Ristretto
 julia> Component(:lowrank, LowRank(0.05; time_dim = :time), L1TemporalFourier(0.01; time_dim = :time))
 Component(:lowrank, LowRank(0.05), L1TemporalFourier(0.01))
 ```

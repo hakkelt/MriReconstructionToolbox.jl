@@ -30,7 +30,7 @@ The methods of case `c` that carry a λ: `applicable_methods` without the direct
 and CG-SENSE. These are what `calibrate_lambda.jl` sweeps.
 """
 regularized_methods(c::BenchCase) =
-    filter(m -> !(m in (:adjoint, :gridding, :cgsense)) && !haskey(MRT_ONLY_METHODS, m), applicable_methods(c))
+    filter(m -> !(m in (:adjoint, :gridding, :cgsense)) && !haskey(RISTRETTO_ONLY_METHODS, m), applicable_methods(c))
 
 """
     race_methods(c) -> Vector{Symbol}
@@ -50,7 +50,7 @@ end
 """
     LAMBDA_DIR
 
-`results/lambda/`, one calibration file per case; under `MRT_BENCH_SMALL=1` the separate
+`results/lambda/`, one calibration file per case; under `RISTRETTO_BENCH_SMALL=1` the separate
 `results/lambda_small/`, so a smoke calibration of the shrunken cases never overwrites the real one.
 """
 const LAMBDA_DIR = normpath(joinpath(@__DIR__, "..", "results", small_mode() ? "lambda_small" : "lambda"))
@@ -81,7 +81,7 @@ end
 
 Per-toolkit ADMM penalty for `method` on case `c`, from the `rho` table of the case's (or its
 synthetic analogue's) calibration file. `nothing` when none was calibrated: the caller then falls
-back to `admm_rho(c)` for MRT, whose ρ is relative to `‖𝒜‖²`, and to `CMP_RHO` for the others,
+back to `admm_rho(c)` for Ristretto, whose ρ is relative to `‖𝒜‖²`, and to `CMP_RHO` for the others,
 whose ρ is absolute. There is no pre-catalog fallback, since that file predates ρ calibration.
 """
 function load_rho(c::BenchCase, method::Symbol, toolkit::AbstractString)
@@ -158,12 +158,12 @@ end
 # ---------------------------------------------------------------- the row driver
 
 """
-    MRT_DEVICE
+    RISTRETTO_DEVICE
 
-The array type MRT reconstructs into, passed to `mrt_reconstructor` as `device`: `CuArray` on a
+The array type Ristretto reconstructs into, passed to `ristretto_reconstructor` as `device`: `CuArray` on a
 `--device=cuda` run, `nothing` (the host) otherwise.
 """
-const MRT_DEVICE = ON_GPU ? CuArray : nothing
+const RISTRETTO_DEVICE = ON_GPU ? CuArray : nothing
 
 # A direct reconstruction returns Σ conj(Sᶜ) xᶜ; it is scored after dividing by Σ|Sᶜ|², the
 # unfolding of a fully sampled acquisition, for every toolkit alike.
@@ -177,12 +177,12 @@ function _score_image(c::BenchCase, method::Symbol, x)
 end
 
 """
-    run_method_rows!(section, c, method; maxit, toolkits, λ_default) -> MRT image or nothing
+    run_method_rows!(section, c, method; maxit, toolkits, λ_default) -> Ristretto image or nothing
 
-Time MRT's reconstruction of case `c` by `method` (with `mrt_reconstructor`, the same call the MRT
+Time Ristretto's reconstruction of case `c` by `method` (with `ristretto_reconstructor`, the same call the Ristretto
 harness times), then every competitor in `toolkits` that `supports` it, each at its own calibrated
 λ and ADMM penalty (`load_lambda`, `load_rho`), and push one
-`BenchResult` per toolkit. `nrmse_gt` is against the case's reference, `nrmse_mrt` against MRT's
+`BenchResult` per toolkit. `nrmse_gt` is against the case's reference, `nrmse_ristretto` against Ristretto's
 own result. A competitor that throws is logged and dropped from the row.
 """
 function run_method_rows!(
@@ -194,9 +194,9 @@ function run_method_rows!(
     should_run(c.id, label) || should_run(section, label) || return nothing
     println("--> $(c.id): $label")
     runs = timed_runs(c)
-    λ = load_lambda(c, method, "MRT", λ_default)
-    rho = something(load_rho(c, method, "MRT"), admm_rho(c))
-    tm, _, xm = time_run(mrt_reconstructor(c, method; λ, rho, maxit, device = MRT_DEVICE); runs)
+    λ = load_lambda(c, method, "Ristretto", λ_default)
+    rho = something(load_rho(c, method, "Ristretto"), admm_rho(c))
+    tm, _, xm = time_run(ristretto_reconstructor(c, method; λ, rho, maxit, device = RISTRETTO_DEVICE); runs)
     xm = _score_image(c, method, parent(xm))
     push!(results, BenchResult(section, label, FW, NUM_THREADS, tm * 1000, mag_nrmse(xm, c.reference), 0.0, c.id, c.source))
     release_device_memory()

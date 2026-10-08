@@ -15,7 +15,7 @@
 # ---
 
 # %% [markdown]
-# # 1 — Getting started with MriReconstructionToolbox
+# # 1 — Getting started with Ristretto
 #
 # This notebook walks through a complete MRI reconstruction in about twenty lines of code:
 # build a phantom, simulate an undersampled multi-coil acquisition, and reconstruct it
@@ -35,7 +35,7 @@
 include("NotebookUtils.jl")
 using .NotebookUtils
 
-using MriReconstructionToolbox
+using Ristretto
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
 using MIRTjim: jim
 using Plots
@@ -47,7 +47,7 @@ jim(:colorbar, true);
 # %% [markdown]
 # ## 1. The pieces of an MRI acquisition
 #
-# The forward model MRT solves is
+# The forward model Ristretto solves is
 #
 # $$ y = \mathcal{A}x = \mathcal{P}\,\mathcal{F}\,\mathcal{S}\,x $$
 #

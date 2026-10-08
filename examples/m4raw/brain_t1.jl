@@ -13,7 +13,7 @@
 
 isdefined(Main, :ExampleUtils) || include(joinpath(@__DIR__, "..", "ExampleUtils.jl"))
 using .ExampleUtils
-using MriReconstructionToolbox
+using Ristretto
 using MRITestData
 using MRIBase
 

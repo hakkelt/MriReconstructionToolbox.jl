@@ -14,13 +14,13 @@ const _WISDOM_LOCK = ReentrantLock()
 const _WISDOM_LOADED_FROM = Ref("")
 # Set once a plan that measures has been made, so there is something worth saving.
 const _WISDOM_DIRTY = Ref(false)
-# Forces the planner rigor of every plan MRT makes, for `plan_fft_wisdom`.
+# Forces the planner rigor of every plan Ristretto makes, for `plan_fft_wisdom`.
 const _FFTW_RIGOR = Base.ScopedValues.ScopedValue{Union{Nothing, UInt32}}(nothing)
 
 """
     _fftw_flags(fast_planning::Bool, x::AbstractArray) -> UInt32
 
-The FFTW planner flags for a plan MRT is about to make on arrays like `x`: `ESTIMATE` under
+The FFTW planner flags for a plan Ristretto is about to make on arrays like `x`: `ESTIMATE` under
 `fast_planning`, else `MEASURE`, unless [`plan_fft_wisdom`](@ref) forces a rigor. Loads the on-disk
 wisdom first, so an `ESTIMATE` plan of a problem measured in an earlier session gets the measured
 plan. A device plan is not FFTW's: it gets `ESTIMATE`, which it ignores, and leaves the wisdom
@@ -37,15 +37,15 @@ end
 """
     fftw_wisdom_path() -> Union{String, Nothing}
 
-The file MRT keeps FFTW wisdom in, or `nothing` when the cache is off. It lives in the package's
+The file Ristretto keeps FFTW wisdom in, or `nothing` when the cache is off. It lives in the package's
 scratch space (`~/.julia/scratchspaces/<uuid>/fftw_wisdom/`), else under `\$XDG_CACHE_HOME` (or
 `~/.cache`) when that is not writable, and its name carries the CPU model and FFTW version, so
 machines sharing a home directory keep separate files. The environment variable
-`MRT_FFTW_WISDOM` overrides it: `off` disables the cache, any other value names the directory.
+`RISTRETTO_FFTW_WISDOM` overrides it: `off` disables the cache, any other value names the directory.
 Only the `fftw` provider of FFTW.jl has wisdom; under another provider the cache is off.
 """
 function fftw_wisdom_path()
-    setting = get(ENV, "MRT_FFTW_WISDOM", "")
+    setting = get(ENV, "RISTRETTO_FFTW_WISDOM", "")
     lowercase(setting) in ("off", "0", "false", "no") && return nothing
     FFTW.fftw_provider == "fftw" || return nothing
     dir = isempty(setting) ? _default_wisdom_dir() : setting
@@ -71,7 +71,7 @@ function _find_wisdom_dir()
     end
     base = get(ENV, "XDG_CACHE_HOME", "")
     isempty(base) && (base = joinpath(homedir(), ".cache"))
-    dir = joinpath(base, "MriReconstructionToolbox", "fftw_wisdom")
+    dir = joinpath(base, "Ristretto", "fftw_wisdom")
     try
         mkpath(dir)
         return dir
@@ -159,13 +159,13 @@ Plan every FFT that reconstructing `acq` makes — the encoding operator's forwa
 transforms and its normal operator's — with planner rigor `rigor` (`:measure`, `:patient` or
 `:exhaustive`), and save what FFTW learned to the on-disk wisdom cache
 ([`fftw_wisdom_path`](@ref), returned). Later sessions on this machine then get these plans for
-the same problem, even where MRT itself plans with `ESTIMATE`.
+the same problem, even where Ristretto itself plans with `ESTIMATE`.
 
 Wisdom holds only for the exact transform and FFTW thread count it was made with, so run this with
 the thread count reconstructions will use (`julia -t N`), on an acquisition shaped like theirs (the
 same image size, coil count and frame count; the data itself does not matter), and on the machine
 that will run them. `:patient` takes 10–35 s per 2D transform and minutes per 3D one; `:measure`
-is what MRT does on its own for a long solve.
+is what Ristretto does on its own for a long solve.
 """
 function plan_fft_wisdom(acq::AcquisitionInfo; rigor::Symbol = :patient, threaded::Bool = true)
     @argcheck haskey(_FFTW_RIGORS, rigor) "rigor must be one of $(keys(_FFTW_RIGORS))"

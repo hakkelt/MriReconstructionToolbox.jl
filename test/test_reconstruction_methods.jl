@@ -1,8 +1,8 @@
 @testitem "Partial Fourier reconstruction: Homodyne, StepRamp, POCS" tags = [:reconstruction, :acquisition, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: Verbosity
+    using Ristretto
+    using Ristretto: Verbosity
     using LinearAlgebra
     using NamedDims
     using FFTW
@@ -58,10 +58,10 @@
 end
 
 @testitem "Parallel imaging: GRAPPA and SPIRiT" tags = [:reconstruction, :acquisition, :encoding, :gpu] setup = [SyntheticCoils, GpuEnvSetup, GpuHelpers] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: Verbosity
+    using Ristretto
+    using Ristretto: Verbosity
     using LinearAlgebra
     using NamedDims
     using FFTW
@@ -123,10 +123,10 @@ end
 end
 
 @testitem "Partial Fourier: PhaseConstrained recovers a phased phantom" tags = [:reconstruction, :acquisition, :gpu] setup = [SyntheticCoils, GpuEnvSetup, GpuHelpers] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: Verbosity
+    using Ristretto
+    using Ristretto: Verbosity
     using LinearAlgebra
     using NamedDims
     using FFTW
@@ -163,10 +163,10 @@ end
 end
 
 @testitem "GRAPPA: arbitrary undersampling factor and default even kernel" tags = [:reconstruction, :acquisition, :encoding] setup = [SyntheticCoils] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: Verbosity
+    using Ristretto
+    using Ristretto: Verbosity
     using LinearAlgebra
     using NamedDims
     using FFTW
@@ -202,11 +202,11 @@ end
 end
 
 @testitem "Direct methods: trailing time batch dimension is preserved" tags = [:reconstruction, :acquisition, :encoding] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: Verbosity
-    using MriReconstructionToolbox: Homodyne, POCS, PhaseConstrained
+    using Ristretto
+    using Ristretto: Verbosity
+    using Ristretto: Homodyne, POCS, PhaseConstrained
     using NamedDims
     using FFTW
 
@@ -253,14 +253,14 @@ end
 end
 
 @testitem "SPIRiTConsistency: operator adjoint test and KSpaceToImage reconstruction" tags = [:reconstruction, :regularization] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: Verbosity
+    using Ristretto
+    using Ristretto: Verbosity
     using NamedDims
     using LinearAlgebra
     using FFTW
-    using MriReconstructionToolbox.StructuredOptimization
+    using Ristretto.StructuredOptimization
 
     Nx, Ny, Nc = 16, 16, 4
     Kx, Ky = 3, 3
@@ -271,13 +271,13 @@ end
     end
 
     reg = SPIRiTConsistency(kernel; λ = 1.0)
-    @test MriReconstructionToolbox.scale_regularization(reg, 2.0).λ == 2.0
-    @test MriReconstructionToolbox.bind_dimensions(reg, (:x, :y)) === reg
+    @test Ristretto.scale_regularization(reg, 2.0).λ == 2.0
+    @test Ristretto.bind_dimensions(reg, (:x, :y)) === reg
 
     # 1. Adjoint dot-test on (I - G)
     x = randn(ComplexF64, Nx, Ny, Nc)
     y = randn(ComplexF64, Nx, Ny, Nc)
-    op = MriReconstructionToolbox.get_operator(reg, x; threaded = false)
+    op = Ristretto.get_operator(reg, x; threaded = false)
     Ax = op * x
     Aty = op' * y
     @test isapprox(dot(y, Ax), dot(Aty, x); rtol = 1.0e-10)
@@ -303,10 +303,10 @@ end
 end
 
 @testitem "Iterative SPIRiT reconstruction (lowering)" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: Verbosity
+    using Ristretto
+    using Ristretto: Verbosity
     using NamedDims
     using LinearAlgebra
     using FFTW
@@ -345,10 +345,10 @@ end
 end
 
 @testitem "Direct FFT methods respect shifted_kspace_dims" tags = [:reconstruction, :acquisition] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: Verbosity
+    using Ristretto
+    using Ristretto: Verbosity
     using NamedDims
     using FFTW
     using LinearAlgebra
@@ -381,7 +381,7 @@ end
 
 @testitem "DirectReconstruction: coil combination without sensitivity maps" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
 
     Nx, Ny, Nc = 32, 32, 4
@@ -404,7 +404,7 @@ end
     @test size(rec_rss_no_maps) == (Nx, Ny)
     per_coil = reconstruct(no_maps, DirectReconstruction(NoCoilCombination()); verbosity = Silent())
     @test unname(rec_rss_no_maps) ≈ sqrt.(sum(abs2, unname(per_coil); dims = 3))[:, :, 1]
-    @test MriReconstructionToolbox.lower(DirectReconstruction(), no_maps).coil_combination === NoCoilCombination()
+    @test Ristretto.lower(DirectReconstruction(), no_maps).coil_combination === NoCoilCombination()
     rec_default = reconstruct(no_maps, DirectReconstruction(); verbosity = Silent())
     rec = reconstruct(no_maps, DirectReconstruction(NoCoilCombination()); verbosity = Silent())
     @test size(rec) == (Nx, Ny, Nc)
@@ -436,7 +436,7 @@ end
 
 @testitem "DirectReconstruction: coil combination on non-Cartesian data" tags = [:reconstruction, :acquisition, :nfft] setup = [SyntheticCoils] begin
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
 
     N, Nc = 32, 4
@@ -470,7 +470,7 @@ end
 
 @testitem "DirectReconstruction: coil_combination actually changes the result" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
     using LinearAlgebra
 
@@ -538,14 +538,14 @@ end
 
 
 @testitem "Verbosity modes and method-owned iteration parameters" tags = [:reconstruction, :integration] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: Verbosity
+    using Ristretto
+    using Ristretto: Verbosity
     using LinearAlgebra
     using Random
     using FFTW
-    using MriReconstructionToolbox: lower
+    using Ristretto: lower
 
     Random.seed!(42)
     Nx, Ny, Nc = 32, 32, 2
@@ -578,14 +578,14 @@ end
     end
 
     @testset "as_verbosity shorthands" begin
-        @test MriReconstructionToolbox.as_verbosity(:silent) === Silent()
-        @test MriReconstructionToolbox.as_verbosity(:progress) isa ProgressBar
-        @test MriReconstructionToolbox.as_verbosity(:verbose) isa Verbose
+        @test Ristretto.as_verbosity(:silent) === Silent()
+        @test Ristretto.as_verbosity(:progress) isa ProgressBar
+        @test Ristretto.as_verbosity(:verbose) isa Verbose
         @test ReconstructionConfig(; verbosity = :silent).verbosity === Silent()
         @test_throws ArgumentError ReconstructionConfig(; verbosity = :loud)
         # Three modes, so a Bool cannot name one.
-        @test_throws ArgumentError MriReconstructionToolbox.as_verbosity(true)
-        @test_throws ArgumentError MriReconstructionToolbox.as_verbosity(false)
+        @test_throws ArgumentError Ristretto.as_verbosity(true)
+        @test_throws ArgumentError Ristretto.as_verbosity(false)
         @test_throws ArgumentError ReconstructionConfig(; verbosity = false)
     end
 
@@ -697,7 +697,7 @@ end
 
 @testitem "SPIRiT: the frequency-domain kernel matches the calibration convention" tags = [:reconstruction, :regularization] begin
     using Test
-    using MriReconstructionToolbox: _spirit_gfft, SPIRiTConsistencyOp
+    using Ristretto: _spirit_gfft, SPIRiTConsistencyOp
     using LinearAlgebra
     using Random
 
@@ -741,9 +741,9 @@ end
 end
 
 @testitem "SPIRiT: calibration regularization stabilizes a noisy kernel fit" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using LinearAlgebra
     using NamedDims
     using FFTW
@@ -785,10 +785,10 @@ end
 end
 
 @testitem "GRAPPA: check_applicable rejects unsupported sampling patterns" tags = [:reconstruction, :acquisition] setup = [SyntheticCoils] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: check_applicable
+    using Ristretto
+    using Ristretto: check_applicable
     using NamedDims
     using FFTW
     using Random
@@ -849,8 +849,8 @@ end
 
 @testitem "device reconstructions hand their FFT plans back" tags = [:reconstruction, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
     using Random
 
     # A reconstruction drops the encoding operator it built, and with it the operator's cuFFT
@@ -877,7 +877,7 @@ end
     )
     for backend in fft_backends()
         nameof(backend.array_type) === :CuArray || continue
-        handles = Base.get_extension(MriReconstructionToolbox, :MriReconstructionToolboxCUDAExt).CUFFT.idle_handles
+        handles = Base.get_extension(Ristretto, :RistrettoCUDAExt).CUFFT.idle_handles
         for a in (acq, radial), method in methods
             dacq = to_device(backend, a)
             reconstruct(dacq, method; verbosity = Silent())

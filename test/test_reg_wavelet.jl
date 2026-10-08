@@ -78,7 +78,7 @@ using TestItems
         x = rand(16, 16) # rand(16, 16)
         λ = 0.2
         reg = L1Wavelet2D(λ)
-        result = MriReconstructionToolbox.calculate(reg, x; threaded)
+        result = Ristretto.calculate(reg, x; threaded)
         @test result isa Real
         @test result ≥ 0  # L1 norm is non-negative
 
@@ -95,7 +95,7 @@ using TestItems
         x = rand(32, 32)
         λ = 0.1
         reg = L1Wavelet2D(λ; wavelet = WT.haar, levels = 3)
-        result = MriReconstructionToolbox.calculate(reg, x; threaded)
+        result = Ristretto.calculate(reg, x; threaded)
         manual_result = λ * sum(abs, dwt(x, wavelet(WT.haar), 3))
         @test result ≈ manual_result
     end
@@ -159,7 +159,7 @@ end
         x = rand(8, 8, 8)
         λ = 0.25
         reg = L1Wavelet3D(λ)
-        result = MriReconstructionToolbox.calculate(reg, x; threaded)
+        result = Ristretto.calculate(reg, x; threaded)
         @test result isa Real
         @test result ≥ 0  # L1 norm is non-negative
 
@@ -172,7 +172,7 @@ end
 end
 
 @testitem "L1 wavelet operators follow threaded" tags = [:regularization] setup = [RegTestSetup] begin
-    using MriReconstructionToolbox: AbstractOperators
+    using Ristretto: AbstractOperators
     # Large enough for the transform to thread when it is allowed to.
     for (reg, x) in (
             (L1Wavelet2D(0.1; levels = 2), randn(ComplexF32, 512, 512)),

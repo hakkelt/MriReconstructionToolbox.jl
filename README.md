@@ -1,12 +1,12 @@
-# MriReconstructionToolbox.jl
+# Ristretto.jl
 
-[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://hakkelt.github.io/MriReconstructionToolbox.jl/)
+[![](https://img.shields.io/badge/docs-latest-blue.svg)](https://hakkelt.github.io/Ristretto.jl/)
 
 _A comprehensive Julia package for MRI reconstruction_
 
 ## What is this package?
 
-MriReconstructionToolbox.jl provides everything you need to reconstruct images from MRI data. Whether you're working with simple single-coil acquisitions or complex parallel imaging with advanced regularization, this toolbox has you covered.
+Ristretto.jl provides everything you need to reconstruct images from MRI data. Whether you're working with simple single-coil acquisitions or complex parallel imaging with advanced regularization, this toolbox has you covered.
 
 **Perfect for:**
 - Researchers developing new MRI reconstruction methods
@@ -35,13 +35,13 @@ MriReconstructionToolbox.jl provides everything you need to reconstruct images f
 using Pkg
 
 Pkg.add(url="https://github.com/hakkelt/NestedThreading.jl", rev="perf/thread-grants")
-Pkg.add(url="https://github.com/hakkelt/MriReconstructionToolbox.jl")
+Pkg.add(url="https://github.com/hakkelt/Ristretto.jl")
 ```
 
 ### Your First Reconstruction
 
 ```julia
-using MriReconstructionToolbox
+using Ristretto
 
 # Load your k-space data (or create synthetic data)
 ksp = rand(ComplexF32, 128, 128)  # Single-coil k-space data
@@ -90,13 +90,13 @@ img = reconstruct(acq, IterativeReconstruction(L1Wavelet2D(5e-3)))
 
 ## Documentation
 
-📚 **[Full Documentation](https://hakkelt.github.io/MriReconstructionToolbox.jl/)** - Comprehensive guides and API reference
+📚 **[Full Documentation](https://hakkelt.github.io/Ristretto.jl/)** - Comprehensive guides and API reference
 
 **Quick Links:**
-- [Reconstruction Methods](https://hakkelt.github.io/MriReconstructionToolbox.jl/high-level/methods/) - The method taxonomy (direct, iterative, parallel imaging)
-- [Reconstruction](https://hakkelt.github.io/MriReconstructionToolbox.jl/high-level/reconstruction/) - The `reconstruct` entry point
-- [Regularization Options](https://hakkelt.github.io/MriReconstructionToolbox.jl/high-level/regularization/) - Available regularizers
-- [Simulation Tools](https://hakkelt.github.io/MriReconstructionToolbox.jl/high-level/simulation/) - Creating synthetic data
+- [Reconstruction Methods](https://hakkelt.github.io/Ristretto.jl/high-level/methods/) - The method taxonomy (direct, iterative, parallel imaging)
+- [Reconstruction](https://hakkelt.github.io/Ristretto.jl/high-level/reconstruction/) - The `reconstruct` entry point
+- [Regularization Options](https://hakkelt.github.io/Ristretto.jl/high-level/regularization/) - Available regularizers
+- [Simulation Tools](https://hakkelt.github.io/Ristretto.jl/high-level/simulation/) - Creating synthetic data
 
 **Real scanner data:** [`examples/`](examples/README.md) holds one runnable script per data type of
 every source in the [MRITestData](https://github.com/hakkelt/MRITestData.jl) catalog — mridata.org,
@@ -152,11 +152,11 @@ Contributions are welcome! Please feel free to submit issues or pull requests.
 If you use this package in your research, please cite:
 
 ```bibtex
-@software{MriReconstructionToolbox,
+@software{Ristretto,
   author = {Hakkel, Tamás},
-  title = {MriReconstructionToolbox.jl: A Julia Package for MRI Reconstruction},
+  title = {Ristretto.jl: A Julia Package for MRI Reconstruction},
   year = {2025},
-  url = {https://github.com/hakkelt/MriReconstructionToolbox.jl}
+  url = {https://github.com/hakkelt/Ristretto.jl}
 }
 ```
 

@@ -11,7 +11,7 @@
 # keep in sync with the flat files, which stay the only source of truth.
 #
 # Two stores use this layout: the comparison suite's (`benchmark/comparison/results/runs/`, rows of
-# `category`/`method`/`framework`) and the MRT harness's (`benchmark/results/runs/`, rows keyed by
+# `category`/`method`/`framework`) and the Ristretto harness's (`benchmark/results/runs/`, rows keyed by
 # catalog case and method, with the git provenance of the checkout measured). Every function takes
 # the store's `root`; the default is the comparison suite's, which is what its scripts expect.
 module ResultsStore
@@ -59,7 +59,7 @@ function record_run(section::AbstractString, backend::AbstractString, threads::I
         Dict(
             "category" => r.category, "method" => r.method, "framework" => r.framework,
             "threads" => r.threads, "time_ms" => _json_num(r.time_ms),
-            "nrmse_gt" => _json_num(r.nrmse_gt), "nrmse_mrt" => _json_num(r.nrmse_mrt),
+            "nrmse_gt" => _json_num(r.nrmse_gt), "nrmse_ristretto" => _json_num(r.nrmse_ristretto),
             "case_id" => hasproperty(r, :case_id) ? r.case_id : "",
             "data_source" => hasproperty(r, :data_source) ? r.data_source : "",
         ) for r in rows
@@ -71,7 +71,7 @@ end
     record_run_rows(section, backend, threads, benchmarks::Vector{<:AbstractDict}; ts, source, kwargs...)
 
 Same as [`record_run`](@ref) but `benchmarks` is already JSON-shaped (one `Dict` per row, keys
-`category`/`method`/`framework`/`threads`/`time_ms`/`nrmse_gt`/`nrmse_mrt`). Used directly by
+`category`/`method`/`framework`/`threads`/`time_ms`/`nrmse_gt`/`nrmse_ristretto`). Used directly by
 [`record_run`](@ref) and by `migrate_to_store.jl`, which passes rows parsed back out of the old
 per-section JSON files and overrides `ts`/`source` to preserve when/where they actually ran instead
 of stamping them as recorded now. `root` is the store (see the module header).
@@ -153,7 +153,7 @@ struct Row
     framework::String
     time_ms::Float64
     nrmse_gt::Float64
-    nrmse_mrt::Float64
+    nrmse_ristretto::Float64
     source::String
     ts::String
     case_id::String
@@ -182,7 +182,7 @@ function load_rows(root::AbstractString = RESULTS_DIR; schema_version::Integer =
             push!(
                 rows, Row(
                     backend, threads, b["category"], b["method"], b["framework"],
-                    Float64(b["time_ms"]), Float64(b["nrmse_gt"]), Float64(b["nrmse_mrt"]), source, ts,
+                    Float64(b["time_ms"]), Float64(b["nrmse_gt"]), Float64(b["nrmse_ristretto"]), source, ts,
                     get(b, "case_id", ""), get(b, "data_source", ""), v,
                 )
             )

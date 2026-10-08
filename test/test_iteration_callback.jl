@@ -79,7 +79,7 @@ end
     acq = multislice_acquisition()
 
     @testset "$(nameof(typeof(executor)))" for executor in
-        (MriReconstructionToolbox.SequentialExecutor(), MriReconstructionToolbox.MultiThreadingExecutor())
+        (Ristretto.SequentialExecutor(), Ristretto.MultiThreadingExecutor())
         trace = IterationTrace(x -> Float64(sum(abs2, x)))
         method = IterativeReconstruction(
             L2Image(0.01); algorithm = FISTA(), maxit = 5, reltol = 0, on_iteration = trace,

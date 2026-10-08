@@ -1,4 +1,4 @@
-# Section: direct (adjoint) reconstruction of every Cartesian catalog case — MRT / SigPy / BART /
+# Section: direct (adjoint) reconstruction of every Cartesian catalog case — Ristretto / SigPy / BART /
 # MRIReco / MIRT / MRpro.
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_base.jl --threads=N [--use-mkl] [--data=synthetic|real|all]
 #
@@ -10,7 +10,7 @@
 # 94–124 ms, `bart copy` 152–215 ms, `bart fft -i 3` 163–253 ms). Subtracting the `bart_overhead`
 # estimate from a 2 ms compute leaves a difference far inside that jitter, which `time_bart`'s floor
 # then reported as 0.01 ms — 300× faster than everyone else, an artifact. BART still runs and its
-# output is still checked against MRT's, but its `time_ms` is recorded as unmeasurable (-1). The
+# output is still checked against Ristretto's, but its `time_ms` is recorded as unmeasurable (-1). The
 # iterative sections are unaffected: there the solver dominates the fixed overhead.
 include(joinpath(@__DIR__, "_setup.jl"))
 include(joinpath(@__DIR__, "_toolkits.jl"))

@@ -1,6 +1,6 @@
 # Sanity checks for the benchmark case catalog.
 #
-#   MRT_BENCH_SMALL=1 julia --project=benchmark benchmark/utils/check_cases.jl [--cases=pat,...] [--real]
+#   RISTRETTO_BENCH_SMALL=1 julia --project=benchmark benchmark/utils/check_cases.jl [--cases=pat,...] [--real]
 #
 # For every case: array layouts agree with each other, the Cartesian acceleration is within 5% of
 # the design value, a direct reconstruction of the *noiseless, fully sampled* problem reproduces
@@ -11,7 +11,7 @@
 include(joinpath(@__DIR__, "bench_utils.jl"))
 using .BenchUtils
 using .BenchUtils: centred_fft
-using MriReconstructionToolbox
+using Ristretto
 using Printf
 using SHA
 
@@ -64,14 +64,14 @@ for id in IDS
                 id, family = fam, trajectory = :cartesian, reference = img, smaps = c.smaps,
                 kspace = ComplexF32.(k), mask = trues(n, n), image_size = c.image_size,
             )
-            x = Array(parent(mrt_reconstructor(full, :adjoint)()))
+            x = Array(parent(ristretto_reconstructor(full, :adjoint)()))
             c.smaps === nothing || (x ./= dropdims(sum(abs2, maps; dims = 3); dims = 3))
             e = BenchUtils.nrmse(x, img)
             line *= @sprintf("  full adjoint %.1e", e)
             check(e < 1.0e-5, "$id: noiseless fully sampled adjoint NRMSE $e")
         else
             # Noiseless, Nyquist-sampled (π/2 · n spokes) radial data through the same simulation,
-            # gridded by MRT with an iterative (Pipe-Menon) DCF: validates the trajectory and
+            # gridded by Ristretto with an iterative (Pipe-Menon) DCF: validates the trajectory and
             # FFT-shift conventions. Scored against the phantom low-passed to the |k| ≤ 1/2 disc a
             # radial trajectory covers: the corners outside it hold 14% of Shepp-Logan's energy at
             # 128², which no DCF can recover (0.15 against the full phantom even with Pipe-Menon).
@@ -84,7 +84,7 @@ for id in IDS
                 id, family = fam, trajectory = :noncartesian, reference = img, smaps = c.smaps,
                 kspace = k, traj, dcf = BenchUtils.ramp_dcf(traj), image_size = c.image_size,
             )
-            acq = density_compensation(mrt_acquisition(full))
+            acq = density_compensation(ristretto_acquisition(full))
             x = Array(parent(reconstruct(acq, DirectReconstruction(); verbosity = Silent())))
             x ./= dropdims(sum(abs2, maps; dims = 3); dims = 3)
             kr = ((-(n ÷ 2)):(n - n ÷ 2 - 1)) ./ n

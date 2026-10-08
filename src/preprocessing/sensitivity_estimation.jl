@@ -90,7 +90,7 @@ image array) work in place of names, and are the only form available for unnamed
 
 ## FFT-shift convention
 
-Every estimator inverts centered k-space into MRT's *default* image convention — image origin at
+Every estimator inverts centered k-space into Ristretto's *default* image convention — image origin at
 index 1, the plain-DFT one — so the raw-array method returns maps in that convention. An
 acquisition that declares `shifted_image_dims` reconstructs **centered** images instead (scanner
 data always does; see `AcquisitionInfo(::MRIBase.RawAcquisitionData)`), so the

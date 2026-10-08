@@ -1,5 +1,5 @@
 @testitem "add_noise on plain arrays and NamedDimsArrays" tags = [:simulation] begin
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
     using LinearAlgebra
     using Statistics: std
@@ -48,7 +48,7 @@
 end
 
 @testitem "estimate_snr and the image-domain `snr` keyword" tags = [:simulation, :analysis] begin
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
     using Random
     using Statistics: std
@@ -123,9 +123,9 @@ end
 end
 
 @testitem "add_noise on AcquisitionInfo (Cartesian and non-Cartesian)" tags = [:simulation, :acquisition, :nfft] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: NonCartesianAcquisitionInfo
     using Random
 
     Random.seed!(1)
@@ -158,7 +158,7 @@ end
 end
 
 @testitem "radial_trajectory" tags = [:simulation, :nfft] begin
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
     using LinearAlgebra
 
@@ -226,7 +226,7 @@ end
 end
 
 @testitem "stack_of_stars_trajectory" tags = [:simulation, :nfft] begin
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
 
     @testset "shape, dimension names and partition grid" begin
@@ -244,7 +244,7 @@ end
 end
 
 @testitem "kooshball_trajectory" tags = [:simulation, :nfft] begin
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
     using LinearAlgebra
 
@@ -291,7 +291,7 @@ end
 end
 
 @testitem "spiral_trajectory" tags = [:simulation, :nfft] begin
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
     using LinearAlgebra
 
@@ -338,7 +338,7 @@ end
 end
 
 @testitem "phyllotaxis_trajectory" tags = [:simulation, :nfft] begin
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
     using LinearAlgebra
 
@@ -368,7 +368,7 @@ end
 end
 
 @testitem "floret_trajectory" tags = [:simulation, :nfft] begin
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
     using LinearAlgebra
 
@@ -399,7 +399,7 @@ end
 end
 
 @testitem "sparkling_trajectory" tags = [:simulation, :nfft] begin
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
     using LinearAlgebra
 
@@ -450,8 +450,8 @@ end
 end
 
 @testitem "AcquisitionInfo non-Cartesian construction needs no k-space placeholder" tags = [:acquisition, :nfft] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: NonCartesianAcquisitionInfo
 
     traj = radial_trajectory(16, 4)
     smaps = coil_sensitivities(16, 16, 3)
@@ -467,7 +467,7 @@ end
 end
 
 @testitem "subsampling: tuple of indexing expressions (default idiom)" tags = [:acquisition, :simulation] begin
-    using MriReconstructionToolbox
+    using Ristretto
 
     @testset "partial Fourier as a UnitRange" begin
         nx, ny = 32, 32

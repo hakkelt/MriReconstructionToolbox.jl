@@ -175,7 +175,7 @@ img = reconstruct(acq, IterativeReconstruction(regularization);
 img = reconstruct(acq, method)
 
 # Can explicitly specify executor
-using MriReconstructionToolbox: MultiThreadingExecutor, SequentialExecutor
+using Ristretto: MultiThreadingExecutor, SequentialExecutor
 
 # Force multi-threading
 img = reconstruct(acq, method; 

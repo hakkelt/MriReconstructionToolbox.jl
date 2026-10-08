@@ -18,7 +18,7 @@ least-squares de-Hankelization becomes `kᵦ ← conj(w) ⊙ (𝓗ᴴ M̂) ./ (|
 first-difference weight, for instance) are not constrained by the weighted term at all, so the
 prox leaves them untouched; `keep` marks them and `invmult` is zero there.
 
-Like `BlockNuclearNorm`, this stays in MRT rather than going upstream (`NAMING.md`
+Like `BlockNuclearNorm`, this stays in Ristretto rather than going upstream (`NAMING.md`
 rule 7.2): it is defined against the `(k-space grid…, channels, batch)` layout throughout, so
 there is no layout-free core to lift into `ProximalOperators`. The generic piece — the
 block-Hankel lift itself — did go upstream, as `AbstractOperators.Hankel`.
@@ -156,7 +156,7 @@ no ACS lines are needed.
   window: 76 ms for `:c` against 209 ms (`:s`) and 212 ms (`:g`) per proximal call, i.e. 2.7-2.8×.
   The internal `LoraksLift`'s docstring carries the exact constructions.
 - `kspace_center`: (optional) the array index of the DC sample per k-space encoding dimension,
-  used by `structure = :s` and `:g` to reflect k-space about DC. Defaults to MRT's centered
+  used by `structure = :s` and `:g` to reflect k-space about DC. Defaults to Ristretto's centered
   convention, `N ÷ 2 + 1` per dimension — pass the true center when DC sits elsewhere (an
   acquisition with `shifted_kspace_dims`, where DC is at index 1). Ignored by `structure = :c`.
 - `weights`: (optional) ALOHA's transform-domain weighting, for `structure = :c` only. `nothing`
@@ -170,7 +170,7 @@ no ACS lines are needed.
     dimension (the Haar detail bands of the first two scales), giving `2 * length(window)` terms.
   - an array on the k-space encoding grid — a custom weight.
   - a tuple or vector of such arrays — a custom pyramid.
-  The built-in models assume MRT's default centered k-space layout (DC at `N ÷ 2 + 1`); pass an
+  The built-in models assume Ristretto's default centered k-space layout (DC at `N ÷ 2 + 1`); pass an
   explicit array when the DC sits elsewhere (`shifted_kspace_dims`).
 - `batch_dims`: (optional) dimension name(s) solved independently (e.g. `:time`); they are not
   coupled by the Hankel embedding. Matching is by name, so this only has an effect when the

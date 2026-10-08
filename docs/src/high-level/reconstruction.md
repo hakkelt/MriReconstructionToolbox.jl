@@ -16,13 +16,13 @@ ReconstructionConfig
 The simplest reconstruction performs direct adjoint reconstruction ($\mathcal{A}^* y$):
 
 ```@setup recon
-using MriReconstructionToolbox
+using Ristretto
 using Random
 Random.seed!(123)
 ```
 
 ```@example recon
-using MriReconstructionToolbox
+using Ristretto
 
 # Create k-space data
 ksp = rand(ComplexF32, 128, 128, 8)

@@ -4,11 +4,11 @@ This page documents the low-level operator interface for MRI reconstruction. The
 
 !!! note "These names are public, but not exported"
     The operator constructors below belong to the extension surface rather than to the beginner-facing
-    API, so `using MriReconstructionToolbox` does not bring them into scope. Import the ones you need
+    API, so `using Ristretto` does not bring them into scope. Import the ones you need
     explicitly:
 
     ```julia
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator,
+    using Ristretto: get_encoding_operator, get_fourier_operator,
         get_sensitivity_map_operator, get_subsampling_operator
     ```
 
@@ -33,7 +33,7 @@ where:
 get_encoding_operator
 get_fourier_operator
 get_sensitivity_map_operator
-MriReconstructionToolbox.get_subsampling_operator
+Ristretto.get_subsampling_operator
 ```
 
 ## Encoding Operators
@@ -41,7 +41,7 @@ MriReconstructionToolbox.get_subsampling_operator
 The encoding operator is the primary interface for creating complete MRI forward models.
 
 ```@setup ops
-using MriReconstructionToolbox
+using Ristretto
 using Random
 Random.seed!(123)
 ```
@@ -49,8 +49,8 @@ Random.seed!(123)
 ### Usage Patterns
 
 ```@example ops
-using MriReconstructionToolbox
-using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator
+using Ristretto
+using Ristretto: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, get_subsampling_operator
 
 # Single-coil, fully sampled
 ksp = rand(ComplexF32, 64, 64)
@@ -488,7 +488,7 @@ returns as a ragged tuple, come back as one array a `NormL1` term can be applied
 ```@docs
 ContourletOperators.NSCTOp
 ContourletOperators.ContourletOp
-MriReconstructionToolbox.StackedNSCTOp
+Ristretto.StackedNSCTOp
 ```
 
 ## See Also

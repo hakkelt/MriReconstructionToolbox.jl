@@ -18,7 +18,7 @@
 # # 6 — Algorithms and configuration
 #
 # Two knobs decide how a reconstruction runs: the *method* (what problem is solved, and with
-# which solver) and the *run configuration* (scaling, output, threading, task splitting). MRT
+# which solver) and the *run configuration* (scaling, output, threading, task splitting). Ristretto
 # keeps them strictly separate — everything only a method can act on lives on the method, and
 # `ReconstructionConfig` rejects such a keyword rather than silently ignoring it.
 #
@@ -38,14 +38,14 @@
 include("NotebookUtils.jl")
 using .NotebookUtils
 
-using MriReconstructionToolbox
-using MriReconstructionToolbox: DEFAULT_ALGORITHMS, get_encoding_operator
+using Ristretto
+using Ristretto: DEFAULT_ALGORITHMS, get_encoding_operator
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
 using MIRTjim: jim
 using Plots
 using NamedDims
-using MriReconstructionToolbox.ProximalAlgorithms: get_assumptions
-using MriReconstructionToolbox.AbstractOperators: estimate_opnorm
+using Ristretto.ProximalAlgorithms: get_assumptions
+using Ristretto.AbstractOperators: estimate_opnorm
 using Random
 
 Random.seed!(0);
@@ -138,7 +138,7 @@ println("CGNR    NRMSE ", round(nrmse1(x_cgnr), digits = 4))
 # the same way §9 compares the solvers themselves.
 
 # %%
-using MriReconstructionToolbox.AbstractOperators: DiagOp
+using Ristretto.AbstractOperators: DiagOp
 
 # The notebook's own maps, multiplied by a smooth 20x falloff along x: a real image, a real
 # sampling pattern, and a coil array with the geometry the preconditioner assumes.
@@ -274,7 +274,7 @@ side_by_side(
 )
 
 # %% [markdown]
-# ### Letting MRT choose
+# ### Letting Ristretto choose
 #
 # **The recommended form is to leave `algorithm` out entirely.** The default tuple already covers
 # every model this package can build, in a sensible order, and the choice then tracks whatever
@@ -310,7 +310,7 @@ println("auto-selected NRMSE ", round(nrmse1(x_auto), digits = 4), "  (equals PO
 #   often the fastest of the family on a well-scaled problem — but adding them to the defaults
 #   would add dead entries, not choices.
 #
-# Nothing in either form is restricted to the names MRT re-exports: any `ProximalAlgorithms`
+# Nothing in either form is restricted to the names Ristretto re-exports: any `ProximalAlgorithms`
 # iterable algorithm works, as long as its `get_assumptions` matches the parsed model — the same
 # declaration the table in section 1 is read from. `PANOC` and `ZeroFPR` are the two worth
 # knowing about, both quasi-Newton (L-BFGS) accelerations of forward-backward splitting that
@@ -329,7 +329,7 @@ println(
 )
 
 # %%
-using MriReconstructionToolbox.ProximalAlgorithms: PANOC, ZeroFPR
+using Ristretto.ProximalAlgorithms: PANOC, ZeroFPR
 
 x_panoc = reconstruct(
     data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = PANOC(), maxit = 60))
@@ -348,8 +348,8 @@ println("ZeroFPR NRMSE ", round(nrmse1(x_zerofpr), digits = 4))
 # - **`reltol` is a relative tolerance that controls early stopping** — how close to a fixed
 #   point the iterate must be before the solver stops ahead of the budget. Default `1e-4`.
 #
-# The name is the point: MRT's tolerance is *relative*, `ProximalAlgorithms`' `tol` on the
-# algorithm object is *absolute*, and MRT converts between them. The absolute threshold handed to
+# The name is the point: Ristretto's tolerance is *relative*, `ProximalAlgorithms`' `tol` on the
+# algorithm object is *absolute*, and Ristretto converts between them. The absolute threshold handed to
 # the solver is
 #
 # ```julia
@@ -466,11 +466,11 @@ reconstruct(data, IterativeReconstruction(L2Image(1.0f-4); maxit = 5); verbosity
 reconstruct(data, IterativeReconstruction(L2Image(1.0f-4); maxit = 5); verbosity = ProgressBar());
 
 # %% [markdown]
-# `freq` is **optional**. Left out, MRT derives a printing frequency from the method's `maxit`
+# `freq` is **optional**. Left out, Ristretto derives a printing frequency from the method's `maxit`
 # (roughly twenty rows over the run, rounded to one of 1, 5, 10, 20, 50, 100), which is what you
 # want almost always. Pass it only to override that: `freq = 1` for every iteration, `freq = 0`
 # for a single end-of-run summary line, `freq = -1` to drop the solver's output while keeping
-# MRT's own phase log.
+# Ristretto's own phase log.
 
 # %%
 println("--- Verbose(): frequency chosen from maxit = 60 ---")
@@ -582,7 +582,7 @@ println("stage 2 NRMSE ", round(nrmse1(x_stage2), digits = 4))
 #
 # ### What `‖𝒜‖` is used for
 #
-# MRT asks `estimate_opnorm` for a value that is certified **not** to fall below
+# Ristretto asks `estimate_opnorm` for a value that is certified **not** to fall below
 # $\|\mathcal{A}\|$ — a power iteration, which converges from below, paired with a closed-form
 # upper bound — and hands the algorithm
 # $L_f = n\|\mathcal{A}\|^2$ — the Lipschitz constant of the data term's gradient, with $n$ the
@@ -600,7 +600,7 @@ println("stage 2 NRMSE ", round(nrmse1(x_stage2), digits = 4))
 # | ADMM | **no** | its step is the penalty `ρ`, chosen adaptively; `Lf` is discarded |
 # | CG / CGNR | **no** | Krylov methods are scale invariant and derive everything themselves |
 #
-# MRT skips the estimate where it can prove nothing needs it — a *pure, unregularized* CG/CGNR
+# Ristretto skips the estimate where it can prove nothing needs it — a *pure, unregularized* CG/CGNR
 # solve, which instead scales its warm start with a one-application Rayleigh-quotient proxy.
 # Everything else computes it, including ADMM, and that is not the waste it looks like: $L$ is
 # used for a second purpose the table above does not list. The default warm start is one
@@ -638,7 +638,7 @@ end
 # norm would give, which costs convergence rate but never safety.
 #
 # **Supplying the constant yourself** — `disable_operator_normalization` is not the only
-# alternative to estimating. Because MRT fills `Lf` in only when the algorithm does not already
+# alternative to estimating. Because Ristretto fills `Lf` in only when the algorithm does not already
 # carry one, an `Lf` you pass to the algorithm wins; combine it with
 # `disable_operator_normalization = true` and the estimate is skipped as well.
 # *Costs* nothing, and *reach for it* whenever you already know $\|\mathcal{A}\|$ — a parameter
@@ -670,7 +670,7 @@ end
 #
 # One consequence to keep in mind when reading a printed objective: the substituted form never
 # applies $\mathcal{A}$ a second time, so its value is the potential of the gradient it already
-# computed. With MRT's `BACKWARD`-normalized Fourier operator $\mathcal{A}^*$ is the inverse
+# computed. With Ristretto's `BACKWARD`-normalized Fourier operator $\mathcal{A}^*$ is the inverse
 # rather than the true adjoint, so that potential is $\tfrac12\|\mathcal{A}x - y\|^2 / \sigma$
 # with $\sigma = N$ — the right quantity for the solver and for a line search, but scaled if you
 # wanted to read off $\tfrac12\|\mathcal{A}x - y\|^2$ itself.
@@ -751,7 +751,7 @@ compare_options(data_noncart, nrmse1; maxit = 30)
 # there is none — but to the loop. Without `Lf` the iteration runs in adaptive mode and performs
 # a descent check every iteration, one extra evaluation of the smooth term each time. On the
 # Cartesian problem the check always passes and `γ` never actually shrinks (it stays close to the
-# `1/Lf` the estimate would have given), so the price is paid for information MRT could have
+# `1/Lf` the estimate would have given), so the price is paid for information Ristretto could have
 # supplied once.
 #
 # **Why "no normalization" is a catastrophe on the radial problem, and what it is really telling
@@ -860,7 +860,7 @@ println("same answer all three: ", x_par ≈ x_seq && x_par ≈ x_none)
 # dimension any term in the model affects. What is left over is split.
 
 # %%
-using MriReconstructionToolbox: get_affected_dims
+using Ristretto: get_affected_dims
 
 image_dims = (:x, :y, :slice, :time)
 batch_dims = (:slice, :time)      # the non-Fourier dimensions of this layout
@@ -910,7 +910,7 @@ end
 # %% [markdown]
 # ### Threading notes
 #
-# MRT parallelizes *across* slices and keeps each slice's work single-threaded, because a 128²
+# Ristretto parallelizes *across* slices and keeps each slice's work single-threaded, because a 128²
 # slice is small enough that splitting it costs more than it saves; a low-rank prox, whose SVDs
 # are level-3 BLAS, is the documented exception and keeps its threaded budget. The library-level
 # thread pools underneath (BLAS, FFTW, NFFT) are managed for you during the solve — do not call
@@ -925,7 +925,7 @@ end
 #
 # FFTW plans each transform before its first use, either instantly from a heuristic or by timing
 # candidate algorithms (0.1–0.2 s per 2D transform), whose plans run up to several times faster.
-# MRT picks one from the problem size, algorithm and iteration count; when you will reconstruct
+# Ristretto picks one from the problem size, algorithm and iteration count; when you will reconstruct
 # the same acquisition many times — this notebook does — `fft_planning = :measure` pays the
 # timing once and every later reconstruction reuses the plans.
 
@@ -937,7 +937,7 @@ using FFTW
 @show BLAS.get_num_threads()
 @show FFTW.get_num_threads()
 @show get(ENV, "KMP_BLOCKTIME", "unset")
-@show MriReconstructionToolbox.serial_blas_threshold_bytes()
+@show Ristretto.serial_blas_threshold_bytes()
 
 # %% [markdown]
 # ## 9. A convergence comparison

@@ -1,6 +1,6 @@
 # Noise and Reconstruction Analysis
 
-`MriReconstructionToolbox` provides analysis tools for evaluating noise propagation, SNR maps, and g-factor geometry in MRI reconstructions.
+`Ristretto` provides analysis tools for evaluating noise propagation, SNR maps, and g-factor geometry in MRI reconstructions.
 
 ## Pseudo-Replica Noise Propagation
 

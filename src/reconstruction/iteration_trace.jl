@@ -34,7 +34,7 @@ plotting a split run.
 
 # Example
 ```julia
-using MriReconstructionToolbox
+using Ristretto
 
 nrmse(x, ref) = sqrt(sum(abs2, x .- ref) / sum(abs2, ref))
 

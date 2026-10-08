@@ -225,7 +225,7 @@ const DEV_PATHED_DEPS = (
 """
     print_versions()
 
-Print `versioninfo()`, `MriReconstructionToolbox`'s own version, and the version of every
+Print `versioninfo()`, `Ristretto`'s own version, and the version of every
 dev-pathed fork under `deps/` (`AbstractOperators`, `NestedThreading`, and friends — see
 `DEV_PATHED_DEPS`), each tagged `(dev)` when it is resolved to a local path rather than a
 registry release. Intended as the final cell of every notebook.
@@ -235,7 +235,7 @@ function print_versions()
     println()
     deps = Pkg.dependencies()
     by_name = Dict(info.name => info for info in values(deps))
-    for name in ("MriReconstructionToolbox", DEV_PATHED_DEPS...)
+    for name in ("Ristretto", DEV_PATHED_DEPS...)
         info = get(by_name, name, nothing)
         if info === nothing
             println(rpad(name, 24), "not loaded")

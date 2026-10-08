@@ -21,7 +21,7 @@ using TestItems
         @test get_operator(PlugAndPlay(soft_threshold), x; threaded = false) isa Eye
         named = NamedDimsArray{(:x, :y)}(randn(8, 8))
         @test get_operator(PlugAndPlay(soft_threshold), named; threaded = false) isa
-            MriReconstructionToolbox.NamedDimsOp
+            Ristretto.NamedDimsOp
     end
 
     @testset "a soft-threshold denoiser reproduces L1Image" for λ in (0.05, 0.4), γ in (0.3, 1.0)
@@ -33,7 +33,7 @@ using TestItems
 
     @testset "the value function is unavailable" begin
         x = randn(8, 8)
-        @test isnan(MriReconstructionToolbox.calculate(PlugAndPlay(soft_threshold; strength = 0.2), x))
+        @test isnan(Ristretto.calculate(PlugAndPlay(soft_threshold; strength = 0.2), x))
         _, value = prox_of(PlugAndPlay(soft_threshold; strength = 0.2), x)
         @test isnan(value)
     end
@@ -71,10 +71,10 @@ using TestItems
     end
 
     @testset "get_affected_dims follows the denoiser's window" begin
-        @test MriReconstructionToolbox.get_affected_dims(
+        @test Ristretto.get_affected_dims(
             PlugAndPlay(soft_threshold), nothing, (:x, :y, :slice)
         ) == (:x, :y)
-        @test MriReconstructionToolbox.get_affected_dims(
+        @test Ristretto.get_affected_dims(
             PlugAndPlay(soft_threshold; spatial_dims = 3), nothing, (:x, :y, :z, :time)
         ) == (:x, :y, :z)
     end
@@ -96,7 +96,7 @@ using TestItems
     end
 
     @testset "scale_regularization scales the noise level" begin
-        reg = MriReconstructionToolbox.scale_regularization(
+        reg = Ristretto.scale_regularization(
             PlugAndPlay(soft_threshold; strength = 0.2, complex_handling = :magnitude), 2.5
         )
         @test reg.strength ≈ 0.5

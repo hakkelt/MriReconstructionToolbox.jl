@@ -17,7 +17,7 @@
 # %% [markdown]
 # # 4 — Reconstruction methods
 #
-# Everything MRT can do is expressed as a *method* object handed to `reconstruct`. A method says
+# Everything Ristretto can do is expressed as a *method* object handed to `reconstruct`. A method says
 # **what kind of reconstruction this is** — how the measurements become an image. This notebook is
 # a tour of the methods that are not "iterative SENSE with a regularizer": direct reconstruction
 # and coil combination, partial Fourier, and autocalibrated parallel imaging (GRAPPA, SPIRiT).
@@ -55,7 +55,7 @@
 include("NotebookUtils.jl")
 using .NotebookUtils
 
-using MriReconstructionToolbox
+using Ristretto
 using GeometricMedicalPhantoms:
     create_shepp_logan_phantom, create_torso_phantom, MRISheppLoganIntensities, TissueMask
 using MIRTjim: jim
@@ -184,7 +184,7 @@ jim(
 # ## 2. Partial Fourier
 #
 # A partial-Fourier acquisition measures somewhat more than half of k-space and relies on
-# conjugate symmetry for the rest. MRT detects the asymmetric band from the sampling pattern.
+# conjugate symmetry for the rest. Ristretto detects the asymmetric band from the sampling pattern.
 
 # %%
 Nx, Ny = 128, 128
@@ -310,7 +310,7 @@ side_by_side(
 
 # %% [markdown]
 # CG-SENSE's advantage above comes from being handed the *true* sensitivity maps, which no real
-# acquisition comes with; estimating them from the data is its own subject, and every estimator MRT
+# acquisition comes with; estimating them from the data is its own subject, and every estimator Ristretto
 # offers is compared in [`09_real_data_cartesian`](09_real_data_cartesian.ipynb).
 
 # %%
@@ -344,7 +344,7 @@ println("SPIRiT (iterative)   ", round(nrmse(x_spirit_it, img_pi), digits = 4))
 # so the presence of an ACS region is not what disqualifies it.)
 
 # %%
-using MriReconstructionToolbox: check_applicable
+using Ristretto: check_applicable
 
 # A variable-density pattern (notebook 03 §3): it even has a fully sampled centre, but its
 # acquired lines are not on any lattice.

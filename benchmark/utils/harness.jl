@@ -1,9 +1,9 @@
-# Timing and provenance for the MRT harness and the comparison suite.
+# Timing and provenance for the Ristretto harness and the comparison suite.
 
-# MRT keeps FFTW wisdom on disk between sessions (`MriReconstructionToolbox.fftw_wisdom_path`); a
+# Ristretto keeps FFTW wisdom on disk between sessions (`Ristretto.fftw_wisdom_path`); a
 # timed run would then reuse plans an earlier run measured, which none of the other toolkits do.
 # Every timing here plans from scratch (see `time_run`), so the cache is off.
-ENV["MRT_FFTW_WISDOM"] = "off"
+ENV["RISTRETTO_FFTW_WISDOM"] = "off"
 
 """
     time_run(f; warmup = 1, runs = 3, cold_fft = true) -> (min_s, median_s, result)
@@ -16,7 +16,7 @@ its FFTs from scratch as a fresh process would. FFTW keeps what a `MEASURE` plan
 lifetime of the process and answers a later plan of the same size from it in microseconds, which
 would otherwise take a 128³ × 8-coil `MEASURE` plan from about 1 s in the warm-up to 0.1 ms in
 every timed run, and would also hand an `ESTIMATE` plan the measured one. The wisdom is
-process-wide, so this covers every in-process toolkit on FFTW.jl (MRT, MIRT, MRIReco).
+process-wide, so this covers every in-process toolkit on FFTW.jl (Ristretto, MIRT, MRIReco).
 
 BenchmarkTools' sampling is built for microsecond kernels; these are reconstructions of seconds to
 minutes, where a handful of runs and their minimum is the robust estimate (noise on a shared node
@@ -86,7 +86,7 @@ What the timings are comparable across: the CPU model plus the SLURM partition (
 job). Results from different node classes are never treated as the same measurement.
 
 A run that shared its NUMA domain with other tasks (`matrix.sh --pack`, which sets
-`MRT_BENCH_PLACEMENT=shared`) competed with them for L3 and memory bandwidth, so it gets a class of
+`RISTRETTO_BENCH_PLACEMENT=shared`) competed with them for L3 and memory bandwidth, so it gets a class of
 its own: an isolated baseline is never skipped because a packed one is stored, and `compare.jl`
 warns when it compares the two.
 """
@@ -102,7 +102,7 @@ function node_class()
     catch
     end
     class = string(cpu, " / ", get(ENV, "SLURM_JOB_PARTITION", "login"))
-    return get(ENV, "MRT_BENCH_PLACEMENT", "isolated") == "shared" ? class * " / shared domain" : class
+    return get(ENV, "RISTRETTO_BENCH_PLACEMENT", "isolated") == "shared" ? class * " / shared domain" : class
 end
 
 """
@@ -112,7 +112,7 @@ Environment variables that change what a benchmark measures, recorded with every
 """
 const RECORDED_ENV = (
     "KMP_BLOCKTIME", "OPENBLAS_THREAD_TIMEOUT", "OMP_WAIT_POLICY", "MKL_DYNAMIC", "TMPDIR",
-    "JULIA_EXCLUSIVE", "MRT_BENCH_SNR_DB", "CMP_OUTER", "CMP_CG_ITERS", "MRT_BENCH_PLACEMENT",
+    "JULIA_EXCLUSIVE", "RISTRETTO_BENCH_SNR_DB", "CMP_OUTER", "CMP_CG_ITERS", "RISTRETTO_BENCH_PLACEMENT",
 )
 
 recorded_env() = Dict(k => get(ENV, k, "") for k in RECORDED_ENV)

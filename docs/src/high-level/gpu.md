@@ -5,7 +5,7 @@ acquisition to a GPU and `reconstruct` builds every operator for the GPU, runs t
 there, and returns the image as a device array.
 
 ```julia
-using MriReconstructionToolbox
+using Ristretto
 using Adapt, CUDA
 
 acq_gpu = adapt(CuArray, acq)           # k-space, sensitivity maps and dcf move to the GPU
@@ -53,7 +53,7 @@ A `PlugAndPlay` denoiser receives device arrays and has to handle them.
 - `threaded` is ignored: the device kernels are the parallelism, and a host thread per slice
   would only queue work on the same device.
 - `task_executor = MultiThreadingExecutor()` is rejected for the same reason.
-- `disable_task_splitting` defaults to [`DEVICE_DISABLES_TASK_SPLITTING`](@ref MriReconstructionToolbox.DEVICE_DISABLES_TASK_SPLITTING)
+- `disable_task_splitting` defaults to [`DEVICE_DISABLES_TASK_SPLITTING`](@ref Ristretto.DEVICE_DISABLES_TASK_SPLITTING)
   (see below). Pass `false` to split anyway.
 - `fft_planning` has no effect: the device FFT is not FFTW.
 
@@ -85,5 +85,5 @@ host memory or all in device memory, and so must an initial guess `x₀`; a mism
 `ArgumentError` naming both array types. Move them together with `adapt`.
 
 ```@docs
-MriReconstructionToolbox.DEVICE_DISABLES_TASK_SPLITTING
+Ristretto.DEVICE_DISABLES_TASK_SPLITTING
 ```

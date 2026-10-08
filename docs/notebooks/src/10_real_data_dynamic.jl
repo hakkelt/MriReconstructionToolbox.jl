@@ -57,7 +57,7 @@
 include("NotebookUtils.jl")
 using .NotebookUtils
 
-using MriReconstructionToolbox
+using Ristretto
 using MRITestData
 using MIRTjim: jim
 using Plots
@@ -85,7 +85,7 @@ Random.seed!(0);
 #   acquired, and its k = 0 sits at `head.center_sample`, not at the middle of the block. The
 #   constructor places each sample at `raw_index - center + N ÷ 2` and reports the gap as a
 #   `subsampling` range rather than silently sliding the image along `x`.
-# * **The image-domain convention.** A scanner images an object centred in the FOV, whereas MRT's
+# * **The image-domain convention.** A scanner images an object centred in the FOV, whereas Ristretto's
 #   default is the plain-DFT one (image origin at index 1). The constructor sets
 #   `shifted_image_dims` on both spatial axes, so **no `fftshift` appears anywhere in this
 #   notebook** — without it every frame would come out rolled by half the FOV.
@@ -163,7 +163,7 @@ println("after coil compression: ", size(ksp_cine))
 #
 # Take the frame out with the copy constructor rather than by slicing the bare array. Sensitivity
 # maps live in the image domain, so they inherit whatever FFT-shift convention they were
-# estimated under; calibrating from a raw `NamedDimsArray` would silently use MRT's *default*
+# estimated under; calibrating from a raw `NamedDimsArray` would silently use Ristretto's *default*
 # convention and hand back maps rolled by half the FOV relative to this acquisition. Going
 # through the `AcquisitionInfo` carries `shifted_image_dims` along and cannot get that wrong.
 
@@ -239,7 +239,7 @@ animate_slices(
 # incoherence gains. What a temporal prior needs incoherent is the *outer* k-space, where the
 # aliasing lives — which is exactly the split below.
 #
-# MRT expresses a per-frame pattern as a `Vector` of subsampling specs, one per batch element —
+# Ristretto expresses a per-frame pattern as a `Vector` of subsampling specs, one per batch element —
 # `[(:, mask_t) for t in 1:nframes]` — alongside a fixed-shape k-space array, which is why both
 # masks are built with the same line count.
 
@@ -625,7 +625,7 @@ plot!()
 # ## 10. Real non-Cartesian data: a spiral real-time scan
 #
 # Everything above is Cartesian, because this cine is. Rather than synthesize a radial trajectory
-# out of it — which would exercise MRT's NFFT path but not a non-Cartesian *acquisition* — this
+# out of it — which would exercise Ristretto's NFFT path but not a non-Cartesian *acquisition* — this
 # section switches datasets and reads a real spiral scan, acquired the way real-time imaging is
 # actually done.
 #

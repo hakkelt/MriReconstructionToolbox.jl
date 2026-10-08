@@ -1,19 +1,19 @@
 # Per-case, per-toolkit λ and ADMM-penalty calibration for the matched-accuracy comparison.
 #
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/calibrate_lambda.jl --threads=N \
-#       [--use-mkl] [--cases=...] [--data=...] [--frameworks=mrt,bart,...] [--methods=tv,lowrank,...]
+#       [--use-mkl] [--cases=...] [--data=...] [--frameworks=ristretto,bart,...] [--methods=tv,lowrank,...]
 #
 # For every catalog case (synthetic by default; `--cases=` narrows by case id or method label), every
 # regularized method the case admits (`--methods=` narrows by method symbol), and every toolkit that
 # `supports` it, sweep λ over a wide log grid, run the solver to (near) convergence (`IT_CAL` outer
 # iterations), and record NRMSE against the case's reference. BART's regularisation weight is on a
 # different internal scale than the others (it rescales the data internally), and the four TV
-# functionals differ, so a common λ is meaningless; instead the target NRMSE is what MRT reaches at
+# functionals differ, so a common λ is meaningless; instead the target NRMSE is what Ristretto reaches at
 # its own best λ, and every other toolkit's λ is the grid point whose converged NRMSE is closest to
 # that.
 #
 # A row that runs a fixed-penalty ADMM (`uses_admm`) sweeps ρ as well, on a grid of decades
-# (`RHO_DECADES`) around the toolkit's uncalibrated default: `admm_rho(c)` for MRT, whose ρ is
+# (`RHO_DECADES`) around the toolkit's uncalibrated default: `admm_rho(c)` for Ristretto, whose ρ is
 # relative to `‖𝒜‖²`, and `CMP_RHO` for the others, whose ρ is absolute in their own operator
 # scaling. One number cannot mean the same thing to all of them, so each gets the ρ at which it
 # reaches its best NRMSE, and its λ is then picked on that ρ's curve. Both grids grow past an edge
@@ -21,10 +21,10 @@
 # another's.
 #
 # `--frameworks=` selects the toolkits to (re)calibrate, by case-insensitive substring of their
-# label, `mrt` included; without it every toolkit runs. The curves of the toolkits left out are
+# label, `ristretto` included; without it every toolkit runs. The curves of the toolkits left out are
 # read back from the case's existing file, so the target, the picks and `race_target` are always
-# computed over every toolkit calibrated so far. A toolkit calibrated before MRT gets its best λ
-# until MRT's curve arrives, since there is no target to match yet.
+# computed over every toolkit calibrated so far. A toolkit calibrated before Ristretto gets its best λ
+# until Ristretto's curve arrives, since there is no target to match yet.
 #
 # Results go to `results/lambda/<case id>.json`, one file per case, which the sections read back
 # through `load_lambda` and `load_rho` (a real case falls back to its synthetic analogue's file:
@@ -35,7 +35,7 @@
 #
 # Noise is what makes λ > 0 optimal at all. On a noiseless phantom every regularizer is pure bias
 # (NRMSE decreases monotonically as λ → 0 and CG-SENSE beats all of them), so there is no operating
-# point to calibrate; every catalog case carries `MRT_BENCH_SNR_DB` noise for that reason.
+# point to calibrate; every catalog case carries `RISTRETTO_BENCH_SNR_DB` noise for that reason.
 #
 # One case per process parallelises trivially: `benchmark/slurm/calibrate.sh` submits an array job.
 include(joinpath(@__DIR__, "_setup.jl"))
@@ -86,12 +86,12 @@ const RESUME = "--resume" in ARGS
 """
     calibrates(key) -> Bool
 
-Whether toolkit `key` (`"MRT"`, `"BART"`, ...) is recalibrated in this run: every toolkit without
+Whether toolkit `key` (`"Ristretto"`, `"BART"`, ...) is recalibrated in this run: every toolkit without
 `--frameworks=`, otherwise those whose label a pattern is a substring of. Unlike the timing sections,
-MRT can be left out here, and is then read back from the case's file like any other toolkit.
+Ristretto can be left out here, and is then read back from the case's file like any other toolkit.
 """
 function calibrates(tk::Symbol)
-    tk === :mrt && return FRAMEWORK_FILTER === nothing || any(p -> occursin(p, "mrt"), FRAMEWORK_FILTER)
+    tk === :ristretto && return FRAMEWORK_FILTER === nothing || any(p -> occursin(p, "ristretto"), FRAMEWORK_FILTER)
     return should_run_framework(framework_label(tk))
 end
 
@@ -125,15 +125,15 @@ that [`uses_admm`](@ref), `[nothing]` (the row has no ρ) otherwise.
 """
 function rho_grid(c::BenchCase, method::Symbol, tk::Symbol)
     uses_admm(tk, c, method) || return Any[nothing]
-    ρ₀ = tk === :mrt ? admm_rho(c) : CMP_RHO
+    ρ₀ = tk === :ristretto ? admm_rho(c) : CMP_RHO
     return Any[ρ₀ * 10^d for d in RHO_DECADES]
 end
 
 function nrmse_at(c::BenchCase, method::Symbol, tk::Symbol, λ::Real, ρ)
     # A PDHG row runs as many iterations as its ADMM row applies the operator (`PDHG_ITERATIONS`).
     maxit = haskey(PDHG_METHODS, method) ? IT_CAL * CG_ITERATIONS : IT_CAL
-    x = if tk === :mrt
-        parent(mrt_reconstructor(c, method; λ, rho = something(ρ, admm_rho(c)), maxit)())
+    x = if tk === :ristretto
+        parent(ristretto_reconstructor(c, method; λ, rho = something(ρ, admm_rho(c)), maxit)())
     elseif tk === :bart
         last(bart_run(c, method; λ, maxit, ρ = something(ρ, CMP_RHO)))
     else
@@ -151,9 +151,9 @@ function sweep(c::BenchCase, method::Symbol)
     λc = default_lambda(c, method)
     ngrid = c.heavy ? NGRID_HEAVY : NGRID
     curves = Dict{String, Vector{Tuple{Float64, Any, Float64}}}()
-    tks = [tk for tk in (:mrt, COMPETITORS...) if (tk === :mrt || supports(tk, c, method)) && calibrates(tk)]
+    tks = [tk for tk in (:ristretto, COMPETITORS...) if (tk === :ristretto || supports(tk, c, method)) && calibrates(tk)]
     for tk in tks
-        key = tk === :mrt ? "MRT" : toolkit_key(tk)
+        key = tk === :ristretto ? "Ristretto" : toolkit_key(tk)
         centre = grid_centre(method, key, λc)
         λs = collect(10 .^ range(log10(centre) - 2, log10(centre) + 1.5; length = ngrid))
         LAMBDA_SHARD === nothing || (λs = λs[(LAMBDA_SHARD[1] + 1):LAMBDA_SHARD[2]:end])
@@ -186,7 +186,7 @@ end
 
 One toolkit's curve over the grid `λs × ρs`, extended past whichever edge holds its best point.
 
-The λ grid is shared across toolkits and centred on MRT's λ, but a toolkit that scales its
+The λ grid is shared across toolkits and centred on Ristretto's λ, but a toolkit that scales its
 regularizer or its operator differently can have its optimum a decade or more away: BART's and
 SigPy's radial TV optimum lay above the whole shared grid. So while the best point sits on the
 largest or smallest λ (or ρ) swept, one more grid step is added in that direction for every ρ (or
@@ -316,11 +316,11 @@ function write_calibration!(c::BenchCase, fresh::Dict{String, Any})
                     merged[tk] = sort!([(λ, ρ, e) for ((λ, ρ), e) in pts]; by = p -> (something(p[2], 0.0), p[1]))
                 end
             end
-            # Target = the NRMSE MRT reaches at its own best λ and ρ (MRT is the reference
-            # implementation); every other toolkit's λ is then chosen to match MRT's accuracy. If a
+            # Target = the NRMSE Ristretto reaches at its own best λ and ρ (Ristretto is the reference
+            # implementation); every other toolkit's λ is then chosen to match Ristretto's accuracy. If a
             # toolkit cannot reach that NRMSE anywhere on the grid, `pick_lambda` returns its closest
             # (best) point.
-            target = haskey(merged, "MRT") ? best(merged["MRT"]) : nothing
+            target = haskey(merged, "Ristretto") ? best(merged["Ristretto"]) : nothing
             picks = Dict(tk => pick_lambda(curve, target) for (tk, curve) in merged)
             rhos = Dict(tk => best_rho(curve) for (tk, curve) in merged if best_rho(curve) !== nothing)
             worst = maximum(best(curve) for curve in values(merged))

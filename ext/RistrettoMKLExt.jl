@@ -1,6 +1,6 @@
-module MriReconstructionToolboxMKLExt
+module RistrettoMKLExt
 
-using MriReconstructionToolbox
+using Ristretto
 using MKL
 
 function __init__()
@@ -34,4 +34,4 @@ function __init__()
     return nothing
 end
 
-end # module MriReconstructionToolboxMKLExt
+end # module RistrettoMKLExt

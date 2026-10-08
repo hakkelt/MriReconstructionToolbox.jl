@@ -1,8 +1,8 @@
 @testitem "Model builder: Eye + L1Image" tags = [:minimizer] setup = [ModelEval] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
-    using MriReconstructionToolbox.AbstractOperators
+    using Ristretto
+    using Ristretto: get_encoding_operator
+    using Ristretto.AbstractOperators
 
     @testset "Eye + L1Image" for threaded in (false, true)
         x = rand(8, 8)
@@ -15,16 +15,16 @@
 
         x̂ = 𝒜' * y
         data_fidelity = 0.5 * sum(abs2, (𝒜 * x̂) .- y)
-        reg_val = MriReconstructionToolbox.calculate(reg, y; threaded)
+        reg_val = Ristretto.calculate(reg, y; threaded)
         @test isapprox(model_val, data_fidelity + reg_val; rtol = 1.0e-10, atol = 1.0e-12)
     end
 end
 
 @testitem "Model builder: Eye + L1Image + L2Image" tags = [:minimizer] setup = [ModelEval] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
-    using MriReconstructionToolbox.AbstractOperators
+    using Ristretto
+    using Ristretto: get_encoding_operator
+    using Ristretto.AbstractOperators
 
     @testset "Eye + L1Image + L2Image" for threaded in (false, true)
         x = rand(6, 6)
@@ -37,17 +37,17 @@ end
 
         x̂ = 𝒜' * y
         data_fidelity = 0.5 * sum(abs2, (𝒜 * x̂) .- y)
-        reg1 = MriReconstructionToolbox.calculate(regs[1], y; threaded)
-        reg2 = MriReconstructionToolbox.calculate(regs[2], y; threaded)
+        reg1 = Ristretto.calculate(regs[1], y; threaded)
+        reg2 = Ristretto.calculate(regs[2], y; threaded)
         @test isapprox(model_val, data_fidelity + reg1 + reg2; rtol = 1.0e-10, atol = 1.0e-12)
     end
 end
 
 @testitem "Model builder: Linear op + L2Image" tags = [:minimizer] setup = [ModelEval] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
-    using MriReconstructionToolbox.AbstractOperators
+    using Ristretto
+    using Ristretto: get_encoding_operator
+    using Ristretto.AbstractOperators
 
     @testset "Linear op + L2Image" for threaded in (false, true)
         x = rand(8, 8)
@@ -60,7 +60,7 @@ end
 
         x̂ = 𝒜' * y
         data_fidelity = 0.5 * sum(abs2, (𝒜 * x̂) .- y)
-        reg_val = MriReconstructionToolbox.calculate(reg, y; threaded)
+        reg_val = Ristretto.calculate(reg, y; threaded)
         @test isapprox(model_val, data_fidelity + reg_val; rtol = 1.0e-10, atol = 1.0e-12)
 
         vars = StructuredOptimization.extract_variables(terms)
@@ -71,21 +71,21 @@ end
         model_val2 = eval_term(terms)
 
         data = 0.5 * sum(abs2, (𝒜 * (x0 .+ δ)) .- y)
-        reg2 = MriReconstructionToolbox.calculate(reg, x0 .+ δ; threaded)
+        reg2 = Ristretto.calculate(reg, x0 .+ δ; threaded)
         @test isapprox(model_val2, data + reg2; rtol = 1.0e-8, atol = 1.0e-10)
     end
 end
 
 @testitem "Model builder: NamedDims y and A" tags = [:minimizer] setup = [ModelEval] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
+    using Ristretto
+    using Ristretto: get_encoding_operator
     using NamedDims
-    using MriReconstructionToolbox.AbstractOperators
+    using Ristretto.AbstractOperators
 
     @testset "NamedDims y and A" for threaded in (false, true)
         x = rand(8, 8)
-        𝒜 = MriReconstructionToolbox.NamedDimsOp{(:x, :y), (:x, :y)}(Eye(x))
+        𝒜 = Ristretto.NamedDimsOp{(:x, :y), (:x, :y)}(Eye(x))
         y = NamedDimsArray(copy(x), (:x, :y))
         reg = L1Image(0.15)
         terms = build_model(𝒜, y, reg; threaded)
@@ -94,16 +94,16 @@ end
 
         x̂ = 𝒜' * y
         data_fidelity = 0.5 * sum(abs2, (𝒜 * x̂) .- y)
-        reg_val = MriReconstructionToolbox.calculate(reg, y; threaded)
+        reg_val = Ristretto.calculate(reg, y; threaded)
         @test isapprox(model_val, data_fidelity + reg_val; rtol = 1.0e-10, atol = 1.0e-12)
     end
 end
 
 @testitem "Model builder: overload parity" tags = [:minimizer] setup = [ModelEval] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
-    using MriReconstructionToolbox.AbstractOperators
+    using Ristretto
+    using Ristretto: get_encoding_operator
+    using Ristretto.AbstractOperators
 
     @testset "overload parity" for threaded in (false, true)
         x = rand(5, 5)
@@ -118,29 +118,29 @@ end
 
 @testitem "DouglasRachford default parameter patching" tags = [:minimizer] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
+    using Ristretto
+    using Ristretto: get_encoding_operator
 
     alg = DouglasRachford(maxit = 100)
-    patched = MriReconstructionToolbox.patch_algorithm_with_default_values(alg, 2.0)
+    patched = Ristretto.patch_algorithm_with_default_values(alg, 2.0)
     @test patched.kwargs[:gamma] == 0.5
 
-    patched_no_lf = MriReconstructionToolbox.patch_algorithm_with_default_values(alg, nothing)
+    patched_no_lf = Ristretto.patch_algorithm_with_default_values(alg, nothing)
     @test patched_no_lf.kwargs[:gamma] == 1.0
 
     explicit = DouglasRachford(gamma = 0.1)
-    patched_explicit = MriReconstructionToolbox.patch_algorithm_with_default_values(explicit, 5.0)
+    patched_explicit = Ristretto.patch_algorithm_with_default_values(explicit, 5.0)
     @test patched_explicit.kwargs[:gamma] == 0.1
 end
 
 @testitem "HardConsistency projection fast path vs inner-CG" tags = [:minimizer] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
+    using Ristretto
+    using Ristretto: get_encoding_operator
     using LinearAlgebra
     using ProximalCore
-    using MriReconstructionToolbox.ProximalOperators
+    using Ristretto.ProximalOperators
 
     nx, ny = 16, 16
     x = rand(ComplexF32, nx, ny)
@@ -151,12 +151,12 @@ end
     𝒜 = unname(get_encoding_operator(acq_data))
     y = acq_data.kspace_data
 
-    @test MriReconstructionToolbox.is_AAc_diagonal(𝒜)
+    @test Ristretto.is_AAc_diagonal(𝒜)
 
     # Fast diagonal projection: `hard_consistency_prox` hands `diag_AAc(𝒜)` to `IndAffineCG`, which
     # then divides instead of iterating.
     x_test = rand(ComplexF32, nx, ny)
-    f_fast = MriReconstructionToolbox.hard_consistency_prox(𝒜, y, 50, 1.0e-6)
+    f_fast = Ristretto.hard_consistency_prox(𝒜, y, 50, 1.0e-6)
     @test f_fast.AAc_diag !== nothing
     proj_fast = similar(x_test)
     ProximalCore.prox!(proj_fast, f_fast, x_test, 1.0)
@@ -170,10 +170,10 @@ end
 end
 
 @testitem "Reconstruction with HardConsistency + DouglasRachford" tags = [:minimizer, :reconstruction] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
+    using Ristretto
+    using Ristretto: get_encoding_operator
     using LinearAlgebra
 
     nx, ny = 16, 16
@@ -192,10 +192,10 @@ end
 end
 
 @testitem "Unregularized Iterative Least-Squares with CGNR" tags = [:minimizer, :reconstruction] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
+    using Ristretto
+    using Ristretto: get_encoding_operator
     using LinearAlgebra
 
     nx, ny = 16, 16
@@ -213,8 +213,8 @@ end
 
 @testitem "ChambollePock (PDHG) reaches the ADMM solution of total variation" tags = [:minimizer, :reconstruction, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: CartesianAcquisitionInfo
     using LinearAlgebra, Random
 
     @test PDHG === ChambollePock
@@ -242,8 +242,8 @@ end
 
 @testitem "VuCondat reaches the ADMM solution of total variation" tags = [:minimizer, :reconstruction] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: CartesianAcquisitionInfo
     using LinearAlgebra, Random
 
     Random.seed!(3)
@@ -267,8 +267,8 @@ end
 
 @testitem "Preconditioned ChambollePock on radial data reaches the VuCondat solution" tags = [:minimizer, :reconstruction, :nfft, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo, AcquisitionInfo
+    using Ristretto
+    using Ristretto: NonCartesianAcquisitionInfo, AcquisitionInfo
     using NamedDims: unname
     using LinearAlgebra
 
@@ -293,11 +293,11 @@ end
     dcf0 = copy(unname(density_compensation(data).dcf))
     dcf0[size(dcf0, 1) ÷ 2 + 1, :] .= 0
     data0 = AcquisitionInfo(data; dcf = dcf0)
-    @test all(>(0), MriReconstructionToolbox._density_weights(data0))
+    @test all(>(0), Ristretto._density_weights(data0))
     # The slices of a split solve share a trajectory and so one estimate of its weights.
-    weights_of = MriReconstructionToolbox._density_weights_per_trajectory()
+    weights_of = Ristretto._density_weights_per_trajectory()
     @test weights_of(data) === weights_of(AcquisitionInfo(data; kspace_data = copy(data.kspace_data)))
-    @test weights_of(data) ≈ MriReconstructionToolbox._density_weights(data)
+    @test weights_of(data) ≈ Ristretto._density_weights(data)
     @test err(reconstruct(data0, cp; verbosity = Silent())) < 1.0e-2
     # ...against one scalar step, which a given `ratio` leaves in place: further from the
     # solution after the same number of iterations.
@@ -321,8 +321,8 @@ end
 
 @testitem "NCG and LBFGS reach the POGM solution of a smooth problem" tags = [:minimizer, :reconstruction] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: CartesianAcquisitionInfo
     using LinearAlgebra, Random
 
     Random.seed!(5)
@@ -354,8 +354,8 @@ end
 
 @testitem "CGNR on radial data beats the plain adjoint" tags = [:reconstruction, :nfft, :quality] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: get_encoding_operator, NonCartesianAcquisitionInfo
     using LinearAlgebra
 
     nx, ny = 32, 32
@@ -380,9 +380,9 @@ end
 end
 
 @testitem "POGM matches FISTA on a single L1 regularizer" tags = [:minimizer, :reconstruction] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
 
     nx, ny = 32, 32
     x_true = zeros(ComplexF32, nx, ny)
@@ -403,14 +403,14 @@ end
 end
 
 @testitem "POGM survives an under-estimated Lf" tags = [:minimizer, :reconstruction] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo, get_encoding_operator
+    using Ristretto: CartesianAcquisitionInfo, get_encoding_operator
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox.AbstractOperators: estimate_opnorm
+    using Ristretto
+    using Ristretto.AbstractOperators: estimate_opnorm
     using LinearAlgebra: norm
 
     # POGM's worst-case rate is tight, so a stepsize above `1/Lf` makes it diverge rather than
-    # converge slowly — and `estimate_opnorm`'s power iteration, which is where MRT's `Lf` comes
+    # converge slowly — and `estimate_opnorm`'s power iteration, which is where Ristretto's `Lf` comes
     # from, converges from *below*. The adaptive restart of Kim & Fessler (2018) is what keeps
     # that safe; this pins it, by handing POGM an `Lf` deliberately 15% too small.
     nx, ny = 32, 32
@@ -448,10 +448,10 @@ end
 end
 
 @testitem "NoFidelity and error handling" tags = [:minimizer] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
+    using Ristretto
+    using Ristretto: get_encoding_operator
 
     nx, ny = 8, 8
     x = rand(ComplexF32, nx, ny)
@@ -465,10 +465,10 @@ end
 end
 
 @testitem "Diagnostic ArgumentError on single-solver parse failure" tags = [:minimizer, :reconstruction] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
+    using Ristretto
+    using Ristretto: get_encoding_operator
 
     nx, ny = 16, 16
     x = rand(ComplexF32, nx, ny)
@@ -490,15 +490,15 @@ end
 end
 
 @testitem "Preconditioned CGNR: λ is honoured and convergence accelerates" tags = [:minimizer, :reconstruction] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
-    using MriReconstructionToolbox.AbstractOperators: DiagOp
+    using Ristretto
+    using Ristretto: get_encoding_operator
+    using Ristretto.AbstractOperators: DiagOp
     using LinearAlgebra
     using Random
 
-    PA = MriReconstructionToolbox.ProximalAlgorithms
+    PA = Ristretto.ProximalAlgorithms
 
     @testset "the preconditioned iterations solve the regularized system" begin
         # `PCGIteration`/`PCGNRIteration` used to drop the λ term from both the initial residual
@@ -570,17 +570,17 @@ end
     end
 
     @testset "a preconditioned solver is still recognized as Krylov" begin
-        @test MriReconstructionToolbox._is_krylov_solver(CGNR(P = Diagonal(ones(4)), P_is_inverse = true))
-        @test MriReconstructionToolbox._is_krylov_solver(CG(P = Diagonal(ones(4)), P_is_inverse = true))
-        @test MriReconstructionToolbox._is_krylov_solver(CGNR())
-        @test !MriReconstructionToolbox._is_krylov_solver(FISTA())
+        @test Ristretto._is_krylov_solver(CGNR(P = Diagonal(ones(4)), P_is_inverse = true))
+        @test Ristretto._is_krylov_solver(CG(P = Diagonal(ones(4)), P_is_inverse = true))
+        @test Ristretto._is_krylov_solver(CGNR())
+        @test !Ristretto._is_krylov_solver(FISTA())
     end
 end
 
 @testitem "The operator-norm estimate is at or above the norm" tags = [:minimizer, :reconstruction] begin
     using LinearAlgebra, Random
-    using MriReconstructionToolbox: OPNORM_REL_MARGIN, get_encoding_operator
-    import MriReconstructionToolbox.AbstractOperators as AbstractOperators
+    using Ristretto: OPNORM_REL_MARGIN, get_encoding_operator
+    import Ristretto.AbstractOperators as AbstractOperators
 
 
     # Whatever the margin, the value is at or above `‖𝒜‖` — that is what a fixed step `1/Lf` needs.
@@ -607,7 +607,7 @@ end
     # norm (the top eigenvalue of `𝒜ᴴ𝒜` stands clear of the rest), within the margin, and below the
     # probabilistic bound, which is scaled up by the full margin. With and without density
     # compensation, on radial and spiral.
-    using MriReconstructionToolbox: _encoding_opnorm, LF_REL_MARGIN
+    using Ristretto: _encoding_opnorm, LF_REL_MARGIN
     function encoding(T, traj, dcf)
         acq = AcquisitionInfo(; trajectory = T.(traj), image_size = (nx, ny), sensitivity_maps = Complex{T}.(maps))
         data = simulate_acquisition(zeros(Complex{T}, nx, ny), acq)
@@ -627,7 +627,7 @@ end
 
     # FISTA's and POGM's secant safeguard runs only on the residual estimate: a closed-form bound or
     # the exact norm cannot come out low. A setting the caller gave is kept either way.
-    using MriReconstructionToolbox: _certified_opnorm, _without_lipschitz_safeguard
+    using Ristretto: _certified_opnorm, _without_lipschitz_safeguard
     method = IterativeReconstruction(; regularization = L1Wavelet2D(0.01))
     E_radial = encoding(Float32, radial_trajectory(64, 40), false)
     @test _certified_opnorm(E64, method)
@@ -641,8 +641,8 @@ end
 end
 
 @testitem "ADMM's penalty is relative to the curvature of the data term" tags = [:minimizer] begin
-    using MriReconstructionToolbox: _scale_admm_penalty
-    import MriReconstructionToolbox.ProximalAlgorithms as PA
+    using Ristretto: _scale_admm_penalty
+    import Ristretto.ProximalAlgorithms as PA
 
     method = IterativeReconstruction(; regularization = TotalVariation2D(0.01))
     config = ReconstructionConfig()
@@ -653,7 +653,7 @@ end
         @test scaled(alg).kwargs[:rho_scale] ≈ 4.0f0
     end
     kw = scaled(ADMM(; rho = 0.05f0)).kwargs
-    g = MriReconstructionToolbox.ProximalOperators.NormL1(0.1f0)
+    g = Ristretto.ProximalOperators.NormL1(0.1f0)
     iter = PA.ADMMIteration(; x0 = zeros(Float32, 3), A = randn(Float32, 4, 3), b = randn(Float32, 4), g, rho = kw[:rho], rho_scale = kw[:rho_scale])
     @test iter.penalty_sequence.rho ≈ [0.2f0]
     # A penalty that was not given -- the default adaptive sequence, or a sequence without an
@@ -668,7 +668,7 @@ end
 
 @testitem "Fixed-penalty ADMM does not depend on the scale of the encoding" tags = [:minimizer, :reconstruction, :nfft] begin
     using LinearAlgebra
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using Ristretto: NonCartesianAcquisitionInfo
 
     # Multiplying the sensitivity maps and the data by `c` multiplies the encoding by `c` and
     # leaves the problem unchanged, once the data scaling is recomputed. A penalty relative to the

@@ -1,6 +1,6 @@
-# AGENTS.md — MriReconstructionToolbox
+# AGENTS.md — Ristretto
 
-MriReconstructionToolbox (MRT) is a Julia package for MRI image reconstruction. It provides a
+Ristretto is a Julia package for MRI image reconstruction. It provides a
 modular pipeline: acquisition data → encoding operators → regularization → reconstruction via
 proximal algorithms.
 
@@ -26,12 +26,12 @@ AcquisitionInfo → Encoding operators → Regularization → Reconstruction
 | Reconstruction | `src/reconstruction/` | `config.jl`, `build_model.jl`, `task_splitting/`, `components.jl`, `reconstruct.jl` |
 | Simulation | `src/simulation/` | phantom sampling patterns, coil sensitivities, full acquisition simulation |
 
-`src/MriReconstructionToolbox.jl` is the authoritative list of source files (`include` order) and
+`src/Ristretto.jl` is the authoritative list of source files (`include` order) and
 exports — read it rather than trusting a tree here.
 
 `examples/` is a workspace member holding one script per data type of every `MRITestData` source
 (35 of them), each reconstructing a real dataset. When changing the raw-data path
-(`ext/MriReconstructionToolboxMRIBaseExt.jl`) or preprocessing, run the affected ones —
+(`ext/RistrettoMRIBaseExt.jl`) or preprocessing, run the affected ones —
 `julia --project=examples examples/run_all.jl <source>` — since the header defects they cover
 (missing dwell time, unrecorded echo position, calibration block with a different readout length,
 calibration profiles overwriting the imaging k-space centre, single-partition 3D slab) have no
@@ -53,14 +53,14 @@ is unnamed into a `Variable`.
 `NestedThreading`. These are local checkouts under `deps/` — never `Pkg.add` an upstream version;
 `Pkg.instantiate` the existing Manifest.
 
-They are inlined as **submodules** of `MriReconstructionToolbox` (see the `include`s at the top of
-`src/MriReconstructionToolbox.jl`), which has two consequences worth knowing before editing them:
+They are inlined as **submodules** of `Ristretto` (see the `include`s at the top of
+`src/Ristretto.jl`), which has two consequences worth knowing before editing them:
 
 - Every cross-package `using`/`import` inside `deps/` must be relative (`using ..AbstractOperators`).
 - NFFT.jl may be loaded next to the vendored `NFFT` (MRIReco does), and both register an
   AbstractNFFTs backend. The vendored copy activates itself only when no backend is active, so
-  MRT code names its backend explicitly: `NFFT.plan_nfft(NFFT.backend(), ...)`. Its thread switch
-  is registered with NestedThreading as the pool `:mrt_nfft` (`src/threading_utils.jl`).
+  Ristretto code names its backend explicitly: `NFFT.plan_nfft(NFFT.backend(), ...)`. Its thread switch
+  is registered with NestedThreading as the pool `:ristretto_nfft` (`src/threading_utils.jl`).
 - A method that extends another package's function must have that function on an `import` list, or
   it silently defines a *new* function of the same name in the submodule and the extension is never
   seen. `FFTWOperators.has_optimized_normalop`, `NFFTOperators.is_symmetric` and
@@ -69,20 +69,20 @@ They are inlined as **submodules** of `MriReconstructionToolbox` (see the `inclu
 - An `ext/` directory cannot load at all: package extensions do not apply to a submodule. What a
   vendored extension provides is either inlined into `src/` by hand, as `ProximalOperators`'
   `RecursiveArrayToolsExt` is (`deps/ProximalOperators/src/recursive_array_tools.jl`), or dropped
-  when MRT does not need it — OSQP, and with it `IndPolyhedral`, is not vendored for that reason.
+  when Ristretto does not need it — OSQP, and with it `IndPolyhedral`, is not vendored for that reason.
   The GPU extensions (AbstractOperators', FFTWOperators' and ProximalOperators' `ext/GpuExt`,
   ProximalOperators' `GpuRecursiveArrayToolsExt`, NFFTOperators' `NFFTOperatorsGPUArraysExt`, NFFT's
   `NFFTGPUArraysExt`) are the third case: they stay under `deps/` and
-  `ext/MriReconstructionToolboxGPUExt.jl` `include`s each one, into a module of its own where it
+  `ext/RistrettoGPUExt.jl` `include`s each one, into a module of its own where it
   imports relatively. ProximalOperators' `ProximalOperatorsCUDAExt` is included the same way by
-  `ext/MriReconstructionToolboxCUDAExt.jl`.
+  `ext/RistrettoCUDAExt.jl`.
 
-Only what MRT compiles is vendored. Each package's own `test/`, `docs/`, `benchmark/`, CI config
+Only what Ristretto compiles is vendored. Each package's own `test/`, `docs/`, `benchmark/`, CI config
 and every `ext/` except the GPU ones are pruned on every sync (`prune` in `deps/vendor.toml`);
 they belong to the fork and run there. `git subtree pull` only carries changes, so a file that
-stops being pruned has to be restored from the fork's `integration` branch once by hand. `deps/` is therefore absent from MRT's own test run as well (`JuliaTestItems.toml`).
+stops being pruned has to be restored from the fork's `integration` branch once by hand. `deps/` is therefore absent from Ristretto's own test run as well (`JuliaTestItems.toml`).
 
-MRT is **ahead of** its upstreams in places (its own fixes are pushed there as branches), so a sync
+Ristretto is **ahead of** its upstreams in places (its own fixes are pushed there as branches), so a sync
 is a merge, not a copy: check whether the vendored side is the newer one before overwriting it.
 
 That merge is the thing `deps/vendor.toml` and `tools/vendor.jl` exist to remove. The manifest
@@ -117,13 +117,13 @@ unpushed branch look pushed.
 forces: the relative imports, the inlined extension, the OSQP removal, the vendored `[sources]`
 paths. Nothing else belongs there. Work that would make sense to the upstream package goes on the
 branch that owns the code; work that is about MRI rather than about the dependency belongs in
-MRT's own `src/`. A hunk that is neither is a sign the fix was made in the wrong place —
+Ristretto's own `src/`. A hunk that is neither is a sign the fix was made in the wrong place —
 `julia tools/vendor.jl patch` regenerates the file, so such a hunk shows up the moment it appears.
 
 ### API gotchas
 
 - `materialize` / `materialize_with_auxiliaries` / `materialize_all` are `public` but not exported —
-  call as `MriReconstructionToolbox.materialize(reg, x::Variable; threaded)`, or import them
+  call as `Ristretto.materialize(reg, x::Variable; threaded)`, or import them
   explicitly. The same goes for `get_operator`, `calculate`, `get_encoding_operator` and the rest of
   the extension surface listed in `NAMING.md` §6.2.
 - `Variable(T, dims...)` — splat, do not pass a tuple.
@@ -152,7 +152,7 @@ adding a type, renaming anything, or touching the export list. The rules that bi
 
 ## Adding a regularizer
 
-New file `src/regularization/<name>_reg.jl`, `include`d in `MriReconstructionToolbox.jl`, type(s)
+New file `src/regularization/<name>_reg.jl`, `include`d in `Ristretto.jl`, type(s)
 exported there. A regularizer is `struct Foo{T} <: Regularization` plus:
 
 - `get_operator(::Foo, x::AbstractArray; threaded)` — the linear operator; wrap in `NamedDimsOp`
@@ -173,7 +173,7 @@ Add a `test/test_reg_<name>.jl` (`@testitem`, `tags = [:regularization]`) and a 
 
 ## Testing
 
-- **TestItems.jl** / **TestItemRunner.jl**. Each `@testitem` does `using MriReconstructionToolbox`
+- **TestItems.jl** / **TestItemRunner.jl**. Each `@testitem` does `using Ristretto`
   and any extra packages. Multiple `@testitem` blocks per file are fine (regularizer files often
   have several); keep begin/end nesting shallow.
 - Tags in use: `:encoding`, `:regularization`, `:reconstruction`, `:acquisition`, `:simulation`,

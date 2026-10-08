@@ -8,7 +8,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1993, 3 it)",
             "nrmse_gt": 0.16853906214237213,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 337.13703825000005
         },
@@ -19,7 +19,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1993, 3 it)",
             "nrmse_gt": 0.1594139928259388,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 11.689841
         },
@@ -27,10 +27,10 @@
             "case_id": "real_2d_1ch_cartesian",
             "category": "Accuracy race",
             "data_source": "FASTMRI:singlecoil_val/file1000107",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1993, 3 it)",
             "nrmse_gt": 0.12744182348251343,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 5.917992000000001
         },
@@ -41,7 +41,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1993, 3 it)",
             "nrmse_gt": 0.12956948453222467,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 62.280026
         },
@@ -52,7 +52,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.12149694792795009,
-            "nrmse_mrt": 1.9338773040591016e-7,
+            "nrmse_ristretto": 1.9338773040591016e-7,
             "threads": 1,
             "time_ms": 5.924173
         },
@@ -60,10 +60,10 @@
             "case_id": "real_2d_1ch_cartesian",
             "category": "Base",
             "data_source": "FASTMRI:singlecoil_val/file1000107",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.12149694561958313,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1.245283
         },
@@ -74,7 +74,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.12149694645201455,
-            "nrmse_mrt": 2.0134524878642282e-7,
+            "nrmse_ristretto": 2.0134524878642282e-7,
             "threads": 1,
             "time_ms": 2.121685
         },
@@ -85,7 +85,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.12149694802677224,
-            "nrmse_mrt": 2.0258952678815224e-7,
+            "nrmse_ristretto": 2.0258952678815224e-7,
             "threads": 1,
             "time_ms": 2.244712
         },
@@ -96,7 +96,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.1734740138053894,
-            "nrmse_mrt": 0.13299866020679474,
+            "nrmse_ristretto": 0.13299866020679474,
             "threads": 1,
             "time_ms": 124.99278674999992
         },
@@ -107,7 +107,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.12087402946423781,
-            "nrmse_mrt": 0.03438263330231997,
+            "nrmse_ristretto": 0.03438263330231997,
             "threads": 1,
             "time_ms": 167.826623
         },
@@ -115,10 +115,10 @@
             "case_id": "real_2d_1ch_cartesian",
             "category": "Sparsity",
             "data_source": "FASTMRI:singlecoil_val/file1000107",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.11980543285608292,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 88.680176
         },
@@ -129,7 +129,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.12018552013320251,
-            "nrmse_mrt": 0.012959214315206727,
+            "nrmse_ristretto": 0.012959214315206727,
             "threads": 1,
             "time_ms": 663.8384470000001
         },
@@ -140,7 +140,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.17166754603385925,
-            "nrmse_mrt": 0.13095442950725555,
+            "nrmse_ristretto": 0.13095442950725555,
             "threads": 1,
             "time_ms": 124.8359885
         },
@@ -148,10 +148,10 @@
             "case_id": "real_2d_1ch_cartesian",
             "category": "Sparsity",
             "data_source": "FASTMRI:singlecoil_val/file1000107",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.12054752558469772,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 126.68388999999999
         },
@@ -162,7 +162,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.12080312282955331,
-            "nrmse_mrt": 0.015416670511315577,
+            "nrmse_ristretto": 0.015416670511315577,
             "threads": 1,
             "time_ms": 520.276854
         },
@@ -173,7 +173,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.13010782975958154,
-            "nrmse_mrt": 0.05493633627978572,
+            "nrmse_ristretto": 0.05493633627978572,
             "threads": 1,
             "time_ms": 726.363706
         },
@@ -184,7 +184,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.16893664002418518,
-            "nrmse_mrt": 0.13281463086605072,
+            "nrmse_ristretto": 0.13281463086605072,
             "threads": 1,
             "time_ms": 291.0741539999999
         },
@@ -195,7 +195,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.21028413163939505,
-            "nrmse_mrt": 0.1940470554597619,
+            "nrmse_ristretto": 0.1940470554597619,
             "threads": 1,
             "time_ms": 36.755916
         },
@@ -203,10 +203,10 @@
             "case_id": "real_2d_1ch_cartesian",
             "category": "Sparsity",
             "data_source": "FASTMRI:singlecoil_val/file1000107",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.13045160472393036,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 16.749666
         },
@@ -217,7 +217,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.13103403726955182,
-            "nrmse_mrt": 0.08830354700670787,
+            "nrmse_ristretto": 0.08830354700670787,
             "threads": 1,
             "time_ms": 166.502428
         },
@@ -228,7 +228,7 @@
             "framework": "BART (CUDA)",
             "method": "TGV (20 it)",
             "nrmse_gt": 0.1713036298751831,
-            "nrmse_mrt": 0.12162221223115921,
+            "nrmse_ristretto": 0.12162221223115921,
             "threads": 1,
             "time_ms": 206.2850137499999
         },
@@ -236,10 +236,10 @@
             "case_id": "real_2d_1ch_cartesian",
             "category": "Sparsity",
             "data_source": "FASTMRI:singlecoil_val/file1000107",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "TGV (20 it)",
             "nrmse_gt": 0.11883077770471573,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 203.864523
         },
@@ -250,7 +250,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.17103122174739838,
-            "nrmse_mrt": 0.1284910887479782,
+            "nrmse_ristretto": 0.1284910887479782,
             "threads": 1,
             "time_ms": 126.57931425000002
         },
@@ -258,10 +258,10 @@
             "case_id": "real_2d_1ch_cartesian",
             "category": "Sparsity",
             "data_source": "FASTMRI:singlecoil_val/file1000107",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.11823152750730515,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 95.566967
         },
@@ -272,7 +272,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.11813739318206852,
-            "nrmse_mrt": 0.008672060765289627,
+            "nrmse_ristretto": 0.008672060765289627,
             "threads": 1,
             "time_ms": 657.029967
         },
@@ -283,7 +283,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.17084690928459167,
-            "nrmse_mrt": 0.12508252263069153,
+            "nrmse_ristretto": 0.12508252263069153,
             "threads": 1,
             "time_ms": 93.66475275000002
         },
@@ -291,10 +291,10 @@
             "case_id": "real_2d_1ch_cartesian",
             "category": "Sparsity",
             "data_source": "FASTMRI:singlecoil_val/file1000107",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.1202678456902504,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 142.944832
         },
@@ -305,7 +305,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.13335561952974248,
-            "nrmse_mrt": 0.06677362023248758,
+            "nrmse_ristretto": 0.06677362023248758,
             "threads": 1,
             "time_ms": 502.11007399999994
         },
@@ -316,7 +316,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.14947652571002304,
-            "nrmse_mrt": 0.09321240784482494,
+            "nrmse_ristretto": 0.09321240784482494,
             "threads": 1,
             "time_ms": 755.300933
         },
@@ -327,7 +327,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.2653, 3 it)",
             "nrmse_gt": 0.2344924509525299,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 831.26131725
         },
@@ -335,10 +335,10 @@
             "case_id": "real_2d_multichannel_cartesian",
             "category": "Accuracy race",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.2653, 3 it)",
             "nrmse_gt": 0.23615744709968567,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 7.1530949999999995
         },
@@ -349,7 +349,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.2653, 3 it)",
             "nrmse_gt": 0.25915953372539735,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 28.416200999999997
         },
@@ -360,7 +360,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.2653, 3 it)",
             "nrmse_gt": 0.2489922430422483,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 56.512505
         },
@@ -371,7 +371,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.2653, 8 it)",
             "nrmse_gt": 0.2609584785648484,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 97.69887200000001
         },
@@ -382,7 +382,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.25977390126970956,
-            "nrmse_mrt": 0.010771117085519413,
+            "nrmse_ristretto": 0.010771117085519413,
             "threads": 1,
             "time_ms": 12.065035
         },
@@ -390,10 +390,10 @@
             "case_id": "real_2d_multichannel_cartesian",
             "category": "Base",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.25945132970809937,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1.302163
         },
@@ -404,7 +404,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.25945133877176246,
-            "nrmse_mrt": 3.1898290557031754e-8,
+            "nrmse_ristretto": 3.1898290557031754e-8,
             "threads": 1,
             "time_ms": 3.182672
         },
@@ -415,7 +415,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.25945133893893363,
-            "nrmse_mrt": 8.713333823925466e-8,
+            "nrmse_ristretto": 8.713333823925466e-8,
             "threads": 1,
             "time_ms": 2.26418
         },
@@ -426,7 +426,7 @@
             "framework": "BART (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.4420866072177887,
-            "nrmse_mrt": 0.008746996521949768,
+            "nrmse_ristretto": 0.008746996521949768,
             "threads": 1,
             "time_ms": 71.22755825000004
         },
@@ -437,7 +437,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.44453999398424576,
-            "nrmse_mrt": 0.06258564915004734,
+            "nrmse_ristretto": 0.06258564915004734,
             "threads": 1,
             "time_ms": 24.730276999999997
         },
@@ -445,10 +445,10 @@
             "case_id": "real_2d_multichannel_cartesian",
             "category": "CG-SENSE",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.4377967417240143,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 5.076838
         },
@@ -459,7 +459,7 @@
             "framework": "MRpro (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.4420868884378058,
-            "nrmse_mrt": 0.008747197404330845,
+            "nrmse_ristretto": 0.008747197404330845,
             "threads": 1,
             "time_ms": 8.696573
         },
@@ -470,7 +470,7 @@
             "framework": "SigPy (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.4420865277961099,
-            "nrmse_mrt": 0.008746871727305582,
+            "nrmse_ristretto": 0.008746871727305582,
             "threads": 1,
             "time_ms": 18.194614
         },
@@ -481,7 +481,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.23107165098190308,
-            "nrmse_mrt": 0.3555010259151459,
+            "nrmse_ristretto": 0.3555010259151459,
             "threads": 1,
             "time_ms": 179.21932874999996
         },
@@ -492,7 +492,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.19956313084491328,
-            "nrmse_mrt": 0.4629319637198097,
+            "nrmse_ristretto": 0.4629319637198097,
             "threads": 1,
             "time_ms": 431.539919
         },
@@ -500,10 +500,10 @@
             "case_id": "real_2d_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.452390193939209,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 82.88292799999999
         },
@@ -514,7 +514,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.42839556806007917,
-            "nrmse_mrt": 0.050309634826212,
+            "nrmse_ristretto": 0.050309634826212,
             "threads": 1,
             "time_ms": 630.333526
         },
@@ -525,7 +525,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.21803122758865356,
-            "nrmse_mrt": 0.42238205671310425,
+            "nrmse_ristretto": 0.42238205671310425,
             "threads": 1,
             "time_ms": 116.56152024999994
         },
@@ -533,10 +533,10 @@
             "case_id": "real_2d_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.3705398142337799,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 169.47208899999998
         },
@@ -547,7 +547,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.2020773474659981,
-            "nrmse_mrt": 0.3932134943832349,
+            "nrmse_ristretto": 0.3932134943832349,
             "threads": 1,
             "time_ms": 536.05216
         },
@@ -558,7 +558,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.22132416080008993,
-            "nrmse_mrt": 0.418478430195281,
+            "nrmse_ristretto": 0.418478430195281,
             "threads": 1,
             "time_ms": 707.890355
         },
@@ -569,7 +569,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.21459849178791046,
-            "nrmse_mrt": 0.16126258671283722,
+            "nrmse_ristretto": 0.16126258671283722,
             "threads": 1,
             "time_ms": 803.86944575
         },
@@ -580,7 +580,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.25797844924196534,
-            "nrmse_mrt": 0.18894024286963362,
+            "nrmse_ristretto": 0.18894024286963362,
             "threads": 1,
             "time_ms": 216.214137
         },
@@ -588,10 +588,10 @@
             "case_id": "real_2d_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.22517648339271545,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 19.473282
         },
@@ -602,7 +602,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.23700913810319013,
-            "nrmse_mrt": 0.1882174963244702,
+            "nrmse_ristretto": 0.1882174963244702,
             "threads": 1,
             "time_ms": 94.126457
         },
@@ -613,7 +613,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.22389917273731713,
-            "nrmse_mrt": 0.16264850881457393,
+            "nrmse_ristretto": 0.16264850881457393,
             "threads": 1,
             "time_ms": 144.27847699999998
         },
@@ -624,7 +624,7 @@
             "framework": "BART (CUDA)",
             "method": "TGV (20 it)",
             "nrmse_gt": 0.19732514023780823,
-            "nrmse_mrt": 0.5359245538711548,
+            "nrmse_ristretto": 0.5359245538711548,
             "threads": 1,
             "time_ms": 168.61850924999993
         },
@@ -632,10 +632,10 @@
             "case_id": "real_2d_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "TGV (20 it)",
             "nrmse_gt": 0.5289639234542847,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 226.51172
         },
@@ -646,7 +646,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.25204601883888245,
-            "nrmse_mrt": 0.3954653739929199,
+            "nrmse_ristretto": 0.3954653739929199,
             "threads": 1,
             "time_ms": 172.90120599999997
         },
@@ -654,10 +654,10 @@
             "case_id": "real_2d_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.5196384191513062,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 83.69794
         },
@@ -668,7 +668,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.49639103989415084,
-            "nrmse_mrt": 0.0468873588764367,
+            "nrmse_ristretto": 0.0468873588764367,
             "threads": 1,
             "time_ms": 656.36814
         },
@@ -679,7 +679,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.2037520408630371,
-            "nrmse_mrt": 0.17997464537620544,
+            "nrmse_ristretto": 0.17997464537620544,
             "threads": 1,
             "time_ms": 3255.0480165
         },
@@ -687,10 +687,10 @@
             "case_id": "real_2d_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.2590065896511078,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 183.848182
         },
@@ -701,7 +701,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.19780981055491703,
-            "nrmse_mrt": 0.21340018618815737,
+            "nrmse_ristretto": 0.21340018618815737,
             "threads": 1,
             "time_ms": 511.8039130000001
         },
@@ -712,7 +712,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.21507484500840587,
-            "nrmse_mrt": 0.24857994803596759,
+            "nrmse_ristretto": 0.24857994803596759,
             "threads": 1,
             "time_ms": 729.792424
         },
@@ -723,7 +723,7 @@
             "framework": "BART (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.2402997463941574,
-            "nrmse_mrt": 0.008344108238816261,
+            "nrmse_ristretto": 0.008344108238816261,
             "threads": 1,
             "time_ms": 928.0887696666667
         },
@@ -734,7 +734,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.24030481088993869,
-            "nrmse_mrt": 0.008057425572128109,
+            "nrmse_ristretto": 0.008057425572128109,
             "threads": 1,
             "time_ms": 65.72106699999999
         },
@@ -742,10 +742,10 @@
             "case_id": "real_2d_multichannel_radial",
             "category": "CG-SENSE",
             "data_source": "FASTMRI:fastMRI_breast_IDS_001_010/fastMRI_breast_006_2 (central partition, 128 of 288 spokes)",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.24244441092014313,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 15.25967
         },
@@ -756,7 +756,7 @@
             "framework": "MRpro (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.24028163337026107,
-            "nrmse_mrt": 0.008141928938394214,
+            "nrmse_ristretto": 0.008141928938394214,
             "threads": 1,
             "time_ms": 94.90557
         },
@@ -767,7 +767,7 @@
             "framework": "SigPy (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.2402121419822475,
-            "nrmse_mrt": 0.00839216355510803,
+            "nrmse_ristretto": 0.00839216355510803,
             "threads": 1,
             "time_ms": 34.849066
         },
@@ -778,7 +778,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.22840337205748154,
-            "nrmse_mrt": 0.21733187205451993,
+            "nrmse_ristretto": 0.21733187205451993,
             "threads": 1,
             "time_ms": 100.74396800000001
         },
@@ -786,10 +786,10 @@
             "case_id": "real_2d_multichannel_radial",
             "category": "Non-Cartesian",
             "data_source": "FASTMRI:fastMRI_breast_IDS_001_010/fastMRI_breast_006_2 (central partition, 128 of 288 spokes)",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.2756320536136627,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 7.475878
         },
@@ -800,7 +800,7 @@
             "framework": "MRpro (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.27563200948333644,
-            "nrmse_mrt": 3.4725429289860557e-6,
+            "nrmse_ristretto": 3.4725429289860557e-6,
             "threads": 1,
             "time_ms": 69.809096
         },
@@ -811,7 +811,7 @@
             "framework": "SigPy (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.27564940346914285,
-            "nrmse_mrt": 0.0028488675280725962,
+            "nrmse_ristretto": 0.0028488675280725962,
             "threads": 1,
             "time_ms": 3.732834
         },
@@ -822,7 +822,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.17460474371910095,
-            "nrmse_mrt": 0.09078600257635117,
+            "nrmse_ristretto": 0.09078600257635117,
             "threads": 1,
             "time_ms": 1094.065476
         },
@@ -833,7 +833,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.16497914760893395,
-            "nrmse_mrt": 0.11415772504677793,
+            "nrmse_ristretto": 0.11415772504677793,
             "threads": 1,
             "time_ms": 859.154202
         },
@@ -841,10 +841,10 @@
             "case_id": "real_2d_multichannel_radial",
             "category": "Sparsity",
             "data_source": "FASTMRI:fastMRI_breast_IDS_001_010/fastMRI_breast_006_2 (central partition, 128 of 288 spokes)",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.1830614060163498,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 161.688456
         },
@@ -855,7 +855,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.16204597041819996,
-            "nrmse_mrt": 0.10027698954818882,
+            "nrmse_ristretto": 0.10027698954818882,
             "threads": 1,
             "time_ms": 993.145234
         },
@@ -866,7 +866,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.19259345531463623,
-            "nrmse_mrt": 0.09671325981616974,
+            "nrmse_ristretto": 0.09671325981616974,
             "threads": 1,
             "time_ms": 650.9288263333333
         },
@@ -874,10 +874,10 @@
             "case_id": "real_2d_multichannel_radial",
             "category": "Sparsity",
             "data_source": "FASTMRI:fastMRI_breast_IDS_001_010/fastMRI_breast_006_2 (central partition, 128 of 288 spokes)",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.1795029640197754,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 704.247294
         },
@@ -888,7 +888,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.1795125811280428,
-            "nrmse_mrt": 0.0871808657773316,
+            "nrmse_ristretto": 0.0871808657773316,
             "threads": 1,
             "time_ms": 3988.793607
         },
@@ -899,7 +899,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.20994770184158865,
-            "nrmse_mrt": 0.10090259438631595,
+            "nrmse_ristretto": 0.10090259438631595,
             "threads": 1,
             "time_ms": 1062.636687
         },
@@ -910,7 +910,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.283429890871048,
-            "nrmse_mrt": 0.03049449995160103,
+            "nrmse_ristretto": 0.03049449995160103,
             "threads": 1,
             "time_ms": 13025.052439333334
         },
@@ -921,7 +921,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.3347868976428956,
-            "nrmse_mrt": 0.0973855264970844,
+            "nrmse_ristretto": 0.0973855264970844,
             "threads": 1,
             "time_ms": 284.771898
         },
@@ -929,10 +929,10 @@
             "case_id": "real_2d_multichannel_radial",
             "category": "Sparsity",
             "data_source": "FASTMRI:fastMRI_breast_IDS_001_010/fastMRI_breast_006_2 (central partition, 128 of 288 spokes)",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.2896619737148285,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 41.738202
         },
@@ -943,7 +943,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.2971839211815848,
-            "nrmse_mrt": 0.02746543814907305,
+            "nrmse_ristretto": 0.02746543814907305,
             "threads": 1,
             "time_ms": 451.005726
         },
@@ -954,7 +954,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.30065495168913947,
-            "nrmse_mrt": 0.051521553026378536,
+            "nrmse_ristretto": 0.051521553026378536,
             "threads": 1,
             "time_ms": 219.796671
         },
@@ -965,7 +965,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.16195201873779297,
-            "nrmse_mrt": 0.10380031913518906,
+            "nrmse_ristretto": 0.10380031913518906,
             "threads": 1,
             "time_ms": 1034.0163416666667
         },
@@ -973,10 +973,10 @@
             "case_id": "real_2d_multichannel_radial",
             "category": "Sparsity",
             "data_source": "FASTMRI:fastMRI_breast_IDS_001_010/fastMRI_breast_006_2 (central partition, 128 of 288 spokes)",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.19256901741027832,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 162.719596
         },
@@ -987,7 +987,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.19522518477713052,
-            "nrmse_mrt": 0.016062045729388442,
+            "nrmse_ristretto": 0.016062045729388442,
             "threads": 1,
             "time_ms": 994.493246
         },
@@ -998,7 +998,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.19450151920318604,
-            "nrmse_mrt": 0.15522320568561554,
+            "nrmse_ristretto": 0.15522320568561554,
             "threads": 1,
             "time_ms": 658.5808099999999
         },
@@ -1006,10 +1006,10 @@
             "case_id": "real_2d_multichannel_radial",
             "category": "Sparsity",
             "data_source": "FASTMRI:fastMRI_breast_IDS_001_010/fastMRI_breast_006_2 (central partition, 128 of 288 spokes)",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.17724114656448364,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 721.568362
         },
@@ -1020,7 +1020,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.17514996172208977,
-            "nrmse_mrt": 0.09072394419640255,
+            "nrmse_ristretto": 0.09072394419640255,
             "threads": 1,
             "time_ms": 3858.064519
         },
@@ -1031,7 +1031,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.2028807113820306,
-            "nrmse_mrt": 0.09857730557448888,
+            "nrmse_ristretto": 0.09857730557448888,
             "threads": 1,
             "time_ms": 1082.8739839999998
         },
@@ -1042,7 +1042,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.5098671488479926,
-            "nrmse_mrt": 8.94544951337353e-8,
+            "nrmse_ristretto": 8.94544951337353e-8,
             "threads": 1,
             "time_ms": 651.087159
         },
@@ -1050,10 +1050,10 @@
             "case_id": "real_3d_multichannel_cartesian",
             "category": "Base",
             "data_source": "MRIDATA:52c2fd53-d233-4444-8bfd-7c454240d314",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.5098671317100525,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 23.439888
         },
@@ -1064,7 +1064,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.5098671470493209,
-            "nrmse_mrt": 6.500481150846053e-8,
+            "nrmse_ristretto": 6.500481150846053e-8,
             "threads": 1,
             "time_ms": 532.71004
         },
@@ -1075,7 +1075,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.5098671480238273,
-            "nrmse_mrt": 1.1473046453537491e-7,
+            "nrmse_ristretto": 1.1473046453537491e-7,
             "threads": 1,
             "time_ms": 82.084868
         },
@@ -1086,7 +1086,7 @@
             "framework": "BART (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.6508821249008179,
-            "nrmse_mrt": 0.003250997979193926,
+            "nrmse_ristretto": 0.003250997979193926,
             "threads": 1,
             "time_ms": 914.7043184999999
         },
@@ -1097,7 +1097,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.6508821887995677,
-            "nrmse_mrt": 0.003250923025409976,
+            "nrmse_ristretto": 0.003250923025409976,
             "threads": 1,
             "time_ms": 502.89604099999997
         },
@@ -1105,10 +1105,10 @@
             "case_id": "real_3d_multichannel_cartesian",
             "category": "CG-SENSE",
             "data_source": "MRIDATA:52c2fd53-d233-4444-8bfd-7c454240d314",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.6500561237335205,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 77.436867
         },
@@ -1119,7 +1119,7 @@
             "framework": "MRpro (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.6508821833738816,
-            "nrmse_mrt": 0.0032509619354940344,
+            "nrmse_ristretto": 0.0032509619354940344,
             "threads": 1,
             "time_ms": 572.347036
         },
@@ -1130,7 +1130,7 @@
             "framework": "SigPy (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.6508822792258167,
-            "nrmse_mrt": 0.003250969472485854,
+            "nrmse_ristretto": 0.003250969472485854,
             "threads": 1,
             "time_ms": 119.39069500000001
         },
@@ -1141,7 +1141,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.7177631258964539,
-            "nrmse_mrt": 0.14510653913021088,
+            "nrmse_ristretto": 0.14510653913021088,
             "threads": 1,
             "time_ms": 1786.7098924999998
         },
@@ -1152,7 +1152,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.6869005282117933,
-            "nrmse_mrt": 0.1862488761174588,
+            "nrmse_ristretto": 0.1862488761174588,
             "threads": 1,
             "time_ms": 2456.5206860000003
         },
@@ -1160,10 +1160,10 @@
             "case_id": "real_3d_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "MRIDATA:52c2fd53-d233-4444-8bfd-7c454240d314",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.7796931862831116,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1043.4215140000001
         },
@@ -1174,7 +1174,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.718078066601444,
-            "nrmse_mrt": 0.14260356448947512,
+            "nrmse_ristretto": 0.14260356448947512,
             "threads": 1,
             "time_ms": 1766.782946
         },
@@ -1185,7 +1185,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.2903655469417572,
-            "nrmse_mrt": 0.6790775060653687,
+            "nrmse_ristretto": 0.6790775060653687,
             "threads": 1,
             "time_ms": 1864.364129
         },
@@ -1193,10 +1193,10 @@
             "case_id": "real_3d_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "MRIDATA:52c2fd53-d233-4444-8bfd-7c454240d314",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.7032095193862915,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1802.619057
         },
@@ -1207,7 +1207,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.3403832437482392,
-            "nrmse_mrt": 0.5713419044522003,
+            "nrmse_ristretto": 0.5713419044522003,
             "threads": 1,
             "time_ms": 2557.7614729999996
         },
@@ -1218,7 +1218,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.35786813900169173,
-            "nrmse_mrt": 0.6479859397238076,
+            "nrmse_ristretto": 0.6479859397238076,
             "threads": 1,
             "time_ms": 2260.8744349999997
         },
@@ -1229,7 +1229,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.5490726828575134,
-            "nrmse_mrt": 0.08117274940013885,
+            "nrmse_ristretto": 0.08117274940013885,
             "threads": 1,
             "time_ms": 27607.21460875
         },
@@ -1240,7 +1240,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.487764975626248,
-            "nrmse_mrt": 0.1858053170829212,
+            "nrmse_ristretto": 0.1858053170829212,
             "threads": 1,
             "time_ms": 12259.819974
         },
@@ -1248,10 +1248,10 @@
             "case_id": "real_3d_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "MRIDATA:52c2fd53-d233-4444-8bfd-7c454240d314",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.5848428010940552,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 245.61172200000001
         },
@@ -1262,7 +1262,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.47737014862281546,
-            "nrmse_mrt": 0.2070182676603572,
+            "nrmse_ristretto": 0.2070182676603572,
             "threads": 1,
             "time_ms": 868.573049
         },
@@ -1273,7 +1273,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.39640975899247327,
-            "nrmse_mrt": 0.3532021179538716,
+            "nrmse_ristretto": 0.3532021179538716,
             "threads": 1,
             "time_ms": 4246.840788
         },
@@ -1284,7 +1284,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.5115181803703308,
-            "nrmse_mrt": 0.5714506506919861,
+            "nrmse_ristretto": 0.5714506506919861,
             "threads": 1,
             "time_ms": 1871.60829925
         },
@@ -1292,10 +1292,10 @@
             "case_id": "real_3d_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "MRIDATA:52c2fd53-d233-4444-8bfd-7c454240d314",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.8518539667129517,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1045.013426
         },
@@ -1306,7 +1306,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.7408374661729138,
-            "nrmse_mrt": 0.24789684470912735,
+            "nrmse_ristretto": 0.24789684470912735,
             "threads": 1,
             "time_ms": 1793.006536
         },
@@ -1317,7 +1317,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.3075549602508545,
-            "nrmse_mrt": 0.5248264670372009,
+            "nrmse_ristretto": 0.5248264670372009,
             "threads": 1,
             "time_ms": 1814.892401
         },
@@ -1325,10 +1325,10 @@
             "case_id": "real_3d_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "MRIDATA:52c2fd53-d233-4444-8bfd-7c454240d314",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.6053034067153931,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1771.2538140000001
         },
@@ -1339,7 +1339,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.3671796199969069,
-            "nrmse_mrt": 0.39858517422363915,
+            "nrmse_ristretto": 0.39858517422363915,
             "threads": 1,
             "time_ms": 2534.450124
         },
@@ -1350,7 +1350,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.3745374563860778,
-            "nrmse_mrt": 0.5270587224957277,
+            "nrmse_ristretto": 0.5270587224957277,
             "threads": 1,
             "time_ms": 2301.449792
         },
@@ -1361,7 +1361,7 @@
             "framework": "BART (CUDA)",
             "method": "Global Low-Rank (NRMSE≤0.07693, 50 it)",
             "nrmse_gt": 0.05529047176241875,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 709.6134192500001
         },
@@ -1369,10 +1369,10 @@
             "case_id": "real_cine_multichannel_cartesian",
             "category": "Accuracy race",
             "data_source": "OCMR:fs_0001_1_5T",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1824, 20 it)",
             "nrmse_gt": 0.17737406492233276,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 111.758054
         },
@@ -1383,7 +1383,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1824, 20 it)",
             "nrmse_gt": 0.1766501350907958,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 186.16288
         },
@@ -1394,7 +1394,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1824, 40 it)",
             "nrmse_gt": 0.15434108815929432,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 14957.330594000001
         },
@@ -1405,7 +1405,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1824, 40 it)",
             "nrmse_gt": 0.15492541597122697,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1511.607146
         },
@@ -1416,7 +1416,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.3450060398474243,
-            "nrmse_mrt": 1.0535980808240532e-7,
+            "nrmse_ristretto": 1.0535980808240532e-7,
             "threads": 1,
             "time_ms": 350.244866
         },
@@ -1424,10 +1424,10 @@
             "case_id": "real_cine_multichannel_cartesian",
             "category": "Base",
             "data_source": "OCMR:fs_0001_1_5T",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.3450060188770294,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 19.723055
         },
@@ -1438,7 +1438,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.3450060397962233,
-            "nrmse_mrt": 1.1851822533406667e-7,
+            "nrmse_ristretto": 1.1851822533406667e-7,
             "threads": 1,
             "time_ms": 54.679147
         },
@@ -1449,7 +1449,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.3450060398352472,
-            "nrmse_mrt": 1.1583649673059279e-7,
+            "nrmse_ristretto": 1.1583649673059279e-7,
             "threads": 1,
             "time_ms": 14.464756000000001
         },
@@ -1460,7 +1460,7 @@
             "framework": "BART (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.20374740660190582,
-            "nrmse_mrt": 0.0006827733013778925,
+            "nrmse_ristretto": 0.0006827733013778925,
             "threads": 1,
             "time_ms": 518.2728174999999
         },
@@ -1471,7 +1471,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.2037474114293248,
-            "nrmse_mrt": 0.0006827681405026886,
+            "nrmse_ristretto": 0.0006827681405026886,
             "threads": 1,
             "time_ms": 1463.8499080000001
         },
@@ -1479,10 +1479,10 @@
             "case_id": "real_cine_multichannel_cartesian",
             "category": "CG-SENSE",
             "data_source": "OCMR:fs_0001_1_5T",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.20379413664340973,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 28.19279
         },
@@ -1493,7 +1493,7 @@
             "framework": "MRpro (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.2037474277163397,
-            "nrmse_mrt": 0.0006827752901645242,
+            "nrmse_ristretto": 0.0006827752901645242,
             "threads": 1,
             "time_ms": 75.27337200000001
         },
@@ -1504,7 +1504,7 @@
             "framework": "SigPy (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.20374740808064382,
-            "nrmse_mrt": 0.0006827914302226791,
+            "nrmse_ristretto": 0.0006827914302226791,
             "threads": 1,
             "time_ms": 37.502998000000005
         },
@@ -1515,7 +1515,7 @@
             "framework": "BART (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.04963531717658043,
-            "nrmse_mrt": 0.06620944291353226,
+            "nrmse_ristretto": 0.06620944291353226,
             "threads": 1,
             "time_ms": 4085.3965985
         },
@@ -1526,7 +1526,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.1806683503991538,
-            "nrmse_mrt": 0.105540111337762,
+            "nrmse_ristretto": 0.105540111337762,
             "threads": 1,
             "time_ms": 24741.278153
         },
@@ -1534,10 +1534,10 @@
             "case_id": "real_cine_multichannel_cartesian",
             "category": "Dynamic",
             "data_source": "OCMR:fs_0001_1_5T",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.09475423395633698,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 318.72243
         },
@@ -1548,7 +1548,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.24915412951772903,
-            "nrmse_mrt": 0.18485696042955257,
+            "nrmse_ristretto": 0.18485696042955257,
             "threads": 1,
             "time_ms": 1229.069089
         },
@@ -1559,7 +1559,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.13690623286986556,
-            "nrmse_mrt": 0.05345867607399878,
+            "nrmse_ristretto": 0.05345867607399878,
             "threads": 1,
             "time_ms": 575.254096
         },
@@ -1570,7 +1570,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.19698132574558258,
-            "nrmse_mrt": 0.06925198435783386,
+            "nrmse_ristretto": 0.06925198435783386,
             "threads": 1,
             "time_ms": 14514.46479925
         },
@@ -1581,7 +1581,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.1858164634185213,
-            "nrmse_mrt": 0.028582188401795435,
+            "nrmse_ristretto": 0.028582188401795435,
             "threads": 1,
             "time_ms": 6068.497756
         },
@@ -1589,10 +1589,10 @@
             "case_id": "real_cine_multichannel_cartesian",
             "category": "Dynamic",
             "data_source": "OCMR:fs_0001_1_5T",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.17737406492233276,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 131.764535
         },
@@ -1603,7 +1603,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.1766501350907958,
-            "nrmse_mrt": 0.051288930630453596,
+            "nrmse_ristretto": 0.051288930630453596,
             "threads": 1,
             "time_ms": 182.44812199999998
         },
@@ -1614,7 +1614,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.1861442287304958,
-            "nrmse_mrt": 0.051198194193499004,
+            "nrmse_ristretto": 0.051198194193499004,
             "threads": 1,
             "time_ms": 789.016442
         },
@@ -1625,7 +1625,7 @@
             "framework": "BART (CUDA)",
             "method": "Locally Low-Rank (20 it)",
             "nrmse_gt": 0.10176819562911987,
-            "nrmse_mrt": 0.07301931083202362,
+            "nrmse_ristretto": 0.07301931083202362,
             "threads": 1,
             "time_ms": 13829.479469999998
         },
@@ -1636,7 +1636,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Locally Low-Rank (20 it)",
             "nrmse_gt": 0.07735655793248039,
-            "nrmse_mrt": 0.06959467950039935,
+            "nrmse_ristretto": 0.06959467950039935,
             "threads": 1,
             "time_ms": 27372.203999
         },
@@ -1644,10 +1644,10 @@
             "case_id": "real_cine_multichannel_cartesian",
             "category": "Dynamic",
             "data_source": "OCMR:fs_0001_1_5T",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Locally Low-Rank (20 it)",
             "nrmse_gt": 0.13020460307598114,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 414.531133
         },
@@ -1658,7 +1658,7 @@
             "framework": "BART (CUDA)",
             "method": "Temporal TV (20 it)",
             "nrmse_gt": 0.0497739315032959,
-            "nrmse_mrt": 0.0219405684620142,
+            "nrmse_ristretto": 0.0219405684620142,
             "threads": 1,
             "time_ms": 1255.4094502500002
         },
@@ -1666,10 +1666,10 @@
             "case_id": "real_cine_multichannel_cartesian",
             "category": "Dynamic",
             "data_source": "OCMR:fs_0001_1_5T",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Temporal TV (20 it)",
             "nrmse_gt": 0.047192759811878204,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 351.925089
         },
@@ -1680,7 +1680,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Temporal TV (20 it)",
             "nrmse_gt": 0.05000114413547553,
-            "nrmse_mrt": 0.021307105684859856,
+            "nrmse_ristretto": 0.021307105684859856,
             "threads": 1,
             "time_ms": 549.802206
         },
@@ -1691,7 +1691,7 @@
             "framework": "BART (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.11390247941017151,
-            "nrmse_mrt": 0.10637684911489487,
+            "nrmse_ristretto": 0.10637684911489487,
             "threads": 1,
             "time_ms": 903.49102575
         },
@@ -1699,10 +1699,10 @@
             "case_id": "real_cine_multichannel_cartesian",
             "category": "Dynamic",
             "data_source": "OCMR:fs_0001_1_5T",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.04766799509525299,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 797.65829
         },
@@ -1713,7 +1713,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.03950087528695003,
-            "nrmse_mrt": 0.04143167582841026,
+            "nrmse_ristretto": 0.04143167582841026,
             "threads": 1,
             "time_ms": 918.0723200000001
         },
@@ -1724,7 +1724,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.07886742949345976,
-            "nrmse_mrt": 0.07457845728119636,
+            "nrmse_ristretto": 0.07457845728119636,
             "threads": 1,
             "time_ms": 721.03362
         },
@@ -1735,7 +1735,7 @@
             "framework": "BART (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.37859731912612915,
-            "nrmse_mrt": 0.011252202093601227,
+            "nrmse_ristretto": 0.011252202093601227,
             "threads": 1,
             "time_ms": 635.5612096666667
         },
@@ -1746,7 +1746,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.3768070205260268,
-            "nrmse_mrt": 0.0015315985697561105,
+            "nrmse_ristretto": 0.0015315985697561105,
             "threads": 1,
             "time_ms": 1027.094454
         },
@@ -1754,10 +1754,10 @@
             "case_id": "real_cine_multichannel_radial",
             "category": "CG-SENSE",
             "data_source": "USC_SPEECH:sub001/2drt/09_northwind1_r1 (3 of 13 arms, 30 frames)",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.37686437368392944,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 19.944301
         },
@@ -1768,7 +1768,7 @@
             "framework": "MRpro (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.3793100938632362,
-            "nrmse_mrt": 0.014940120036751773,
+            "nrmse_ristretto": 0.014940120036751773,
             "threads": 1,
             "time_ms": 84.540026
         },
@@ -1779,7 +1779,7 @@
             "framework": "SigPy (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.3765004267818098,
-            "nrmse_mrt": 0.006455771030775419,
+            "nrmse_ristretto": 0.006455771030775419,
             "threads": 1,
             "time_ms": 61.343669000000006
         },
@@ -1790,7 +1790,7 @@
             "framework": "BART (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.478850781917572,
-            "nrmse_mrt": 0.2553849220275879,
+            "nrmse_ristretto": 0.2553849220275879,
             "threads": 1,
             "time_ms": 2384.115932333333
         },
@@ -1801,7 +1801,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.5724798197981293,
-            "nrmse_mrt": 0.04630120641106575,
+            "nrmse_ristretto": 0.04630120641106575,
             "threads": 1,
             "time_ms": 14827.314292000001
         },
@@ -1809,10 +1809,10 @@
             "case_id": "real_cine_multichannel_radial",
             "category": "Dynamic",
             "data_source": "USC_SPEECH:sub001/2drt/09_northwind1_r1 (3 of 13 arms, 30 frames)",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.5876810550689697,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 247.205668
         },
@@ -1823,7 +1823,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.4587669499771427,
-            "nrmse_mrt": 0.3051572232561328,
+            "nrmse_ristretto": 0.3051572232561328,
             "threads": 1,
             "time_ms": 13732.234511
         },
@@ -1834,7 +1834,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.5136867885813692,
-            "nrmse_mrt": 0.21180414987084956,
+            "nrmse_ristretto": 0.21180414987084956,
             "threads": 1,
             "time_ms": 1101.886597
         },
@@ -1845,7 +1845,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.3474979102611542,
-            "nrmse_mrt": 0.03083273023366928,
+            "nrmse_ristretto": 0.03083273023366928,
             "threads": 1,
             "time_ms": 11467.094787666667
         },
@@ -1856,7 +1856,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.34863676968611634,
-            "nrmse_mrt": 0.020090775666331783,
+            "nrmse_ristretto": 0.020090775666331783,
             "threads": 1,
             "time_ms": 2946.746084
         },
@@ -1864,10 +1864,10 @@
             "case_id": "real_cine_multichannel_radial",
             "category": "Dynamic",
             "data_source": "USC_SPEECH:sub001/2drt/09_northwind1_r1 (3 of 13 arms, 30 frames)",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.35175174474716187,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 163.43728099999998
         },
@@ -1878,7 +1878,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.33822190437690225,
-            "nrmse_mrt": 0.09604122353447338,
+            "nrmse_ristretto": 0.09604122353447338,
             "threads": 1,
             "time_ms": 1329.7550449999999
         },
@@ -1889,7 +1889,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.34543772750397755,
-            "nrmse_mrt": 0.036760778206724694,
+            "nrmse_ristretto": 0.036760778206724694,
             "threads": 1,
             "time_ms": 477.571376
         },
@@ -1900,7 +1900,7 @@
             "framework": "BART (CUDA)",
             "method": "Locally Low-Rank (20 it)",
             "nrmse_gt": 0.3753018379211426,
-            "nrmse_mrt": 0.4239227771759033,
+            "nrmse_ristretto": 0.4239227771759033,
             "threads": 1,
             "time_ms": 7346.044456333333
         },
@@ -1911,7 +1911,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Locally Low-Rank (20 it)",
             "nrmse_gt": 0.5690338333255706,
-            "nrmse_mrt": 0.039432316681891795,
+            "nrmse_ristretto": 0.039432316681891795,
             "threads": 1,
             "time_ms": 21978.9856
         },
@@ -1919,10 +1919,10 @@
             "case_id": "real_cine_multichannel_radial",
             "category": "Dynamic",
             "data_source": "USC_SPEECH:sub001/2drt/09_northwind1_r1 (3 of 13 arms, 30 frames)",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Locally Low-Rank (20 it)",
             "nrmse_gt": 0.5819766521453857,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 270.456931
         },
@@ -1933,7 +1933,7 @@
             "framework": "BART (CUDA)",
             "method": "Temporal TV (20 it)",
             "nrmse_gt": 0.456422358751297,
-            "nrmse_mrt": 0.26584041118621826,
+            "nrmse_ristretto": 0.26584041118621826,
             "threads": 1,
             "time_ms": 1030.515001
         },
@@ -1941,10 +1941,10 @@
             "case_id": "real_cine_multichannel_radial",
             "category": "Dynamic",
             "data_source": "USC_SPEECH:sub001/2drt/09_northwind1_r1 (3 of 13 arms, 30 frames)",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Temporal TV (20 it)",
             "nrmse_gt": 0.5361337065696716,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 225.052865
         },
@@ -1955,7 +1955,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Temporal TV (20 it)",
             "nrmse_gt": 0.5175440174518743,
-            "nrmse_mrt": 0.15041577439783663,
+            "nrmse_ristretto": 0.15041577439783663,
             "threads": 1,
             "time_ms": 1080.2872009999999
         },
@@ -1966,7 +1966,7 @@
             "framework": "BART (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.4505048990249634,
-            "nrmse_mrt": 0.1883772611618042,
+            "nrmse_ristretto": 0.1883772611618042,
             "threads": 1,
             "time_ms": 1392.687888
         },
@@ -1974,10 +1974,10 @@
             "case_id": "real_cine_multichannel_radial",
             "category": "Dynamic",
             "data_source": "USC_SPEECH:sub001/2drt/09_northwind1_r1 (3 of 13 arms, 30 frames)",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.5376972556114197,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 486.32495
         },
@@ -1988,7 +1988,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.5167286268223266,
-            "nrmse_mrt": 0.3006158342873931,
+            "nrmse_ristretto": 0.3006158342873931,
             "threads": 1,
             "time_ms": 12249.979722999999
         },
@@ -1999,7 +1999,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.3490897596161722,
-            "nrmse_mrt": 0.17894279080422448,
+            "nrmse_ristretto": 0.17894279080422448,
             "threads": 1,
             "time_ms": 1069.273135
         },
@@ -2010,7 +2010,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.414158740790046,
-            "nrmse_mrt": 0.293606832922811,
+            "nrmse_ristretto": 0.293606832922811,
             "threads": 1,
             "time_ms": 419.518739
         },
@@ -2018,10 +2018,10 @@
             "case_id": "real_cine_multichannel_radial",
             "category": "Non-Cartesian",
             "data_source": "USC_SPEECH:sub001/2drt/09_northwind1_r1 (3 of 13 arms, 30 frames)",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.47001132369041443,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 6.982737
         },
@@ -2032,7 +2032,7 @@
             "framework": "MRpro (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.4700112503432751,
-            "nrmse_mrt": 2.0344645707473518e-6,
+            "nrmse_ristretto": 2.0344645707473518e-6,
             "threads": 1,
             "time_ms": 50.333330000000004
         },
@@ -2043,7 +2043,7 @@
             "framework": "SigPy (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.47001324232365105,
-            "nrmse_mrt": 0.0028465605295855466,
+            "nrmse_ristretto": 0.0028465605295855466,
             "threads": 1,
             "time_ms": 3.957718
         },
@@ -2054,7 +2054,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.243837573522265,
-            "nrmse_mrt": 0.009901388533457468,
+            "nrmse_ristretto": 0.009901388533457468,
             "threads": 1,
             "time_ms": 77.029289
         },
@@ -2062,10 +2062,10 @@
             "case_id": "real_multislice_multichannel_cartesian",
             "category": "Base",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.24362489581108093,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 5.828008
         },
@@ -2076,7 +2076,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.2436248833809831,
-            "nrmse_mrt": 3.5595930323826943e-8,
+            "nrmse_ristretto": 3.5595930323826943e-8,
             "threads": 1,
             "time_ms": 37.491331
         },
@@ -2087,7 +2087,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.24362488344064134,
-            "nrmse_mrt": 9.172235618933033e-8,
+            "nrmse_ristretto": 9.172235618933033e-8,
             "threads": 1,
             "time_ms": 21.860787999999996
         },
@@ -2098,7 +2098,7 @@
             "framework": "BART (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.4212267369939302,
-            "nrmse_mrt": 0.08504035288725859,
+            "nrmse_ristretto": 0.08504035288725859,
             "threads": 1,
             "time_ms": 659.2306497500002
         },
@@ -2109,7 +2109,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.4224937529850479,
-            "nrmse_mrt": 0.10137666741852731,
+            "nrmse_ristretto": 0.10137666741852731,
             "threads": 1,
             "time_ms": 294.740285
         },
@@ -2117,10 +2117,10 @@
             "case_id": "real_multislice_multichannel_cartesian",
             "category": "CG-SENSE",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.38221949338912964,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 19.690271
         },
@@ -2131,7 +2131,7 @@
             "framework": "MRpro (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.4212267450501137,
-            "nrmse_mrt": 0.08504035424083575,
+            "nrmse_ristretto": 0.08504035424083575,
             "threads": 1,
             "time_ms": 109.45146300000002
         },
@@ -2142,7 +2142,7 @@
             "framework": "SigPy (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.42122670750086016,
-            "nrmse_mrt": 0.08504033143469276,
+            "nrmse_ristretto": 0.08504033143469276,
             "threads": 1,
             "time_ms": 217.911121
         },
@@ -2153,7 +2153,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.23842319194501477,
-            "nrmse_mrt": 0.35349856659689266,
+            "nrmse_ristretto": 0.35349856659689266,
             "threads": 1,
             "time_ms": 1335.161903
         },
@@ -2164,7 +2164,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.20809388779422056,
-            "nrmse_mrt": 0.4634289194129123,
+            "nrmse_ristretto": 0.4634289194129123,
             "threads": 1,
             "time_ms": 4709.695842
         },
@@ -2172,10 +2172,10 @@
             "case_id": "real_multislice_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.45402711629867554,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 372.454018
         },
@@ -2186,7 +2186,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.42636365842060403,
-            "nrmse_mrt": 0.055324916986985634,
+            "nrmse_ristretto": 0.055324916986985634,
             "threads": 1,
             "time_ms": 7604.783951
         },
@@ -2197,7 +2197,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.22567524801040514,
-            "nrmse_mrt": 0.41729332685701054,
+            "nrmse_ristretto": 0.41729332685701054,
             "threads": 1,
             "time_ms": 1024.5600947499997
         },
@@ -2205,10 +2205,10 @@
             "case_id": "real_multislice_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.36695608496665955,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 575.9493180000001
         },
@@ -2219,7 +2219,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.24119087506515843,
-            "nrmse_mrt": 0.4337516163564781,
+            "nrmse_ristretto": 0.4337516163564781,
             "threads": 1,
             "time_ms": 6387.8390389999995
         },
@@ -2230,7 +2230,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.22844783354414633,
-            "nrmse_mrt": 0.4143679490211868,
+            "nrmse_ristretto": 0.4143679490211868,
             "threads": 1,
             "time_ms": 8403.284626
         },
@@ -2241,7 +2241,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.21728767032907875,
-            "nrmse_mrt": 0.1582355371234397,
+            "nrmse_ristretto": 0.1582355371234397,
             "threads": 1,
             "time_ms": 9139.974530500001
         },
@@ -2252,7 +2252,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.2604777304177589,
-            "nrmse_mrt": 0.1908132923089779,
+            "nrmse_ristretto": 0.1908132923089779,
             "threads": 1,
             "time_ms": 2400.4294659999996
         },
@@ -2260,10 +2260,10 @@
             "case_id": "real_multislice_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.230839341878891,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 86.946901
         },
@@ -2274,7 +2274,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.2471218670310066,
-            "nrmse_mrt": 0.19670722476991243,
+            "nrmse_ristretto": 0.19670722476991243,
             "threads": 1,
             "time_ms": 1105.852602
         },
@@ -2285,7 +2285,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.23381276773422835,
-            "nrmse_mrt": 0.1704880849914923,
+            "nrmse_ristretto": 0.1704880849914923,
             "threads": 1,
             "time_ms": 1680.1463750000003
         },
@@ -2296,7 +2296,7 @@
             "framework": "BART (CUDA)",
             "method": "TGV (20 it)",
             "nrmse_gt": 0.22219346311337881,
-            "nrmse_mrt": 0.5792781975479044,
+            "nrmse_ristretto": 0.5792781975479044,
             "threads": 1,
             "time_ms": 1547.6446819999999
         },
@@ -2304,10 +2304,10 @@
             "case_id": "real_multislice_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "TGV (20 it)",
             "nrmse_gt": 0.5282804369926453,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1288.489106
         },
@@ -2318,7 +2318,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.25506592246153353,
-            "nrmse_mrt": 0.3985654290420404,
+            "nrmse_ristretto": 0.3985654290420404,
             "threads": 1,
             "time_ms": 1047.5160414999993
         },
@@ -2326,10 +2326,10 @@
             "case_id": "real_multislice_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.5203242897987366,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 374.872565
         },
@@ -2340,7 +2340,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.2577996676040388,
-            "nrmse_mrt": 0.3925279454277031,
+            "nrmse_ristretto": 0.3925279454277031,
             "threads": 1,
             "time_ms": 7642.6745869999995
         },
@@ -2351,7 +2351,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.217502038886418,
-            "nrmse_mrt": 0.2554681060570366,
+            "nrmse_ristretto": 0.2554681060570366,
             "threads": 1,
             "time_ms": 1032.8592157499997
         },
@@ -2359,10 +2359,10 @@
             "case_id": "real_multislice_multichannel_cartesian",
             "category": "Sparsity",
             "data_source": "M4RAW:multicoil_train/2022062402_T203",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.2653653919696808,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 567.838916
         },
@@ -2373,7 +2373,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.22478292805033537,
-            "nrmse_mrt": 0.1231548157218974,
+            "nrmse_ristretto": 0.1231548157218974,
             "threads": 1,
             "time_ms": 6116.224667
         },
@@ -2384,7 +2384,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.22190398027136427,
-            "nrmse_mrt": 0.2534518291392414,
+            "nrmse_ristretto": 0.2534518291392414,
             "threads": 1,
             "time_ms": 8327.448576
         },
@@ -2395,7 +2395,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (NRMSE≤0.05859, 12 it)",
             "nrmse_gt": 0.05347818925035774,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 378.881673
         },
@@ -2406,7 +2406,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (NRMSE≤0.05859, 150 it)",
             "nrmse_gt": 0.04546913877129555,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 70.90985225000001
         },
@@ -2417,7 +2417,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Anisotropic TV (NRMSE≤0.05859, 8 it)",
             "nrmse_gt": 0.05101528164772977,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 66.433892
         },
@@ -2425,10 +2425,10 @@
             "case_id": "shepp_logan_2d_1ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (NRMSE≤0.05859, 8 it)",
             "nrmse_gt": 0.05495794117450714,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 38.051316
         },
@@ -2436,10 +2436,10 @@
             "case_id": "shepp_logan_2d_1ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (PDHG) (NRMSE≤0.05859, 150 it)",
             "nrmse_gt": 0.021852655336260796,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 143.474154
         },
@@ -2450,7 +2450,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (PDHG) (NRMSE≤0.05859, 300 it)",
             "nrmse_gt": 0.052926380187273026,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 175.91984425
         },
@@ -2461,7 +2461,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Anisotropic TV (PDHG) (NRMSE≤0.05859, 300 it)",
             "nrmse_gt": 0.052048104125508025,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 745.395977
         },
@@ -2472,7 +2472,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (PDHG) (NRMSE≤0.05859, 300 it)",
             "nrmse_gt": 0.049476164396213496,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1025.809704
         },
@@ -2483,7 +2483,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1993, 20 it)",
             "nrmse_gt": 0.18793406959641049,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 50.418845
         },
@@ -2491,10 +2491,10 @@
             "case_id": "shepp_logan_2d_1ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1993, 20 it)",
             "nrmse_gt": 0.18595871329307556,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 13.790004
         },
@@ -2505,7 +2505,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1993, 20 it)",
             "nrmse_gt": 0.18530721790500354,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 78.12670800000001
         },
@@ -2516,7 +2516,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1993, 20 it)",
             "nrmse_gt": 0.19133852414835825,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 105.145122
         },
@@ -2527,7 +2527,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1993, 8 it)",
             "nrmse_gt": 0.18870238959789276,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 63.74498125
         },
@@ -2538,7 +2538,7 @@
             "framework": "BART (CUDA)",
             "method": "TGV (NRMSE≤0.02509, 150 it)",
             "nrmse_gt": 0.02495315484702587,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 119.02821250000001
         },
@@ -2546,10 +2546,10 @@
             "case_id": "shepp_logan_2d_1ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "TGV (NRMSE≤0.02509, 30 it)",
             "nrmse_gt": 0.02280583046376705,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 314.407502
         },
@@ -2557,10 +2557,10 @@
             "case_id": "shepp_logan_2d_1ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (NRMSE≤0.09241, 8 it)",
             "nrmse_gt": 0.05607756972312927,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 35.911877000000004
         },
@@ -2571,7 +2571,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (NRMSE≤0.09241, 8 it)",
             "nrmse_gt": 0.05488694769000188,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 254.16353600000002
         },
@@ -2582,7 +2582,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (NRMSE≤0.09241, 80 it)",
             "nrmse_gt": 0.044784218072891235,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 69.36735100000007
         },
@@ -2593,7 +2593,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (PDHG) (NRMSE≤0.09241, 150 it)",
             "nrmse_gt": 0.05344449356198311,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 75.53483225000002
         },
@@ -2601,10 +2601,10 @@
             "case_id": "shepp_logan_2d_1ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (PDHG) (NRMSE≤0.09241, 150 it)",
             "nrmse_gt": 0.055264923721551895,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 151.404139
         },
@@ -2615,7 +2615,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (PDHG) (NRMSE≤0.09241, 300 it)",
             "nrmse_gt": 0.08402162797411811,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1033.798051
         },
@@ -2626,7 +2626,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Total Variation (PDHG) (NRMSE≤0.09241, 40 it)",
             "nrmse_gt": 0.08325004256651941,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 126.91082800000001
         },
@@ -2637,7 +2637,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.36340390843579445,
-            "nrmse_mrt": 3.477840686293345e-8,
+            "nrmse_ristretto": 3.477840686293345e-8,
             "threads": 1,
             "time_ms": 3.961416
         },
@@ -2645,10 +2645,10 @@
             "case_id": "shepp_logan_2d_1ch_cartesian",
             "category": "Base",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.36340388655662537,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 0.483984
         },
@@ -2659,7 +2659,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.36340390843579445,
-            "nrmse_mrt": 3.477840686293345e-8,
+            "nrmse_ristretto": 3.477840686293345e-8,
             "threads": 1,
             "time_ms": 0.9836280000000001
         },
@@ -2670,7 +2670,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.36340390932240346,
-            "nrmse_mrt": 1.5984781188088511e-7,
+            "nrmse_ristretto": 1.5984781188088511e-7,
             "threads": 1,
             "time_ms": 0.843418
         },
@@ -2681,7 +2681,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.025888172909617424,
-            "nrmse_mrt": 0.022853372618556023,
+            "nrmse_ristretto": 0.022853372618556023,
             "threads": 1,
             "time_ms": 108.51740650000002
         },
@@ -2692,7 +2692,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.0123330592947056,
-            "nrmse_mrt": 0.010889993049758639,
+            "nrmse_ristretto": 0.010889993049758639,
             "threads": 1,
             "time_ms": 155.099851
         },
@@ -2700,10 +2700,10 @@
             "case_id": "shepp_logan_2d_1ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.010876151733100414,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 84.676799
         },
@@ -2714,7 +2714,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.011960031304323136,
-            "nrmse_mrt": 0.009395355345494336,
+            "nrmse_ristretto": 0.009395355345494336,
             "threads": 1,
             "time_ms": 640.197121
         },
@@ -2725,7 +2725,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.1013445034623146,
-            "nrmse_mrt": 0.1094788983464241,
+            "nrmse_ristretto": 0.1094788983464241,
             "threads": 1,
             "time_ms": 83.93616325000004
         },
@@ -2733,10 +2733,10 @@
             "case_id": "shepp_logan_2d_1ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.008609650656580925,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 149.628061
         },
@@ -2747,7 +2747,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.09985129208092641,
-            "nrmse_mrt": 0.10773970293679633,
+            "nrmse_ristretto": 0.10773970293679633,
             "threads": 1,
             "time_ms": 510.95130700000004
         },
@@ -2758,7 +2758,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.09594961214763537,
-            "nrmse_mrt": 0.10781627679069607,
+            "nrmse_ristretto": 0.10781627679069607,
             "threads": 1,
             "time_ms": 708.876728
         },
@@ -2769,7 +2769,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.16153009235858917,
-            "nrmse_mrt": 0.125627338886261,
+            "nrmse_ristretto": 0.125627338886261,
             "threads": 1,
             "time_ms": 62.519395249999995
         },
@@ -2780,7 +2780,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.1879341380959034,
-            "nrmse_mrt": 0.03569565611667098,
+            "nrmse_ristretto": 0.03569565611667098,
             "threads": 1,
             "time_ms": 54.962934999999995
         },
@@ -2788,10 +2788,10 @@
             "case_id": "shepp_logan_2d_1ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.18595871329307556,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 14.741560000000002
         },
@@ -2802,7 +2802,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.18530722515245102,
-            "nrmse_mrt": 0.08526110806345462,
+            "nrmse_ristretto": 0.08526110806345462,
             "threads": 1,
             "time_ms": 78.05458999999999
         },
@@ -2813,7 +2813,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.19133852414835825,
-            "nrmse_mrt": 0.09375095970416633,
+            "nrmse_ristretto": 0.09375095970416633,
             "threads": 1,
             "time_ms": 103.16923899999999
         },
@@ -2824,7 +2824,7 @@
             "framework": "BART (CUDA)",
             "method": "TGV (20 it)",
             "nrmse_gt": 0.029592588543891907,
-            "nrmse_mrt": 0.030419431626796722,
+            "nrmse_ristretto": 0.030419431626796722,
             "threads": 1,
             "time_ms": 127.70793950000004
         },
@@ -2832,10 +2832,10 @@
             "case_id": "shepp_logan_2d_1ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "TGV (20 it)",
             "nrmse_gt": 0.03227660804986954,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 226.436165
         },
@@ -2846,7 +2846,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.01636148802936077,
-            "nrmse_mrt": 0.01200266182422638,
+            "nrmse_ristretto": 0.01200266182422638,
             "threads": 1,
             "time_ms": 106.95689325000002
         },
@@ -2854,10 +2854,10 @@
             "case_id": "shepp_logan_2d_1ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.01565798744559288,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 84.902505
         },
@@ -2868,7 +2868,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.015399213399344582,
-            "nrmse_mrt": 0.006958951309295219,
+            "nrmse_ristretto": 0.006958951309295219,
             "threads": 1,
             "time_ms": 644.667289
         },
@@ -2879,7 +2879,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.038047872483730316,
-            "nrmse_mrt": 0.05379980802536011,
+            "nrmse_ristretto": 0.05379980802536011,
             "threads": 1,
             "time_ms": 90.3028775
         },
@@ -2887,10 +2887,10 @@
             "case_id": "shepp_logan_2d_1ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.02773015946149826,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 159.893382
         },
@@ -2901,7 +2901,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.0490700310496998,
-            "nrmse_mrt": 0.05832869915570501,
+            "nrmse_ristretto": 0.05832869915570501,
             "threads": 1,
             "time_ms": 490.3461
         },
@@ -2912,7 +2912,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.08998911358813497,
-            "nrmse_mrt": 0.08918188687556418,
+            "nrmse_ristretto": 0.08918188687556418,
             "threads": 1,
             "time_ms": 730.7686880000001
         },
@@ -2923,7 +2923,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (NRMSE≤0.04141, 12 it)",
             "nrmse_gt": 0.03516031316003367,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 376.649044
         },
@@ -2934,7 +2934,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (NRMSE≤0.04141, 150 it)",
             "nrmse_gt": 0.007596821524202824,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 130.1671350000001
         },
@@ -2945,7 +2945,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Anisotropic TV (NRMSE≤0.04141, 20 it)",
             "nrmse_gt": 0.008455113086674468,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 743.99856
         },
@@ -2953,10 +2953,10 @@
             "case_id": "shepp_logan_2d_8ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (NRMSE≤0.04141, 8 it)",
             "nrmse_gt": 0.04089245945215225,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 33.095020000000005
         },
@@ -2967,7 +2967,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (PDHG) (NRMSE≤0.04141, 150 it)",
             "nrmse_gt": 0.02785778045654297,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 123.9415992500001
         },
@@ -2975,10 +2975,10 @@
             "case_id": "shepp_logan_2d_8ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (PDHG) (NRMSE≤0.04141, 300 it)",
             "nrmse_gt": 0.021116584539413452,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 196.32764699999998
         },
@@ -2989,7 +2989,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (PDHG) (NRMSE≤0.04141, 300 it)",
             "nrmse_gt": 0.037607494892635665,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1009.1405739999999
         },
@@ -3000,7 +3000,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Anisotropic TV (PDHG) (NRMSE≤0.04141, 80 it)",
             "nrmse_gt": 0.026132985885901485,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 237.09054600000002
         },
@@ -3011,7 +3011,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.2653, 12 it)",
             "nrmse_gt": 0.23495830595493317,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 258.37809675
         },
@@ -3022,7 +3022,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.2653, 30 it)",
             "nrmse_gt": 0.23118393899067127,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 294.00211199999995
         },
@@ -3030,10 +3030,10 @@
             "case_id": "shepp_logan_2d_8ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.2653, 30 it)",
             "nrmse_gt": 0.23029904067516327,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 25.302362
         },
@@ -3044,7 +3044,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.2653, 30 it)",
             "nrmse_gt": 0.24120607720074194,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 133.41797699999998
         },
@@ -3055,7 +3055,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.2653, 30 it)",
             "nrmse_gt": 0.23278971303780702,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 129.852886
         },
@@ -3066,7 +3066,7 @@
             "framework": "BART (CUDA)",
             "method": "TGV (NRMSE≤0.0168, 150 it)",
             "nrmse_gt": 0.010535120032727718,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 143.88136749999998
         },
@@ -3074,10 +3074,10 @@
             "case_id": "shepp_logan_2d_8ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "TGV (NRMSE≤0.0168, 30 it)",
             "nrmse_gt": 0.015271787531673908,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 322.711839
         },
@@ -3088,7 +3088,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (NRMSE≤0.08046, 12 it)",
             "nrmse_gt": 0.04131669241211553,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 384.122567
         },
@@ -3099,7 +3099,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (NRMSE≤0.08046, 40 it)",
             "nrmse_gt": 0.07582451403141022,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 63.705631749999995
         },
@@ -3107,10 +3107,10 @@
             "case_id": "shepp_logan_2d_8ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (NRMSE≤0.08046, 8 it)",
             "nrmse_gt": 0.07178758829832077,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 29.499662
         },
@@ -3118,10 +3118,10 @@
             "case_id": "shepp_logan_2d_8ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (PDHG) (NRMSE≤0.08046, 150 it)",
             "nrmse_gt": 0.034956108778715134,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 111.45875600000001
         },
@@ -3132,7 +3132,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (PDHG) (NRMSE≤0.08046, 300 it)",
             "nrmse_gt": 0.03256149962544441,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 147.0133250000001
         },
@@ -3143,7 +3143,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (PDHG) (NRMSE≤0.08046, 300 it)",
             "nrmse_gt": 0.07248649273416843,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1039.739608
         },
@@ -3154,7 +3154,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Total Variation (PDHG) (NRMSE≤0.08046, 80 it)",
             "nrmse_gt": 0.06780491927035667,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 229.00336900000002
         },
@@ -3165,7 +3165,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.48063069339391934,
-            "nrmse_mrt": 4.8317296663961384e-8,
+            "nrmse_ristretto": 4.8317296663961384e-8,
             "threads": 1,
             "time_ms": 8.522899
         },
@@ -3173,10 +3173,10 @@
             "case_id": "shepp_logan_2d_8ch_cartesian",
             "category": "Base",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.48063069581985474,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 0.802879
         },
@@ -3187,7 +3187,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.4806306918227702,
-            "nrmse_mrt": 7.201245598446271e-8,
+            "nrmse_ristretto": 7.201245598446271e-8,
             "threads": 1,
             "time_ms": 1.943871
         },
@@ -3198,7 +3198,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.48063069111178247,
-            "nrmse_mrt": 1.0895719841256655e-7,
+            "nrmse_ristretto": 1.0895719841256655e-7,
             "threads": 1,
             "time_ms": 0.999439
         },
@@ -3209,7 +3209,7 @@
             "framework": "BART (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.37730154395103455,
-            "nrmse_mrt": 4.487398109631613e-5,
+            "nrmse_ristretto": 4.487398109631613e-5,
             "threads": 1,
             "time_ms": 64.08786350000001
         },
@@ -3220,7 +3220,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.37730163826755453,
-            "nrmse_mrt": 4.471336100211809e-5,
+            "nrmse_ristretto": 4.471336100211809e-5,
             "threads": 1,
             "time_ms": 39.84293400000001
         },
@@ -3228,10 +3228,10 @@
             "case_id": "shepp_logan_2d_8ch_cartesian",
             "category": "CG-SENSE",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.3773038387298584,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 4.531966
         },
@@ -3242,7 +3242,7 @@
             "framework": "MRpro (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.3773015088850799,
-            "nrmse_mrt": 4.479197956614732e-5,
+            "nrmse_ristretto": 4.479197956614732e-5,
             "threads": 1,
             "time_ms": 7.538719
         },
@@ -3253,7 +3253,7 @@
             "framework": "SigPy (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.37730153325084914,
-            "nrmse_mrt": 4.47923587258774e-5,
+            "nrmse_ristretto": 4.47923587258774e-5,
             "threads": 1,
             "time_ms": 17.434778
         },
@@ -3264,7 +3264,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.004316434264183044,
-            "nrmse_mrt": 0.007340777665376663,
+            "nrmse_ristretto": 0.007340777665376663,
             "threads": 1,
             "time_ms": 111.52308075
         },
@@ -3275,7 +3275,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.008455113086674468,
-            "nrmse_mrt": 0.00812653527031305,
+            "nrmse_ristretto": 0.00812653527031305,
             "threads": 1,
             "time_ms": 745.640379
         },
@@ -3283,10 +3283,10 @@
             "case_id": "shepp_logan_2d_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.008828321471810341,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 83.07345600000001
         },
@@ -3297,7 +3297,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.013963477465857601,
-            "nrmse_mrt": 0.012040875971396074,
+            "nrmse_ristretto": 0.012040875971396074,
             "threads": 1,
             "time_ms": 629.494235
         },
@@ -3308,7 +3308,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.027694184333086014,
-            "nrmse_mrt": 0.05544625595211983,
+            "nrmse_ristretto": 0.05544625595211983,
             "threads": 1,
             "time_ms": 117.15711124999994
         },
@@ -3316,10 +3316,10 @@
             "case_id": "shepp_logan_2d_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.09496088325977325,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 178.107453
         },
@@ -3330,7 +3330,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.015465263973115624,
-            "nrmse_mrt": 0.05943151427454818,
+            "nrmse_ristretto": 0.05943151427454818,
             "threads": 1,
             "time_ms": 523.049095
         },
@@ -3341,7 +3341,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.08287790524217178,
-            "nrmse_mrt": 0.04423505866123186,
+            "nrmse_ristretto": 0.04423505866123186,
             "threads": 1,
             "time_ms": 688.4614180000001
         },
@@ -3352,7 +3352,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.19567598402500153,
-            "nrmse_mrt": 0.16490085422992706,
+            "nrmse_ristretto": 0.16490085422992706,
             "threads": 1,
             "time_ms": 250.38803150000004
         },
@@ -3363,7 +3363,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.26648952293433814,
-            "nrmse_mrt": 0.05034767018501939,
+            "nrmse_ristretto": 0.05034767018501939,
             "threads": 1,
             "time_ms": 154.158233
         },
@@ -3371,10 +3371,10 @@
             "case_id": "shepp_logan_2d_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.27718162536621094,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 22.859587
         },
@@ -3385,7 +3385,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.2702313887620446,
-            "nrmse_mrt": 0.15527586315430975,
+            "nrmse_ristretto": 0.15527586315430975,
             "threads": 1,
             "time_ms": 95.016896
         },
@@ -3396,7 +3396,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.2719220022065451,
-            "nrmse_mrt": 0.1389538810805716,
+            "nrmse_ristretto": 0.1389538810805716,
             "threads": 1,
             "time_ms": 99.723909
         },
@@ -3407,7 +3407,7 @@
             "framework": "BART (CUDA)",
             "method": "TGV (20 it)",
             "nrmse_gt": 0.00958824623376131,
-            "nrmse_mrt": 0.022186987102031708,
+            "nrmse_ristretto": 0.022186987102031708,
             "threads": 1,
             "time_ms": 146.356542
         },
@@ -3415,10 +3415,10 @@
             "case_id": "shepp_logan_2d_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "TGV (20 it)",
             "nrmse_gt": 0.023901667445898056,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 252.07664899999997
         },
@@ -3429,7 +3429,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.015333807095885277,
-            "nrmse_mrt": 0.01182856597006321,
+            "nrmse_ristretto": 0.01182856597006321,
             "threads": 1,
             "time_ms": 94.7602675
         },
@@ -3437,10 +3437,10 @@
             "case_id": "shepp_logan_2d_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.01462401170283556,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 85.01731699999999
         },
@@ -3451,7 +3451,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.018570953621989416,
-            "nrmse_mrt": 0.012761462231626114,
+            "nrmse_ristretto": 0.012761462231626114,
             "threads": 1,
             "time_ms": 633.612344
         },
@@ -3462,7 +3462,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.09367688745260239,
-            "nrmse_mrt": 0.09170302003622055,
+            "nrmse_ristretto": 0.09170302003622055,
             "threads": 1,
             "time_ms": 104.14501724999997
         },
@@ -3470,10 +3470,10 @@
             "case_id": "shepp_logan_2d_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.020703885704278946,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 183.510692
         },
@@ -3484,7 +3484,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.026485551780776124,
-            "nrmse_mrt": 0.03924801332090445,
+            "nrmse_ristretto": 0.03924801332090445,
             "threads": 1,
             "time_ms": 503.651017
         },
@@ -3495,7 +3495,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.13818333110431735,
-            "nrmse_mrt": 0.13378529280977258,
+            "nrmse_ristretto": 0.13378529280977258,
             "threads": 1,
             "time_ms": 712.438982
         },
@@ -3506,7 +3506,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (NRMSE≤0.1138, 40 it)",
             "nrmse_gt": 0.10591405630111694,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 177.93912500000008
         },
@@ -3514,10 +3514,10 @@
             "case_id": "shepp_logan_2d_8ch_radial",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (NRMSE≤0.1138, 5 it)",
             "nrmse_gt": 0.09567160904407501,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 20.726451
         },
@@ -3528,7 +3528,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (NRMSE≤0.1138, 5 it)",
             "nrmse_gt": 0.10143092726890664,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 219.039019
         },
@@ -3539,7 +3539,7 @@
             "framework": "BART (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.26384732127189636,
-            "nrmse_mrt": 0.020212281495332718,
+            "nrmse_ristretto": 0.020212281495332718,
             "threads": 1,
             "time_ms": 217.5638686666667
         },
@@ -3550,7 +3550,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.2691703861342136,
-            "nrmse_mrt": 0.0016362226632966118,
+            "nrmse_ristretto": 0.0016362226632966118,
             "threads": 1,
             "time_ms": 35.787136999999994
         },
@@ -3558,10 +3558,10 @@
             "case_id": "shepp_logan_2d_8ch_radial",
             "category": "CG-SENSE",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.26948821544647217,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 7.422966
         },
@@ -3572,7 +3572,7 @@
             "framework": "MRpro (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.26221302137770497,
-            "nrmse_mrt": 0.02690609235972084,
+            "nrmse_ristretto": 0.02690609235972084,
             "threads": 1,
             "time_ms": 38.941454
         },
@@ -3583,7 +3583,7 @@
             "framework": "SigPy (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.2668562531759859,
-            "nrmse_mrt": 0.00939315312802032,
+            "nrmse_ristretto": 0.00939315312802032,
             "threads": 1,
             "time_ms": 34.233629
         },
@@ -3594,7 +3594,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.311490415397053,
-            "nrmse_mrt": 0.24069604269928696,
+            "nrmse_ristretto": 0.24069604269928696,
             "threads": 1,
             "time_ms": 36.531142
         },
@@ -3602,10 +3602,10 @@
             "case_id": "shepp_logan_2d_8ch_radial",
             "category": "Non-Cartesian",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.39290863275527954,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 2.903464
         },
@@ -3616,7 +3616,7 @@
             "framework": "MRpro (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.3929085743139074,
-            "nrmse_mrt": 2.008314769861995e-6,
+            "nrmse_ristretto": 2.008314769861995e-6,
             "threads": 1,
             "time_ms": 15.24441
         },
@@ -3627,7 +3627,7 @@
             "framework": "SigPy (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.3929177198522533,
-            "nrmse_mrt": 0.0021769212650678805,
+            "nrmse_ristretto": 0.0021769212650678805,
             "threads": 1,
             "time_ms": 2.255473
         },
@@ -3638,7 +3638,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.01918320171535015,
-            "nrmse_mrt": 0.020403625443577766,
+            "nrmse_ristretto": 0.020403625443577766,
             "threads": 1,
             "time_ms": 287.16539500000005
         },
@@ -3649,7 +3649,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.025985065073810782,
-            "nrmse_mrt": 0.007376776129131811,
+            "nrmse_ristretto": 0.007376776129131811,
             "threads": 1,
             "time_ms": 436.270198
         },
@@ -3657,10 +3657,10 @@
             "case_id": "shepp_logan_2d_8ch_radial",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.020105065777897835,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 62.410387
         },
@@ -3671,7 +3671,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.014673683612558526,
-            "nrmse_mrt": 0.010141588572791021,
+            "nrmse_ristretto": 0.010141588572791021,
             "threads": 1,
             "time_ms": 964.949068
         },
@@ -3682,7 +3682,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.027715016156435013,
-            "nrmse_mrt": 0.0552612841129303,
+            "nrmse_ristretto": 0.0552612841129303,
             "threads": 1,
             "time_ms": 210.18802699999995
         },
@@ -3690,10 +3690,10 @@
             "case_id": "shepp_logan_2d_8ch_radial",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.01627052016556263,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 344.056553
         },
@@ -3704,7 +3704,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.06545825539478684,
-            "nrmse_mrt": 0.08342369586429879,
+            "nrmse_ristretto": 0.08342369586429879,
             "threads": 1,
             "time_ms": 2978.418961
         },
@@ -3715,7 +3715,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.12370918997486385,
-            "nrmse_mrt": 0.06210155229964901,
+            "nrmse_ristretto": 0.06210155229964901,
             "threads": 1,
             "time_ms": 972.012069
         },
@@ -3726,7 +3726,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.27914535999298096,
-            "nrmse_mrt": 0.05831834673881531,
+            "nrmse_ristretto": 0.05831834673881531,
             "threads": 1,
             "time_ms": 977.9227856666668
         },
@@ -3737,7 +3737,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.29136160082417956,
-            "nrmse_mrt": 0.049933157381840905,
+            "nrmse_ristretto": 0.049933157381840905,
             "threads": 1,
             "time_ms": 102.016424
         },
@@ -3745,10 +3745,10 @@
             "case_id": "shepp_logan_2d_8ch_radial",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.2788861393928528,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 18.917609
         },
@@ -3759,7 +3759,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.2860785127892455,
-            "nrmse_mrt": 0.04014365242240536,
+            "nrmse_ristretto": 0.04014365242240536,
             "threads": 1,
             "time_ms": 380.339696
         },
@@ -3770,7 +3770,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.2801847920871504,
-            "nrmse_mrt": 0.051051976539995554,
+            "nrmse_ristretto": 0.051051976539995554,
             "threads": 1,
             "time_ms": 172.557713
         },
@@ -3781,7 +3781,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.029631877318024635,
-            "nrmse_mrt": 0.023332839831709862,
+            "nrmse_ristretto": 0.023332839831709862,
             "threads": 1,
             "time_ms": 278.77921833333335
         },
@@ -3789,10 +3789,10 @@
             "case_id": "shepp_logan_2d_8ch_radial",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.027394473552703857,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 68.79048
         },
@@ -3803,7 +3803,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.02535305124298148,
-            "nrmse_mrt": 0.012972037378665969,
+            "nrmse_ristretto": 0.012972037378665969,
             "threads": 1,
             "time_ms": 965.646724
         },
@@ -3814,7 +3814,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.11101063340902328,
-            "nrmse_mrt": 0.05728638172149658,
+            "nrmse_ristretto": 0.05728638172149658,
             "threads": 1,
             "time_ms": 213.86542099999994
         },
@@ -3822,10 +3822,10 @@
             "case_id": "shepp_logan_2d_8ch_radial",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.031104275956749916,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 354.150634
         },
@@ -3836,7 +3836,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.0668098734008823,
-            "nrmse_mrt": 0.08974227634150055,
+            "nrmse_ristretto": 0.08974227634150055,
             "threads": 1,
             "time_ms": 2927.6534070000002
         },
@@ -3847,7 +3847,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.13899714017237522,
-            "nrmse_mrt": 0.05668031169363618,
+            "nrmse_ristretto": 0.05668031169363618,
             "threads": 1,
             "time_ms": 945.852703
         },
@@ -3858,7 +3858,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (NRMSE≤0.1516, 10 it)",
             "nrmse_gt": 0.10046621341909409,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 935.1255600000001
         },
@@ -3869,7 +3869,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (NRMSE≤0.1516, 20 it)",
             "nrmse_gt": 0.1412457972764969,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 959.30588125
         },
@@ -3877,10 +3877,10 @@
             "case_id": "shepp_logan_3d_8ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (NRMSE≤0.1516, 5 it)",
             "nrmse_gt": 0.11894851922988892,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 276.918161
         },
@@ -3891,7 +3891,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.4382330223277183,
-            "nrmse_mrt": 1.0413613745973131e-7,
+            "nrmse_ristretto": 1.0413613745973131e-7,
             "threads": 1,
             "time_ms": 624.173046
         },
@@ -3899,10 +3899,10 @@
             "case_id": "shepp_logan_3d_8ch_cartesian",
             "category": "Base",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.43823301792144775,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 70.626964
         },
@@ -3913,7 +3913,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.43823302268960074,
-            "nrmse_mrt": 9.121311100853892e-8,
+            "nrmse_ristretto": 9.121311100853892e-8,
             "threads": 1,
             "time_ms": 487.562768
         },
@@ -3924,7 +3924,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.4382330220633009,
-            "nrmse_mrt": 1.3179572952194085e-7,
+            "nrmse_ristretto": 1.3179572952194085e-7,
             "threads": 1,
             "time_ms": 45.9189
         },
@@ -3935,7 +3935,7 @@
             "framework": "BART (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.2935772240161896,
-            "nrmse_mrt": 4.223548239679076e-5,
+            "nrmse_ristretto": 4.223548239679076e-5,
             "threads": 1,
             "time_ms": 884.3603477500002
         },
@@ -3946,7 +3946,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.29357723037442657,
-            "nrmse_mrt": 4.220115750186909e-5,
+            "nrmse_ristretto": 4.220115750186909e-5,
             "threads": 1,
             "time_ms": 513.2794299999999
         },
@@ -3954,10 +3954,10 @@
             "case_id": "shepp_logan_3d_8ch_cartesian",
             "category": "CG-SENSE",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.2935761511325836,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 77.975266
         },
@@ -3968,7 +3968,7 @@
             "framework": "MRpro (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.2935772325980975,
-            "nrmse_mrt": 4.219627808303749e-5,
+            "nrmse_ristretto": 4.219627808303749e-5,
             "threads": 1,
             "time_ms": 669.3623279999999
         },
@@ -3979,7 +3979,7 @@
             "framework": "SigPy (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.2935772282481618,
-            "nrmse_mrt": 4.2193882358184036e-5,
+            "nrmse_ristretto": 4.2193882358184036e-5,
             "threads": 1,
             "time_ms": 145.658079
         },
@@ -3990,7 +3990,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.01072157733142376,
-            "nrmse_mrt": 0.008082637563347816,
+            "nrmse_ristretto": 0.008082637563347816,
             "threads": 1,
             "time_ms": 2054.385581
         },
@@ -4001,7 +4001,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.004723858989343185,
-            "nrmse_mrt": 0.007000747237579844,
+            "nrmse_ristretto": 0.007000747237579844,
             "threads": 1,
             "time_ms": 2722.768114
         },
@@ -4009,10 +4009,10 @@
             "case_id": "shepp_logan_3d_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.00744756730273366,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1042.12444
         },
@@ -4023,7 +4023,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.004743564468904738,
-            "nrmse_mrt": 0.007031987976327842,
+            "nrmse_ristretto": 0.007031987976327842,
             "threads": 1,
             "time_ms": 1759.540238
         },
@@ -4034,7 +4034,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.04827607423067093,
-            "nrmse_mrt": 0.0416661761701107,
+            "nrmse_ristretto": 0.0416661761701107,
             "threads": 1,
             "time_ms": 1956.37070075
         },
@@ -4042,10 +4042,10 @@
             "case_id": "shepp_logan_3d_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.0778002142906189,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1797.683211
         },
@@ -4056,7 +4056,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.02242243533962017,
-            "nrmse_mrt": 0.04864267089248535,
+            "nrmse_ristretto": 0.04864267089248535,
             "threads": 1,
             "time_ms": 2606.604588
         },
@@ -4067,7 +4067,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.13209493497907704,
-            "nrmse_mrt": 0.08657076231851324,
+            "nrmse_ristretto": 0.08657076231851324,
             "threads": 1,
             "time_ms": 2232.980652
         },
@@ -4078,7 +4078,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.20877541601657867,
-            "nrmse_mrt": 0.05551905557513237,
+            "nrmse_ristretto": 0.05551905557513237,
             "threads": 1,
             "time_ms": 29172.5945425
         },
@@ -4089,7 +4089,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.19783496923606705,
-            "nrmse_mrt": 0.05209233175106109,
+            "nrmse_ristretto": 0.05209233175106109,
             "threads": 1,
             "time_ms": 12285.611771
         },
@@ -4097,10 +4097,10 @@
             "case_id": "shepp_logan_3d_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.21675331890583038,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 316.40656099999995
         },
@@ -4111,7 +4111,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.19586510794828613,
-            "nrmse_mrt": 0.06475176441134697,
+            "nrmse_ristretto": 0.06475176441134697,
             "threads": 1,
             "time_ms": 997.541298
         },
@@ -4122,7 +4122,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.1914487302516011,
-            "nrmse_mrt": 0.10264593839631912,
+            "nrmse_ristretto": 0.10264593839631912,
             "threads": 1,
             "time_ms": 3587.3960899999997
         },
@@ -4133,7 +4133,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.021396225318312645,
-            "nrmse_mrt": 0.025152292102575302,
+            "nrmse_ristretto": 0.025152292102575302,
             "threads": 1,
             "time_ms": 1915.0956472499997
         },
@@ -4141,10 +4141,10 @@
             "case_id": "shepp_logan_3d_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.02085484378039837,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1051.290209
         },
@@ -4155,7 +4155,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.035284450407025054,
-            "nrmse_mrt": 0.035604331297852926,
+            "nrmse_ristretto": 0.035604331297852926,
             "threads": 1,
             "time_ms": 1751.612057
         },
@@ -4166,7 +4166,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.08417388051748276,
-            "nrmse_mrt": 0.06115446984767914,
+            "nrmse_ristretto": 0.06115446984767914,
             "threads": 1,
             "time_ms": 1876.7278840000001
         },
@@ -4174,10 +4174,10 @@
             "case_id": "shepp_logan_3d_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.03397978097200394,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1762.139925
         },
@@ -4188,7 +4188,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.052538214991737255,
-            "nrmse_mrt": 0.032366897772958335,
+            "nrmse_ristretto": 0.032366897772958335,
             "threads": 1,
             "time_ms": 2678.611535
         },
@@ -4199,7 +4199,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.17625846560569186,
-            "nrmse_mrt": 0.15526692260271985,
+            "nrmse_ristretto": 0.15526692260271985,
             "threads": 1,
             "time_ms": 2283.474612
         },
@@ -4210,7 +4210,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (NRMSE≤0.1033, 150 it)",
             "nrmse_gt": 0.06715582909607486,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1049.1080967500006
         },
@@ -4221,7 +4221,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (NRMSE≤0.1033, 5 it)",
             "nrmse_gt": 0.0733760862016507,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1922.4057369999998
         },
@@ -4229,10 +4229,10 @@
             "case_id": "shepp_logan_multislice_8ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (NRMSE≤0.1033, 8 it)",
             "nrmse_gt": 0.08009427785873413,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 112.481441
         },
@@ -4243,7 +4243,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.485530471940342,
-            "nrmse_mrt": 5.014799406863007e-8,
+            "nrmse_ristretto": 5.014799406863007e-8,
             "threads": 1,
             "time_ms": 63.56925400000001
         },
@@ -4251,10 +4251,10 @@
             "case_id": "shepp_logan_multislice_8ch_cartesian",
             "category": "Base",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.48553046584129333,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 3.693207
         },
@@ -4265,7 +4265,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.4855304720241331,
-            "nrmse_mrt": 7.448067075562328e-8,
+            "nrmse_ristretto": 7.448067075562328e-8,
             "threads": 1,
             "time_ms": 21.200243999999998
         },
@@ -4276,7 +4276,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.48553047129557386,
-            "nrmse_mrt": 1.1201947476257858e-7,
+            "nrmse_ristretto": 1.1201947476257858e-7,
             "threads": 1,
             "time_ms": 12.329415000000001
         },
@@ -4287,7 +4287,7 @@
             "framework": "BART (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.4009012338234753,
-            "nrmse_mrt": 0.01255291974819183,
+            "nrmse_ristretto": 0.01255291974819183,
             "threads": 1,
             "time_ms": 522.5934460000002
         },
@@ -4298,7 +4298,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.40090120057776896,
-            "nrmse_mrt": 0.012552928694924043,
+            "nrmse_ristretto": 0.012552928694924043,
             "threads": 1,
             "time_ms": 455.45564399999995
         },
@@ -4306,10 +4306,10 @@
             "case_id": "shepp_logan_multislice_8ch_cartesian",
             "category": "CG-SENSE",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.40222281217575073,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 12.246906000000001
         },
@@ -4320,7 +4320,7 @@
             "framework": "MRpro (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.40090120030058995,
-            "nrmse_mrt": 0.012552909189619092,
+            "nrmse_ristretto": 0.012552909189619092,
             "threads": 1,
             "time_ms": 88.98355300000001
         },
@@ -4331,7 +4331,7 @@
             "framework": "SigPy (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.40090115051234054,
-            "nrmse_mrt": 0.012552931358703761,
+            "nrmse_ristretto": 0.012552931358703761,
             "threads": 1,
             "time_ms": 206.56899999999996
         },
@@ -4342,7 +4342,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.003980725687089849,
-            "nrmse_mrt": 0.013170229834514015,
+            "nrmse_ristretto": 0.013170229834514015,
             "threads": 1,
             "time_ms": 1421.24953875
         },
@@ -4353,7 +4353,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.0142572906366243,
-            "nrmse_mrt": 0.0172803804102901,
+            "nrmse_ristretto": 0.0172803804102901,
             "threads": 1,
             "time_ms": 8224.271278
         },
@@ -4361,10 +4361,10 @@
             "case_id": "shepp_logan_multislice_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.01433057151734829,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 281.724897
         },
@@ -4375,7 +4375,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (20 it)",
             "nrmse_gt": 0.014539062817587111,
-            "nrmse_mrt": 0.017002614572543946,
+            "nrmse_ristretto": 0.017002614572543946,
             "threads": 1,
             "time_ms": 7554.461311999999
         },
@@ -4386,7 +4386,7 @@
             "framework": "BART (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.027341637887625034,
-            "nrmse_mrt": 0.11207681728336504,
+            "nrmse_ristretto": 0.11207681728336504,
             "threads": 1,
             "time_ms": 1492.561027
         },
@@ -4394,10 +4394,10 @@
             "case_id": "shepp_logan_multislice_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.15036596357822418,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 362.963773
         },
@@ -4408,7 +4408,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.047836025535332165,
-            "nrmse_mrt": 0.10633982061376257,
+            "nrmse_ristretto": 0.10633982061376257,
             "threads": 1,
             "time_ms": 6287.416894000001
         },
@@ -4419,7 +4419,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Anisotropic TV (PDHG) (200 it)",
             "nrmse_gt": 0.11867280673347091,
-            "nrmse_mrt": 0.05889011837048395,
+            "nrmse_ristretto": 0.05889011837048395,
             "threads": 1,
             "time_ms": 8295.404798000001
         },
@@ -4430,7 +4430,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.2104805111581857,
-            "nrmse_mrt": 0.17447106325574321,
+            "nrmse_ristretto": 0.17447106325574321,
             "threads": 1,
             "time_ms": 3030.539144
         },
@@ -4441,7 +4441,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.2633108363292502,
-            "nrmse_mrt": 0.07478468387321022,
+            "nrmse_ristretto": 0.07478468387321022,
             "threads": 1,
             "time_ms": 1834.3114899999996
         },
@@ -4449,10 +4449,10 @@
             "case_id": "shepp_logan_multislice_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.28671208024024963,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 86.732968
         },
@@ -4463,7 +4463,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.25917365563639,
-            "nrmse_mrt": 0.1613315416486058,
+            "nrmse_ristretto": 0.1613315416486058,
             "threads": 1,
             "time_ms": 1150.055889
         },
@@ -4474,7 +4474,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.2641220749347504,
-            "nrmse_mrt": 0.14073661119601666,
+            "nrmse_ristretto": 0.14073661119601666,
             "threads": 1,
             "time_ms": 1190.1280950000003
         },
@@ -4485,7 +4485,7 @@
             "framework": "BART (CUDA)",
             "method": "TGV (20 it)",
             "nrmse_gt": 0.026909002568786047,
-            "nrmse_mrt": 0.042645125982529855,
+            "nrmse_ristretto": 0.042645125982529855,
             "threads": 1,
             "time_ms": 1946.964121
         },
@@ -4493,10 +4493,10 @@
             "case_id": "shepp_logan_multislice_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "TGV (20 it)",
             "nrmse_gt": 0.03697797656059265,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1013.046983
         },
@@ -4507,7 +4507,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.03452106726220139,
-            "nrmse_mrt": 0.029067477604894032,
+            "nrmse_ristretto": 0.029067477604894032,
             "threads": 1,
             "time_ms": 1351.82959275
         },
@@ -4515,10 +4515,10 @@
             "case_id": "shepp_logan_multislice_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.016954924911260605,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 285.082568
         },
@@ -4529,7 +4529,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (20 it)",
             "nrmse_gt": 0.019705166273269122,
-            "nrmse_mrt": 0.016206984863368572,
+            "nrmse_ristretto": 0.016206984863368572,
             "threads": 1,
             "time_ms": 7590.049864
         },
@@ -4540,7 +4540,7 @@
             "framework": "BART (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.04204416977344795,
-            "nrmse_mrt": 0.0537147911632015,
+            "nrmse_ristretto": 0.0537147911632015,
             "threads": 1,
             "time_ms": 1322.6558602499997
         },
@@ -4548,10 +4548,10 @@
             "case_id": "shepp_logan_multislice_8ch_cartesian",
             "category": "Sparsity",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.019224543124437332,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 368.331482
         },
@@ -4562,7 +4562,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.13979145127344023,
-            "nrmse_mrt": 0.14289309482052262,
+            "nrmse_ristretto": 0.14289309482052262,
             "threads": 1,
             "time_ms": 6059.236291
         },
@@ -4573,7 +4573,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Total Variation (PDHG) (200 it)",
             "nrmse_gt": 0.1711140088040324,
-            "nrmse_mrt": 0.17362110482843596,
+            "nrmse_ristretto": 0.17362110482843596,
             "threads": 1,
             "time_ms": 8530.008465
         },
@@ -4584,7 +4584,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Global Low-Rank (NRMSE≤0.07693, 10 it)",
             "nrmse_gt": 0.07299579682939798,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 11094.726012000001
         },
@@ -4595,7 +4595,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Global Low-Rank (NRMSE≤0.07693, 10 it)",
             "nrmse_gt": 0.07544472011345349,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 476.824415
         },
@@ -4606,7 +4606,7 @@
             "framework": "BART (CUDA)",
             "method": "Global Low-Rank (NRMSE≤0.07693, 100 it)",
             "nrmse_gt": 0.07499240338802338,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1203.7299787499999
         },
@@ -4614,10 +4614,10 @@
             "case_id": "torso_cine_8ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Global Low-Rank (NRMSE≤0.07693, 5 it)",
             "nrmse_gt": 0.07346503436565399,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 54.309423
         },
@@ -4628,7 +4628,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Global Low-Rank (NRMSE≤0.07693, 5 it)",
             "nrmse_gt": 0.07599160174173168,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 123.780667
         },
@@ -4639,7 +4639,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1824, 20 it)",
             "nrmse_gt": 0.18098141252994537,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 6263.58972875
         },
@@ -4650,7 +4650,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1824, 20 it)",
             "nrmse_gt": 0.17655998250373983,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 5691.801762
         },
@@ -4658,10 +4658,10 @@
             "case_id": "torso_cine_8ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1824, 20 it)",
             "nrmse_gt": 0.1735510379076004,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 122.61314399999999
         },
@@ -4672,7 +4672,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1824, 20 it)",
             "nrmse_gt": 0.17465025728602426,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 151.038814
         },
@@ -4683,7 +4683,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (NRMSE≤0.1824, 20 it)",
             "nrmse_gt": 0.1760658731826252,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 741.929326
         },
@@ -4694,7 +4694,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Locally Low-Rank (NRMSE≤0.0603, 20 it)",
             "nrmse_gt": 0.051574895933338555,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 22471.050398
         },
@@ -4702,10 +4702,10 @@
             "case_id": "torso_cine_8ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Locally Low-Rank (NRMSE≤0.0603, 20 it)",
             "nrmse_gt": 0.0573565848171711,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 206.880413
         },
@@ -4716,7 +4716,7 @@
             "framework": "BART (CUDA)",
             "method": "Locally Low-Rank (NRMSE≤0.0603, 200 it)",
             "nrmse_gt": 0.057939447462558746,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 15873.076788499999
         },
@@ -4724,10 +4724,10 @@
             "case_id": "torso_cine_8ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Temporal TV (NRMSE≤0.01589, 10 it)",
             "nrmse_gt": 0.011158335022628307,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 102.430202
         },
@@ -4738,7 +4738,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Temporal TV (NRMSE≤0.01589, 10 it)",
             "nrmse_gt": 0.01036436566660494,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 273.362498
         },
@@ -4749,7 +4749,7 @@
             "framework": "BART (CUDA)",
             "method": "Temporal TV (NRMSE≤0.01589, 50 it)",
             "nrmse_gt": 0.014181738719344139,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 321.12346599999995
         },
@@ -4757,10 +4757,10 @@
             "case_id": "torso_cine_8ch_cartesian",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Temporal TV (PDHG) (NRMSE≤0.01589, 200 it)",
             "nrmse_gt": 0.007572225295007229,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 440.71806200000003
         },
@@ -4771,7 +4771,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Temporal TV (PDHG) (NRMSE≤0.01589, 200 it)",
             "nrmse_gt": 0.015080303482038426,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 603.007077
         },
@@ -4782,7 +4782,7 @@
             "framework": "BART (CUDA)",
             "method": "Temporal TV (PDHG) (NRMSE≤0.01589, 400 it)",
             "nrmse_gt": 0.00910461600869894,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 957.6923487500001
         },
@@ -4793,7 +4793,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Temporal TV (PDHG) (NRMSE≤0.01589, 400 it)",
             "nrmse_gt": 0.006676200322717214,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1130.566838
         },
@@ -4804,7 +4804,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.2609145587196772,
-            "nrmse_mrt": 5.0823017227355415e-8,
+            "nrmse_ristretto": 5.0823017227355415e-8,
             "threads": 1,
             "time_ms": 293.71187100000003
         },
@@ -4812,10 +4812,10 @@
             "case_id": "torso_cine_8ch_cartesian",
             "category": "Base",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.26091456413269043,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 6.156371
         },
@@ -4826,7 +4826,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.2609145586526291,
-            "nrmse_mrt": 7.486771855392792e-8,
+            "nrmse_ristretto": 7.486771855392792e-8,
             "threads": 1,
             "time_ms": 26.36898
         },
@@ -4837,7 +4837,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Adjoint",
             "nrmse_gt": 0.2609145585877602,
-            "nrmse_mrt": 7.454507845784026e-8,
+            "nrmse_ristretto": 7.454507845784026e-8,
             "threads": 1,
             "time_ms": 6.708417000000001
         },
@@ -4848,7 +4848,7 @@
             "framework": "BART (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.18591302633285522,
-            "nrmse_mrt": 0.00042047418537549675,
+            "nrmse_ristretto": 0.00042047418537549675,
             "threads": 1,
             "time_ms": 307.6717505000001
         },
@@ -4859,7 +4859,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.1859130149435364,
-            "nrmse_mrt": 0.000420471563755802,
+            "nrmse_ristretto": 0.000420471563755802,
             "threads": 1,
             "time_ms": 1237.681431
         },
@@ -4867,10 +4867,10 @@
             "case_id": "torso_cine_8ch_cartesian",
             "category": "CG-SENSE",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.18597036600112915,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 14.062178
         },
@@ -4881,7 +4881,7 @@
             "framework": "MRpro (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.18591299854100352,
-            "nrmse_mrt": 0.00042047662147215513,
+            "nrmse_ristretto": 0.00042047662147215513,
             "threads": 1,
             "time_ms": 40.289685999999996
         },
@@ -4892,7 +4892,7 @@
             "framework": "SigPy (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.18591300318089762,
-            "nrmse_mrt": 0.00042047350905257314,
+            "nrmse_ristretto": 0.00042047350905257314,
             "threads": 1,
             "time_ms": 23.559829
         },
@@ -4903,7 +4903,7 @@
             "framework": "BART (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.07063768059015274,
-            "nrmse_mrt": 0.013803576119244099,
+            "nrmse_ristretto": 0.013803576119244099,
             "threads": 1,
             "time_ms": 3809.30621675
         },
@@ -4914,7 +4914,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.0639815858720052,
-            "nrmse_mrt": 0.012710599414830494,
+            "nrmse_ristretto": 0.012710599414830494,
             "threads": 1,
             "time_ms": 23303.942095
         },
@@ -4922,10 +4922,10 @@
             "case_id": "torso_cine_8ch_cartesian",
             "category": "Dynamic",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.06502591073513031,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 396.069253
         },
@@ -4936,7 +4936,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.06448113618587596,
-            "nrmse_mrt": 0.014148406526591247,
+            "nrmse_ristretto": 0.014148406526591247,
             "threads": 1,
             "time_ms": 892.178035
         },
@@ -4947,7 +4947,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.06438289174043327,
-            "nrmse_mrt": 0.0044865672552435116,
+            "nrmse_ristretto": 0.0044865672552435116,
             "threads": 1,
             "time_ms": 452.586167
         },
@@ -4958,7 +4958,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.18098141252994537,
-            "nrmse_mrt": 0.04797113686800003,
+            "nrmse_ristretto": 0.04797113686800003,
             "threads": 1,
             "time_ms": 6270.21329875
         },
@@ -4969,7 +4969,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.1765608808322142,
-            "nrmse_mrt": 0.023983564848984788,
+            "nrmse_ristretto": 0.023983564848984788,
             "threads": 1,
             "time_ms": 5061.127589
         },
@@ -4977,10 +4977,10 @@
             "case_id": "torso_cine_8ch_cartesian",
             "category": "Dynamic",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.1735510379076004,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 134.652359
         },
@@ -4991,7 +4991,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.17465025728602426,
-            "nrmse_mrt": 0.04700219582257564,
+            "nrmse_ristretto": 0.04700219582257564,
             "threads": 1,
             "time_ms": 146.365644
         },
@@ -5002,7 +5002,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.17606833876617323,
-            "nrmse_mrt": 0.040623242891525656,
+            "nrmse_ristretto": 0.040623242891525656,
             "threads": 1,
             "time_ms": 726.983753
         },
@@ -5013,7 +5013,7 @@
             "framework": "BART (CUDA)",
             "method": "Locally Low-Rank (20 it)",
             "nrmse_gt": 0.057939447462558746,
-            "nrmse_mrt": 0.011161142960190773,
+            "nrmse_ristretto": 0.011161142960190773,
             "threads": 1,
             "time_ms": 15883.38758575
         },
@@ -5024,7 +5024,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Locally Low-Rank (20 it)",
             "nrmse_gt": 0.051574895933338555,
-            "nrmse_mrt": 0.03316517860386528,
+            "nrmse_ristretto": 0.03316517860386528,
             "threads": 1,
             "time_ms": 24948.742943999998
         },
@@ -5032,10 +5032,10 @@
             "case_id": "torso_cine_8ch_cartesian",
             "category": "Dynamic",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Locally Low-Rank (20 it)",
             "nrmse_gt": 0.0573565848171711,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 204.871827
         },
@@ -5046,7 +5046,7 @@
             "framework": "BART (CUDA)",
             "method": "Temporal TV (20 it)",
             "nrmse_gt": 0.005731122102588415,
-            "nrmse_mrt": 0.0031842924654483795,
+            "nrmse_ristretto": 0.0031842924654483795,
             "threads": 1,
             "time_ms": 554.0448452500001
         },
@@ -5054,10 +5054,10 @@
             "case_id": "torso_cine_8ch_cartesian",
             "category": "Dynamic",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Temporal TV (20 it)",
             "nrmse_gt": 0.006111409980803728,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 156.39479
         },
@@ -5068,7 +5068,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Temporal TV (20 it)",
             "nrmse_gt": 0.006264302487881175,
-            "nrmse_mrt": 0.003224134824106404,
+            "nrmse_ristretto": 0.003224134824106404,
             "threads": 1,
             "time_ms": 527.560542
         },
@@ -5079,7 +5079,7 @@
             "framework": "BART (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.045836858451366425,
-            "nrmse_mrt": 0.05275664106011391,
+            "nrmse_ristretto": 0.05275664106011391,
             "threads": 1,
             "time_ms": 582.5398875000001
         },
@@ -5087,10 +5087,10 @@
             "case_id": "torso_cine_8ch_cartesian",
             "category": "Dynamic",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.007572225295007229,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 450.994165
         },
@@ -5101,7 +5101,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.015080414649136625,
-            "nrmse_mrt": 0.023556654088930977,
+            "nrmse_ristretto": 0.023556654088930977,
             "threads": 1,
             "time_ms": 604.629248
         },
@@ -5112,7 +5112,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.018982297418057473,
-            "nrmse_mrt": 0.02757378385138243,
+            "nrmse_ristretto": 0.02757378385138243,
             "threads": 1,
             "time_ms": 612.043317
         },
@@ -5123,7 +5123,7 @@
             "framework": "BART (CUDA)",
             "method": "Global Low-Rank (NRMSE≤0.1248, 20 it)",
             "nrmse_gt": 0.12349063158035278,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 3453.572813666666
         },
@@ -5134,7 +5134,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Global Low-Rank (NRMSE≤0.1248, 5 it)",
             "nrmse_gt": 0.11378864274317113,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 3906.391537
         },
@@ -5142,10 +5142,10 @@
             "case_id": "torso_cine_8ch_radial",
             "category": "Accuracy race",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Global Low-Rank (NRMSE≤0.1248, 5 it)",
             "nrmse_gt": 0.11689037829637527,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 174.87690899999998
         },
@@ -5156,7 +5156,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Global Low-Rank (NRMSE≤0.1248, 5 it)",
             "nrmse_gt": 0.11783514091971214,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 5957.193768
         },
@@ -5167,7 +5167,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Global Low-Rank (NRMSE≤0.1248, 5 it)",
             "nrmse_gt": 0.11414928465986979,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 506.63526699999994
         },
@@ -5178,7 +5178,7 @@
             "framework": "BART (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.13664180040359497,
-            "nrmse_mrt": 0.008313721977174282,
+            "nrmse_ristretto": 0.008313721977174282,
             "threads": 1,
             "time_ms": 3224.6895873333333
         },
@@ -5189,7 +5189,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.1390729551441329,
-            "nrmse_mrt": 0.0005909244011100517,
+            "nrmse_ristretto": 0.0005909244011100517,
             "threads": 1,
             "time_ms": 960.377936
         },
@@ -5197,10 +5197,10 @@
             "case_id": "torso_cine_8ch_radial",
             "category": "CG-SENSE",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.13910524547100067,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 37.191728
         },
@@ -5211,7 +5211,7 @@
             "framework": "MRpro (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.1375812755172722,
-            "nrmse_mrt": 0.004993147133015803,
+            "nrmse_ristretto": 0.004993147133015803,
             "threads": 1,
             "time_ms": 151.847914
         },
@@ -5222,7 +5222,7 @@
             "framework": "SigPy (CUDA)",
             "method": "CG-SENSE (10 it)",
             "nrmse_gt": 0.13900287193074773,
-            "nrmse_mrt": 0.0012427819627744727,
+            "nrmse_ristretto": 0.0012427819627744727,
             "threads": 1,
             "time_ms": 112.979122
         },
@@ -5233,7 +5233,7 @@
             "framework": "BART (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.11498916894197464,
-            "nrmse_mrt": 0.033681344240903854,
+            "nrmse_ristretto": 0.033681344240903854,
             "threads": 1,
             "time_ms": 8880.434215333333
         },
@@ -5244,7 +5244,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.10817178630022138,
-            "nrmse_mrt": 0.028897967644523098,
+            "nrmse_ristretto": 0.028897967644523098,
             "threads": 1,
             "time_ms": 12551.459807000001
         },
@@ -5252,10 +5252,10 @@
             "case_id": "torso_cine_8ch_radial",
             "category": "Dynamic",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.1083931028842926,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 542.660653
         },
@@ -5266,7 +5266,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.10949266501025491,
-            "nrmse_mrt": 0.021646064302968084,
+            "nrmse_ristretto": 0.021646064302968084,
             "threads": 1,
             "time_ms": 24740.940492
         },
@@ -5277,7 +5277,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Global Low-Rank (20 it)",
             "nrmse_gt": 0.10678693505043542,
-            "nrmse_mrt": 0.01665921869591211,
+            "nrmse_ristretto": 0.01665921869591211,
             "threads": 1,
             "time_ms": 1993.211816
         },
@@ -5288,7 +5288,7 @@
             "framework": "BART (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.13909263908863068,
-            "nrmse_mrt": 0.021775852888822556,
+            "nrmse_ristretto": 0.021775852888822556,
             "threads": 1,
             "time_ms": 26015.905224000002
         },
@@ -5299,7 +5299,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.14262655096282326,
-            "nrmse_mrt": 0.008430423593922085,
+            "nrmse_ristretto": 0.008430423593922085,
             "threads": 1,
             "time_ms": 3515.178074
         },
@@ -5307,10 +5307,10 @@
             "case_id": "torso_cine_8ch_radial",
             "category": "Dynamic",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.14116984605789185,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 174.74052500000002
         },
@@ -5321,7 +5321,7 @@
             "framework": "MRpro (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.14392509697839115,
-            "nrmse_mrt": 0.025391602626680814,
+            "nrmse_ristretto": 0.025391602626680814,
             "threads": 1,
             "time_ms": 2329.328055
         },
@@ -5332,7 +5332,7 @@
             "framework": "SigPy (CUDA)",
             "method": "L1-Wavelet (20 it)",
             "nrmse_gt": 0.14035808298955296,
-            "nrmse_mrt": 0.017168284873905267,
+            "nrmse_ristretto": 0.017168284873905267,
             "threads": 1,
             "time_ms": 1092.75808
         },
@@ -5343,7 +5343,7 @@
             "framework": "BART (CUDA)",
             "method": "Locally Low-Rank (20 it)",
             "nrmse_gt": 0.10212581604719162,
-            "nrmse_mrt": 0.04163379222154617,
+            "nrmse_ristretto": 0.04163379222154617,
             "threads": 1,
             "time_ms": 21975.143353333333
         },
@@ -5354,7 +5354,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "Locally Low-Rank (20 it)",
             "nrmse_gt": 0.08834591266260125,
-            "nrmse_mrt": 0.026364852751435474,
+            "nrmse_ristretto": 0.026364852751435474,
             "threads": 1,
             "time_ms": 17767.377207999998
         },
@@ -5362,10 +5362,10 @@
             "case_id": "torso_cine_8ch_radial",
             "category": "Dynamic",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Locally Low-Rank (20 it)",
             "nrmse_gt": 0.0877138152718544,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 475.679054
         },
@@ -5376,7 +5376,7 @@
             "framework": "BART (CUDA)",
             "method": "Temporal TV (20 it)",
             "nrmse_gt": 0.07328199595212936,
-            "nrmse_mrt": 0.03076956793665886,
+            "nrmse_ristretto": 0.03076956793665886,
             "threads": 1,
             "time_ms": 5384.848099666667
         },
@@ -5384,10 +5384,10 @@
             "case_id": "torso_cine_8ch_radial",
             "category": "Dynamic",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Temporal TV (20 it)",
             "nrmse_gt": 0.06443373113870621,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 415.28276400000004
         },
@@ -5398,7 +5398,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Temporal TV (20 it)",
             "nrmse_gt": 0.06292072388636918,
-            "nrmse_mrt": 0.029329396296082166,
+            "nrmse_ristretto": 0.029329396296082166,
             "threads": 1,
             "time_ms": 1955.553498
         },
@@ -5409,7 +5409,7 @@
             "framework": "BART (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.08679993450641632,
-            "nrmse_mrt": 0.056066494435071945,
+            "nrmse_ristretto": 0.056066494435071945,
             "threads": 1,
             "time_ms": 3083.3164263333333
         },
@@ -5417,10 +5417,10 @@
             "case_id": "torso_cine_8ch_radial",
             "category": "Dynamic",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.070052370429039,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 1470.231664
         },
@@ -5431,7 +5431,7 @@
             "framework": "MRpro (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.09250334995945102,
-            "nrmse_mrt": 0.07042677011499456,
+            "nrmse_ristretto": 0.07042677011499456,
             "threads": 1,
             "time_ms": 21238.586416000002
         },
@@ -5442,7 +5442,7 @@
             "framework": "SigPy (CUDA)",
             "method": "Temporal TV (PDHG) (200 it)",
             "nrmse_gt": 0.09847006823625262,
-            "nrmse_mrt": 0.035840342665640255,
+            "nrmse_ristretto": 0.035840342665640255,
             "threads": 1,
             "time_ms": 1983.816814
         },
@@ -5453,7 +5453,7 @@
             "framework": "MRIReco (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.16691342769797532,
-            "nrmse_mrt": 0.18437801427622535,
+            "nrmse_ristretto": 0.18437801427622535,
             "threads": 1,
             "time_ms": 756.530005
         },
@@ -5461,10 +5461,10 @@
             "case_id": "torso_cine_8ch_radial",
             "category": "Non-Cartesian",
             "data_source": "synthetic",
-            "framework": "MRT (CUDA)",
+            "framework": "Ristretto (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.22418689727783203,
-            "nrmse_mrt": 0.0,
+            "nrmse_ristretto": 0.0,
             "threads": 1,
             "time_ms": 14.040918
         },
@@ -5475,7 +5475,7 @@
             "framework": "MRpro (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.22418689713418377,
-            "nrmse_mrt": 1.624510739703158e-6,
+            "nrmse_ristretto": 1.624510739703158e-6,
             "threads": 1,
             "time_ms": 104.154129
         },
@@ -5486,7 +5486,7 @@
             "framework": "SigPy (CUDA)",
             "method": "DCF Adjoint (Gridding)",
             "nrmse_gt": 0.22421876641727112,
-            "nrmse_mrt": 0.001287850189025228,
+            "nrmse_ristretto": 0.001287850189025228,
             "threads": 1,
             "time_ms": 14.379902
         }

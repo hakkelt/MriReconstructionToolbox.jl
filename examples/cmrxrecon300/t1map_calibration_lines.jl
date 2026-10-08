@@ -29,7 +29,7 @@
 
 isdefined(Main, :ExampleUtils) || include(joinpath(@__DIR__, "..", "ExampleUtils.jl"))
 using .ExampleUtils
-using MriReconstructionToolbox
+using Ristretto
 using MRITestData
 using MRIBase
 
@@ -50,7 +50,7 @@ println(
         "$(size(calibration[1].data, 1)), header center_sample = $(Int(calibration[1].head.center_sample))"
 )
 
-# Everything together: the maps come back empty, and MRT says so.
+# Everything together: the maps come back empty, and Ristretto says so.
 mixed = estimate_sensitivities(AcquisitionInfo(first_slab(raw)))
 println("  maps from imaging + calibration profiles: all zero = $(iszero(mixed.sensitivity_maps))")
 report("SENSE on those maps", reconstruct(mixed))

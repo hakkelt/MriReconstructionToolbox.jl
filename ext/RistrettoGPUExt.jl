@@ -1,29 +1,29 @@
-module MriReconstructionToolboxGPUExt
+module RistrettoGPUExt
 
-# The NFFT, operator and proximal packages are submodules of MriReconstructionToolbox, and a submodule
+# The NFFT, operator and proximal packages are submodules of Ristretto, and a submodule
 # cannot load package extensions, so their GPU extensions are included here instead. Each goes
 # into a module of its own that binds the package it extends, because the extensions import it
 # relatively (`..AbstractOperators`) and two of them are called `GpuExt`.
 
 module AbstractOperatorsGPU
-    using MriReconstructionToolbox: AbstractOperators
+    using Ristretto: AbstractOperators
     include(joinpath(@__DIR__, "..", "deps", "AbstractOperators", "ext", "GpuExt", "GpuExt.jl"))
 end
 
 module FFTWOperatorsGPU
-    using MriReconstructionToolbox: AbstractOperators, FFTWOperators
+    using Ristretto: AbstractOperators, FFTWOperators
     include(
         joinpath(@__DIR__, "..", "deps", "AbstractOperators", "FFTWOperators", "ext", "GpuExt", "GpuExt.jl")
     )
 end
 
 module NFFTGPU
-    using MriReconstructionToolbox: NFFT
+    using Ristretto: NFFT
     include(joinpath(@__DIR__, "..", "deps", "NFFT", "ext", "NFFTGPUArraysExt", "NFFTGPUArraysExt.jl"))
 end
 
 module NFFTOperatorsGPU
-    using MriReconstructionToolbox: NFFTOperators
+    using Ristretto: NFFTOperators
     include(
         joinpath(
             @__DIR__, "..", "deps", "AbstractOperators", "NFFTOperators", "ext", "NFFTOperatorsGPUArraysExt.jl"
@@ -32,19 +32,19 @@ module NFFTOperatorsGPU
 end
 
 module ProximalOperatorsGPU
-    using MriReconstructionToolbox: ProximalOperators
+    using Ristretto: ProximalOperators
     include(joinpath(@__DIR__, "..", "deps", "ProximalOperators", "ext", "GpuExt", "GpuExt.jl"))
 end
 
 include(joinpath(@__DIR__, "..", "deps", "ProximalOperators", "ext", "GpuRecursiveArrayToolsExt.jl"))
 
-using MriReconstructionToolbox: MriReconstructionToolbox as MRT
+using Ristretto: Ristretto
 using GPUArrays: AbstractGPUArray
 using KernelAbstractions: KernelAbstractions as KA, @kernel, @index, @Const
 
 
-MRT._is_device(::AbstractGPUArray) = true
-MRT._device_adaptor(x::AbstractGPUArray) = KA.get_backend(x)
+Ristretto._is_device(::AbstractGPUArray) = true
+Ristretto._device_adaptor(x::AbstractGPUArray) = KA.get_backend(x)
 
 # ─── LORAKS lifts ───────────────────────────────────────────────────────────────────────────
 #
@@ -161,7 +161,7 @@ end
 # contiguous copy of the slab, which the view of a column-major slab already is in memory.
 _slab(x) = x isa AbstractGPUArray ? x : copy(x)
 
-function MRT._loraks_lift!(M::AbstractGPUArray, lift::MRT.LoraksLift, x::AbstractArray, ::Val{:s})
+function Ristretto._loraks_lift!(M::AbstractGPUArray, lift::Ristretto.LoraksLift, x::AbstractArray, ::Val{:s})
     backend = KA.get_backend(M)
     ncol = prod(lift.ksize) * lift.nchannels
     _loraks_lift_s_kernel!(backend)(
@@ -170,7 +170,7 @@ function MRT._loraks_lift!(M::AbstractGPUArray, lift::MRT.LoraksLift, x::Abstrac
     return M
 end
 
-function MRT._loraks_lift!(M::AbstractGPUArray, lift::MRT.LoraksLift, x::AbstractArray, ::Val{:g})
+function Ristretto._loraks_lift!(M::AbstractGPUArray, lift::Ristretto.LoraksLift, x::AbstractArray, ::Val{:g})
     backend = KA.get_backend(M)
     ncol = prod(lift.ksize) * lift.nchannels + lift.nchannels
     _loraks_lift_g_kernel!(backend)(
@@ -191,9 +191,9 @@ function _loraks_unlift_device!(y, lift, M, kernel!, extra...)
     return y
 end
 
-MRT._loraks_unlift!(y::AbstractArray, lift::MRT.LoraksLift, M::AbstractGPUArray, ::Val{:s}) =
+Ristretto._loraks_unlift!(y::AbstractArray, lift::Ristretto.LoraksLift, M::AbstractGPUArray, ::Val{:s}) =
     _loraks_unlift_device!(y, lift, M, _loraks_unlift_s_kernel!)
-MRT._loraks_unlift!(y::AbstractArray, lift::MRT.LoraksLift, M::AbstractGPUArray, ::Val{:g}) =
+Ristretto._loraks_unlift!(y::AbstractArray, lift::Ristretto.LoraksLift, M::AbstractGPUArray, ::Val{:g}) =
     _loraks_unlift_device!(y, lift, M, _loraks_unlift_g_kernel!, lift.nchannels)
 
-end # module MriReconstructionToolboxGPUExt
+end # module RistrettoGPUExt

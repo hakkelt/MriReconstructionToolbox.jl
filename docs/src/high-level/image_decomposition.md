@@ -23,7 +23,7 @@ total_image
 ## Basic Usage
 
 ```@setup imgdecomp
-using MriReconstructionToolbox
+using Ristretto
 using Random
 Random.seed!(123)
 ```
@@ -32,7 +32,7 @@ Declare each component with a name and one or more regularizations, then pass
 the components to `IterativeReconstruction`:
 
 ```@example imgdecomp
-using MriReconstructionToolbox
+using Ristretto
 
 ksp = rand(ComplexF32, 64, 64, 4)
 acq = AcquisitionInfo(ksp; is3D = false)
@@ -72,7 +72,7 @@ through dot access:
 
 ```@example imgdecomp
 try
-    MriReconstructionToolbox.DecomposedImage(zeros(2, 2), (total = zeros(2, 2),))
+    Ristretto.DecomposedImage(zeros(2, 2), (total = zeros(2, 2),))
 catch e
     println(e)
 end

@@ -1,4 +1,4 @@
-# Compare the MRT (CUDA) rows that `benchmark/slurm/gpu_refs.sh comparison` measured for two refs.
+# Compare the Ristretto (CUDA) rows that `benchmark/slurm/gpu_refs.sh comparison` measured for two refs.
 #
 #   julia --project=benchmark benchmark/compare_gpu.jl <dir> <A> <B> [--slower=1.05]
 #
@@ -22,7 +22,7 @@ function side(ref)
     best = Dict{Tuple{String, String, String}, Tuple{Float64, Float64}}()
     for d in ResultsStore.load_run_files(joinpath(DIR, ref))
         for r in get(d, "benchmarks", [])
-            startswith(r["framework"], "MRT") || continue
+            startswith(r["framework"], "Ristretto") || continue
             t = Float64(r["time_ms"])
             t > 0 || continue
             k = (r["case_id"], r["category"], r["method"])

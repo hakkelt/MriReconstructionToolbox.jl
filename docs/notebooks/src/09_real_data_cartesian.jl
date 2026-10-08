@@ -45,7 +45,7 @@
 include("NotebookUtils.jl")
 using .NotebookUtils
 
-using MriReconstructionToolbox
+using Ristretto
 using MRITestData
 using MIRTjim: jim
 using Plots
@@ -81,7 +81,7 @@ println("field strength: ", raw.params["systemFieldStrength_T"], " T")
 # ## 2. From `RawAcquisitionData` to `AcquisitionInfo`
 #
 # Turning a scanner file into the array a reconstruction can use is where most hand-written MRI
-# code goes wrong, so MRT does it for you. Loading `MRIBase` (`MRITestData` already does)
+# code goes wrong, so Ristretto does it for you. Loading `MRIBase` (`MRITestData` already does)
 # activates a package extension that adds
 # `AcquisitionInfo(raw::MRIBase.RawAcquisitionData; sensitivity_maps = nothing)`.
 #
@@ -96,8 +96,8 @@ println("field strength: ", raw.params["systemFieldStrength_T"], " T")
 #   whose k = 0 line sits at `enc_lim_kspace_encoding_step_1.center`, and its readout has k = 0 at
 #   `head.center_sample` — neither is necessarily the middle of the array. The constructor places
 #   each sample at `raw_index - center + N ÷ 2`, so DC really does land at `N ÷ 2 + 1`.
-# * **Image centring.** MRT's own default is the plain-DFT one, image origin at index 1 — fine for
-#   k-space MRT itself simulated, wrong for a scanner, which images an object centred in the FOV.
+# * **Image centring.** Ristretto's own default is the plain-DFT one, image origin at index 1 — fine for
+#   k-space Ristretto itself simulated, wrong for a scanner, which images an object centred in the FOV.
 #   The constructor therefore sets `shifted_image_dims` on every spatial axis.
 #
 # Together those mean **no `fftshift` anywhere in this notebook**. Get either wrong and the
@@ -142,7 +142,7 @@ jim(
 # The honest way to handle them is *not* to crop k-space to the measured block and call it a
 # smaller fully-sampled grid: that silently changes the pixel size along `y` and squashes every
 # image in the notebook. It is to mark them as missing with a `subsampling` mask and keep the
-# 256 × 256 image grid. MRT then zero-fills them, which is exactly what the scanner does.
+# 256 × 256 image grid. Ristretto then zero-fills them, which is exactly what the scanner does.
 
 # %%
 ksp_slice = acq_slice.kspace_data
@@ -312,7 +312,7 @@ side_by_side(
 # ### Sensitivity maps
 #
 # `estimate_sensitivities(acq; method)` returns a *new* `AcquisitionInfo` with the maps filled in.
-# MRT ships every estimator below; these are all of them, and all three work from data this
+# Ristretto ships every estimator below; these are all of them, and all three work from data this
 # acquisition already contains.
 #
 # - **`SelfCalibrating(; calib_size)`** (McKenzie 2002, Bydder 2002) — take the fully sampled

@@ -10,8 +10,7 @@
 using GPUEnv
 GPUEnv.activate(; include_jlarrays = false)
 using CUDA, LinearAlgebra, Printf, Statistics, Random
-using MriReconstructionToolbox
-const MRT = MriReconstructionToolbox
+using Ristretto
 const CUSOLVER = CUDA.CUSOLVER
 
 CUDA.functional() || error("no functional CUDA device")
@@ -30,7 +29,7 @@ end
 shrink(s, τ) = ifelse(s > τ, 1 - τ / s, zero(s))
 
 # Current path.
-gram_host(A, τ) = MRT.ProximalOperators.batched_svt!(A, τ)
+gram_host(A, τ) = Ristretto.ProximalOperators.batched_svt!(A, τ)
 
 # Gram matrices and their eigendecompositions both on the device (`heevjBatched`, n ≤ 32).
 function gram_device(A, τ)

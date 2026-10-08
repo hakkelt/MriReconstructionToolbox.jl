@@ -16,7 +16,7 @@ Builds a StructuredOptimization.jl model from the encoding operator, the measure
 
 # Example
 ```julia
-julia> using MriReconstructionToolbox, StructuredOptimization
+julia> using Ristretto, StructuredOptimization
 julia> x = rand(8, 8)
 julia> 𝒜 = Eye(x)
 julia> y = 𝒜 * x .+ 0.01 .* rand

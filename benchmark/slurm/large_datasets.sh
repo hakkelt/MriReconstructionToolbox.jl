@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=mrt-large-datasets
+#SBATCH --job-name=ristretto-large-datasets
 #SBATCH --exclusive
 #SBATCH --nodes=1
 #SBATCH --mem=0
 #SBATCH --time=08:00:00
 #
-# MRT on the two full-size datasets of benchmark/large_datasets/run.jl, on the host: one run per
+# Ristretto on the two full-size datasets of benchmark/large_datasets/run.jl, on the host: one run per
 # thread count, all at the same time, each pinned to the physical cores of its own NUMA domain. Its
 # memory is preferred on that domain but may spill to the others (the 3D volume needs more than
 # one domain holds).

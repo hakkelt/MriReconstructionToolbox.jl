@@ -2,22 +2,22 @@ using TestItems
 
 @testsnippet RegTestSetup begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: Regularization, get_operator, get_affected_dims,
+    using Ristretto
+    using Ristretto: Regularization, get_operator, get_affected_dims,
         materialize, materialize_with_auxiliaries, materialize_all,
         scale_regularization, bind_dimensions, calculate
-    using MriReconstructionToolbox.AbstractOperators
-    using MriReconstructionToolbox.StructuredOptimization
+    using Ristretto.AbstractOperators
+    using Ristretto.StructuredOptimization
     using NamedDims
     using Wavelets
 end
 
 @testsnippet ProxOf begin
-    const SO = MriReconstructionToolbox.StructuredOptimization
-    const PC = MriReconstructionToolbox.ProximalCore
+    const SO = Ristretto.StructuredOptimization
+    const PC = Ristretto.ProximalCore
 
     function functions_of(reg, x)
-        term = MriReconstructionToolbox.materialize(reg, Variable(x); threaded = false)
+        term = Ristretto.materialize(reg, Variable(x); threaded = false)
         return SO.weighted_function(term)
     end
 
@@ -54,8 +54,8 @@ end
 
 @testsnippet IterationCallbackSetup begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: CartesianAcquisitionInfo
     using Random
 
     # Fully sampled and single-coil, so the encoding operator is square and every algorithm in
@@ -94,7 +94,7 @@ end
 end
 
 @testsnippet RadialCalibration begin
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using Ristretto: NonCartesianAcquisitionInfo
     using NamedDims
     using LinearAlgebra: dot, norm
 
@@ -128,14 +128,14 @@ end
 end
 
 @testsnippet WaveletHelpers begin
-    using MriReconstructionToolbox.WaveletOperators: WaveletOp
+    using Ristretto.WaveletOperators: WaveletOp
 
     # The inverse must recover the original signal, whether or not the forward pass padded it.
     check_wavelet_roundtrip(op, x, result) = (Test.@test op' * result ≈ x rtol = 1.0e-10)
 end
 
 @testsnippet ModelEval begin
-    using MriReconstructionToolbox.StructuredOptimization
+    using Ristretto.StructuredOptimization
 
     function eval_term(terms)
         vars = StructuredOptimization.extract_variables(terms)
@@ -152,17 +152,17 @@ end
 
 @testmodule GpuEnvSetup begin
     # Loads every GPU backend the machine has (JLArrays always, CUDA and friends where a device
-    # is present) into this test process, which makes `MriReconstructionToolboxGPUExt` load too.
+    # is present) into this test process, which makes `RistrettoGPUExt` load too.
     using GPUEnv
     GPUEnv.activate(; include_jlarrays = true, persist = true)
 end
 
 @testsnippet GpuHelpers begin
     using GPUEnv: gpu_backends
-    using MriReconstructionToolbox: AcquisitionInfo, _is_device
+    using Ristretto: AcquisitionInfo, _is_device
     using NamedDims: NamedDimsArray, unname
     using LinearAlgebra: norm
-    const Adapt = MriReconstructionToolbox.Adapt
+    const Adapt = Ristretto.Adapt
 
     # The backends a case can run on: anything with an FFT (and an NFFT) needs a real device, as
     # JLArrays has no FFT; the rest runs on JLArrays too, which is also what CI has.

@@ -8,13 +8,13 @@
 # there is no third-party Julia/Python cross-check here; the reference is the ground truth, the
 # zero-filled baseline, and the optional MATLAB oracle.
 #
-# Point `MRT_BENCH_MATLAB` at the binary to enable the oracle — do **not** `module load matlab`,
+# Point `RISTRETTO_BENCH_MATLAB` at the binary to enable the oracle — do **not** `module load matlab`,
 # which breaks Julia's `libpcre2` (see `matlab_executable`):
 #
-#     MRT_BENCH_MATLAB=/opt/software/packages/matlab/r2024b/bin/matlab \
+#     RISTRETTO_BENCH_MATLAB=/opt/software/packages/matlab/r2024b/bin/matlab \
 #         julia --project=benchmark/comparison benchmark/comparison/scripts/compare_structured_low_rank.jl
 
-using MriReconstructionToolbox: CartesianAcquisitionInfo
+using Ristretto: CartesianAcquisitionInfo
 using NamedDims
 using Random
 using Test
@@ -57,7 +57,7 @@ rss(x) = sqrt.(dropdims(sum(abs2, unname(x); dims = 3); dims = 3))
                 acq,
                 IterativeReconstruction(
                     reg; signal_model = KSpaceToImage(RootSumSquares()),
-                    algorithm = MriReconstructionToolbox.ADMM(), maxit = 60,
+                    algorithm = Ristretto.ADMM(), maxit = 60,
                 );
                 verbosity = Silent(),
             )
@@ -67,7 +67,7 @@ rss(x) = sqrt.(dropdims(sum(abs2, unname(x); dims = 3); dims = 3))
     @testset "LORAKS-C (nuclear norm)" begin
         e = check_nrmse(
             solve(StructuredLowRank(; λ = 1.0f-2, window = (6, 6))), truth, 0.15;
-            label = "MRT LORAKS-C vs Ground Truth",
+            label = "Ristretto LORAKS-C vs Ground Truth",
         )
         @test e < e_zf
     end
@@ -75,7 +75,7 @@ rss(x) = sqrt.(dropdims(sum(abs2, unname(x); dims = 3); dims = 3))
     @testset "SAKE (hard rank)" begin
         e = check_nrmse(
             solve(StructuredLowRank(; max_rank = 30, window = (6, 6))), truth, 0.15;
-            label = "MRT SAKE vs Ground Truth",
+            label = "Ristretto SAKE vs Ground Truth",
         )
         @test e < e_zf
     end
@@ -98,7 +98,7 @@ rss(x) = sqrt.(dropdims(sum(abs2, unname(x); dims = 3); dims = 3))
             kmask[:, mask_pe] .= 1.0
 
             # `rank` here is the same non-convex rank the SAKE row uses, and `radius = 3` is the
-            # closest LORAKS neighbourhood to MRT's `window = (6, 6)` — see `loraks_recon`.
+            # closest LORAKS neighbourhood to Ristretto's `window = (6, 6)` — see `loraks_recon`.
             ref = loraks_recon(kzf, kmask; rank = 30, radius = 3, ltype = "C", max_iter = 50)
             # P_LORAKS returns k-space on the same centred grid it was given, so the image needs
             # the full shift sandwich. Dropping the outer `fftshift` puts the phantom half a field
@@ -110,7 +110,7 @@ rss(x) = sqrt.(dropdims(sum(abs2, unname(x); dims = 3); dims = 3))
             )
             @info "LORAKS oracle" nrmse_vs_truth = e_ref matlab_seconds = ref.elapsed
 
-            # The oracle's job: MRT must not be *worse* than the reference implementation of the
+            # The oracle's job: Ristretto must not be *worse* than the reference implementation of the
             # same idea by a wide margin. Both are compared to the truth rather than to each
             # other, because the two formulations differ (nuclear norm / hard rank, disc /
             # rectangular neighbourhood) by more than a pointwise comparison would tolerate.

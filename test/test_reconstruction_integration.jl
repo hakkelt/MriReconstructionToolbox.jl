@@ -1,7 +1,7 @@
 @testitem "2D Reconstruction Pipeline" tags = [:reconstruction, :integration, :gpu] setup = [TestHelpers, GpuEnvSetup, GpuHelpers] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
+    using Ristretto
+    using Ristretto: scale_regularization, Regularization, Scaling
     using LinearAlgebra
     using GeometricMedicalPhantoms
     using Random
@@ -165,8 +165,8 @@ end
 
 @testitem "3D Reconstruction Pipeline" tags = [:reconstruction, :integration, :gpu] setup = [TestHelpers, GpuEnvSetup, GpuHelpers] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
+    using Ristretto
+    using Ristretto: scale_regularization, Regularization, Scaling
     using LinearAlgebra
     using GeometricMedicalPhantoms
 
@@ -210,11 +210,11 @@ end
 
 @testitem "Multi-slice 2D Reconstruction" tags = [:reconstruction, :integration, :gpu] setup = [TestHelpers, GpuEnvSetup, GpuHelpers] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
+    using Ristretto
+    using Ristretto: scale_regularization, Regularization, Scaling
     using LinearAlgebra
     using GeometricMedicalPhantoms
-    using MriReconstructionToolbox.StructuredOptimization
+    using Ristretto.StructuredOptimization
 
     @testset "Multi-slice 2D Reconstruction" begin
         @testset "Multi-slice with task splitting" begin
@@ -326,8 +326,8 @@ end
 
 @testitem "ReconstructionConfig and Configuration Options" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
+    using Ristretto
+    using Ristretto: scale_regularization, Regularization, Scaling
     using LinearAlgebra
     using GeometricMedicalPhantoms
 
@@ -403,18 +403,18 @@ end
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
             acq_with_data = simulate_acquisition(img_true, acq)
 
-            @test MriReconstructionToolbox.get_scale(FixedScaling(2.5), acq_with_data, nothing, nothing) == 2.5
+            @test Ristretto.get_scale(FixedScaling(2.5), acq_with_data, nothing, nothing) == 2.5
             @test_throws ArgumentError FixedScaling(0.0)
             @test_throws ArgumentError FixedScaling(-1.0)
 
-            scale = MriReconstructionToolbox.get_scale(BartScaling(), acq_with_data, img_true, nothing)
+            scale = Ristretto.get_scale(BartScaling(), acq_with_data, img_true, nothing)
             # The selection-based quantiles are Statistics' `quantile`, to the bit.
-            let quantile = MriReconstructionToolbox.quantile, a = abs.(vec(img_true)),
+            let quantile = Ristretto.quantile, a = abs.(vec(img_true)),
                     (m, p, mx) = quantile(a, [0.5, 0.9, 1.0])
                 @test scale == (((mx - p) < 2 * (p - m)) ? p : mx)
                 for n in (1, 2, 7, 1000), q in (0.0, 0.5, 0.9, 1.0)
                     v = rand(Float32, n)
-                    @test MriReconstructionToolbox._quantile_select!(copy(v), q) == quantile(v, q)
+                    @test Ristretto._quantile_select!(copy(v), q) == quantile(v, q)
                 end
             end
             # Only the output shape is checked here, so a single iteration is enough -- 20 iterations
@@ -428,8 +428,8 @@ end
 
 @testitem "NamedDims Support" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
+    using Ristretto
+    using Ristretto: scale_regularization, Regularization, Scaling
     using NamedDims
 
     @testset "NamedDims Support" begin
@@ -470,11 +470,11 @@ end
 
 @testitem "Operator Options" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
+    using Ristretto
+    using Ristretto: scale_regularization, Regularization, Scaling
     using LinearAlgebra
     using GeometricMedicalPhantoms
-    using MriReconstructionToolbox.StructuredOptimization
+    using Ristretto.StructuredOptimization
 
     @testset "Operator Options" begin
         @testset "Operator normalization" begin
@@ -560,8 +560,8 @@ end
 
 @testitem "Verbose and MultiThreading Task Splitting" tags = [:reconstruction, :integration] setup = [TestHelpers] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: scale_regularization, Regularization, Scaling
+    using Ristretto
+    using Ristretto: scale_regularization, Regularization, Scaling
     using LinearAlgebra
     using GeometricMedicalPhantoms
 
@@ -589,7 +589,7 @@ end
         acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
         # Force MultiThreadingExecutor to cover that path in task_splitting/execution.jl
-        executor = MriReconstructionToolbox.MultiThreadingExecutor()
+        executor = Ristretto.MultiThreadingExecutor()
         img_recon = test_type_stable(
             Array{ComplexF32, 3},
             reconstruct(acq_ms, IterativeReconstruction(L2Image(0.01); maxit = 5); task_executor = executor, verbosity = Silent()),
@@ -599,9 +599,8 @@ end
 end
 
 @testitem "Per-slice threading gate" tags = [:reconstruction, :integration] begin
-    using MriReconstructionToolbox
+    using Ristretto
     using GeometricMedicalPhantoms
-    const MRT = MriReconstructionToolbox
 
     nx, ny, nslices, nc = 128, 128, 2, 4
     smaps = repeat(coil_sensitivities(nx, ny, nc), 1, 1, 1, nslices)
@@ -610,28 +609,28 @@ end
     method = IterativeReconstruction(L2Image(0.01f0); maxit = 5)
 
     config = ReconstructionConfig(; threaded = true, verbosity = Silent())
-    plan = MRT.get_task_splitting_plan(acq, method, config)
+    plan = Ristretto.get_task_splitting_plan(acq, method, config)
     @test plan !== nothing
 
     # Slice size decides which executor is picked, not whether the inside of a slice threads.
-    @test MRT.slice_bytes(plan, acq) == nx * ny * sizeof(ComplexF32)
-    @test MRT.slice_bytes(plan, acq) < MRT.serial_blas_threshold_bytes()
+    @test Ristretto.slice_bytes(plan, acq) == nx * ny * sizeof(ComplexF32)
+    @test Ristretto.slice_bytes(plan, acq) < Ristretto.serial_blas_threshold_bytes()
 
     # A multi-threading executor already has every thread busy with whole slices, so the work
     # inside one must stay serial. A sequential executor leaves the threads free and passes
     # `config.threaded` through: how small is too small to thread is the operator's call, made
     # per kernel and per input, not a blanket rule applied here.
-    @test MRT.slice_threading(config, MRT.SequentialExecutor()) == true
-    @test MRT.slice_threading(config, MRT.MultiThreadingExecutor()) == false
-    @test MRT.slice_threading(
-        ReconstructionConfig(config; threaded = false), MRT.SequentialExecutor()
+    @test Ristretto.slice_threading(config, Ristretto.SequentialExecutor()) == true
+    @test Ristretto.slice_threading(config, Ristretto.MultiThreadingExecutor()) == false
+    @test Ristretto.slice_threading(
+        ReconstructionConfig(config; threaded = false), Ristretto.SequentialExecutor()
     ) == false
 
     big_size = (2048, 2048, nslices)
-    big = MRT.TaskSplittingPlan(
+    big = Ristretto.TaskSplittingPlan(
         big_size, (3,), (2048, 2048, nc, nslices), (4,), false, big_size
     )
-    @test MRT.slice_bytes(big, acq) >= MRT.serial_blas_threshold_bytes()
+    @test Ristretto.slice_bytes(big, acq) >= Ristretto.serial_blas_threshold_bytes()
 
     # The gate is a performance decision only: the result may not depend on it.
     img_threaded = reconstruct(acq, method; threaded = true, verbosity = Silent())
@@ -641,22 +640,21 @@ end
 end
 
 @testitem "Threading scopes: BLAS is not a proxy for the process" tags = [:reconstruction, :minimizer] begin
-    using MriReconstructionToolbox
+    using Ristretto
     using FFTW, LinearAlgebra
-    const MRT = MriReconstructionToolbox
 
     # `with_restricted_threads` narrows every counted pool *and* switches off the Polyester
     # guard, so a serial BLAS says nothing about whether entering it would be a no-op. The solve
     # path used to skip the scope on `BLAS.get_num_threads() == 1`, which left FFTW, NFFT and
     # Polyester at full width for the whole solve -- exactly the oversubscription the gate exists
     # to prevent.
-    if MRT.capacity() > 1   # nothing to observe on a single-threaded process
+    if Ristretto.capacity() > 1   # nothing to observe on a single-threaded process
         blas0, fftw0 = BLAS.get_num_threads(), FFTW.get_num_threads()
         try
             BLAS.set_num_threads(1)
-            FFTW.set_num_threads(MRT.capacity())
+            FFTW.set_num_threads(Ristretto.capacity())
             @test FFTW.get_num_threads() > 1
-            inside = MRT.with_restricted_threads() do
+            inside = Ristretto.with_restricted_threads() do
                 (FFTW.get_num_threads(), BLAS.get_num_threads())
             end
             @test inside == (1, 1)
@@ -669,32 +667,31 @@ end
 end
 
 @testitem "Task splitting: the hoisted first item shares the loop's threading scope" tags = [:reconstruction, :integration] begin
-    using MriReconstructionToolbox
+    using Ristretto
     using FFTW
-    const MRT = MriReconstructionToolbox
 
     # Under the sequential executor `map_items` runs item 1 outside the loop to learn its
     # concrete result type. That must not put it in a different threading scope from items 2..n:
     # unrestricted where the sequential loop restricts every pool, or without NFFT's guarded pool
     # where the loop enables it.
-    if MRT.capacity() > 1
+    if Ristretto.capacity() > 1
         items = collect(1:4)
         rest = @view(items[2:end])
         config = ReconstructionConfig(; threaded = true, verbosity = Silent())
         fftw0 = FFTW.get_num_threads()
         try
-            FFTW.set_num_threads(MRT.capacity())
+            FFTW.set_num_threads(Ristretto.capacity())
             for (executor, threaded) in (
-                    (MRT.SequentialExecutor(), false),
-                    (MRT.SequentialExecutor(), true),
+                    (Ristretto.SequentialExecutor(), false),
+                    (Ristretto.SequentialExecutor(), true),
                 )
-                first_seen = MRT.run_first_item(rest, config, executor; threaded) do
+                first_seen = Ristretto.run_first_item(rest, config, executor; threaded) do
                     FFTW.get_num_threads()
                 end
                 # Indexed rather than pushed: the multi-threading executor runs the body from
                 # several tasks at once.
                 rest_seen = zeros(Int, length(items))
-                MRT.for_each_item!(rest, config, executor; threaded) do i
+                Ristretto.for_each_item!(rest, config, executor; threaded) do i
                     rest_seen[i] = FFTW.get_num_threads()
                 end
                 @test all(==(first_seen), @view(rest_seen[2:end]))
@@ -706,17 +703,16 @@ end
 end
 
 @testitem "Task splitting: a type-inconsistent slice names itself" tags = [:reconstruction] begin
-    using MriReconstructionToolbox
-    const MRT = MriReconstructionToolbox
+    using Ristretto
 
     # The result array is allocated from the first item's concrete type, so a later item of a
     # different type would otherwise surface as a bare `convert`/`MethodError` from inside a
     # threaded loop.
     dest = Array{Vector{Float64}}(undef, 2)
-    MRT.store_item!(dest, 1, [1.0, 2.0], "slice 1")
+    Ristretto.store_item!(dest, 1, [1.0, 2.0], "slice 1")
     @test dest[1] == [1.0, 2.0]
     err = try
-        MRT.store_item!(dest, 2, [1.0f0, 2.0f0], "slice 2")
+        Ristretto.store_item!(dest, 2, [1.0f0, 2.0f0], "slice 2")
         nothing
     catch e
         e
@@ -728,47 +724,45 @@ end
     # `map_items` keeps the items' order and reports a type-inconsistent item under either
     # executor, the multi-threading one included, which runs every item in its loop.
     config = ReconstructionConfig(; threaded = true, verbosity = Silent())
-    for executor in (MRT.SequentialExecutor(), MRT.MultiThreadingExecutor())
-        out = MRT.map_items(k -> 2k, collect(1:5), string.(1:5), config, executor)
+    for executor in (Ristretto.SequentialExecutor(), Ristretto.MultiThreadingExecutor())
+        out = Ristretto.map_items(k -> 2k, collect(1:5), string.(1:5), config, executor)
         @test out == [2, 4, 6, 8, 10] && out isa Vector{Int}
-        @test_throws ArgumentError MRT.map_items(k -> k == 3 ? 3.0 : k, collect(1:5), string.(1:5), config, executor)
+        @test_throws ArgumentError Ristretto.map_items(k -> k == 3 ? 3.0 : k, collect(1:5), string.(1:5), config, executor)
     end
 end
 
 @testitem "Serial-BLAS threshold is settable" tags = [:reconstruction] begin
-    using MriReconstructionToolbox
-    const MRT = MriReconstructionToolbox
+    using Ristretto
 
-    @test MRT.serial_blas_threshold_bytes() == MRT.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
+    @test Ristretto.serial_blas_threshold_bytes() == Ristretto.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
     config = ReconstructionConfig(; threaded = true)
-    @test MRT._should_thread_work_item(config, MRT.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES)
-    @test !MRT._should_thread_work_item(config, 4 * 2^20)
+    @test Ristretto._should_thread_work_item(config, Ristretto.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES)
+    @test !Ristretto._should_thread_work_item(config, 4 * 2^20)
 
     try
-        MRT.set_serial_blas_threshold_bytes!(2^20)
-        @test MRT.serial_blas_threshold_bytes() == 2^20
+        Ristretto.set_serial_blas_threshold_bytes!(2^20)
+        @test Ristretto.serial_blas_threshold_bytes() == 2^20
         # The gate follows the new value, which is the whole point of it being settable.
-        @test MRT._should_thread_work_item(config, 4 * 2^20)
-        @test !MRT._should_thread_work_item(config, 2^19)
+        @test Ristretto._should_thread_work_item(config, 4 * 2^20)
+        @test !Ristretto._should_thread_work_item(config, 2^19)
         # `threaded = false` still vetoes, at any size.
-        @test !MRT._should_thread_work_item(ReconstructionConfig(config; threaded = false), 2^30)
+        @test !Ristretto._should_thread_work_item(ReconstructionConfig(config; threaded = false), 2^30)
     finally
-        MRT.set_serial_blas_threshold_bytes!(MRT.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES)
+        Ristretto.set_serial_blas_threshold_bytes!(Ristretto.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES)
     end
-    @test MRT.serial_blas_threshold_bytes() == MRT.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
+    @test Ristretto.serial_blas_threshold_bytes() == Ristretto.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
 
-    @test_throws Exception MRT.set_serial_blas_threshold_bytes!(-1)
+    @test_throws Exception Ristretto.set_serial_blas_threshold_bytes!(-1)
 end
 
 @testitem "Serial BLAS is a soft default that large calls override" tags = [:reconstruction] begin
-    using MriReconstructionToolbox, LinearAlgebra, ProximalCore
-    const MRT = MriReconstructionToolbox
-    const PO = MRT.ProximalOperators
-    const SO = MRT.StructuredOptimization
+    using Ristretto, LinearAlgebra, ProximalCore
+    const PO = Ristretto.ProximalOperators
+    const SO = Ristretto.StructuredOptimization
     const NestedThreading = PO.NestedThreading
 
     blas = BLAS.get_num_threads()
-    MRT.with_serial_blas() do
+    Ristretto.with_serial_blas() do
         @test BLAS.get_num_threads() == 1
         # A grant, which the operator stack opens around a large factorization, gemm or CG
         # step, takes BLAS back...
@@ -788,12 +782,12 @@ end
     # or not.
     x = randn(ComplexF32, 16, 16, 6)
     reg = LocallyLowRank(0.1; block_size = 8, time_dim = 3)
-    f = SO.weighted_function(MRT.materialize(reg, SO.Variable(x); threaded = true))
+    f = SO.weighted_function(Ristretto.materialize(reg, SO.Variable(x); threaded = true))
     old = PO.FACTORIZATION_THREAD_WORK[]
     results = map((typemax(Int), 1)) do gate
         PO.FACTORIZATION_THREAD_WORK[] = gate
         try
-            MRT.with_serial_blas() do
+            Ristretto.with_serial_blas() do
                 y = similar(x)
                 (y, ProximalCore.prox!(y, f, x, 0.7))
             end
@@ -807,9 +801,9 @@ end
 end
 
 @testitem "Per-frame subsampling: one ky mask per frame" tags = [:reconstruction, :integration] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
-    using MriReconstructionToolbox.AbstractOperators: get_normal_op
+    using Ristretto
+    using Ristretto: get_encoding_operator
+    using Ristretto.AbstractOperators: get_normal_op
     using NamedDims: NamedDimsArray, dimnames, unname
     using LinearAlgebra: mul!
     using Random: Xoshiro, randn!
@@ -877,9 +871,9 @@ end
 end
 
 @testitem "Per-frame subsampling: unequal sample counts per frame" tags = [:reconstruction, :integration] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, parts, nparts, is_partitioned,
+    using Ristretto: CartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: get_encoding_operator, parts, nparts, is_partitioned,
         to_array_partition
     using NamedDims: NamedDimsArray, dimnames, unname
     using Random: Xoshiro
@@ -995,7 +989,7 @@ end
 
 @testitem "Task splitting: non-Cartesian" tags = [:reconstruction, :integration, :nfft] begin
     using LinearAlgebra, Random
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo, get_task_splitting_plan, get_encoding_operator, unname, get_slices
+    using Ristretto: NonCartesianAcquisitionInfo, get_task_splitting_plan, get_encoding_operator, unname, get_slices
     Random.seed!(0)
     n, nc, nsample = 48, 4, 96
     xs = range(-1, 1; length = n)

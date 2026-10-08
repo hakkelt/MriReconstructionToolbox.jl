@@ -3,13 +3,12 @@ using TestItems
 @testitem "TotalGeneralizedVariation2D regularization" tags = [:regularization] begin
     using Test
     using LinearAlgebra
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_operator, get_encoding_operator, materialize, get_affected_dims, scale_regularization
-    using MriReconstructionToolbox.StructuredOptimization
-    using MriReconstructionToolbox.AbstractOperators
+    using Ristretto
+    using Ristretto: get_operator, get_encoding_operator, materialize, get_affected_dims, scale_regularization
+    using Ristretto.StructuredOptimization
+    using Ristretto.AbstractOperators
     using NamedDims
 
-    const MRT = MriReconstructionToolbox
 
     @testset "Constructor" begin
         reg = TotalGeneralizedVariation2D(0.1)
@@ -30,7 +29,7 @@ using TestItems
 
     @testset "materialize introduces one auxiliary field" begin
         x = Variable(randn(8, 8, 3))
-        terms, auxiliaries = MRT.materialize_with_auxiliaries(
+        terms, auxiliaries = Ristretto.materialize_with_auxiliaries(
             TotalGeneralizedVariation2D(0.1), x; threaded = false
         )
         @test length(auxiliaries) == 1
@@ -38,16 +37,16 @@ using TestItems
         # one vector per voxel of the whole array, in `Variation`'s layout
         @test size(~w) == (8 * 8 * 3, 2)
         @test all(iszero, ~w)   # auxiliaries start at zero
-        @test terms isa MRT.StructuredOptimization.TermSet
+        @test terms isa Ristretto.StructuredOptimization.TermSet
         # `materialize` gives the same terms without the auxiliaries
-        @test MRT.materialize(TotalGeneralizedVariation2D(0.1), x; threaded = false) isa
-            MRT.StructuredOptimization.TermSet
+        @test Ristretto.materialize(TotalGeneralizedVariation2D(0.1), x; threaded = false) isa
+            Ristretto.StructuredOptimization.TermSet
     end
 
     @testset "the symmetrized-gradient operator acts per batch slice" begin
         # Folding the batch into a spatial extent would let differences run across slice boundaries; this
         # checks that they do not.
-        batched = MRT._tgv_symmetrized_operator(Float64, (8, 8), 3; threaded = false)
+        batched = Ristretto._tgv_symmetrized_operator(Float64, (8, 8), 3; threaded = false)
         single = SymmetrizedVariation(Float64, (8, 8); threaded = false)
         w = randn(8 * 8 * 3, 2)
         result = batched * w
@@ -63,11 +62,11 @@ using TestItems
     @testset "get_affected_dims" begin
         ksp = randn(ComplexF32, 8, 8, 4)
         info = AcquisitionInfo(ksp; image_size = (8, 8))
-        @test MRT.get_affected_dims(TotalGeneralizedVariation2D(0.1f0), info, 1:3) == 1:2
+        @test Ristretto.get_affected_dims(TotalGeneralizedVariation2D(0.1f0), info, 1:3) == 1:2
     end
 
     @testset "scale_regularization" begin
-        reg = MRT.scale_regularization(TotalGeneralizedVariation2D(0.2; ratio = 3.0), 2.5)
+        reg = Ristretto.scale_regularization(TotalGeneralizedVariation2D(0.2; ratio = 3.0), 2.5)
         @test reg.λ ≈ 0.5
         @test reg.ratio == 3.0
     end
@@ -77,15 +76,14 @@ end
     using Test
     using LinearAlgebra
     using Random
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_operator, get_encoding_operator, materialize, get_affected_dims, scale_regularization
-    using MriReconstructionToolbox.StructuredOptimization
-    using MriReconstructionToolbox.AbstractOperators
+    using Ristretto
+    using Ristretto: get_operator, get_encoding_operator, materialize, get_affected_dims, scale_regularization
+    using Ristretto.StructuredOptimization
+    using Ristretto.AbstractOperators
 
-    const MRT = MriReconstructionToolbox
 
     function denoise(reg, noisy; maxit = 2000)
-        model, x, _ = MRT.build_model_with_variables(
+        model, x, _ = Ristretto.build_model_with_variables(
             Eye(noisy), noisy, (reg,); threaded = false, x₀ = copy(noisy),
         )
         solve(model, ADMM(; maxit, rho = 1.0))
@@ -132,12 +130,11 @@ end
     using Test
     using LinearAlgebra
     using Random
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_operator, get_encoding_operator, materialize, get_affected_dims, scale_regularization
-    using MriReconstructionToolbox.StructuredOptimization
-    using MriReconstructionToolbox.AbstractOperators
+    using Ristretto
+    using Ristretto: get_operator, get_encoding_operator, materialize, get_affected_dims, scale_regularization
+    using Ristretto.StructuredOptimization
+    using Ristretto.AbstractOperators
 
-    const MRT = MriReconstructionToolbox
 
     # The infimal convolution of first- and second-order TV needs no regularization type of its own: it is
     # exactly an image decomposition into a piecewise-constant component and a piecewise-linear one, which
@@ -152,7 +149,7 @@ end
         Component(:ramp, SecondOrderTotalVariation2D(0.05)),
     )
 
-    model, vars, auxiliaries = MRT.build_model(
+    model, vars, auxiliaries = Ristretto.build_model(
         Eye(noisy), noisy, components; threaded = false, x₀s = (copy(noisy), zero(noisy))
     )
     @test auxiliaries == ()
@@ -163,7 +160,7 @@ end
 
     # It must also beat plain first-order TV on this ramp-plus-edge image, which is the whole point of
     # splitting the image into a cartoon and a ramp part.
-    tv_model, tv_x, _ = MRT.build_model_with_variables(
+    tv_model, tv_x, _ = Ristretto.build_model_with_variables(
         Eye(noisy), noisy, (TotalVariation2D(0.05),); threaded = false, x₀ = copy(noisy),
     )
     solve(tv_model, ADMM(maxit = 1000, rho = 1.0))
@@ -175,9 +172,9 @@ end
     using LinearAlgebra
     using GeometricMedicalPhantoms
     using Random
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
-    using MriReconstructionToolbox.StructuredOptimization
+    using Ristretto
+    using Ristretto: get_encoding_operator
+    using Ristretto.StructuredOptimization
 
     # Regression: TGV was only ever exercised through hand-built models passed to `solve`, so the
     # public entry point had no coverage. The data term used to be rewritten into its
@@ -204,18 +201,18 @@ end
     @test norm(img_recon - img_true) / norm(img_true) < 0.6
 
     # TGV is the term that contributes an auxiliary variable; a first-order TV term is not.
-    _, _, tgv_aux = MriReconstructionToolbox.build_model_with_variables(
+    _, _, tgv_aux = Ristretto.build_model_with_variables(
         get_encoding_operator(acq), acq.kspace_data, (TotalGeneralizedVariation2D(0.005),); threaded = false,
     )
     @test length(tgv_aux) == 1
-    tv_terms, _, tv_aux = MriReconstructionToolbox.build_model_with_variables(
+    tv_terms, _, tv_aux = Ristretto.build_model_with_variables(
         get_encoding_operator(acq), acq.kspace_data, (TotalVariation2D(0.001),); threaded = false,
     )
     @test tv_aux == ()
     # The data term itself is the plain least-squares one, in both models: the normal-operator
     # form is what the parser makes of it, and for this encoding operator it does.
-    SO = MriReconstructionToolbox.StructuredOptimization
-    PO = MriReconstructionToolbox.ProximalOperators
+    SO = Ristretto.StructuredOptimization
+    PO = Ristretto.ProximalOperators
     ls_term = only(filter(t -> t.f isa PO.SqrNormL2, collect(tv_terms)))
     ls_op = SO.extract_operators(SO.extract_variables(tv_terms), ls_term)
     @test SO.with_normal_op(ls_term.f, ls_op, SO.displacement(ls_term), ls_term.lambda) isa
@@ -224,12 +221,11 @@ end
 @testitem "TotalGeneralizedVariation3D regularization" tags = [:regularization] begin
     using Test
     using LinearAlgebra
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_operator, materialize, get_affected_dims, scale_regularization
-    using MriReconstructionToolbox.StructuredOptimization
-    using MriReconstructionToolbox.AbstractOperators
+    using Ristretto
+    using Ristretto: get_operator, materialize, get_affected_dims, scale_regularization
+    using Ristretto.StructuredOptimization
+    using Ristretto.AbstractOperators
 
-    const MRT = MriReconstructionToolbox
 
     @testset "Constructor" begin
         reg = TotalGeneralizedVariation3D(0.1)
@@ -250,19 +246,19 @@ end
 
     @testset "materialize introduces one auxiliary field with three components" begin
         x = Variable(randn(4, 4, 4, 2))
-        terms, auxiliaries = MRT.materialize_with_auxiliaries(
+        terms, auxiliaries = Ristretto.materialize_with_auxiliaries(
             TotalGeneralizedVariation3D(0.1), x; threaded = false
         )
         @test length(auxiliaries) == 1
         w = auxiliaries[1]
         @test size(~w) == (4 * 4 * 4 * 2, 3)
         @test all(iszero, ~w)
-        @test terms isa MRT.StructuredOptimization.TermSet
+        @test terms isa Ristretto.StructuredOptimization.TermSet
     end
 
     @testset "the symmetrized-gradient operator acts per batch slice" begin
         # Six independent components in 3D: the entries of the symmetric 3x3 matrix ℰw.
-        batched = MRT._tgv_symmetrized_operator(Float64, (4, 4, 4), 2; threaded = false)
+        batched = Ristretto._tgv_symmetrized_operator(Float64, (4, 4, 4), 2; threaded = false)
         single = SymmetrizedVariation(Float64, (4, 4, 4); threaded = false)
         w = randn(64 * 2, 3)
         result = batched * w
@@ -278,11 +274,11 @@ end
     @testset "get_affected_dims" begin
         ksp = randn(ComplexF32, 6, 6, 6, 4)
         info = AcquisitionInfo(ksp; image_size = (6, 6, 6))
-        @test MRT.get_affected_dims(TotalGeneralizedVariation3D(0.1f0), info, 1:4) == 1:3
+        @test Ristretto.get_affected_dims(TotalGeneralizedVariation3D(0.1f0), info, 1:4) == 1:3
     end
 
     @testset "scale_regularization" begin
-        reg = MRT.scale_regularization(TotalGeneralizedVariation3D(0.2; ratio = 3.0), 2.5)
+        reg = Ristretto.scale_regularization(TotalGeneralizedVariation3D(0.2; ratio = 3.0), 2.5)
         @test reg.λ ≈ 0.5
         @test reg.ratio == 3.0
     end
@@ -292,14 +288,13 @@ end
     using Test
     using LinearAlgebra
     using Random
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox.StructuredOptimization
-    using MriReconstructionToolbox.AbstractOperators
+    using Ristretto
+    using Ristretto.StructuredOptimization
+    using Ristretto.AbstractOperators
 
-    const MRT = MriReconstructionToolbox
 
     function denoise(reg, noisy; maxit = 800)
-        model, x, _ = MRT.build_model_with_variables(
+        model, x, _ = Ristretto.build_model_with_variables(
             Eye(noisy), noisy, (reg,); threaded = false, x₀ = copy(noisy),
         )
         solve(model, ADMM(; maxit, rho = 1.0))

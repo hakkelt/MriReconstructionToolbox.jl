@@ -1,18 +1,18 @@
 #!/bin/bash
-#SBATCH --job-name=mrt-gpu-refs
+#SBATCH --job-name=ristretto-gpu-refs
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=96G
 #SBATCH --time=01:00:00
 #
-# The same GPU benchmark on several MRT checkouts in one job, on one device, alternating the
+# The same GPU benchmark on several Ristretto checkouts in one job, on one device, alternating the
 # checkouts round by round so drift on the node hits each of them alike.
 #
 #   benchmark/slurm/submit.sh gpu_refs.sh --refs=master:/wt/master,dev:/wt/dev [--rounds=2] <bench> [args...]
 #
 # <bench> is one of
-#   comparison [run_all.jl args...]   MRT's rows of the comparison suite on CUDA (the suite runs
-#                                     with --frameworks=MRT, one host thread, OpenBLAS)
+#   comparison [run_all.jl args...]   Ristretto's rows of the comparison suite on CUDA (the suite runs
+#                                     with --frameworks=Ristretto, one host thread, OpenBLAS)
 #   task_splitting [reps]             benchmark/gpu_task_splitting.jl
 #   batched_svt [reps]                benchmark/gpu_batched_svt.jl
 #   dcf [reps]                        benchmark/gpu_dcf.jl
@@ -57,7 +57,7 @@ run_ref() {
         case "$BENCH" in
             comparison)
                 "$JULIA_BIN" --project=benchmark/comparison -t 1 benchmark/comparison/scripts/run_all.jl \
-                    --threads=1 --device=cuda --frameworks=MRT "$@" ;;
+                    --threads=1 --device=cuda --frameworks=Ristretto "$@" ;;
             task_splitting)
                 "$JULIA_BIN" --project=test --threads=8 benchmark/gpu_task_splitting.jl "$@" ;;
             batched_svt)

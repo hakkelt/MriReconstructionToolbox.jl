@@ -1,4 +1,4 @@
-module MriReconstructionToolbox
+module Ristretto
 
 using LinearAlgebra
 using Random: Random, AbstractRNG
@@ -7,7 +7,7 @@ using ProximalCore
 import ProgressMeter
 using NamedDims
 
-# Vendored packages, inlined as submodules so MriReconstructionToolbox has no
+# Vendored packages, inlined as submodules so Ristretto has no
 # unregistered dependencies (registration requires every dependency to be
 # registered). ProximalCore is excluded from this: it stays a normal registered
 # dependency (see [deps]/[compat] in Project.toml).
@@ -235,4 +235,4 @@ function __init__()
     return nothing
 end
 
-end # module MriReconstructionToolbox
+end # module Ristretto

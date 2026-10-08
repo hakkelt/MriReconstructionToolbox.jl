@@ -9,7 +9,7 @@
 #
 # `--cases=a,b,...` lists the cases (default: every synthetic catalog case, in catalog order); array
 # task i calibrates the i-th of them, and without an array the job calibrates all of them in turn.
-# Every other argument is passed to calibrate_lambda.jl: `--frameworks=mrt,bart,...` recalibrates
+# Every other argument is passed to calibrate_lambda.jl: `--frameworks=ristretto,bart,...` recalibrates
 # only those toolkits (the others' curves are kept from the existing file), `--methods=` only those
 # methods, and `--use-mkl` picks the backend. `RHO_DECADES`, `IT_CAL`, `NGRID` and `NGRID_HEAVY` are
 # read from the environment.

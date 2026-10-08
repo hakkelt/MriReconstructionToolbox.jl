@@ -36,19 +36,19 @@
 include("NotebookUtils.jl")
 using .NotebookUtils
 
-using MriReconstructionToolbox
-using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator,
+using Ristretto
+using Ristretto: get_encoding_operator, get_fourier_operator,
     get_sensitivity_map_operator, get_subsampling_operator, build_model, materialize,
     get_operator, get_affected_dims, calculate, Regularization, NamedDimsOp
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
 using MIRTjim: jim
 using Plots
-using MriReconstructionToolbox.AbstractOperators
-using MriReconstructionToolbox.StructuredOptimization
-using MriReconstructionToolbox.ProximalOperators
+using Ristretto.AbstractOperators
+using Ristretto.StructuredOptimization
+using Ristretto.ProximalOperators
 using ProximalCore
-using MriReconstructionToolbox.ProximalAlgorithms
-using MriReconstructionToolbox.WaveletOperators: WaveletOp, WT, wavelet
+using Ristretto.ProximalAlgorithms
+using Ristretto.WaveletOperators: WaveletOp, WT, wavelet
 using LinearAlgebra
 using Random
 
@@ -96,7 +96,7 @@ jim(x_adj; title = "A'y - direct reconstruction, by hand", size = (400, 350))
 #
 # Three things worth knowing when you build or wrap operators yourself.
 #
-# First, the FFT convention. MRT's Fourier operator is the `fft`/`ifft` pair, not the unitary one:
+# First, the FFT convention. Ristretto's Fourier operator is the `fft`/`ifft` pair, not the unitary one:
 # the forward transform is unnormalized and `'` carries the `1/(nx·ny)` factor. So `𝒜'` is the
 # *inverse-scaled* adjoint, and the dot-product identity
 # $\langle \mathcal{A}u, v\rangle = \langle u, \mathcal{A}^H v\rangle$ holds only up to that
@@ -125,14 +125,14 @@ println("ratio      = ", round(real(lhs / rhs), digits = 3), "   (nx·ny = ", nx
 # the FFT scaling above. Passing `dcf = :auto` (or an array) turns `op'` into a density-weighted
 # *approximate inverse* instead — the fast way to get a reasonable-looking direct reconstruction
 # from non-uniform samples, but no longer the mathematical adjoint, so the identity fails outright
-# rather than by a fixed scale factor. This is why MRT's own encoding operators default to no
+# rather than by a fixed scale factor. This is why Ristretto's own encoding operators default to no
 # density compensation (`density_compensation` is an explicit, opt-in preprocessing step, not
 # something silently baked into `𝒜'`) — anything that assumes `A'` is the adjoint (operator-norm
 # estimation via power iteration, CG/CGNR, the check above) needs the true adjoint, not an
 # approximate inverse.
 
 # %%
-using MriReconstructionToolbox.NFFTOperators: NFFTOp
+using Ristretto.NFFTOperators: NFFTOp
 
 traj = Float32.(rand(2, 64, 32) .- 0.5f0)         # a small throwaway radial-ish trajectory
 𝒩_true_adjoint = NFFTOp((nx, ny), traj)            # dcf = nothing (the default): op' is the true adjoint
@@ -155,7 +155,7 @@ end
 # rescaled.
 
 # %% [markdown]
-# Third, the operator norm: it sets the step size of every proximal algorithm, so MRT asks for a
+# Third, the operator norm: it sets the step size of every proximal algorithm, so Ristretto asks for a
 # value that is guaranteed not to fall below `‖𝒜‖` before each solve. `estimate_opnorm` pairs a
 # power iteration, which converges to the norm from below, with `opnorm_bound`, a closed-form
 # upper bound, and returns the upper end of that interval once it is within `rel_margin`.
@@ -185,7 +185,7 @@ end
 # The variant that also returns the variables is what you need when a regularizer introduces
 # auxiliary variables of its own (`TotalGeneralizedVariation2D` does): the image is then not at a
 # predictable position in the solver's variable tuple.
-terms_tgv, x_var, auxiliaries = MriReconstructionToolbox.build_model_with_variables(
+terms_tgv, x_var, auxiliaries = Ristretto.build_model_with_variables(
     𝒜, y, (TotalGeneralizedVariation2D(1.0f-3),)
 )
 println("image variable:      ", size(~x_var))
@@ -287,7 +287,7 @@ println("singular values before: ", round.(svdvals(M)[1:6], digits = 3))
 println("singular values after:  ", round.(svdvals(p_nuc)[1:6], digits = 3))
 
 # %%
-# MRT's regularizers expose the same thing through `calculate` (the value) and `get_operator`
+# Ristretto's regularizers expose the same thing through `calculate` (the value) and `get_operator`
 # (the transform), which is what the extension interface is built on.
 reg = L1Wavelet2D(2.0f-3)
 println("value of the term at x_true: ", round(calculate(reg, x_true), digits = 4))
@@ -319,18 +319,18 @@ end
 
 # The penalty is element-wise, so the operator is the identity and the spatial weights ride along
 # in the proximal function (`NormL1` accepts an array of weights).
-MriReconstructionToolbox.get_operator(reg::MaskedL1, x::AbstractArray; threaded::Bool = true) =
+Ristretto.get_operator(reg::MaskedL1, x::AbstractArray; threaded::Bool = true) =
     Eye(eltype(x), size(x))
 
 # The `::Nothing` slot is the dimension specification a dimension-parameterized regularizer would
 # use; an element-wise penalty couples nothing, so it returns an empty tuple.
-MriReconstructionToolbox.get_affected_dims(::MaskedL1, ::Nothing, image_dims) = ()
+Ristretto.get_affected_dims(::MaskedL1, ::Nothing, image_dims) = ()
 
 # ℓ₁ is homogeneous of degree one, so λ scales linearly with the data scaling.
-MriReconstructionToolbox.scale_regularization(reg::MaskedL1, factor::Real) =
+Ristretto.scale_regularization(reg::MaskedL1, factor::Real) =
     MaskedL1(reg.λ * factor, reg.weights)
 
-function MriReconstructionToolbox.materialize(reg::MaskedL1, x::Variable{T}; threaded::Bool) where {T}
+function Ristretto.materialize(reg::MaskedL1, x::Variable{T}; threaded::Bool) where {T}
     op = get_operator(reg, ~x; threaded)
     Γ = real(T).(reg.λ .* reg.weights)
     return StructuredOptimization.Term(1, NormL1(Γ), op * x, "‖Γ .* x‖₁")
@@ -499,17 +499,17 @@ x̂_custom, _ = solve(p_custom, FISTA(maxit = 60, verbose = false))
 
 x_mynorm = reconstruct(
     data,
-    IterativeReconstruction(L1Image(5.0f-3); maxit = 60)   # MRT's own L1Image, for reference
+    IterativeReconstruction(L1Image(5.0f-3); maxit = 60)   # Ristretto's own L1Image, for reference
 )
-println("MRT's L1Image NRMSE:    ", round(nrmse(x_mynorm), digits = 4))
+println("Ristretto's L1Image NRMSE:    ", round(nrmse(x_mynorm), digits = 4))
 println("hand-written MyNormL1:  ", round(nrmse(~v_custom), digits = 4))
 
 # %% [markdown]
 # ## 9. Adding an algorithm of your own
 #
-# An algorithm is not registered with `MriReconstructionToolbox` at all. It is a plain iterator
+# An algorithm is not registered with `Ristretto` at all. It is a plain iterator
 # following `ProximalAlgorithms`' protocol, plus one declaration — `get_assumptions` — that says
-# which model shapes it can solve. MRT reads that declaration off whatever type it is handed
+# which model shapes it can solve. Ristretto reads that declaration off whatever type it is handed
 # (`DEFAULT_ALGORITHMS` in notebook 6 §1 is the same mechanism), so an algorithm written in a
 # notebook cell is a legal `algorithm =` argument the moment it exists.
 #
@@ -520,7 +520,7 @@ println("hand-written MyNormL1:  ", round(nrmse(~v_custom), digits = 4))
 # 3. `Base.iterate(iter)` and `Base.iterate(iter, state)` — the first sets the state up, the
 #    second advances it by one step. The iterator is infinite; stopping is the caller's business.
 # 4. `default_stopping_criterion` / `default_solution` / `default_iteration_summary` — how to stop,
-#    what to hand back, what to print. `default_solution` is also what MRT's `on_iteration`
+#    what to hand back, what to print. `default_solution` is also what Ristretto's `on_iteration`
 #    callback sees.
 # 5. `get_assumptions` — the model shape, as a set of terms and the traits each must satisfy.
 #
@@ -529,7 +529,7 @@ println("hand-written MyNormL1:  ", round(nrmse(~v_custom), digits = 4))
 # which is the only honest way to know a from-scratch implementation is right.
 
 # %%
-using MriReconstructionToolbox.ProximalAlgorithms: IterativeAlgorithm, AssumptionGroup, SimpleTerm, get_assumptions,
+using Ristretto.ProximalAlgorithms: IterativeAlgorithm, AssumptionGroup, SimpleTerm, get_assumptions,
     value_and_gradient, lower_bound_smoothness_constant, default_display
 using ProximalCore: is_smooth, is_convex, is_proximable
 
@@ -602,9 +602,9 @@ MyISTA(;
     kwargs...,
 ) = IterativeAlgorithm(MyISTAIteration; maxit, stop, solution, verbose, freq, summary, display, kwargs...)
 
-# 5. The declaration MRT's solver selection reads: a smooth convex term plus a proximable convex
+# 5. The declaration Ristretto's solver selection reads: a smooth convex term plus a proximable convex
 #    one. This is exactly what ISTA can solve, and no more — declaring anything wider here would
-#    let MRT hand this algorithm a model it cannot minimize.
+#    let Ristretto hand this algorithm a model it cannot minimize.
 ProximalAlgorithms.get_assumptions(::Type{<:MyISTAIteration}) = AssumptionGroup(
     SimpleTerm(:f => (is_smooth, is_convex)),
     SimpleTerm(:g => (is_proximable, is_convex))
@@ -614,7 +614,7 @@ println("MyISTA: ", get_assumptions(MyISTA()))
 println("ISTA:   ", get_assumptions(ISTA()))
 
 # %% [markdown]
-# Both declarations are the same, which is the check that matters before running anything: MRT
+# Both declarations are the same, which is the check that matters before running anything: Ristretto
 # will accept `MyISTA()` for exactly the models it accepts `ISTA()` for.
 #
 # Now the numerical check. Same data, same regularizer, same iteration count, one solver against
@@ -638,11 +638,11 @@ side_by_side(
 
 # %% [markdown]
 # The same protocol is what lets an algorithm the vendored fork already ships, but that
-# `DEFAULT_ALGORITHMS` does not list, be used without any MRT-side change — `ZeroFPR`, a
+# `DEFAULT_ALGORITHMS` does not list, be used without any Ristretto-side change — `ZeroFPR`, a
 # quasi-Newton accelerated proximal-gradient method, declares the same model shape:
 
 # %%
-using MriReconstructionToolbox.ProximalAlgorithms: ZeroFPR, ZeroFPRIteration
+using Ristretto.ProximalAlgorithms: ZeroFPR, ZeroFPRIteration
 
 println("ZeroFPR: ", get_assumptions(ZeroFPR()))
 
@@ -653,8 +653,8 @@ println("FISTA   NRMSE: ", round(nrmse(x_api), digits = 4))
 println("ZeroFPR NRMSE: ", round(nrmse(x_zerofpr), digits = 4))
 
 # %% [markdown]
-# Nothing in `MriReconstructionToolbox` had to change in either case: `get_assumptions` is read
-# off the type MRT is handed, so any `ProximalAlgorithms`-shaped iteration — the package's own, or
+# Nothing in `Ristretto` had to change in either case: `get_assumptions` is read
+# off the type Ristretto is handed, so any `ProximalAlgorithms`-shaped iteration — the package's own, or
 # one written in a notebook cell — plugs into the same solver selection `DEFAULT_ALGORITHMS` uses,
 # with no registration step.
 

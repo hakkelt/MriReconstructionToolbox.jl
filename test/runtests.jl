@@ -1,5 +1,5 @@
 using TestItemRunner
-using MriReconstructionToolbox
+using Ristretto
 
 # Run all tests. Example filtered runs from the package root:
 #
@@ -14,4 +14,4 @@ using MriReconstructionToolbox
 #                 :components, :operators, :preprocessing,
 #                 :acquisition_info, :analysis, :fourier, :sensitivity_maps, :gpu
 
-TestItemRunner.run_tests(pkgdir(MriReconstructionToolbox))
+TestItemRunner.run_tests(pkgdir(Ristretto))

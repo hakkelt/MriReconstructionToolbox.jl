@@ -1,7 +1,7 @@
 # Performance & Threading
 
 Reconstruction speed on a multi-core machine depends on a handful of settings that are easy to
-get wrong. This page covers what you need to do; MRT handles the rest.
+get wrong. This page covers what you need to do; Ristretto handles the rest.
 
 ## Quick checklist
 
@@ -12,7 +12,7 @@ julia --project -t 8 recon.jl   # -t = number of cores you actually have
 
 - Give Julia as many threads as you have physical cores — no more.
 - On Slurm, make `--cpus-per-task` match `-t`, and always ask for memory explicitly.
-- Don't call `BLAS.set_num_threads` yourself. MRT manages it during reconstruction.
+- Don't call `BLAS.set_num_threads` yourself. Ristretto manages it during reconstruction.
 
 That is usually all you need.
 
@@ -26,7 +26,7 @@ MRI reconstruction makes this worse than usual, because the natural unit of work
 128×128 slice is 1 MiB and fits in cache. Splitting *that* across 8 cores costs more in
 coordination than it saves in arithmetic.
 
-The right structure is: **parallelise across slices, keep each slice serial.** MRT does this for
+The right structure is: **parallelise across slices, keep each slice serial.** Ristretto does this for
 you. Problems appear when something underneath the slice loop starts its own threads anyway.
 
 Concretely, on an 8-core run of a typical iterative solve:
@@ -39,7 +39,7 @@ Concretely, on an 8-core run of a typical iterative solve:
 Same code, same cores — nearly 6x slower just from letting BLAS thread. OpenBLAS and MKL behave
 the same way here; this is not a bug in either.
 
-## What MRT does for you
+## What Ristretto does for you
 
 - **Splits work across slices** and tells the libraries underneath to stay single-threaded.
 - **Skips threading for small FFTs**, where it would cost more than it saves.
@@ -140,7 +140,7 @@ more thorough search is `PATIENT`, below.
 
 ### The FFT wisdom cache
 
-The cache lives in MRT's scratch space (`~/.julia/scratchspaces/<uuid>/fftw_wisdom/`), or under
+The cache lives in Ristretto's scratch space (`~/.julia/scratchspaces/<uuid>/fftw_wisdom/`), or under
 `$XDG_CACHE_HOME` (else `~/.cache`) when that is not writable. A binary built with JuliaC (without
 `--trim`; FFTW.jl does not pass trimming) resolves the same scratch space under `~/.julia` with no
 Julia installed, so its first run on a machine creates the cache. The file is
@@ -153,13 +153,13 @@ benefits from the ones made with its own. That also rules out making wisdom whil
 precompiles: precompilation runs on one thread, and timing a multithreaded plan there picks one
 for serial execution.
 
-To plan a recurring problem more carefully than MRT does on its own, run
+To plan a recurring problem more carefully than Ristretto does on its own, run
 [`plan_fft_wisdom`](@ref) once per machine, with the thread count reconstructions will use and on
 an acquisition shaped like theirs:
 
 ```julia
 # julia -t 16
-using MriReconstructionToolbox
+using Ristretto
 plan_fft_wisdom(acq; rigor = :patient)   # 10–35 s per 2D transform, minutes per 3D one
 ```
 
@@ -170,7 +170,7 @@ threads it found plans 10–20 % faster for 256²×8 (0.78 against 0.99 ms per t
 Capping its planning time (FFTW's `timelimit`) does not help: with 0.1 s it falls back to plans
 as slow as `ESTIMATE`'s, with 0.5 s it matches `MEASURE` in 2D but not in 3D, and with 2 s it
 matches `MEASURE` at several times the planning cost. The environment variable
-`MRT_FFTW_WISDOM` turns the cache off (`off`) or moves it (a directory); the benchmark harness
+`RISTRETTO_FFTW_WISDOM` turns the cache off (`off`) or moves it (a directory); the benchmark harness
 turns it off, so that every timing plans from scratch.
 
 Earlier versions narrowed every pool for the duration of any sub-16-MiB solve. That is gone: it
@@ -199,7 +199,7 @@ On the benchmark above, with MKL and 8 BLAS threads, this is the difference betw
     the runtime function that claims to change it (`kmp_set_blocktime`) succeeds while silently
     doing nothing. It has to come from the shell, a job script, or your `.bashrc`.
 
-    MRT warns you if it sees MKL loaded without it.
+    Ristretto warns you if it sees MKL loaded without it.
 
 ### Slurm
 
@@ -255,7 +255,7 @@ BLAS.set_num_threads(1)
 ```
 
 If that makes it faster, some library underneath the slice loop is threading when it shouldn't
-be. Report it — that is a bug in MRT's threading setup, not something you should have to work
+be. Report it — that is a bug in Ristretto's threading setup, not something you should have to work
 around.
 
 Otherwise, check what is actually configured:
@@ -270,7 +270,7 @@ using LinearAlgebra, FFTW
 
 `get_fourier_operator`/`get_encoding_operator` take `m`, `sigma` and `precompute` keywords that
 forward straight to `NFFTOp`/NFFT.jl, exposing the gridding operating point instead of leaving
-it fixed. Left at `nothing` (the default), **MRT's own default operating point is used**: `m = 3`,
+it fixed. Left at `nothing` (the default), **Ristretto's own default operating point is used**: `m = 3`,
 `σ = 1.5`, `precompute = NFFT.POLYNOMIAL` (`DEFAULT_NFFT_M`, `DEFAULT_NFFT_SIGMA`,
 `DEFAULT_NFFT_PRECOMPUTE` in `src/encoding/fourier_operators.jl`).
 
@@ -286,7 +286,7 @@ this shared login node can swing 30-60%):
 | 4 | 2.00 | POLYNOMIAL | 7.0 / 8.1 | 5.5 / 6.4 | 3.8e-8 |
 | 4 | 1.50 | POLYNOMIAL (former default) | 4.0 / 4.5 | 4.6 / 5.3 | 2.5e-7 |
 | 3 | 2.00 | POLYNOMIAL | 6.0 / 6.8 | 4.3 / 4.9 | 2.4e-6 |
-| **3** | **1.50** | **POLYNOMIAL (MRT default)** | **2.8 / 3.2** | **3.3 / 3.8** | **1.7e-5** |
+| **3** | **1.50** | **POLYNOMIAL (Ristretto default)** | **2.8 / 3.2** | **3.3 / 3.8** | **1.7e-5** |
 | 3 | 1.25 | TENSOR (MRIReco's point) | 2.5 / 2.9 | 2.8 / 3.1 | 7.1e-5 |
 | 2 | 1.50 | POLYNOMIAL | 2.3 / 2.6 | 2.4 / 2.8 | 7.4e-4 |
 | 2 | 1.25 | TENSOR | 2.0 / 2.3 | 1.9 / 2.2 | 2.1e-3 |
@@ -319,11 +319,11 @@ point clearly below that: 1.5-1.6x faster per forward/adjoint pair than `m = 4, 
 
 Independently, MRIReco's operating point (`m = 3`, `σ = 1.25`, `NFFT.TENSOR`) is faster still, at
 real accuracy cost: measured per coil, 4.28 ms vs 1.00 ms for a forward error of 1.6e-7 vs 5.7e-5
-against MRT's old (`m=5,σ=2`) default, while the reconstructed image's NRMSE is 0.085 either way
+against Ristretto's old (`m=5,σ=2`) default, while the reconstructed image's NRMSE is 0.085 either way
 (measured whole multi-coil DCF adjoint, single thread, `benchmark/comparison/scripts/
-run_noncart.jl`, 2026-09-04: MRT at its old default 25.9 ms, MRT at MRIReco's operating point
+run_noncart.jl`, 2026-09-04: Ristretto at its old default 25.9 ms, Ristretto at MRIReco's operating point
 6.1 ms, MRIReco 27.3 ms — all at NRMSE ≈ 0.085 against the phantom). At MRIReco's operating point
-MRT is faster than MRIReco while gridding more accurately; ask for it explicitly if you want the
+Ristretto is faster than MRIReco while gridding more accurately; ask for it explicitly if you want the
 faster, less accurate end of the curve:
 
 ```julia
@@ -334,14 +334,14 @@ or go back to the old high-accuracy default with `m = 5, sigma = 2.0`.
 
 ## Notes for developers
 
-- `serial_blas_threshold_bytes()` (16 MiB by default) is the size above which MRT stops forcing
+- `serial_blas_threshold_bytes()` (16 MiB by default) is the size above which Ristretto stops forcing
   serial BLAS — and, since it also gates whether a solve threads at all, the size above which a
   small problem is allowed to use more than one thread. Re-fitted on real solves on an exclusive
   node, the crossover depends on the BLAS backend: below 4 MiB the threaded and serial paths are
   within 2% of each other on both, but at 8 MiB threading is a 1.3x *loss* on OpenBLAS and a
   1.4x *win* on MKL. 16 MiB is the value that is safe on both. Move it with
-  `MriReconstructionToolbox.set_serial_blas_threshold_bytes!` or the
-  `MRT_SERIAL_BLAS_THRESHOLD_BYTES` environment variable if you know your backend and hardware.
+  `Ristretto.set_serial_blas_threshold_bytes!` or the
+  `RISTRETTO_SERIAL_BLAS_THRESHOLD_BYTES` environment variable if you know your backend and hardware.
 - `NestedThreading`'s `exclude` keyword honours counted pools since 0.1.1, and `only` gives the
   allowlist form. Before that release `exclude` affected Polyester alone and naming
   `:blas`/`:mkl`/`:fftw`/`:nfft` did nothing silently, which is why the BLAS budget used to be
@@ -378,9 +378,9 @@ or go back to the old high-accuracy default with `m = 5, sigma = 2.0`.
 
 ```@docs
 plan_fft_wisdom
-MriReconstructionToolbox.fftw_wisdom_path
-MriReconstructionToolbox.with_serial_blas
-MriReconstructionToolbox.serial_blas_threshold_bytes
-MriReconstructionToolbox.set_serial_blas_threshold_bytes!
-MriReconstructionToolbox.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
+Ristretto.fftw_wisdom_path
+Ristretto.with_serial_blas
+Ristretto.serial_blas_threshold_bytes
+Ristretto.set_serial_blas_threshold_bytes!
+Ristretto.DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
 ```

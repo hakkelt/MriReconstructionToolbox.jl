@@ -35,12 +35,12 @@ The first argument can be:
     - 3D encoding: ``(N_x, N_y, N_z, N_c)``
 
 ```@setup acqinfo
-using MriReconstructionToolbox
+using Ristretto
 using NamedDims
 ```
 
 ```@example acqinfo
-using MriReconstructionToolbox
+using Ristretto
 
 # Plain array - requires explicit is3D
 ksp_plain = rand(ComplexF32, 64, 64, 8)
@@ -198,9 +198,9 @@ error for a partitioned acquisition instead of quietly reading the wrong samples
 works, since noise is well defined per frame.
 
 ```@docs
-MriReconstructionToolbox.CartesianAcquisitionInfo
+Ristretto.CartesianAcquisitionInfo
 PartitionedKSpace
-MriReconstructionToolbox.is_partitioned
+Ristretto.is_partitioned
 ```
 
 ### FFT Shift Conventions
@@ -246,7 +246,7 @@ directly from the ISMRMRD header, instead of hand-assembling arrays from `raw.pr
 
 ```julia
 using MRIBase   # loads the MRIBase extension
-using MriReconstructionToolbox
+using Ristretto
 
 info = AcquisitionInfo(raw)  # raw::MRIBase.RawAcquisitionData
 ```
@@ -278,13 +278,13 @@ the bug this avoids: it silently shifts the reconstructed image by `center - N �
 the affected axis.
 
 The *image* domain needs the matching half of the convention, and the constructor sets that too:
-`shifted_image_dims` is `(:x, :y)`, or `(:x, :y, :z)` when `is3D`. MRT's own default is the
-plain-DFT one — image origin at index 1 — which round-trips consistently for k-space that MRT
+`shifted_image_dims` is `(:x, :y)`, or `(:x, :y, :z)` when `is3D`. Ristretto's own default is the
+plain-DFT one — image origin at index 1 — which round-trips consistently for k-space that Ristretto
 itself simulated, but is not how a scanner stores data: an ISMRMRD acquisition images an object
 **centred in the FOV**. Without `shifted_image_dims` every reconstruction from raw data comes out
 rolled by half the FOV along each spatial axis. With it, no manual `fftshift` is needed anywhere,
 and `estimate_sensitivities(acq)` returns maps on the same (centred) image grid — see
-[Coil Sensitivity Estimation](@ref). Maps estimated by hand from a bare k-space array are in MRT's
+[Coil Sensitivity Estimation](@ref). Maps estimated by hand from a bare k-space array are in Ristretto's
 *default* convention and must be `fftshift`ed before being attached to such an acquisition.
 
 #### Non-Cartesian raw data
@@ -546,8 +546,8 @@ the advertised, non-expert-facing constructor. Code that needs the concrete type
 (e.g. for a type annotation or `isa` check) imports it or qualifies it:
 
 ```julia
-using MriReconstructionToolbox: NonCartesianAcquisitionInfo
-# or: MriReconstructionToolbox.NonCartesianAcquisitionInfo
+using Ristretto: NonCartesianAcquisitionInfo
+# or: Ristretto.NonCartesianAcquisitionInfo
 ```
 
 See `docs/src/high-level/simulation.md` for ready-made trajectory generators

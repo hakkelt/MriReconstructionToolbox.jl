@@ -1,15 +1,15 @@
-# Section: CG-SENSE (10 iterations, no early stop) on every multichannel catalog case — MRT vs
+# Section: CG-SENSE (10 iterations, no early stop) on every multichannel catalog case — Ristretto vs
 # SigPy vs BART vs MRIReco vs MIRT vs MRpro.
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_cgsense.jl --threads=N [--use-mkl] [--data=synthetic|real|all]
 #
 # The cases are undersampled, so the normal equations are not trivially conditioned and every
 # toolkit has ten iterations of real work to do. (On a fully sampled acquisition with normalised
 # maps 𝒜ᴴ𝒜 = I: BART's `pics` hit its own residual tolerance and stopped after one iteration while
-# the others ran all ten, measured as a flat 0.58 ms/it for BART against 4.82 for MRT on the same
+# the others ran all ten, measured as a flat 0.58 ms/it for BART against 4.82 for Ristretto on the same
 # problem — an early exit, not a faster iteration. BART's inner tolerance is hardcoded, so the only
 # way to hold every toolkit to ten iterations is a problem that needs ten.)
 #
-# `tol = 0.0` everywhere: with a small positive tolerance MRT's CGNR exits as soon as the residual
+# `tol = 0.0` everywhere: with a small positive tolerance Ristretto's CGNR exits as soon as the residual
 # underflows, which is a real capability but not the same work.
 include(joinpath(@__DIR__, "_setup.jl"))
 include(joinpath(@__DIR__, "_toolkits.jl"))

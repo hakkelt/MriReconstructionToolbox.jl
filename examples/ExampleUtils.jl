@@ -13,7 +13,7 @@ module ExampleUtils
 
 using MRITestData
 using MRIBase
-using MriReconstructionToolbox
+using Ristretto
 using Printf
 using Statistics
 
@@ -23,12 +23,12 @@ export setup, load_example, first_slab, describe, save_image, report, noise_cova
     setup()
 
 Accept the terms notice and make sure downloads have a destination. Call it once at the top
-of an example. `MRT_EXAMPLES_DOWNLOAD_PATH` overrides the default, which is the package's
+of an example. `RISTRETTO_EXAMPLES_DOWNLOAD_PATH` overrides the default, which is the package's
 own Scratch cache, shared by every project on the machine.
 """
 function setup()
     MRITestData.dismiss_terms_notice!()
-    dir = get(ENV, "MRT_EXAMPLES_DOWNLOAD_PATH", "")
+    dir = get(ENV, "RISTRETTO_EXAMPLES_DOWNLOAD_PATH", "")
     isempty(dir) ? MRITestData.set_download_path!(:cache) : MRITestData.set_download_path!(dir)
     return nothing
 end

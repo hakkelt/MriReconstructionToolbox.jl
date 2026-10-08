@@ -1,12 +1,12 @@
 using Documenter
-using MriReconstructionToolbox
-using MriReconstructionToolbox.ProximalAlgorithms
-using MriReconstructionToolbox.ProximalOperators
-using MriReconstructionToolbox.ContourletOperators
+using Ristretto
+using Ristretto.ProximalAlgorithms
+using Ristretto.ProximalOperators
+using Ristretto.ContourletOperators
 
 # The extension surface is `public` but not exported (see NAMING.md §6), so bring the names
 # documented here into scope for the `@docs` and `@ref` blocks that reference them unqualified.
-using MriReconstructionToolbox: Regularization, ReconstructionMethod, IterativeMethod,
+using Ristretto: Regularization, ReconstructionMethod, IterativeMethod,
     DirectMethod, Scaling, CoilCombination, DataFidelity, Verbosity,
     ReconstructionExecutor, Subsampling, VariableDensityDistribution, PartialFourierFilter,
     DensityCompensation, CoilCompression, SensitivityEstimation, GradientDelay,
@@ -17,14 +17,14 @@ using MriReconstructionToolbox: Regularization, ReconstructionMethod, IterativeM
 
 # Internals whose docstrings are rendered on the low-level pages, or that other docstrings link to
 # with `@ref`. Cross-references resolve in the page's module, so these have to be in scope too.
-using MriReconstructionToolbox: with_serial_blas, serial_blas_threshold_bytes,
+using Ristretto: with_serial_blas, serial_blas_threshold_bytes,
     set_serial_blas_threshold_bytes!,
     model_encoding_operator, StackedNSCTOp, BlockNuclearNorm, DenoiserProx
 
 makedocs(;
-    modules = [MriReconstructionToolbox, ProximalAlgorithms, ProximalOperators, ContourletOperators],
+    modules = [Ristretto, ProximalAlgorithms, ProximalOperators, ContourletOperators],
     authors = "Tamás Hakkel <hakkelt@gmail.com>",
-    sitename = "MriReconstructionToolbox.jl",
+    sitename = "Ristretto.jl",
     format = Documenter.HTML(
         assets = [asset("assets/favicon.svg", class = :ico, islocal = true)]
     ),
@@ -58,5 +58,5 @@ makedocs(;
 )
 
 deploydocs(
-    repo = "github.com/hakkelt/MriReconstructionToolbox.jl.git"
+    repo = "github.com/hakkelt/Ristretto.jl.git"
 )

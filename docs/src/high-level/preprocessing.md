@@ -1,6 +1,6 @@
 # Pre-processing
 
-`MriReconstructionToolbox` provides functional pre-processing transforms for multi-coil MRI data.
+`Ristretto` provides functional pre-processing transforms for multi-coil MRI data.
 All pre-processing functions operate on `AcquisitionInfo` instances as pure functions `AcquisitionInfo -> AcquisitionInfo`, preserving all acquisition metadata and dimension names.
 
 ```mermaid
@@ -42,7 +42,7 @@ compress_coils
 
 ## Coil Sensitivity Estimation
 
-Parallel imaging reconstruction relies on accurate spatial sensitivity profiles $S_c(r)$. `MriReconstructionToolbox` provides three complementary sensitivity estimation algorithms:
+Parallel imaging reconstruction relies on accurate spatial sensitivity profiles $S_c(r)$. `Ristretto` provides three complementary sensitivity estimation algorithms:
 
 ```@docs
 SensitivityEstimation
@@ -80,7 +80,7 @@ centred image grid the non-Cartesian reconstruction itself uses.
   dimensions not named here are estimated slab by slab, as for Cartesian data; pass
   `average_dims = ()` for one set of maps per frame.
 
-A slab whose calibration region holds no signal yields all-zero maps, and MRT warns rather than
+A slab whose calibration region holds no signal yields all-zero maps, and Ristretto warns rather than
 returning them silently. Two file-level causes account for almost every occurrence: a header whose
 `center_sample` does not match where the k-space energy is, and a 3D acquisition loaded with a
 single partition, where the calibration region cannot fit along `:kz` — reconstruct that one as 2D
@@ -94,7 +94,7 @@ instead. `examples/mridata/` demonstrates both.
 ### FFT-shift convention
 
 Sensitivity maps live in the image domain, so they must sit on the same image grid as the
-reconstruction that multiplies them. Every estimator inverts centered k-space into MRT's *default*
+reconstruction that multiplies them. Every estimator inverts centered k-space into Ristretto's *default*
 convention (image origin at index 1), so the raw-array method
 `estimate_sensitivities(kspace; ...)` returns maps in that convention. The `AcquisitionInfo`
 method `estimate_sensitivities(acq; ...)` additionally `fftshift`s the maps onto whatever axes the

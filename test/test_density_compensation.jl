@@ -1,8 +1,8 @@
 @testitem "Density compensation on Cartesian errors" tags = [:acquisition] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
+    using Ristretto
+    using Ristretto: get_encoding_operator
 
     nx, ny = 16, 16
     ksp = zeros(ComplexF32, nx, ny)
@@ -13,8 +13,8 @@ end
 
 @testitem "PipeMenonDCF density compensation" tags = [:acquisition, :nfft] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: get_encoding_operator, NonCartesianAcquisitionInfo
     using NamedDims
 
     nsamp, nspokes = 32, 16
@@ -52,7 +52,7 @@ end
 end
 
 @testitem "Warm-start curvature is the Rayleigh quotient with and without a dcf" tags = [:reconstruction, :nfft] begin
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo, get_encoding_operator, ReconstructionConfig,
+    using Ristretto: NonCartesianAcquisitionInfo, get_encoding_operator, ReconstructionConfig,
         _adjoint_measurement, _warm_start_scale_proxy
     using LinearAlgebra: dot
     using Random: Xoshiro
@@ -80,8 +80,8 @@ end
 
 @testitem "VoronoiDCF density compensation" tags = [:acquisition] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: get_encoding_operator, NonCartesianAcquisitionInfo
     using NamedDims
 
     nsamp, nspokes = 32, 16
@@ -116,8 +116,8 @@ end
 
 @testitem "DCF radial reconstruction accuracy" tags = [:reconstruction, :nfft, :quality, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: get_encoding_operator, NonCartesianAcquisitionInfo
     using LinearAlgebra
     using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
 
@@ -187,7 +187,7 @@ end
 
 @testitem "DCF edge correction" tags = [:acquisition, :nfft] begin
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims
 
     traj = radial_trajectory(128, 64; ordering = GoldenAngle())
@@ -205,8 +205,8 @@ end
 
     @testset "the jump at the end of each readout is removed" begin
         for method in (VoronoiDCF, PipeMenonDCF)
-            raw = unnamed(MriReconstructionToolbox.compute_dcf(traj, (128, 128), method(; edge_correction = false)))
-            fixed = unnamed(MriReconstructionToolbox.compute_dcf(traj, (128, 128), method()))
+            raw = unnamed(Ristretto.compute_dcf(traj, (128, 128), method(; edge_correction = false)))
+            fixed = unnamed(Ristretto.compute_dcf(traj, (128, 128), method()))
 
             # Voronoi's unbounded outer cell is the extreme case (tens of times the right weight);
             # Pipe-Menon's one-sided neighbourhood is milder but still tens of percent off.
@@ -217,8 +217,8 @@ end
     end
 
     @testset "only the ends of a readout are touched" begin
-        raw = unnamed(MriReconstructionToolbox.compute_dcf(traj, (128, 128), VoronoiDCF(; edge_correction = false)))
-        fixed = unnamed(MriReconstructionToolbox.compute_dcf(traj, (128, 128), VoronoiDCF()))
+        raw = unnamed(Ristretto.compute_dcf(traj, (128, 128), VoronoiDCF(; edge_correction = false)))
+        fixed = unnamed(Ristretto.compute_dcf(traj, (128, 128), VoronoiDCF()))
         @test fixed[4:(end - 3), :] == raw[4:(end - 3), :]
     end
 

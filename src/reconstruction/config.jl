@@ -43,7 +43,7 @@ Constructors:
 
 Examples
 ```julia
-using MriReconstructionToolbox
+using Ristretto
 
 # Default config
 conf = ReconstructionConfig()

@@ -36,7 +36,7 @@ The `threaded` argument indicates whether to use multi-threading for operations 
 
 # Example
 ```juliajulia
-julia> using MriReconstructionToolbox, StructuredOptimization
+julia> using Ristretto, StructuredOptimization
 
 julia> x = Variable(8, 8);
 
@@ -124,7 +124,7 @@ The `threaded` argument indicates whether to use multi-threading for operations 
 
 # Example
 ```julia
-julia> using MriReconstructionToolbox
+julia> using Ristretto
 
 julia> x = Variable(8, 8);
 

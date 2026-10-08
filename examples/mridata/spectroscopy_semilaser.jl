@@ -26,7 +26,7 @@
 
 isdefined(Main, :ExampleUtils) || include(joinpath(@__DIR__, "..", "ExampleUtils.jl"))
 using .ExampleUtils
-using MriReconstructionToolbox
+using Ristretto
 using MRITestData
 using MRIBase
 using FFTW
@@ -40,7 +40,7 @@ encode_steps = length(unique(p.head.idx.kspace_encode_step_1 for p in raw.profil
 println("  phase-encoding steps: $(encode_steps), encoded matrix: $(Int.(raw.params["encodedSize"]))")
 println("  protocol: $(get(raw.params, "protocolName", "?"))")
 
-# What MRT says about it, for the record.
+# What Ristretto says about it, for the record.
 try
     AcquisitionInfo(raw)
 catch err

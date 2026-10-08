@@ -51,7 +51,7 @@ using TestItems
         @test op * x ≈ x
         named = NamedDimsArray{(:kx, :ky, :coil)}(x)
         @test get_operator(StructuredLowRank(λ = 0.1, window = (4, 3)), named; threaded) isa
-            MriReconstructionToolbox.NamedDimsOp
+            Ristretto.NamedDimsOp
     end
 
     @testset "get_affected_dims" begin
@@ -129,9 +129,9 @@ using TestItems
         seq, _ = prox_of(StructuredLowRank(λ = 0.1, window = (4, 3)), x, 0.5)
         # `prox_of` builds the term with threaded = false; rebuild it threaded and compare
         term = materialize(StructuredLowRank(λ = 0.1, window = (4, 3)), Variable(x); threaded = true)
-        f = MriReconstructionToolbox.StructuredOptimization.weighted_function(term)
+        f = Ristretto.StructuredOptimization.weighted_function(term)
         par = similar(x)
-        MriReconstructionToolbox.ProximalCore.prox!(par, f, x, 0.5)
+        Ristretto.ProximalCore.prox!(par, f, x, 0.5)
         @test par ≈ seq
     end
 
@@ -159,7 +159,7 @@ using TestItems
 
     @testset "weights: the built-in models" begin
         gx, gy = 12, 10
-        tv = MriReconstructionToolbox._slr_weights(
+        tv = Ristretto._slr_weights(
             StructuredLowRank(λ = 0.1, window = (4, 3), weights = :tv), (gx, gy), ComplexF64
         )
         # the approximation band plus one first difference per encoding dimension
@@ -169,26 +169,26 @@ using TestItems
         # with a singleton channel axis.
         @test all(size(w .* zeros(ComplexF64, gx, gy, 1)) == (gx, gy, 1) for w in tv)
         @test all(isone, tv[1])
-        # a first difference vanishes at DC, which on MRT's centered grid is index N ÷ 2 + 1
+        # a first difference vanishes at DC, which on Ristretto's centered grid is index N ÷ 2 + 1
         @test tv[2][gx ÷ 2 + 1, 1, 1] == 0
         @test tv[3][1, gy ÷ 2 + 1, 1] == 0
         # the pyramid adds the step-2 detail band per dimension
-        wav = MriReconstructionToolbox._slr_weights(
+        wav = Ristretto._slr_weights(
             StructuredLowRank(λ = 0.1, window = (4, 3), weights = :wavelet), (gx, gy), ComplexF64
         )
         @test length(wav) == 5
         # several weights are averaged, a single one is used directly
-        avg = MriReconstructionToolbox.StructuredOptimization.weighted_function(
+        avg = Ristretto.StructuredOptimization.weighted_function(
             materialize(StructuredLowRank(λ = 0.1, window = (4, 3), weights = :tv), Variable(randn(ComplexF64, gx, gy, 2)); threaded = false)
         )
-        @test avg isa MriReconstructionToolbox.ProximalAverage
-        one_w = MriReconstructionToolbox.StructuredOptimization.weighted_function(
+        @test avg isa Ristretto.ProximalAverage
+        one_w = Ristretto.StructuredOptimization.weighted_function(
             materialize(
                 StructuredLowRank(λ = 0.1, window = (4, 3), weights = ones(ComplexF64, gx, gy)),
                 Variable(randn(ComplexF64, gx, gy, 2)); threaded = false,
             )
         )
-        @test one_w isa MriReconstructionToolbox.HankelLowRankProx
+        @test one_w isa Ristretto.HankelLowRankProx
     end
 
     @testset "weighted prox == weighted-Cadzow reference" begin
@@ -236,7 +236,7 @@ using TestItems
         img[10:20, :] .= 1.0
         ksp = reshape(fftshift(fft(img)) / N, N, N, 1)
         H = AbstractOperators.Hankel(ComplexF64, (N, N), (5, 5); nchannels = 1, channels = true)
-        w = MriReconstructionToolbox._slr_weights(
+        w = Ristretto._slr_weights(
             StructuredLowRank(λ = 0.1, window = (5, 5), weights = :tv), (N, N), ComplexF64
         )[2]                                             # the x first difference
         numrank(σ) = count(>(1.0e-8 * σ[1]), σ)
@@ -256,8 +256,8 @@ using TestItems
 end
 
 @testitem "StructuredLowRank end-to-end calibrationless" tags = [:regularization, :reconstruction, :integration, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
-    using MriReconstructionToolbox
+    using Ristretto: CartesianAcquisitionInfo
+    using Ristretto
     using LinearAlgebra, NamedDims
     import Random
     Random.seed!(1)
@@ -345,30 +345,29 @@ end
     using FFTW: fft, fftshift, ifftshift
     import Random
     Random.seed!(0)
-    MRT = MriReconstructionToolbox
 
     function lift_matrix(lift, x, st)
-        M = Array{real(eltype(x))}(undef, MRT._loraks_matrix_size(lift, Val(st))...)
-        return MRT._loraks_lift!(M, lift, x, Val(st))
+        M = Array{real(eltype(x))}(undef, Ristretto._loraks_matrix_size(lift, Val(st))...)
+        return Ristretto._loraks_lift!(M, lift, x, Val(st))
     end
     lift_rows(lift) = CartesianIndices(lift.nwin)
 
     @testset "geometry" begin
-        lift = MRT.LoraksLift((13, 11), (4, 3), 2, :s)
-        @test lift.center == (7, 6)                             # MRT's centered k-space default
+        lift = Ristretto.LoraksLift((13, 11), (4, 3), 2, :s)
+        @test lift.center == (7, 6)                             # Ristretto's centered k-space default
         @test lift.nwin == (10, 9)                              # every window position is a row
-        @test MRT._loraks_matrix_size(lift, Val(:s)) == (2 * 90, 2 * 12 * 2)
-        @test MRT._loraks_matrix_size(lift, Val(:g)) == (2 * 90, 2 * 12 * 2 + 2)
+        @test Ristretto._loraks_matrix_size(lift, Val(:s)) == (2 * 90, 2 * 12 * 2)
+        @test Ristretto._loraks_matrix_size(lift, Val(:g)) == (2 * 90, 2 * 12 * 2 + 2)
         # the reflection is `-ν mod N` about the centre, so DC is its own partner
-        @test MRT._loraks_reflect(lift, CartesianIndex(7, 6)) == CartesianIndex(7, 6)
-        @test MRT._loraks_reflect(lift, CartesianIndex(8, 7)) == CartesianIndex(6, 5)
-        @test MRT._loraks_reflect(lift, CartesianIndex(1, 1)) == CartesianIndex(13, 11)
+        @test Ristretto._loraks_reflect(lift, CartesianIndex(7, 6)) == CartesianIndex(7, 6)
+        @test Ristretto._loraks_reflect(lift, CartesianIndex(8, 7)) == CartesianIndex(6, 5)
+        @test Ristretto._loraks_reflect(lift, CartesianIndex(1, 1)) == CartesianIndex(13, 11)
         # an explicit centre is honoured; a centre off the grid, a window that does not fit and
         # an unknown structure are rejected
-        @test MRT.LoraksLift((13, 11), (4, 3), 1, :s; center = (1, 1)).center == (1, 1)
-        @test_throws ArgumentError MRT.LoraksLift((13, 11), (4, 3), 1, :s; center = (0, 5))
-        @test_throws ArgumentError MRT.LoraksLift((13, 11), (20, 3), 1, :s)
-        @test_throws ArgumentError MRT.LoraksLift((13, 11), (4, 3), 1, :c)
+        @test Ristretto.LoraksLift((13, 11), (4, 3), 1, :s; center = (1, 1)).center == (1, 1)
+        @test_throws ArgumentError Ristretto.LoraksLift((13, 11), (4, 3), 1, :s; center = (0, 5))
+        @test_throws ArgumentError Ristretto.LoraksLift((13, 11), (20, 3), 1, :s)
+        @test_throws ArgumentError Ristretto.LoraksLift((13, 11), (4, 3), 1, :c)
     end
 
     @testset "the lift is a weighted tight frame ($st, grid $gs)" for st in (:s, :g),
@@ -376,14 +375,14 @@ end
 
         ks = length(gs) == 2 ? (4, 3) : (3, 3, 2)
         nch = 2
-        lift = MRT.LoraksLift(gs, ks, nch, st)
+        lift = Ristretto.LoraksLift(gs, ks, nch, st)
         x = randn(ComplexF64, gs..., nch)
         M = lift_matrix(lift, x, st)
         @test size(M, 1) == 2 * length(lift_rows(lift))
 
         y = similar(x)
-        MRT._loraks_unlift!(y, lift, M, Val(st))
-        mult = MRT._loraks_multiplicity(Float64, lift, Val(st))
+        Ristretto._loraks_unlift!(y, lift, M, Val(st))
+        mult = Ristretto._loraks_multiplicity(Float64, lift, Val(st))
         # `LᴴL` is the real diagonal `mult` -- the sign pattern of both constructions makes every
         # cross term between the two sides of k-space cancel. That is what makes the
         # multiplicity-weighted adjoint an exact left inverse, and the Cadzow prox exact.
@@ -395,13 +394,13 @@ end
         # and `_loraks_unlift!` really is the *real* adjoint of the lift: ⟨D, L x⟩ = ⟨Lᴴ D, x⟩
         # over the real inner product, which is the one the lift is linear in.
         D = randn(size(M)...)
-        MRT._loraks_unlift!(y, lift, D, Val(st))
+        Ristretto._loraks_unlift!(y, lift, D, Val(st))
         @test dot(D, M) ≈ real(dot(y, x))
     end
 
     @testset "the S matrix matches Haldar (2014) Eqs. 3-6 and 22" begin
         gs, ks, nch = (13, 11), (4, 3), 2
-        lift = MRT.LoraksLift(gs, ks, nch, :s)
+        lift = Ristretto.LoraksLift(gs, ks, nch, :s)
         x = randn(ComplexF64, gs..., nch)
         rows, offs = lift_rows(lift), CartesianIndices(ks)
         K, nblock = length(rows), prod(ks) * nch
@@ -424,7 +423,7 @@ end
 
     @testset "the G matrix matches Haldar (2014) Eqs. 17-21" begin
         gs, ks, nch = (13, 11), (4, 3), 2
-        lift = MRT.LoraksLift(gs, ks, nch, :g)
+        lift = Ristretto.LoraksLift(gs, ks, nch, :g)
         x = randn(ComplexF64, gs..., nch)
         rows, offs = lift_rows(lift), CartesianIndices(ks)
         K, nblock = length(rows), prod(ks) * nch
@@ -455,7 +454,7 @@ end
         xs = range(-1, 1, N)
         supp = [(abs(u) < 0.3 && abs(v) < 0.3) ? 1.0 : 0.0 for u in xs, v in xs]
         ksp(im_) = reshape(fftshift(fft(ifftshift(im_))) / N, N, N, 1)
-        lift = MRT.LoraksLift((N, N), (5, 5), 1, :s)
+        lift = Ristretto.LoraksLift((N, N), (5, 5), 1, :s)
         σ_of(im_) = svdvals(lift_matrix(lift, ksp(im_), :s))
         H = AbstractOperators.Hankel(ComplexF64, (N, N), (5, 5); nchannels = 1, channels = true)
         numrank(s) = count(>(1.0e-3 * s[1]), s)
@@ -481,13 +480,13 @@ end
         reg = StructuredLowRank(λ = λ, window = ks, structure = st)
         y, value = prox_of(reg, x, γ)
 
-        lift = MRT.LoraksLift(gs, ks, nch, st)
+        lift = Ristretto.LoraksLift(gs, ks, nch, st)
         M = lift_matrix(lift, x, st)
         F = svd(M)
         Sσ = max.(0.0, F.S .- λ * γ)
         ref = similar(x)
-        MRT._loraks_unlift!(ref, lift, F.U * Diagonal(Sσ) * F.Vt, Val(st))
-        mult = MRT._loraks_multiplicity(Float64, lift, Val(st))
+        Ristretto._loraks_unlift!(ref, lift, F.U * Diagonal(Sσ) * F.Vt, Val(st))
+        mult = Ristretto._loraks_multiplicity(Float64, lift, Val(st))
         @test y ≈ ref ./ mult
         @test value ≈ λ * sum(Sσ)
         @test calculate(reg, x; threaded = false) ≈ λ * sum(svdvals(M))
@@ -500,23 +499,23 @@ end
         seq, value = prox_of(reg, x, 1.0)
         @test value == 0                                        # an indicator, zero where projected
 
-        lift = MRT.LoraksLift(gs, ks, nch, :s)
+        lift = Ristretto.LoraksLift(gs, ks, nch, :s)
         ref = similar(x)
-        mult = MRT._loraks_multiplicity(Float64, lift, Val(:s))
+        mult = Ristretto._loraks_multiplicity(Float64, lift, Val(:s))
         for b in 1:2
             F = svd(lift_matrix(lift, x[:, :, :, b], :s))
             Sσ = copy(F.S)
             Sσ[9:end] .= 0                                      # rank 8, the hard-truncation form
             slab = similar(x, gs..., nch)
-            MRT._loraks_unlift!(slab, lift, F.U * Diagonal(Sσ) * F.Vt, Val(:s))
+            Ristretto._loraks_unlift!(slab, lift, F.U * Diagonal(Sσ) * F.Vt, Val(:s))
             ref[:, :, :, b] = slab ./ mult
         end
         @test seq ≈ ref
 
         term = materialize(reg, Variable(x); threaded = true)
-        f = MriReconstructionToolbox.StructuredOptimization.weighted_function(term)
+        f = Ristretto.StructuredOptimization.weighted_function(term)
         par = similar(x)
-        MriReconstructionToolbox.ProximalCore.prox!(par, f, x, 1.0)
+        Ristretto.ProximalCore.prox!(par, f, x, 1.0)
         @test par ≈ seq
         # the Cadzow step truncates the *lifted* matrix, so a generic iterate stays infeasible
         @test calculate(reg, x; threaded = false) == Inf
@@ -525,18 +524,18 @@ end
     # The device lifts are gathers, the adjoint included, so they must agree with the loops
     # exactly up to rounding; odd and even grids, and a window that wraps the reflection.
     @testset "device lifts: $st, $gs" for st in (:s, :g), (gs, ks, nch) in (((13, 11), (4, 3), 2), ((12, 10, 6), (3, 2, 2), 1))
-        lift = MRT.LoraksLift(gs, ks, nch, st)
-        sz = MRT._loraks_matrix_size(lift, Val(st))
+        lift = Ristretto.LoraksLift(gs, ks, nch, st)
+        sz = Ristretto._loraks_matrix_size(lift, Val(st))
         x = randn(ComplexF32, gs..., nch)
         M = randn(Float32, sz...)
-        test_on_devices(x -> MRT._loraks_lift!(similar(x, Float32, sz...), lift, x, Val(st)), x; backends = all_backends())
-        test_on_devices(M -> MRT._loraks_unlift!(similar(M, ComplexF32, gs..., nch), lift, M, Val(st)), M; backends = all_backends())
+        test_on_devices(x -> Ristretto._loraks_lift!(similar(x, Float32, sz...), lift, x, Val(st)), x; backends = all_backends())
+        test_on_devices(M -> Ristretto._loraks_unlift!(similar(M, ComplexF32, gs..., nch), lift, M, Val(st)), M; backends = all_backends())
     end
 end
 
 @testitem "LORAKS S-matrix partial-Fourier reconstruction" tags = [:regularization, :reconstruction, :integration] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
-    using MriReconstructionToolbox
+    using Ristretto: CartesianAcquisitionInfo
+    using Ristretto
     using LinearAlgebra, NamedDims
 
     # Single-channel partial Fourier: the phase constraints are the one structured-low-rank

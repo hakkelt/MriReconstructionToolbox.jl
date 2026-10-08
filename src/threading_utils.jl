@@ -29,7 +29,7 @@ end
 """
     DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES
 
-MRT's shipped value for [`serial_blas_threshold_bytes`](@ref): 16 MiB. See
+Ristretto's shipped value for [`serial_blas_threshold_bytes`](@ref): 16 MiB. See
 [`with_serial_blas`](@ref) for the measurements it comes from, and
 [`set_serial_blas_threshold_bytes!`](@ref) for why it is settable at all.
 """
@@ -50,7 +50,7 @@ call, made per input by `AbstractOperators.threading_threshold` and
 `ProximalOperators.should_thread`.
 
 Defaults to [`DEFAULT_SERIAL_BLAS_THRESHOLD_BYTES`](@ref), overridable per process with
-[`set_serial_blas_threshold_bytes!`](@ref) or the `MRT_SERIAL_BLAS_THRESHOLD_BYTES`
+[`set_serial_blas_threshold_bytes!`](@ref) or the `RISTRETTO_SERIAL_BLAS_THRESHOLD_BYTES`
 environment variable.
 """
 serial_blas_threshold_bytes() = _SERIAL_BLAS_THRESHOLD_BYTES[]
@@ -81,8 +81,8 @@ gives up some MKL throughput between 4 and 16 MiB rather than risking an OpenBLA
 pessimisation — and a site that knows its backend and hardware can move it:
 
 ```julia
-ENV["MRT_SERIAL_BLAS_THRESHOLD_BYTES"] = 4 * 2^20   # before `using MriReconstructionToolbox`
-MriReconstructionToolbox.set_serial_blas_threshold_bytes!(4 * 2^20)   # or at any time
+ENV["RISTRETTO_SERIAL_BLAS_THRESHOLD_BYTES"] = 4 * 2^20   # before `using Ristretto`
+Ristretto.set_serial_blas_threshold_bytes!(4 * 2^20)   # or at any time
 ```
 """
 function set_serial_blas_threshold_bytes!(bytes::Integer)
@@ -93,11 +93,11 @@ end
 # Read once at load, so a job script can set the threshold without touching the caller's code.
 # A malformed value is a warning, not an error: it must not take down a reconstruction.
 function _init_serial_blas_threshold!()
-    raw = get(ENV, "MRT_SERIAL_BLAS_THRESHOLD_BYTES", nothing)
+    raw = get(ENV, "RISTRETTO_SERIAL_BLAS_THRESHOLD_BYTES", nothing)
     raw === nothing && return nothing
     parsed = tryparse(Int, strip(raw))
     if parsed === nothing || parsed < 0
-        @warn "ignoring malformed MRT_SERIAL_BLAS_THRESHOLD_BYTES" value = raw
+        @warn "ignoring malformed RISTRETTO_SERIAL_BLAS_THRESHOLD_BYTES" value = raw
         return nothing
     end
     set_serial_blas_threshold_bytes!(parsed)
@@ -252,4 +252,4 @@ _nfft_full_threads() = max(2, NestedThreading.capacity())
 _get_nfft_threads() = NFFT._use_threads[] ? _nfft_full_threads() : 1
 _set_nfft_threads(n::Integer) = (NFFT._use_threads[] = n >= _nfft_full_threads())
 _register_nfft_threads!() =
-    NestedThreading.register_counted_pool!(_get_nfft_threads, _set_nfft_threads; name = :mrt_nfft)
+    NestedThreading.register_counted_pool!(_get_nfft_threads, _set_nfft_threads; name = :ristretto_nfft)

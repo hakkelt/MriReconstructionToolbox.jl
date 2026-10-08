@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=mrt-gpu-batched-svt
+#SBATCH --job-name=ristretto-gpu-batched-svt
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G

@@ -7,7 +7,7 @@
 # MRIReco re-exports RegularizedLeastSquares' regularizers and solvers.
 using MRIReco: AcquisitionData, L1Regularization, L2Regularization, TVRegularization,
     NuclearRegularization, LLRRegularization
-# `ADMM` / `CGNR` / `FISTA` are exported by both MRIReco and MriReconstructionToolbox — always qualify.
+# `ADMM` / `CGNR` / `FISTA` are exported by both MRIReco and Ristretto — always qualify.
 const MR_ADMM = MRIReco.ADMM
 const MR_CGNR = MRIReco.CGNR
 const MR_FISTA = MRIReco.FISTA
@@ -17,24 +17,24 @@ const RLS = MRIReco.RegularizedLeastSquares
 # `λ` is only comparable across toolkits once the *functional* each one minimises is the same.
 # Two conventions have to be forced explicitly, both measured to matter:
 #
-#   * **Wavelet basis and depth.** Defaults disagree: MRT `WT.db2` at 2 levels, MRIReco `WT.db2`
+#   * **Wavelet basis and depth.** Defaults disagree: Ristretto `WT.db2` at 2 levels, MRIReco `WT.db2`
 #     at full depth, SigPy `db4`, BART `WAVELET_DAU2` at full depth. Aligning SigPy to `db2` moved
-#     its converged NRMSE from 0.0083 to 0.0062, and putting MRT on full depth moved it from
-#     0.0059 to 0.0061 — after which MRT / MRIReco / SigPy agree to 1.5%.
+#     its converged NRMSE from 0.0083 to 0.0062, and putting Ristretto on full depth moved it from
+#     0.0059 to 0.0061 — after which Ristretto / MRIReco / SigPy agree to 1.5%.
 #   * **TV splitting** — see `mrireco`.
 const CMP_WAVELET_LEVELS = BenchUtils.WAVELET_LEVELS
 const CMP_WAVELET_NAME = get(ENV, "CMP_WAVELET_NAME", "db2")
 
 # --- shared knobs ---------------------------------------------------------------------------
-# The effort knobs are BenchUtils' (benchmark/utils/mrt_methods.jl), so MRT's rows here and the MRT
+# The effort knobs are BenchUtils' (benchmark/utils/ristretto_methods.jl), so Ristretto's rows here and the Ristretto
 # harness run the same solve. `CMP_RHO` is the ADMM penalty every competitor's ADMM path falls back
 # to when a case has no calibrated one (`load_rho`); the value is absolute, in each toolkit's own
-# operator scaling. MRT's own rows fall back to `admm_rho(c)` instead, which is relative to `‖𝒜‖²`,
+# operator scaling. Ristretto's own rows fall back to `admm_rho(c)` instead, which is relative to `‖𝒜‖²`,
 # so the one number means different things: `calibrate_lambda.jl` fits ρ per toolkit for that reason.
 const CMP_RHO = ADMM_RHO
 # Outer iterations are capped at CMP_OUTER (20 is plenty for these 2D problems); inner CG at
-# CMP_CG_ITERS (10). MRT, MRIReco and SigPy all run the full budget — `tol = 0` genuinely means
-# "no early stop" in each (verified: MRT `cg.jl:349` `sqrt(r²) <= tol`, MRIReco `cg.jl:140`
+# CMP_CG_ITERS (10). Ristretto, MRIReco and SigPy all run the full budget — `tol = 0` genuinely means
+# "no early stop" in each (verified: Ristretto `cg.jl:349` `sqrt(r²) <= tol`, MRIReco `cg.jl:140`
 # `tolerance = max(reltol*r₀, abstol)`, SigPy `alg.py:284` `resid <= tol`), so their effort is
 # exactly `CMP_OUTER × (CMP_CG_ITERS + 1)` normal-operator applications. BART cannot be held to
 # the same shape — its inner-CG tolerance is hardcoded and not CLI-settable — so it gets an
@@ -73,7 +73,7 @@ Measured at MRIReco's own optimal λ, 20 iterations, same objective throughout (
 | 0.8 | 0.5222 (diverged) |
 
 The stability limit `2/L = 0.85` and the observed blow-up between 0.4 and 0.6 agree with
-`λ_max = 2.356` once FISTA's momentum is accounted for. At 0.4 MRIReco tracks MRT's NRMSE trajectory
+`λ_max = 2.356` once FISTA's momentum is accounted for. At 0.4 MRIReco tracks Ristretto's NRMSE trajectory
 iteration for iteration (8 it: 0.0478 vs 0.0486; 16 it: 0.0070 vs 0.0073; 20 it: 0.0067 vs 0.0065)
 and reaches the same floor (0.00655 vs 0.00612) — its apparent "slow convergence" was entirely this
 one injected parameter, and must not be reported as a property of the algorithm.
@@ -84,11 +84,11 @@ estimator itself is not the problem and needs no tuning: `power_iterations`' har
 returns 2.320 against a converged 2.356 (1.5% low), and even `rtol = 0.1` returns 2.00. Its `rtol` /
 `maxiter` are not reachable from `FISTA`'s kwargs anyway — the constructor forwards only `verbose`.
 
-MRT needs no equivalent knob: it normalizes the encoding operator to unit spectral norm and takes
+Ristretto needs no equivalent knob: it normalizes the encoding operator to unit spectral norm and takes
 `γ = 1/Lf` exactly.
 
 **Which is why this is not what `mrireco` passes.** A hand-supplied `rho` is a free step size: it
-takes the result of a power iteration without paying for one, while MRT's timing includes
+takes the result of a power iteration without paying for one, while Ristretto's timing includes
 `estimate_opnorm` on every regularized solve (`solve_core.jl:347`) — on the 128²×8 phantom that is
 153 ms against a 300 ms wavelet solve, i.e. half the row. Measured on the same operator,
 `power_iterations(AHA)` costs MRIReco **221 ms**. Passing 0.4 therefore hid, and credited to
@@ -112,7 +112,7 @@ the 128²×8 phantom at ρ = 0.05: `-i 20` → 3 outer / 21 CG, `-i 80` → 29 o
 Matching `CMP_OUTER` outer iterations of `CMP_CG_ITERS` inner CG each therefore needs `-i` ≈ their
 product. Note BART will usually *not* spend it as we would: its inner CG stops at
 `1e-3 · ‖rhs‖` (`admm.c:143`, `cg_eps` — hardcoded at `iter.c:106`, **not** CLI-settable), so with
-a good warm start it takes far fewer inner iterations and far more outer ones than MRT does. That
+a good warm start it takes far fewer inner iterations and far more outer ones than Ristretto does. That
 asymmetry is the reason `run_accuracy_race.jl` exists: a fixed budget cannot be made to mean the
 same thing in both, but "wall time to a given NRMSE" can.
 
@@ -133,7 +133,7 @@ Passing it `CMP_OUTER` therefore gave it **a tenth of the work** every other low
 and the row that came back was not a converged solve but an early-stopped one: measured on the
 dynamic phantom at 20 iterations it sits at NRMSE 0.109 for every λ from 0.01 to 100, four orders
 of magnitude over which nothing moves — the signature of an iterate that has barely left `x0`,
-not of an optimum. The same solve at 60 iterations reaches 0.0800, below MRT's 0.0845.
+not of an optimum. The same solve at 60 iterations reaches 0.0800, below Ristretto's 0.0845.
 
 This is the same correction `BART_BUDGET` makes for BART's `-i`, in the same unit. It changes what
 λ means for the row, which is why MIRT's grid in `calibrate_lambda.jl` is swept at this budget too
@@ -146,8 +146,8 @@ large survives 20 iterations and diverges over 220 — so the two fixes only mak
 proxgrad_budget(outer::Int) = outer * (CMP_CG_ITERS + 1)
 
 # Data scaling and noise (`norm_ksp`, `add_noise`) are applied once, when the catalog builds a case
-# (benchmark/utils/noise.jl); λ comes from `load_lambda` in `_methods.jl`; MRT's own solve is
-# `mrt_reconstructor` (benchmark/utils/mrt_methods.jl), the call the MRT harness times.
+# (benchmark/utils/noise.jl); λ comes from `load_lambda` in `_methods.jl`; Ristretto's own solve is
+# `ristretto_reconstructor` (benchmark/utils/ristretto_methods.jl), the call the Ristretto harness times.
 
 # --- MRIReco (Julia) ------------------------------------------------------------------------
 # `MRIBase` accepts a 6D `(x, y, z, channel, echo, rep)` k-space array directly (`enc2D` for a
@@ -206,9 +206,9 @@ MRIReco's iterative reconstructions weight the data term by `W = WeightingOp(sam
 (`IterativeReconstruction.jl:233,309`). On a Cartesian acquisition that density is the uniform
 `1/√N`, but on a non-Cartesian one it is the square root of an iterative density compensation
 (`MRIBase` `samplingDensity`, `sdc(plan, iters = 10)`), so the solve minimises the density-weighted
-`½‖W(Ax - y)‖²` rather than the `½‖Ax - y‖²` MRT, BART and SigPy minimise: a different problem,
+`½‖W(Ax - y)‖²` rather than the `½‖Ax - y‖²` Ristretto, BART and SigPy minimise: a different problem,
 whose CG is also preconditioned by `W`. Measured on the small radial phantom at 10 iterations,
-weighted CG-SENSE reaches NRMSE 0.348 and unweighted 0.412, against MRT's 0.420. With
+weighted CG-SENSE reaches NRMSE 0.348 and unweighted 0.412, against Ristretto's 0.420. With
 `densityWeighting = false` MRIReco uses the uniform `1/√N` for every trajectory
 (`RecoParameters.jl:94-102`), the same weights as its Cartesian path, so every MRIReco row solves the
 unweighted problem up to a constant factor, which λ and ρ absorb.
@@ -313,7 +313,7 @@ does not accept, so the same kwargs are safe for CGNR / ADMM / FISTA).
 
 `ρ = nothing` for `:wavelet`, the one FISTA path, means *estimate the step size*:
 `0.95 / power_iterations(AHA)`, FISTA's own constructor default, computed inside the timed region
-because that is where MRT's equivalent `estimate_opnorm` is charged. See `CMP_FISTA_RHO_MRIRECO`
+because that is where Ristretto's equivalent `estimate_opnorm` is charged. See `CMP_FISTA_RHO_MRIRECO`
 for why it is not passed as a constant. For the ADMM rows `ρ` is a fixed penalty, not a step
 size: the case's calibrated one (`load_rho`) or `CMP_RHO`, so nothing is estimated there.
 """
@@ -337,7 +337,7 @@ function mrireco(
         # instead a nested 10-iteration fast-gradient-projection dual solve (`ProxTV.jl:39`; its
         # docstring wrongly says 20). That prox is inexact, which both slows convergence and caps
         # the reachable accuracy: it plateaus at NRMSE 0.0043 where the documented splitting reaches
-        # 0.0027. The documented form is also the same splitting MRT, BART and SigPy use, so this is
+        # 0.0027. The documented form is also the same splitting Ristretto, BART and SigPy use, so this is
         # what makes the comparison apples-to-apples.
         (
             L1Regularization(λ), MR_ADMM, nothing,
@@ -381,25 +381,25 @@ end
 Dynamic (2D+t) reconstruction with MRIReco of `acq`, a cine with its `nt` frames as echoes
 (`_mrireco_cine_acq` or `_mrireco_nc_acq`). `method ∈ (:adjoint, :gridding, :cgsense, :lowrank,
 :llr, :wavelet)`: the first two are the `direct` reconstruction of every frame with the conjugate-sensitivity
-combination (see `mrireco_direct`), CG-SENSE is CGNR on the joint system of all frames, as MRT and
+combination (see `mrireco_direct`), CG-SENSE is CGNR on the joint system of all frames, as Ristretto and
 BART solve it. Returns `(nx, ny, nt)`.
 
 The frames are handed to MRIReco as **contrasts (echoes)**, not repetitions, and the solve goes
 through `reco = "multiCoilMultiEcho"` — `reconstruction_multiCoil` loops over repetitions and slices
 and solves each independently (`IterativeReconstruction.jl:54`), which would decouple the frames and
 make a temporal prior meaningless, while `reconstruction_multiCoilMultiEcho` builds one system over
-all contrasts (`:273`) and applies the regularizer to the stacked volume. That is what MRT's
+all contrasts (`:273`) and applies the regularizer to the stacked volume. That is what Ristretto's
 `LowRank` / `LocallyLowRank` do, so the two are comparable.
 
 `RegularizedLeastSquares` needs the volume shape spelled out, since the prox reshapes a flat vector:
 `NuclearRegularization` takes `svtShape = (prod(reconSize), n_frames)` — the Casorati matrix, i.e.
-MRT's global `LowRank` — and `LLRRegularization` takes the *spatial* `shape = reconSize` with
+Ristretto's global `LowRank` — and `LLRRegularization` takes the *spatial* `shape = reconSize` with
 `blockSize = (8, 8)`. Its prox reshapes the vector to `(shape..., K)` and thresholds the singular
 values of each block's `(64, K)` Casorati matrix, so the frames must be the trailing `K`: given
 `shape = (nx, ny, n_frames)` and `blockSize = (8, 8, n_frames)`, as this row once did, `K = 1` and
 each block is a single `64·n_frames` vector whose "SVT" merely shrinks its norm — a group-sparsity
-penalty, which measured 2.6× MRT's NRMSE on the Cartesian cine. `randshift = false` tiles the blocks
-at fixed positions, as MRT's `LocallyLowRank` and BART's `-n` do; the default shifts them randomly
+penalty, which measured 2.6× Ristretto's NRMSE on the Cartesian cine. `randshift = false` tiles the blocks
+at fixed positions, as Ristretto's `LocallyLowRank` and BART's `-n` do; the default shifts them randomly
 every iteration, a different objective.
 
 L1-wavelet is FISTA with a wavelet `sparseTrafo`, which `reconstruction_multiCoilMultiEcho` applies
@@ -452,7 +452,7 @@ function mrireco_dynamic(
 end
 
 # --- Python (SigPy, MRpro) -----------------------------------------------------------------
-# Python code of the harness's own (`_IsoTVRecon`, `_MrtSVT`, `_mrpro_solve`, ...) is executed into
+# Python code of the harness's own (`_IsoTVRecon`, `_RistrettoSVT`, `_mrpro_solve`, ...) is executed into
 # `PY` by the `pyexec` blocks below and looked up there by name.
 const PY = pydict()
 const np = pyimport("numpy")
@@ -525,7 +525,7 @@ with `solver = "PrimalDualHybridGradient"` at SigPy's own step sizes. TGV / low-
 here (throw).
 Only **TV** is forced onto ADMM (`rho = ρ`, `max_cg_iter = CMP_CG_ITERS`) — matching the
 ADMM the other toolkits use for TV; SigPy would otherwise default to PDHG. **L1-wavelet** keeps
-SigPy's natural proximal-gradient solver (FISTA-like), as MRT / MRIReco / BART also use FISTA for
+SigPy's natural proximal-gradient solver (FISTA-like), as Ristretto / MRIReco / BART also use FISTA for
 wavelet. `tol ≈ 0` so all `iterations` outer steps run. `:adjoint` is `Sense(mps)ᴴ y`, with the
 `Sense` operator built inside the timed region, as every app builds its own.
 """
@@ -590,7 +590,7 @@ _mirt_y(ksp, samp) = reduce(hcat, [ComplexF32.(selectdim(ksp, ndims(ksp), c))[sa
 
 A function `build()` returning `Asense` for the sampling pattern implied by the zero-filled `ksp`
 (`(nx, ny, [nz,] coil)`), plus the sampled data in the layout that operator produces. The rows call
-`build` inside their timed region: MRT, MRIReco, MRpro and BART all build their operator inside
+`build` inside their timed region: Ristretto, MRIReco, MRpro and BART all build their operator inside
 theirs.
 """
 function mirt_problem(ksp, smaps)
@@ -610,7 +610,7 @@ and its data:
     same operator for every frame, as the frames share the trajectory.
 
 A cine's frames are stacked into one block-diagonal operator over `(nx, ny, time)`
-(`_mirt_frames`), so that its CG-SENSE is one CG over all frames, as MRT and BART solve it.
+(`_mirt_frames`), so that its CG-SENSE is one CG over all frames, as Ristretto and BART solve it.
 """
 function mirt_problem(c::BenchCase)
     if c.trajectory === :cartesian
@@ -626,7 +626,7 @@ function mirt_problem(c::BenchCase)
     return () -> _mirt_frames(fill(build(), nt)), ComplexF32.(vec(c.kspace))
 end
 
-# MRT's `(dim, k)` trajectory in cycles/sample as MIRT's `(k, dim)` in radians. Kept in Float64 and
+# Ristretto's `(dim, k)` trajectory in cycles/sample as MIRT's `(k, dim)` in radians. Kept in Float64 and
 # clamped: a radial trajectory reaches ±0.5 exactly, and `Float32(2π * 0.5)` rounds just above π,
 # which `nufft_init`'s `pi_error` check rejects. `n_shift` centres the image the way every other
 # toolkit here does.
@@ -753,13 +753,13 @@ end
 # Neither toolkit ships a low-rank MRI app, but both accept an arbitrary proximal operator, which is
 # all a nuclear norm on the Casorati matrix needs. That makes the global low-rank row the one
 # low-rank case they can both express faithfully; **locally** low rank is not, since it needs the
-# block extraction and the cycle-spinning convention BART and MRT each have their own of, and
+# block extraction and the cycle-spinning convention BART and Ristretto each have their own of, and
 # comparing those would measure this file rather than the toolkits.
 #
-# Both rows solve exactly MRT's objective, ½‖Ax - y‖² + λ‖X‖_*, with the toolkit's own operator and
+# Both rows solve exactly Ristretto's objective, ½‖Ax - y‖² + λ‖X‖_*, with the toolkit's own operator and
 # its own solver: SigPy runs the same fixed-ρ ADMM as the other SigPy rows, MIRT runs POGM (Fessler's
 # accelerated proximal gradient) since it ships no ADMM. The algorithm differs, so the iteration
-# count is not comparable across those two rows the way it is between MRT and BART — that is what
+# count is not comparable across those two rows the way it is between Ristretto and BART — that is what
 # the calibrated λ and the accuracy column are for.
 
 const sp = pyimport("sigpy")
@@ -771,7 +771,7 @@ pyexec(
     import numpy as np
     import sigpy as sp
 
-    class _MrtSVT(sp.prox.Prox):
+    class _RistrettoSVT(sp.prox.Prox):
         '''Singular-value soft thresholding of the (frames x voxels) Casorati matrix.'''
         def __init__(self, shape, lamda):
             self.lamda = lamda
@@ -836,7 +836,7 @@ Cine reconstruction with SigPy on the joint system of all frames (`_sp_cine_syst
   * `:ttv` is `λ‖D_t x‖₁` with `G = FiniteDifference` along time and an `L1Reg` prox, the same
     composition `sigpy.mri.app.TotalVariationRecon` builds over the image axes. SigPy's finite
     difference is circular (`np.roll`), so it also penalises the last frame against the first,
-    which MRT's and BART's temporal TV do not.
+    which Ristretto's and BART's temporal TV do not.
 
 The regularized rows use the settings of the other SigPy rows (`ADMM`, `rho = ρ`,
 `max_cg_iter = CMP_CG_ITERS`); `:ttv_pd` is `:ttv` with `solver = "PrimalDualHybridGradient"`.
@@ -855,7 +855,7 @@ function sigpy_dynamic(m::Symbol, c::BenchCase; λ = 0.0, iterations = 10, ρ = 
     elseif m === :cgsense
         () -> sp.app.LinearLeastSquares(A(), _sp_dev(yn); max_iter = iterations, tol = CMP_TOL_INNER, show_pbar = false).run()
     elseif m === :lowrank
-        prox = PY["_MrtSVT"](ishape, λ)
+        prox = PY["_RistrettoSVT"](ishape, λ)
         () -> sp.app.LinearLeastSquares(A(), _sp_dev(yn); proxg = prox, admm...).run()
     elseif m in (:ttv, :ttv_pd)
         G = sp.linop.FiniteDifference(ishape; axes = (0,))
@@ -937,11 +937,11 @@ prox. POGM needs a step size rather than the ρ the ADMM rows take; `f_L` comes 
 count the ADMM rows use, not the outer count itself.
 """
 function mirt_lowrank(build, y; λ = 0.0, iterations = 10)
-    # The SVD runs at the working precision, as SigPy's `_MrtSVT` and MRT's own prox do — promoting
+    # The SVD runs at the working precision, as SigPy's `_RistrettoSVT` and Ristretto's own prox do — promoting
     # to `ComplexF64` here would give MIRT a more accurate prox than the row it is compared against.
     g_prox = (z, c) -> _svt(z, λ * c)
     # `_mirt_lipschitz` is inside the timed closure, for the reason given on `CMP_FISTA_RHO_MRIRECO`:
-    # the step size is part of what a solve costs, and MRT pays `estimate_opnorm` in its own timing.
+    # the step size is part of what a solve costs, and Ristretto pays `estimate_opnorm` in its own timing.
     function run()
         A = build()
         x0 = zeros(ComplexF32, A._idim)
@@ -963,7 +963,7 @@ end
 """
     COMPETITORS
 
-The toolkits every section compares MRT against, in row order.
+The toolkits every section compares Ristretto against, in row order.
 """
 const COMPETITORS = (:bart, :sigpy, :mrireco, :mirt, :mrpro)
 
@@ -987,7 +987,7 @@ trajectories of its family.
 | MIRT | adjoint / gridding, CG-SENSE | adjoint / gridding, CG-SENSE, global low-rank |
 | MRpro | adjoint / gridding, CG-SENSE, isotropic / anisotropic TV (PDHG), L1-wavelet | adjoint / gridding, CG-SENSE, global low-rank, temporal TV (PDHG), L1-wavelet |
 
-What is absent and why: TGV exists only in BART and MRT. SigPy and MIRT have no locally low-rank
+What is absent and why: TGV exists only in BART and Ristretto. SigPy and MIRT have no locally low-rank
 prox, and building one here would compare this file's block convention rather than the toolkits
 (see the low-rank section). MRIReco applies a regularizer's transform per frame, so it cannot express
 temporal TV (see `mrireco_dynamic`). MIRT ships neither a TV nor a wavelet prox. Every TV of
@@ -1045,14 +1045,14 @@ end
 """
     uses_admm(tk, c::BenchCase, method) -> Bool
 
-Whether toolkit `tk` (`:mrt` included) solves `method` on `c` with a fixed-penalty ADMM, i.e.
+Whether toolkit `tk` (`:ristretto` included) solves `method` on `c` with a fixed-penalty ADMM, i.e.
 whether a ρ is a parameter of its row. L1-wavelet runs FISTA everywhere, CG-SENSE CG, and MIRT's
 only regularized row POGM.
 """
 function uses_admm(tk::Symbol, c::BenchCase, m::Symbol)
     # A PDHG row (`PDHG_METHODS`) has step sizes, not a penalty, and falls through here.
     m in (:tv, :atv, :tgv, :lowrank, :llr, :ttv) || return false
-    tk === :mrt && return true
+    tk === :ristretto && return true
     tk === :bart && return true
     tk === :sigpy && return m in (:tv, :atv, :lowrank, :ttv)
     tk === :mrireco && return m in (:atv, :lowrank, :llr)
@@ -1289,7 +1289,7 @@ end
     mrireco_direct(acq, smaps, reconSize; frames = 1) -> (time_ms, image)
 
 MRIReco's `direct` reconstruction (per-coil images) followed by the conjugate-sensitivity coil
-combination, inside the timed region: MRT's direct row includes the sensitivity adjoint. On a
+combination, inside the timed region: Ristretto's direct row includes the sensitivity adjoint. On a
 non-Cartesian `acq` this is the gridding row, and `direct` applies MRIReco's own density
 compensation rather than the case's ramp DCF. `frames > 1` is a cine with its frames as echoes,
 returned as `(reconSize..., frames)`.
@@ -1317,13 +1317,13 @@ end
 # radial trajectory in grid units, a cine's frames along `other`.
 #
 # MRpro has no ADMM, so it joins the PDHG rows and none of the ADMM ones. Its `L1Norm` is the
-# complex modulus, so the anisotropic row has MRT's penalty; the isotropic one needs the joint
+# complex modulus, so the anisotropic row has Ristretto's penalty; the isotropic one needs the joint
 # threshold over the stacked differences, `_MrproJointL1`, the counterpart of SigPy's `_JointL1`.
 # Temporal TV uses a circular difference along the frames, as SigPy's does. L1-wavelet is FISTA
 # (`pgd`) on the synthesis form `‖A Wᴴ z - y‖² + λ‖z‖₁`: MRpro's `WaveletOp` is a Parseval frame
 # (`WᴴW = I`) with a few boundary coefficients more than pixels, whose analysis prox has no closed
 # form. Global low rank is `pgd` with a Casorati singular-value threshold, `_MrproSVT`. The step size
-# `1/(2‖A‖²)` of both `pgd` rows comes from a power method inside the timed region, as MRT's does.
+# `1/(2‖A‖²)` of both `pgd` rows comes from a power method inside the timed region, as Ristretto's does.
 #
 # Every functional here is MRpro's `‖·‖²` without the ½, and its FFT is orthonormal; the per-toolkit
 # λ calibration absorbs both.

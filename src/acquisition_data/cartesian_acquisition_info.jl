@@ -28,7 +28,7 @@ struct CartesianAcquisitionInfo{K, I, S, Sub, SD, ID} <: AcquisitionInfo
     function CartesianAcquisitionInfo(ksp, is3D, img_size, smaps, subs, sK, sI)
         if !isnothing(subs)
             if !isnothing(ksp)
-                guessed = MriReconstructionToolbox._get_img_size_from_subsampling(subs, ksp)
+                guessed = Ristretto._get_img_size_from_subsampling(subs, ksp)
                 if isnothing(img_size)
                     @argcheck !isnothing(guessed) "image_size must be provided or be inferable from subsampling"
                     img_size = guessed

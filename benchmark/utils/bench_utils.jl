@@ -1,11 +1,11 @@
 """
     BenchUtils
 
-Everything the MRT harness (`benchmark/run.jl`) and the comparison suite (`benchmark/comparison/`)
+Everything the Ristretto harness (`benchmark/run.jl`) and the comparison suite (`benchmark/comparison/`)
 share: site configuration, the case catalog with its phantoms, sampling patterns, noise and real
-data, MRT's reconstruction of each method, the timing function and the result store.
+data, Ristretto's reconstruction of each method, the timing function and the result store.
 
-Depends only on MRT, GeometricMedicalPhantoms, FFTW, NamedDims, MRITestData, JSON and standard
+Depends only on Ristretto, GeometricMedicalPhantoms, FFTW, NamedDims, MRITestData, JSON and standard
 libraries. It never assumes BART, SigPy or MRIReco are available; those live in the comparison
 suite's own bridges.
 
@@ -27,8 +27,8 @@ using SHA: sha1
 using Serialization: serialize, deserialize
 using Statistics: median
 
-using MriReconstructionToolbox
-using MriReconstructionToolbox: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
+using Ristretto
+using Ristretto: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
 
 include("config.jl")
 include("phantoms.jl")
@@ -36,15 +36,15 @@ include("sampling.jl")
 include("noise.jl")
 include("cases.jl")
 include("real_data.jl")
-include("mrt_methods.jl")
+include("ristretto_methods.jl")
 include("harness.jl")
 include("results_store.jl")
 
 export load_site_env!, env_flag, ensure_download_path!
 export BenchCase, get_case, case_ids, filter_case_ids, SYNTHETIC_CASES, HARNESS_ONLY_CASES, REAL_CASES, small_mode, cine_frames
-export ncoils, acceleration, zero_filled, mrt_acquisition, applicable_methods, METHODS, PDHG_METHODS, MRT_ONLY_METHODS, penalty_of
+export ncoils, acceleration, zero_filled, ristretto_acquisition, applicable_methods, METHODS, PDHG_METHODS, RISTRETTO_ONLY_METHODS, penalty_of
 export norm_ksp, add_noise, nrmse, mag_nrmse, centred_fft, centred_ifft, multicoil_phantom
-export mrt_reconstructor, mrt_regularizer, mrt_algorithm, DEFAULT_LAMBDA, OUTER_ITERATIONS, CG_ITERATIONS, ADMM_RHO
+export ristretto_reconstructor, ristretto_regularizer, ristretto_algorithm, DEFAULT_LAMBDA, OUTER_ITERATIONS, CG_ITERATIONS, ADMM_RHO
 export RADIAL_LAMBDA, RADIAL_ADMM_RHO, default_lambda, admm_rho, PDHG_ITERATIONS, default_maxit
 export time_run, timed_runs, git_ref, tree_hash, node_class, recorded_env, ResultsStore
 

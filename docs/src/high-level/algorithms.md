@@ -1,6 +1,6 @@
 # Optimization Algorithms
 
-MriReconstructionToolbox supports multiple iterative optimization algorithms for solving MRI reconstruction problems. This guide helps you choose and configure the right algorithm for your needs.
+Ristretto supports multiple iterative optimization algorithms for solving MRI reconstruction problems. This guide helps you choose and configure the right algorithm for your needs.
 
 ## Quick Algorithm Selection
 
@@ -27,7 +27,7 @@ Is your problem smooth (no L1, TV, etc.)?
 
 ## ProximalAlgorithms.jl Interface
 
-MriReconstructionToolbox builds on [ProximalAlgorithms.jl](https://github.com/JuliaFirstOrder/ProximalAlgorithms.jl). All algorithms from that package can be used directly. There are four recommended algorithms for MRI reconstruction used by default in `reconstruct()`:
+Ristretto builds on [ProximalAlgorithms.jl](https://github.com/JuliaFirstOrder/ProximalAlgorithms.jl). All algorithms from that package can be used directly. There are four recommended algorithms for MRI reconstruction used by default in `reconstruct()`:
 - `CGNR`: Conjugate Gradient Normal Residual for quadratic problems
 - `LBFGS`: limited-memory BFGS for smooth, non-quadratic problems (`NCG` solves the same problems)
 - `POGM`: Proximal Optimized Gradient Method for a single non-smooth regularizer (`FISTA` solves the
@@ -46,7 +46,7 @@ All algorithms from this library share a common interface with the following par
 ## Default Algorithms
 
 ```@setup imports
-using MriReconstructionToolbox
+using Ristretto
 using GeometricMedicalPhantoms
 using MIRTjim: jim
 using Plots
@@ -132,7 +132,7 @@ The natural choice for SENSE is the diagonal image-domain approximation of `𝒜
 `Σ_c |S_c|² + λ`:
 
 ```@example imports
-using MriReconstructionToolbox.AbstractOperators: DiagOp
+using Ristretto.AbstractOperators: DiagOp
 coverage = real(sum(abs2, unname(smaps); dims = 3)[:, :, 1])
 P⁻¹ = DiagOp(ComplexF32.(1 ./ (coverage .+ 1.0f-4)))
 img_pc = reconstruct(
@@ -473,7 +473,7 @@ img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(), maxit =
 img = reconstruct(acq, IterativeReconstruction(reg; algorithm = FISTA(), maxit = 100, reltol = 0))
 ```
 
-MRT's tolerance is **relative**, which is why it is called `reltol`: the absolute threshold handed
+Ristretto's tolerance is **relative**, which is why it is called `reltol`: the absolute threshold handed
 to the solver is `max(10*eps, reltol * maximum(abs, x₀))`. `ProximalAlgorithms`' own `tol`, on the
 algorithm object, is absolute.
 
@@ -509,7 +509,7 @@ takes a callback that the solver invokes once per iteration with a single `Named
 single `reconstruct` call is enough to plot error against iteration *and* against wall-clock time:
 
 ```julia
-using MriReconstructionToolbox
+using Ristretto
 
 nrmse(x, ref) = sqrt(sum(abs2, x .- ref) / sum(abs2, ref))
 
@@ -595,7 +595,7 @@ img = reconstruct(acq, IterativeReconstruction(reg; algorithm = algorithms))
 ### Custom Stopping Criteria
 
 ```julia
-using MriReconstructionToolbox.ProximalAlgorithms
+using Ristretto.ProximalAlgorithms
 
 # Custom stopping function
 function my_stop(iter, state)

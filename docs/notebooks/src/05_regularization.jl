@@ -17,7 +17,7 @@
 # %% [markdown]
 # # 5 — Regularization
 #
-# Undersampled reconstruction is ill-posed: many images explain the measured samples. MRT solves
+# Undersampled reconstruction is ill-posed: many images explain the measured samples. Ristretto solves
 #
 # $$ \min_x \tfrac12\|\mathcal{A}x - y\|_2^2 + \sum_i \lambda_i R_i(x) $$
 #
@@ -40,8 +40,8 @@
 include("NotebookUtils.jl")
 using .NotebookUtils
 
-using MriReconstructionToolbox
-using MriReconstructionToolbox: get_operator
+using Ristretto
+using Ristretto: get_operator
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities,
     create_tubes_phantom, TubesIntensities
 using MIRTjim: jim
@@ -328,7 +328,7 @@ jim(
 # piecewise-constant images, which is why it preserves edges better than any of the terms above —
 # and why, at too large a λ, it renders smooth intensity variation as a flight of steps
 # (*staircasing*), the artefact the second-order terms below exist to remove. The finite-difference
-# operator is not tight, so this term cannot be composed into a single proximal map: MRT solves it
+# operator is not tight, so this term cannot be composed into a single proximal map: Ristretto solves it
 # with ADMM rather than the proximal-gradient default (POGM).
 #
 # **References:**
@@ -544,7 +544,7 @@ println("δ from the 15th percentile of |∇x_direct|: ", round(δ, digits = 5))
 
 # A larger iteration budget than the other terms in this notebook get, and for a reason worth
 # knowing. Huber is the only *smooth* regularizer here, so it joins the data term in `f` rather
-# than becoming a proximal term `g`. MRT sizes the proximal-gradient step from the encoding
+# than becoming a proximal term `g`. Ristretto sizes the proximal-gradient step from the encoding
 # operator alone (`Lf = n‖𝒜‖²`, notebook 06 §7), which does not see the curvature the Huber term
 # adds, so the step is a little too long for this `f` and the solver spends iterations correcting
 # instead of descending. It converges to the same place — it just takes longer to get there.
@@ -557,7 +557,7 @@ println("δ from the 15th percentile of |∇x_direct|: ", round(δ, digits = 5))
 # least-squares model, and why the parser never offers it this one. The classical way to get CG's
 # speed here is *quadratic majorization* (Fessler's optimization transfer): replace the Huber
 # term at each outer step by a weighted quadratic that touches it at the current iterate, and
-# solve that inner least-squares problem with CG. MRT has no such surrogate — it hands the term to
+# solve that inner least-squares problem with CG. Ristretto has no such surrogate — it hands the term to
 # the proximal-gradient family as a smooth function and pays the iterations instead.
 x_huber = show_recon(
     IterativeReconstruction(EdgePreservingRoughness2D(1.0f-3; δ = δ); maxit = 300, reltol = 0.0),
@@ -681,12 +681,12 @@ jim(
 # **Availability in other toolboxes:**
 #
 # - MRIReco.jl — `PlugAndPlayRegularization`, which takes a Julia callable: the closest match to
-#   MRT's interface.
+#   Ristretto's interface.
 # - BART — `pics -R TF:{graph}:λ`, a plug-and-play prior restricted to a denoiser exported as a
 #   TensorFlow graph, a narrower interface than "any callable".
 # - SigPy — none.
 #
-# No denoiser ships with MRT — BM3D or a trained network are the usual choices. To show the
+# No denoiser ships with Ristretto — BM3D or a trained network are the usual choices. To show the
 # wiring (and to check it), a soft-thresholding "denoiser" reproduces the proximal operator of
 # `L1Image` exactly; the two reconstructions then agree to a couple of percent, the remaining
 # difference coming from the adaptive step size (the plug-and-play term has no objective value to
@@ -718,7 +718,7 @@ x_l1_ista = reconstruct(
 println("‖PnP − L1Image‖/‖L1Image‖ = ", round(norm(x_pnp - x_l1_ista) / norm(x_l1_ista), digits = 6))
 
 # %% [markdown]
-# (With this MRT version, the accelerated proximal-gradient path rejects the term at
+# (With this Ristretto version, the accelerated proximal-gradient path rejects the term at
 # problem-parsing time — both `POGM` and `FISTA` require a convex proximable term — while `ISTA`
 # and `ADMM` work.)
 
@@ -815,7 +815,7 @@ jim(x_joint; title = "JointSparsity — three echoes", nrow = 1, size = (900, 30
 # The closest building block elsewhere is a plain ℓ₁ penalty applied to a manually formed
 # difference image.
 #
-# MRT picks the solver automatically — two non-smooth terms together mean ADMM, without needing
+# Ristretto picks the solver automatically — two non-smooth terms together mean ADMM, without needing
 # `algorithm = ADMM()` spelled out.
 
 # %%
@@ -840,7 +840,7 @@ jim(x_piccs; title = "reference-constrained reconstruction", size = (400, 350))
 # like, so unlike every penalty above they cost no accuracy where they are true: a proton density
 # or a $T_2$ map is non-negative as a matter of physics. Their natural home is quantitative maps
 # and magnitude-only models. The catch is that a standard MRI reconstruction produces a *complex*
-# image, for which "non-negative" is not defined — MRT therefore throws by default and offers
+# image, for which "non-negative" is not defined — Ristretto therefore throws by default and offers
 # `complex_handling = :real` (below) to project onto the real non-negative orthant instead.
 #
 # **References:** the projection itself is elementary — it is the clamp — so the reference worth
@@ -858,7 +858,7 @@ jim(x_piccs; title = "reference-constrained reconstruction", size = (400, 350))
 #   the image to be real-valued (there is no `-R POS`).
 # - SigPy — `sigpy.prox.BoxConstraint(shape, lower, upper)`, with `lower = 0` for non-negativity.
 # - MRIReco.jl — `PositiveRegularization()` for non-negativity and `RealRegularization()` for the
-#   real-valued constraint, both of which take the real part the way MRT's `:real` handling does.
+#   real-valued constraint, both of which take the real part the way Ristretto's `:real` handling does.
 
 # %%
 println(NonNegative())
@@ -889,7 +889,7 @@ side_by_side(x_tv_only, x_tv_pos; titles = ("TV alone", "TV + NonNegative(:real)
 # %% [markdown]
 # ## 9. Combining terms, and choosing λ
 #
-# Terms are simply listed; MRT picks a solver that can handle the combination (ADMM, in
+# Terms are simply listed; Ristretto picks a solver that can handle the combination (ADMM, in
 # practice, as soon as there is more than one non-smooth term or a non-tight operator) — no
 # `algorithm = ...` keyword is needed here either.
 

@@ -9,14 +9,14 @@
 # least 16 cores (the largest thread count in the default matrix).
 #
 # Suites:
-#   --suite=comparison   benchmark/comparison/scripts/run_all.jl (MRT vs BART/SigPy/MRIReco/MIRT/MRpro)
-#   --suite=harness      benchmark/run.jl (MRT only, every catalog case and method)
+#   --suite=comparison   benchmark/comparison/scripts/run_all.jl (Ristretto vs BART/SigPy/MRIReco/MIRT/MRpro)
+#   --suite=harness      benchmark/run.jl (Ristretto only, every catalog case and method)
 #
 # Matrix dimensions (each a comma-separated list):
 #   --matrix-threads=1,2,4,8,16          thread counts (default: 1,2,4,8,16)
 #   --matrix-backends=openblas,mkl       BLAS backends (default: both)
-#   --matrix-refs=master:/path,perf:/path   harness only: MRT checkouts to measure, each passed to
-#                                        run.jl as --mrt=<path> --ref-name=<name>. Default: this
+#   --matrix-refs=master:/path,perf:/path   harness only: Ristretto checkouts to measure, each passed to
+#                                        run.jl as --ristretto=<path> --ref-name=<name>. Default: this
 #                                        checkout. A third field redirects dev'd packages of that
 #                                        ref (run.jl --dev), `+` joining several:
 #                                        perf:/path:NestedThreading=/nt+OperatorCore=/oc
@@ -39,7 +39,7 @@
 #                      the fullest domain that still fits, so small tasks fill up the same L3 and
 #                      domain and leave the others free for large ones. Packed tasks share L3 and
 #                      memory bandwidth with their neighbours, so their results get a node class of
-#                      their own (MRT_BENCH_PLACEMENT=shared, see node_class in utils/harness.jl) and
+#                      their own (RISTRETTO_BENCH_PLACEMENT=shared, see node_class in utils/harness.jl) and
 #                      are never reused for, or silently compared with, an isolated run.
 #   --pack-mem-gb=G    memory reserved per packed task (default 6 for the harness, whose tasks peak
 #                      at 4.5 GB; 12 for the comparison suite). A task starts on a domain only while
@@ -154,14 +154,14 @@ if [ "$PACK" = 1 ]; then
             exit 1
         fi
     done
-    echo "### --pack: tasks share domains on disjoint cores, ${PACK_MEM_GB} GB reserved per task, results tagged MRT_BENCH_PLACEMENT=shared"
+    echo "### --pack: tasks share domains on disjoint cores, ${PACK_MEM_GB} GB reserved per task, results tagged RISTRETTO_BENCH_PLACEMENT=shared"
     # Memory-bound cases lose most to packing. Measured on the same code, packed / isolated
     # (EPYC 7763, 20 tasks on 8 domains, 2026-09-24): 3D 1.42x geomean (up to 3.2x), cine 1.24x,
     # multislice 1.18x (up to 4.0x), against 1.03-1.07x for the 2D and radial cases.
     heavy_ids="shepp_logan_3d_8ch_cartesian shepp_logan_multislice_8ch_cartesian torso_cine_8ch_cartesian torso_cine_8ch_radial"
     real_heavy_ids="real_3d_multichannel_cartesian real_multislice_multichannel_cartesian real_cine_multichannel_cartesian real_cine_multichannel_radial"
     case_patterns=""
-    [ "${MRT_BENCH_REAL_DATA:-}" = 1 ] && heavy_ids="$heavy_ids $real_heavy_ids"
+    [ "${RISTRETTO_BENCH_REAL_DATA:-}" = 1 ] && heavy_ids="$heavy_ids $real_heavy_ids"
     for a in "${PASS_ARGS[@]}"; do
         case "$a" in
             --cases=*) case_patterns="${a#*=}" ;;
@@ -296,7 +296,7 @@ launch_task() {  # threads backend ref_index env_index repeat domain cores...
     if [ -n "$ref" ]; then
         local ref_name ref_path ref_dev
         IFS=: read -r ref_name ref_path ref_dev <<<"$ref"
-        args+=(--ref-name="$ref_name" --mrt="$ref_path")
+        args+=(--ref-name="$ref_name" --ristretto="$ref_path")
         [ -n "$ref_dev" ] && args+=(--dev="${ref_dev//+/,}")
         tag="${ref_name}_$tag"
     fi
@@ -320,7 +320,7 @@ launch_task() {  # threads backend ref_index env_index repeat domain cores...
     numactl --physcpubind="$pin" --membind="$domain" \
         /usr/bin/time -v \
         env JULIA_NUM_THREADS="$threads" OMP_NUM_THREADS="$threads" OPENBLAS_NUM_THREADS="$threads" \
-            MKL_NUM_THREADS="$threads" MRT_BENCH_PLACEMENT="$placement" "${envs[@]}" \
+            MKL_NUM_THREADS="$threads" RISTRETTO_BENCH_PLACEMENT="$placement" "${envs[@]}" \
         "$JULIA_BIN" --project="$PROJECT_DIR" -t "$threads" "$SCRIPT_PATH" \
             "${args[@]}" "${PASS_ARGS[@]}" \
         >"$log" 2>&1 &

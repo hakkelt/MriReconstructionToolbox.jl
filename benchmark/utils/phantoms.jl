@@ -1,7 +1,7 @@
 # Phantoms and coil sensitivity maps for the benchmark case catalog (`cases.jl`).
 #
-# Everything here is built from GeometricMedicalPhantoms and closed-form maps only -- no MRT
-# simulation code -- so two MRT checkouts measured against each other receive byte-identical
+# Everything here is built from GeometricMedicalPhantoms and closed-form maps only -- no Ristretto
+# simulation code -- so two Ristretto checkouts measured against each other receive byte-identical
 # inputs. Images and maps are `ComplexF32`, the precision every toolkit reconstructs in.
 
 """
@@ -32,7 +32,7 @@ shepp_logan_volume(n::Int) = create_shepp_logan_phantom(n, n, n; ti = MRISheppLo
 
 `(nx, ny, ncoils)` Gaussian sensitivities centred on a ring at 80% of the half field of view, each
 with a constant phase `2π(c - 1)/ncoils`. Deliberately **not** normalised (`Σ|Sᶜ|² ≠ 1`): a
-normalised map set gives MRT a known operator norm and so a free step size, while MRIReco's
+normalised map set gives Ristretto a known operator norm and so a free step size, while MRIReco's
 `SensitivityOp` and BART's `pics` normalise nothing.
 """
 function coil_maps_2d(nx::Int, ny::Int, ncoils::Int)
@@ -59,7 +59,7 @@ half field of view for two rings), `ncoils ÷ rings` coils per ring, each ring r
 coil spacing against the previous one.
 
 These are genuinely 3D: sensitivity varies along `z` as much as in-plane, so a 3D encode has coil
-information along its third axis. MRT's own `coil_sensitivities` repeats 2D maps along `z`, which
+information along its third axis. Ristretto's own `coil_sensitivities` repeats 2D maps along `z`, which
 gives a 3D parallel-imaging problem no leverage along `z` at all.
 """
 function coil_maps_3d(nx::Int, ny::Int, nz::Int, ncoils::Int; rings::Int = 2)
@@ -113,7 +113,7 @@ end
     centred_fft(x, dims) / centred_ifft(x, dims)
 
 The orthonormally unscaled DFT with the origin at the array centre on both sides,
-`fftshift(fft(ifftshift(x, dims), dims), dims)`; the convention MRT's `shifted_image_dims` and
+`fftshift(fft(ifftshift(x, dims), dims), dims)`; the convention Ristretto's `shifted_image_dims` and
 every competitor's layout converter assume.
 """
 centred_fft(x, dims) = fftshift(fft(ifftshift(x, dims), dims), dims)

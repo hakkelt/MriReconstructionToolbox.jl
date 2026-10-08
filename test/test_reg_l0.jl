@@ -16,21 +16,21 @@ using TestItems
         x = randn(8, 8)
         @test get_operator(L0Image(threshold = 0.5), x; threaded = false) isa Eye
         named = NamedDimsArray{(:x, :y)}(randn(8, 8))
-        @test get_operator(L0Image(threshold = 0.5), named; threaded = false) isa MriReconstructionToolbox.NamedDimsOp
+        @test get_operator(L0Image(threshold = 0.5), named; threaded = false) isa Ristretto.NamedDimsOp
     end
 
     @testset "calculate counts non-zeros (threshold form)" begin
         x = zeros(4, 4)
         x[1, 1] = 1.0
         x[2, 3] = -2.0
-        @test MriReconstructionToolbox.calculate(L0Image(threshold = 0.5), x) ≈ 1.0
+        @test Ristretto.calculate(L0Image(threshold = 0.5), x) ≈ 1.0
     end
 
     @testset "calculate is the indicator of the sparsity ball (count form)" begin
         x = zeros(4, 4)
         x[1:3] .= 1.0
-        @test MriReconstructionToolbox.calculate(L0Image(count = 3), x) == 0
-        @test MriReconstructionToolbox.calculate(L0Image(count = 2), x) == Inf
+        @test Ristretto.calculate(L0Image(count = 3), x) == 0
+        @test Ristretto.calculate(L0Image(count = 2), x) == Inf
     end
 
     @testset "the prox keeps large coefficients untouched (threshold form)" for λ in (0.05, 0.5)
@@ -57,25 +57,25 @@ using TestItems
     end
 
     @testset "get_affected_dims" begin
-        @test MriReconstructionToolbox.get_affected_dims(L0Image(threshold = 0.5), nothing, 1:4) == ()
-        @test MriReconstructionToolbox.get_affected_dims(L0Image(count = 4), nothing, (:x, :y, :slice)) ==
+        @test Ristretto.get_affected_dims(L0Image(threshold = 0.5), nothing, 1:4) == ()
+        @test Ristretto.get_affected_dims(L0Image(count = 4), nothing, (:x, :y, :slice)) ==
             (:x, :y, :slice)
     end
 
     @testset "scale_regularization" begin
         # ‖·‖₀ is homogeneous of degree 0, so λ picks up factor², unlike the ℓ₁ terms.
-        reg = MriReconstructionToolbox.scale_regularization(L0Image(threshold = 0.2), 3.0)
+        reg = Ristretto.scale_regularization(L0Image(threshold = 0.2), 3.0)
         @test reg.threshold ≈ 1.8
 
         # The same invariant every term must satisfy: on an image scaled by `factor`, the scaled term
         # equals `factor²` times the original term, matching how the data term scales.
         x = randn(6, 6)
-        @test MriReconstructionToolbox.calculate(reg, x .* 3.0) ≈
-            3.0^2 * MriReconstructionToolbox.calculate(L0Image(threshold = 0.2), x)
+        @test Ristretto.calculate(reg, x .* 3.0) ≈
+            3.0^2 * Ristretto.calculate(L0Image(threshold = 0.2), x)
 
         # The count form is scale-invariant: no-op.
         count_reg = L0Image(count = 7)
-        @test MriReconstructionToolbox.scale_regularization(count_reg, 3.0) === count_reg
+        @test Ristretto.scale_regularization(count_reg, 3.0) === count_reg
     end
 end
 
@@ -94,21 +94,21 @@ end
     end
 
     @testset "get_affected_dims" begin
-        @test MriReconstructionToolbox.get_affected_dims(
+        @test Ristretto.get_affected_dims(
             L0Wavelet2D(threshold = 0.5), nothing, (:x, :y, :time)
         ) == (:x, :y)
-        @test MriReconstructionToolbox.get_affected_dims(
+        @test Ristretto.get_affected_dims(
             L0Wavelet3D(threshold = 0.5), nothing, 1:4
         ) == (1, 2, 3)
         # The count form couples the whole array, regardless of domain, so it blocks task splitting
         # over every dimension, not just the ones the wavelet transform touches.
-        @test MriReconstructionToolbox.get_affected_dims(
+        @test Ristretto.get_affected_dims(
             L0Wavelet2D(count = 4), nothing, (:x, :y, :time)
         ) == (:x, :y, :time)
     end
 
     @testset "scale_regularization is a no-op for the count form" begin
         reg = L0Wavelet2D(count = 7)
-        @test MriReconstructionToolbox.scale_regularization(reg, 3.0) === reg
+        @test Ristretto.scale_regularization(reg, 3.0) === reg
     end
 end

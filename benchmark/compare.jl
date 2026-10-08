@@ -1,4 +1,4 @@
-# Compare two refs measured by the MRT harness (benchmark/run.jl).
+# Compare two refs measured by the Ristretto harness (benchmark/run.jl).
 #
 #   julia --project=benchmark benchmark/compare.jl <A> <B> [--threads=1,8] [--backend=openblas]
 #                                                          [--cases=pat,...] [--methods=tv,...]

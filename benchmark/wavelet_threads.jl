@@ -6,8 +6,8 @@
 #
 # Run it through benchmark/slurm/wavelet_threads.sh, which sweeps the thread counts.
 
-using MriReconstructionToolbox
-using MriReconstructionToolbox: AbstractOperators, WaveletOperators
+using Ristretto
+using Ristretto: AbstractOperators, WaveletOperators
 const BatchOp = AbstractOperators.BatchOp
 const WaveletOp = WaveletOperators.WaveletOp
 using Wavelets: wavelet, WT

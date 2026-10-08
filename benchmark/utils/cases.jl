@@ -1,10 +1,10 @@
 # The benchmark case catalog: one toolkit-neutral description of every reconstruction problem the
-# MRT harness (`benchmark/run.jl`) and the comparison suite (`benchmark/comparison/`) time.
+# Ristretto harness (`benchmark/run.jl`) and the comparison suite (`benchmark/comparison/`) time.
 #
 # A case holds plain arrays in fixed layouts (see `BenchCase`), generated only from
-# GeometricMedicalPhantoms, FFTW and seeded RNGs. MRT is used for exactly two things: simulating
+# GeometricMedicalPhantoms, FFTW and seeded RNGs. Ristretto is used for exactly two things: simulating
 # non-Cartesian k-space (its NFFT, pinned at a high-accuracy operating point) and, for real data,
-# estimating ESPIRiT maps. Everything toolkit-specific -- MRT's `AcquisitionInfo`, BART's and
+# estimating ESPIRiT maps. Everything toolkit-specific -- Ristretto's `AcquisitionInfo`, BART's and
 # SigPy's layouts -- is a converter from these arrays, never a second source of data.
 
 """
@@ -25,7 +25,7 @@ One benchmark problem. Array layouts, by `family`:
   (`(sample, spoke)`).
 - `smaps === nothing` for a single-channel case; its `kspace` still has a coil axis of length 1.
 - k-space is unit-RMS normalised (`norm_ksp`) and carries complex Gaussian noise at
-  `MRT_BENCH_SNR_DB` (30 dB) before undersampling, so λ calibrated on one case transfers to another.
+  `RISTRETTO_BENCH_SNR_DB` (30 dB) before undersampling, so λ calibrated on one case transfers to another.
 - `reference` is the ground truth: the phantom for synthetic cases, the fully sampled
   reconstruction for real ones (which are undersampled retrospectively).
 - `heavy` cases (the volume and the cine series) are timed once after one warm-up, not min-of-3.
@@ -101,7 +101,7 @@ const SYNTHETIC_CASES = (
 """
     HARNESS_ONLY_CASES
 
-Synthetic cases the MRT harness times but the comparison suite leaves out, because not every
+Synthetic cases the Ristretto harness times but the comparison suite leaves out, because not every
 toolkit converter handles their layout.
 """
 const HARNESS_ONLY_CASES = ("shepp_logan_multislice_8ch_radial",)
@@ -122,9 +122,9 @@ const REAL_CASES = (
 )
 
 """
-    case_ids(; real = env_flag("MRT_BENCH_REAL_DATA"), synthetic = true) -> Vector{String}
+    case_ids(; real = env_flag("RISTRETTO_BENCH_REAL_DATA"), synthetic = true) -> Vector{String}
 """
-function case_ids(; real::Bool = env_flag("MRT_BENCH_REAL_DATA"), synthetic::Bool = true)
+function case_ids(; real::Bool = env_flag("RISTRETTO_BENCH_REAL_DATA"), synthetic::Bool = true)
     ids = String[]
     synthetic && append!(ids, SYNTHETIC_CASES)
     real && append!(ids, first.(REAL_CASES))
@@ -144,21 +144,21 @@ filter_case_ids(ids, patterns) =
 """
     small_mode() -> Bool
 
-`MRT_BENCH_SMALL=1` shrinks every case (32² images, 3 slices, 32³, 8 frames, 4 coils) for smoke
+`RISTRETTO_BENCH_SMALL=1` shrinks every case (32² images, 3 slices, 32³, 8 frames, 4 coils) for smoke
 runs on a login node and for the TestItem. Results are tagged with it and never compared with
 full-size ones.
 """
-small_mode() = env_flag("MRT_BENCH_SMALL")
+small_mode() = env_flag("RISTRETTO_BENCH_SMALL")
 
 """
     cine_frames() -> Int
 
-Frame count of the cine cases: `MRT_BENCH_CINE_FRAMES`, default 30 (one cardiac cycle); 8 in small
+Frame count of the cine cases: `RISTRETTO_BENCH_CINE_FRAMES`, default 30 (one cardiac cycle); 8 in small
 mode.
 """
-cine_frames() = small_mode() ? 8 : parse(Int, get(ENV, "MRT_BENCH_CINE_FRAMES", "30"))
+cine_frames() = small_mode() ? 8 : parse(Int, get(ENV, "RISTRETTO_BENCH_CINE_FRAMES", "30"))
 
-snr_db() = parse(Float64, get(ENV, "MRT_BENCH_SNR_DB", "30"))
+snr_db() = parse(Float64, get(ENV, "RISTRETTO_BENCH_SNR_DB", "30"))
 
 function _dims()
     return small_mode() ?
@@ -315,13 +315,13 @@ end
     _nfft_forward(images, traj) -> Array{ComplexF32, 3}
 
 Non-Cartesian forward transform of each `(x, y)` image in `images` (`(x, y, k)`), returned as
-`(sample, spoke, k)`. Uses MRT's NFFT operator at `m = 8, σ = 2.0` -- far more accurate than any
+`(sample, spoke, k)`. Uses Ristretto's NFFT operator at `m = 8, σ = 2.0` -- far more accurate than any
 operating point a reconstruction uses -- single-threaded, so the simulated data are the same across
 thread counts and checkouts.
 """
 function _nfft_forward(images::AbstractArray{<:Complex, 3}, traj::AbstractArray{Float32, 3})
     ns, nsp = size(traj, 2), size(traj, 3)
-    op = MriReconstructionToolbox.get_fourier_operator(
+    op = Ristretto.get_fourier_operator(
         zeros(ComplexF32, ns, nsp), size(images)[1:2], traj; threaded = false, m = 8, sigma = 2.0,
     )
     out = Array{ComplexF32}(undef, ns, nsp, size(images, 3))
@@ -331,12 +331,12 @@ function _nfft_forward(images::AbstractArray{<:Complex, 3}, traj::AbstractArray{
     return out
 end
 
-# ---------------------------------------------------------------- MRT adapter
+# ---------------------------------------------------------------- Ristretto adapter
 
 """
-    mrt_acquisition(c::BenchCase; dcf = false) -> AcquisitionInfo
+    ristretto_acquisition(c::BenchCase; dcf = false) -> AcquisitionInfo
 
-The case as MRT is meant to be given it: Cartesian k-space compacted to the sampled phase encodes
+The case as Ristretto is meant to be given it: Cartesian k-space compacted to the sampled phase encodes
 with `subsampling` recording which (a `Vector` of per-frame specs for cine), non-Cartesian k-space
 with its trajectory, and `dcf = true` attaching the ramp DCF for a gridding reconstruction.
 
@@ -345,8 +345,8 @@ The volume case is built from plain arrays with integer `shifted_image_dims`: a 
 because the map check demands a `:kz` axis (fixed on `fix/3d-subsampled-kspace-dimnames`; the
 plain arrays stay until every measured ref carries the fix).
 """
-function mrt_acquisition(c::BenchCase; dcf::Bool = false)
-    c.trajectory === :noncartesian && return _mrt_noncartesian(c; dcf)
+function ristretto_acquisition(c::BenchCase; dcf::Bool = false)
+    c.trajectory === :noncartesian && return _ristretto_noncartesian(c; dcf)
     nx, ny = size(c.kspace, 1), size(c.kspace, 2)
     # Phase encodes are given as a Bool vector, the form `create_sampling_pattern` returns: GRAPPA's
     # pattern check (`to_displayable_mask`) does not accept an index vector.
@@ -392,7 +392,7 @@ function mrt_acquisition(c::BenchCase; dcf::Bool = false)
     throw(ArgumentError("unknown family $(c.family)"))
 end
 
-function _mrt_noncartesian(c::BenchCase; dcf::Bool)
+function _ristretto_noncartesian(c::BenchCase; dcf::Bool)
     names = c.family === :cine ? (:sample, :spoke, :coil, :time) :
         c.family === :multislice ? (:sample, :spoke, :coil, :z) : (:sample, :spoke, :coil)
     map_names = c.family === :multislice ? (:x, :y, :coil, :z) : (:x, :y, :coil)
@@ -426,14 +426,14 @@ problem, and so on. `penalty_of` is the identity for every other method.
 const PDHG_METHODS = Dict(:tv_pd => :tv, :atv_pd => :atv, :ttv_pd => :ttv)
 
 """
-    MRT_ONLY_METHODS
+    RISTRETTO_ONLY_METHODS
 
-Methods that time another MRT algorithm on a penalty, with no counterpart in the other toolkits,
+Methods that time another Ristretto algorithm on a penalty, with no counterpart in the other toolkits,
 mapped to that penalty: `:wavelet_pogm` is `:wavelet`'s problem solved by POGM, `:epr_lbfgs` the
 smooth edge-preserving (Huber) roughness penalty solved by L-BFGS. The comparison suite skips them.
 """
-const MRT_ONLY_METHODS = Dict(:wavelet_pogm => :wavelet, :epr_lbfgs => :epr)
-penalty_of(m::Symbol) = get(PDHG_METHODS, m, get(MRT_ONLY_METHODS, m, m))
+const RISTRETTO_ONLY_METHODS = Dict(:wavelet_pogm => :wavelet, :epr_lbfgs => :epr)
+penalty_of(m::Symbol) = get(PDHG_METHODS, m, get(RISTRETTO_ONLY_METHODS, m, m))
 
 """
     applicable_methods(c::BenchCase) -> Vector{Symbol}
@@ -443,7 +443,7 @@ gridding for radial), CG-SENSE where there is more than one coil, spatial sparsi
 anisotropic TV, L1-wavelet, TGV) for static images, and temporal priors (global and locally low rank, temporal TV) for cine,
 along with the spatial L1-wavelet of each frame.
 Each TV runs twice, by ADMM and by PDHG ([`PDHG_METHODS`](@ref)). Static 2D cases also run
-L1-wavelet by POGM and the edge-preserving roughness penalty by L-BFGS ([`MRT_ONLY_METHODS`](@ref)).
+L1-wavelet by POGM and the edge-preserving roughness penalty by L-BFGS ([`RISTRETTO_ONLY_METHODS`](@ref)).
 TGV is 2D-only here (the 3D variant costs an order of magnitude more per iteration than anything
 else in the catalog).
 """

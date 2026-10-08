@@ -3,14 +3,14 @@ using TestItems
 @testitem "NonNegative and BoxConstraint regularizations" tags = [:regularization] setup = [RegTestSetup] begin
 
     @testset "NonNegative" for threaded in [false, true]
-        @test MriReconstructionToolbox.calculate(NonNegative(), abs.(randn(4, 4)); threaded) == 0
-        @test MriReconstructionToolbox.calculate(NonNegative(), [-1.0 1.0; 1.0 1.0]; threaded) == Inf
+        @test Ristretto.calculate(NonNegative(), abs.(randn(4, 4)); threaded) == 0
+        @test Ristretto.calculate(NonNegative(), [-1.0 1.0; 1.0 1.0]; threaded) == Inf
     end
 
     @testset "BoxConstraint" begin
-        @test MriReconstructionToolbox.calculate(BoxConstraint(0.0, 1.0), rand(4, 4); threaded = false) == 0
-        @test MriReconstructionToolbox.calculate(BoxConstraint(0.0, 1.0), [2.0 0.5]; threaded = false) == Inf
-        @test MriReconstructionToolbox.calculate(
+        @test Ristretto.calculate(BoxConstraint(0.0, 1.0), rand(4, 4); threaded = false) == 0
+        @test Ristretto.calculate(BoxConstraint(0.0, 1.0), [2.0 0.5]; threaded = false) == Inf
+        @test Ristretto.calculate(
             BoxConstraint(zeros(1, 2), ones(1, 2)), [0.5 0.5]; threaded = false
         ) == 0
         @test_throws ArgumentError BoxConstraint(1.0, 0.0)
@@ -18,8 +18,8 @@ using TestItems
 
     @testset "complex data is rejected by default" begin
         x = Variable(randn(ComplexF64, 4, 4))
-        @test_throws ArgumentError MriReconstructionToolbox.materialize(NonNegative(), x; threaded = false)
-        @test_throws ArgumentError MriReconstructionToolbox.materialize(
+        @test_throws ArgumentError Ristretto.materialize(NonNegative(), x; threaded = false)
+        @test_throws ArgumentError Ristretto.materialize(
             BoxConstraint(0.0, 1.0), x; threaded = false
         )
     end
@@ -30,21 +30,21 @@ using TestItems
         x_var = Variable(copy(x_complex))
 
         reg_nn = NonNegative(; complex_handling = :real)
-        @test MriReconstructionToolbox.calculate(reg_nn, x_complex; threaded = false) == Inf
-        term_nn = MriReconstructionToolbox.materialize(reg_nn, x_var; threaded = false)
+        @test Ristretto.calculate(reg_nn, x_complex; threaded = false) == Inf
+        term_nn = Ristretto.materialize(reg_nn, x_var; threaded = false)
         y_nn = similar(x_complex)
         v_nn = ProximalCore.prox!(y_nn, term_nn.f, x_complex, 1.0)
         @test v_nn == 0
         @test y_nn ≈ [1.0 0.5; 0.0 2.0]
 
         reg_box = BoxConstraint(0.0, 1.0; complex_handling = :real)
-        term_box = MriReconstructionToolbox.materialize(reg_box, x_var; threaded = false)
+        term_box = Ristretto.materialize(reg_box, x_var; threaded = false)
         y_box = similar(x_complex)
         v_box = ProximalCore.prox!(y_box, term_box.f, x_complex, 1.0)
         @test v_box == 0
         @test y_box ≈ [1.0 0.5; 0.0 1.0]
 
-        @test MriReconstructionToolbox.scale_regularization(reg_box, 2.0).complex_handling == :real
+        @test Ristretto.scale_regularization(reg_box, 2.0).complex_handling == :real
     end
 
     @testset "invalid complex_handling is rejected" begin
@@ -58,26 +58,26 @@ using TestItems
         @test get_operator(BoxConstraint(0.0, 1.0), x; threaded = false) isa Eye
         ksp = randn(ComplexF32, 4, 4)
         info = AcquisitionInfo(ksp; image_size = (4, 4))
-        @test MriReconstructionToolbox.get_affected_dims(NonNegative(), info, 1:2) == ()
-        @test MriReconstructionToolbox.get_affected_dims(BoxConstraint(0.0, 1.0), info, 1:2) == ()
+        @test Ristretto.get_affected_dims(NonNegative(), info, 1:2) == ()
+        @test Ristretto.get_affected_dims(BoxConstraint(0.0, 1.0), info, 1:2) == ()
         # array-valued bounds have the size of the full image, so task splitting must be blocked
-        @test MriReconstructionToolbox.get_affected_dims(
+        @test Ristretto.get_affected_dims(
             BoxConstraint(zeros(4, 4), ones(4, 4)), info, 1:2
         ) == (1, 2)
     end
 
     @testset "scale_regularization" begin
-        @test MriReconstructionToolbox.scale_regularization(NonNegative(), 2.5) isa NonNegative
-        scaled = MriReconstructionToolbox.scale_regularization(BoxConstraint(0.5, 1.0), 2.0)
+        @test Ristretto.scale_regularization(NonNegative(), 2.5) isa NonNegative
+        scaled = Ristretto.scale_regularization(BoxConstraint(0.5, 1.0), 2.0)
         @test scaled.lower ≈ 1.0
         @test scaled.upper ≈ 2.0
     end
 end
 
 @testitem "TotalVariation2D + NonNegative(:real) selects ADMM and beats TV alone" tags = [:regularization, :reconstruction, :minimizer] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using LinearAlgebra: norm
     using Random
 

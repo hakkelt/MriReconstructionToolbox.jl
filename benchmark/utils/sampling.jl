@@ -1,5 +1,5 @@
 # Sampling patterns for the benchmark case catalog. Every pattern takes an explicit RNG, so a case
-# is the same on every machine and in every process (MRT's `create_sampling_pattern` draws from the
+# is the same on every machine and in every process (Ristretto's `create_sampling_pattern` draws from the
 # global RNG, which is why it is not used here).
 
 """
@@ -76,7 +76,7 @@ end
     GOLDEN_ANGLE
 
 The golden-angle increment for radial spokes (lines, so angles are taken modulo π):
-`π (√5 - 1) / 2 ≈ 111.25°`. The same increment as MRT's `GoldenAngle()`.
+`π (√5 - 1) / 2 ≈ 111.25°`. The same increment as Ristretto's `GoldenAngle()`.
 """
 const GOLDEN_ANGLE = π * (sqrt(5) - 1) / 2
 
@@ -84,7 +84,7 @@ const GOLDEN_ANGLE = π * (sqrt(5) - 1) / 2
     golden_angle_radial(nsamples, nspokes; first_spoke = 0) -> Array{Float32, 3}
 
 `(2, nsamples, nspokes)` radial trajectory in cycles/sample (`[-0.5, 0.5)`, the NFFT.jl convention
-MRT and the other toolkits share), coordinate 1 along `x`. Spoke `j` is at angle
+Ristretto and the other toolkits share), coordinate 1 along `x`. Spoke `j` is at angle
 `(first_spoke + j - 1) · GOLDEN_ANGLE`; passing `first_spoke = (t - 1) nspokes` continues the
 sequence frame after frame, which is how a golden-angle cine rotates its trajectory.
 """

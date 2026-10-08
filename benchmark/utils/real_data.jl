@@ -22,20 +22,20 @@
 # | cine, non-Cartesian | open USC speech spiral `sub001/2drt/09_northwind1_r1`, 3 of 13 arms per frame | |
 #
 # The breast DCE series would be the better radial cine (golden-angle radial, spokes binned into
-# frames), but binned golden-angle spokes give every frame its own trajectory, which MRT cannot
+# frames), but binned golden-angle spokes give every frame its own trajectory, which Ristretto cannot
 # represent yet; the spiral series repeats its arms every frame, so it shares one trajectory.
 #
 # A gated source counts as available when its file is already cached or signed download URLs are
-# registered and unexpired (`MRITestData.set_fastmri_urls!`). `MRT_BENCH_REAL_PREFER=open|gated`
+# registered and unexpired (`MRITestData.set_fastmri_urls!`). `RISTRETTO_BENCH_REAL_PREFER=open|gated`
 # moves that kind to the front of every list. The source actually used is recorded in
 # `BenchCase.source`.
 #
 # ## Caching
 #
 # Preparing a case is expensive (the breast file alone takes 80 s to load; ESPIRiT on a 3D volume
-# takes minutes) and its maps come from MRT's own estimator, which could differ between two MRT
+# takes minutes) and its maps come from Ristretto's own estimator, which could differ between two Ristretto
 # checkouts under comparison. So every prepared case is serialised once, keyed by case id and
-# dataset, under `MRT_BENCH_WORK_DIR` (default `<download path>/mrt_benchmark`), and every later run
+# dataset, under `RISTRETTO_BENCH_WORK_DIR` (default `<download path>/ristretto_benchmark`), and every later run
 # -- of any checkout -- loads those exact arrays.
 
 """
@@ -110,20 +110,20 @@ end
 """
     real_candidates(real_id) -> Vector{RealSource}
 
-The candidate datasets of `real_id`, in the order they are tried (see `MRT_BENCH_REAL_PREFER`).
+The candidate datasets of `real_id`, in the order they are tried (see `RISTRETTO_BENCH_REAL_PREFER`).
 """
 function real_candidates(real_id::AbstractString)
     cands = copy(REAL_SOURCES[real_id])
-    pref = lowercase(get(ENV, "MRT_BENCH_REAL_PREFER", ""))
+    pref = lowercase(get(ENV, "RISTRETTO_BENCH_REAL_PREFER", ""))
     if pref in ("open", "gated")
         sort!(cands; by = s -> string(s.kind) != pref, alg = Base.Sort.DEFAULT_STABLE)
     end
     return cands
 end
 
-work_dir() = get(ENV, "MRT_BENCH_WORK_DIR") do
+work_dir() = get(ENV, "RISTRETTO_BENCH_WORK_DIR") do
     ensure_download_path!()
-    joinpath(string(Base.invokelatest(_mritestdata().get_download_path)), "mrt_benchmark")
+    joinpath(string(Base.invokelatest(_mritestdata().get_download_path)), "ristretto_benchmark")
 end
 
 """
@@ -360,16 +360,16 @@ function _espirit_2d(k::AbstractArray{<:Complex, 3}; calib = 24, kernel = 6)
     acq = CartesianAcquisitionInfo(
         NamedDimsArray{(:kx, :ky, :coil)}(ComplexF32.(k)); is3D = false, shifted_image_dims = (:x, :y),
     )
-    method = MriReconstructionToolbox.ESPIRiT(; calib_size = min(calib, nx, ny), kernel_size = kernel)
-    return Array(unname(MriReconstructionToolbox.estimate_sensitivities(acq; method).sensitivity_maps))
+    method = Ristretto.ESPIRiT(; calib_size = min(calib, nx, ny), kernel_size = kernel)
+    return Array(unname(Ristretto.estimate_sensitivities(acq; method).sensitivity_maps))
 end
 
 function _espirit_3d(k::AbstractArray{<:Complex, 4}; calib = 24, kernel = 6)
     acq = CartesianAcquisitionInfo(
         NamedDimsArray{(:kx, :ky, :kz, :coil)}(ComplexF32.(k)); is3D = true, shifted_image_dims = (:x, :y, :z),
     )
-    method = MriReconstructionToolbox.ESPIRiT(; calib_size = min(calib, size(k)[1:3]...), kernel_size = kernel)
-    return Array(unname(MriReconstructionToolbox.estimate_sensitivities(acq; method).sensitivity_maps))
+    method = Ristretto.ESPIRiT(; calib_size = min(calib, size(k)[1:3]...), kernel_size = kernel)
+    return Array(unname(Ristretto.estimate_sensitivities(acq; method).sensitivity_maps))
 end
 
 # SENSE-optimal coil combination Σ conj(S) x / Σ |S|², coil axis last of the maps' spatial axes.
@@ -411,7 +411,7 @@ function _prepare_breast_radial(real_id, analogue, raw, label, seed; nkeep = 256
     n = nkeep
     k = norm_ksp(k)
     full = _noncartesian_acq(k, traj, ramp_dcf(traj), (n, n))
-    maps = Array(unname(MriReconstructionToolbox.estimate_sensitivities(full; method = MriReconstructionToolbox.ESPIRiT(; calib_size = 24, kernel_size = 6)).sensitivity_maps))
+    maps = Array(unname(Ristretto.estimate_sensitivities(full; method = Ristretto.ESPIRiT(; calib_size = 24, kernel_size = 6)).sensitivity_maps))
     ref = _cgsense_reference(k, traj, maps, (n, n))
     sel = 1:min(nspokes, size(k, 2))
     ksel, tsel = k[:, sel, :], traj[:, :, sel]
@@ -448,7 +448,7 @@ function _prepare_speech_spiral(real_id, analogue, raw, label, seed; narms = 13,
     end
     k = norm_ksp(k)
     full = _noncartesian_acq(k, traj, dcf, (nx, ny))
-    est = MriReconstructionToolbox.estimate_sensitivities(full; method = MriReconstructionToolbox.ESPIRiT(; calib_size = 24, kernel_size = 6))
+    est = Ristretto.estimate_sensitivities(full; method = Ristretto.ESPIRiT(; calib_size = 24, kernel_size = 6))
     maps = Array(unname(est.sensitivity_maps))
     ref = Array(unname(reconstruct(est, DirectReconstruction(); verbosity = Silent())))
     ksel, tsel = k[:, arms, :, :], traj[:, :, arms]
@@ -474,6 +474,6 @@ function _cgsense_reference(k, traj, maps, image_size; maxit = 30)
         trajectory = NamedDimsArray{(:coord, :sample, :spoke)}(traj), image_size,
         sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(ComplexF32.(maps)),
     )
-    m = IterativeReconstruction(; regularization = (), algorithm = MriReconstructionToolbox.CGNR(; maxit, tol = 0.0), maxit, reltol = 0.0)
+    m = IterativeReconstruction(; regularization = (), algorithm = Ristretto.CGNR(; maxit, tol = 0.0), maxit, reltol = 0.0)
     return Array(unname(reconstruct(acq, m; verbosity = Silent())))
 end

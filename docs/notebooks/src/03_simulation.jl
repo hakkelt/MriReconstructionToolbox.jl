@@ -17,7 +17,7 @@
 # %% [markdown]
 # # 3 — Simulation tools
 #
-# MRT has everything needed to fabricate a realistic acquisition: coil sensitivity maps,
+# Ristretto has everything needed to fabricate a realistic acquisition: coil sensitivity maps,
 # sampling-pattern generators, a forward simulator and noise. The phantoms themselves come from
 # [GeometricMedicalPhantoms.jl](https://github.com/hakkelt/GeometricMedicalPhantoms.jl), a separate
 # package. This notebook is a tour of all of them.
@@ -37,8 +37,8 @@
 include("NotebookUtils.jl")
 using .NotebookUtils
 
-using MriReconstructionToolbox
-using MriReconstructionToolbox: parts
+using Ristretto
+using Ristretto: parts
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities,
     create_torso_phantom, generate_respiratory_signal, generate_cardiac_signals
 using MIRTjim: jim
@@ -136,7 +136,7 @@ jim(p1, p2, p3; layout = (1, 3), size = (1000, 320))
 # sparsely. The density profile is either Gaussian or polynomial.
 
 # %%
-using MriReconstructionToolbox: construct_weights
+using Ristretto: construct_weights
 
 function show_density(pdf, label)
     W = construct_weights(pdf, (128,))

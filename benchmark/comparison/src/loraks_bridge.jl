@@ -1,7 +1,7 @@
 """
     LORAKSBridge
 
-Call the authors' MATLAB LORAKS package as a numerical **oracle** for MRT's calibrationless
+Call the authors' MATLAB LORAKS package as a numerical **oracle** for Ristretto's calibrationless
 `StructuredLowRank`, over `.mat` files and a `matlab -batch` subprocess.
 
 # Why a subprocess and not `MATLAB.jl`
@@ -17,7 +17,7 @@ already called from here.
 # Licensing
 
 The LORAKS package is **not** vendored, and must not be. Its licence permits educational,
-research and non-profit use; MriReconstructionToolbox is MIT, which grants commercial use, so
+research and non-profit use; Ristretto is MIT, which grants commercial use, so
 the two cannot ship together. `benchmark/comparison/original_implementations/LORAKS2/` is
 gitignored for that reason. Download it yourself from <http://mr.usc.edu/download/LORAKS2/>
 (a form issues a personalised link) and unpack it there.
@@ -29,9 +29,9 @@ original paper; [`loraks_citation`](@ref) carries the three references, and
 # Oracle, not a source
 
 Nothing here is derived from LORAKS source. This bridge writes inputs, runs the package
-unmodified, and reads the result back — so MRT's own implementation can be checked against
-its numbers without taking on its licence. Fixes to MRT must come from the papers, with the
-oracle used only to say whether MRT agrees.
+unmodified, and reads the result back — so Ristretto's own implementation can be checked against
+its numbers without taking on its licence. Fixes to Ristretto must come from the papers, with the
+oracle used only to say whether Ristretto agrees.
 """
 module LORAKSBridge
 
@@ -62,7 +62,7 @@ LORAKS reference implementation:
 """
     matlab_executable() -> Union{String, Nothing}
 
-The `matlab` binary to drive, or `nothing` when there is none. `MRT_BENCH_MATLAB` names it
+The `matlab` binary to drive, or `nothing` when there is none. `RISTRETTO_BENCH_MATLAB` names it
 outright; otherwise `matlab` has to be on `PATH` already.
 
 **Prefer the environment variable to `module load matlab`.** On this cluster the module prepends
@@ -74,7 +74,7 @@ a regular expression:
 
 MATLAB's launcher sets up its own environment, so an absolute path needs no module at all:
 
-    MRT_BENCH_MATLAB=/opt/software/packages/matlab/r2024b/bin/matlab julia --project=...
+    RISTRETTO_BENCH_MATLAB=/opt/software/packages/matlab/r2024b/bin/matlab julia --project=...
 
 This is the second reason the bridge is a subprocess rather than `MATLAB.jl`: in-process, that
 library conflict has no workaround.
@@ -84,7 +84,7 @@ holds the whole problem in memory; on this cluster's login node it is reaped mid
 (`ProcessSignaled(9)` after ~80 s, against the ~340 s the reconstruction actually takes).
 """
 function matlab_executable()
-    explicit = get(ENV, "MRT_BENCH_MATLAB", "")
+    explicit = get(ENV, "RISTRETTO_BENCH_MATLAB", "")
     isempty(explicit) || return isfile(explicit) ? explicit : nothing
     found = Sys.which("matlab")
     return found === nothing ? nothing : String(found)
@@ -109,8 +109,8 @@ the unsampled positions and `mask` is the `(N1, N2)` sampling pattern. Returns t
 k-space (the same shape) and MATLAB's own wall time in seconds.
 
 `radius` is LORAKS' k-space neighbourhood **radius**, so the neighbourhood is the disc
-`k₁² + k₂² ≤ radius²` — not the rectangle MRT's `window` keyword describes. `radius = 3` covers
-29 samples, closest to MRT's `window = (6, 6)` at 36; they are comparable, not identical, and a
+`k₁² + k₂² ≤ radius²` — not the rectangle Ristretto's `window` keyword describes. `radius = 3` covers
+29 samples, closest to Ristretto's `window = (6, 6)` at 36; they are comparable, not identical, and a
 difference in the last digits should not be read as a defect in either.
 """
 function loraks_recon(

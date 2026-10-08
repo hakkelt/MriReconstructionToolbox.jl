@@ -109,7 +109,7 @@ select(packages, names) =
     isempty(names) ? packages : filter(p -> p.name in names, packages)
 
 """
-Delete everything the package's `prune` globs match inside `dir`. MRT ships only the code it
+Delete everything the package's `prune` globs match inside `dir`. Ristretto ships only the code it
 loads: a vendored package's own test suite, documentation, benchmarks and CI never run here (they
 run in the fork, against the real package), and an `ext/` directory cannot load at all for a
 package included as a submodule. Pruning them keeps `deps/` to what is actually compiled, and
@@ -240,7 +240,7 @@ end
 
 # Absolute paths of one machine, and the scratch worktrees an agent leaves behind. A fork branch
 # is public code: it may name a sibling checkout the way upstream does, but never a path that
-# exists only here. MRT's own `[sources]` rewriting belongs in `deps/patches/<package>.patch`.
+# exists only here. Ristretto's own `[sources]` rewriting belongs in `deps/patches/<package>.patch`.
 const LOCAL_PATH_PATTERN = raw"(/project/|/home/|/scratch/|\.claude/worktrees/)"
 
 """
@@ -506,8 +506,8 @@ end
 
 """
 Regenerate `deps/patches/<package>.patch`: everything the vendored copy has that its
-`integration` branch does not, once both sides have been pruned to what MRT actually ships. What
-is left is the MRT-only adaptation -- relative imports, an inlined `ext/`, whatever else an
+`integration` branch does not, once both sides have been pruned to what Ristretto actually ships. What
+is left is the Ristretto-only adaptation -- relative imports, an inlined `ext/`, whatever else an
 included submodule forces -- plus any fix that still owes itself to a branch, which is precisely
 the drift that should be visible in one reviewable file instead of smeared through `deps/`.
 
@@ -568,7 +568,7 @@ end
 """
 Project each package's `integration` branch into `deps/` with `git subtree pull --squash`, so the
 vendored copy carries the revision it came from in its commit message and drift becomes
-computable instead of guessed at. MRT-local adaptations that no upstream would take -- relative
+computable instead of guessed at. Ristretto-local adaptations that no upstream would take -- relative
 imports, an `ext/` wired in by hand, because an included submodule loads neither -- live in
 `deps/patches/<package>.patch` and are re-applied afterwards. A patch that stops applying has
 been upstreamed and can be deleted.
@@ -601,12 +601,12 @@ function sync(packages)
             "-m",
             "chore($(pkg.name)): $(first_time ? "vendor" : "re-vendor") integration",
         )
-        # The subtree pull brings the whole upstream tree; MRT keeps only what it compiles.
+        # The subtree pull brings the whole upstream tree; Ristretto keeps only what it compiles.
         if !isempty(pkg.prune)
             prune!(joinpath(ROOT, pkg.prefix), pkg.prune)
             here("add", "-A", "--", pkg.prefix)
             isempty(here("diff", "--cached", "--name-only", "--", pkg.prefix)) ||
-                here("commit", "-m", "chore($(pkg.name)): prune what MRT does not ship")
+                here("commit", "-m", "chore($(pkg.name)): prune what Ristretto does not ship")
         end
         patch = joinpath(ROOT, "deps", "patches", "$(pkg.name).patch")
         if isfile(patch)
@@ -672,7 +672,7 @@ function status(packages; as_json::Bool = false)
     if as_json
         head = [
             "generated" => string(today()),
-            "mrt_commit" => here("rev-parse", "--short", "HEAD"),
+            "ristretto_commit" => here("rev-parse", "--short", "HEAD"),
             "gh" => gh_available(),
         ]
         println("{", join(["$(json(k)):$(json(v))" for (k, v) in head], ","), ",\"branches\":[")

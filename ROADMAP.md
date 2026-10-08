@@ -30,14 +30,14 @@ P1 items are independent of each other and can run in parallel sessions.
 ### 1. Package load time
 **Status:** todo. **Tier:** P1 (measurement + quick wins), rest deferred.
 
-Measured 2026-10-08 (login node, `-t 1`): warm `using MriReconstructionToolbox` takes 3.5 s.
+Measured 2026-10-08 (login node, `-t 1`): warm `using Ristretto` takes 3.5 s.
 Largest `@time_imports` entries: Distributed 409 ms (96 % compilation), SparseArrays 384 ms,
-Polynomials 274 ms (via DSP), VectorizationBase + LoopVectorization ≈ 255 ms, MRT 186 ms,
+Polynomials 274 ms (via DSP), VectorizationBase + LoopVectorization ≈ 255 ms, Ristretto 186 ms,
 Contourlets 90 ms, RecursiveArrayTools 73 ms. Target: 0.5–1 s.
 
-- Distributed arrives through ProgressMeter; MRT's own `[deps]` entry is unused by `src/`.
+- Distributed arrives through ProgressMeter; Ristretto's own `[deps]` entry is unused by `src/`.
   Replace ProgressMeter (ProgressLogging.jl, ProgressBars.jl, or a minimal in-house printer).
-- `src/MriReconstructionToolbox.jl` includes the vendored DSPOperators, which no MRT code uses.
+- `src/Ristretto.jl` includes the vendored DSPOperators, which no Ristretto code uses.
 - DSP is otherwise needed only by Wavelets: vendor Wavelets and inline the few DSP functions it
   uses.
 - SparseArrays arrives through IterativeSolvers, StatsBase and Polynomials.
@@ -47,19 +47,22 @@ Contourlets 90 ms, RecursiveArrayTools 73 ms. Target: 0.5–1 s.
   Package extensions remain the right tool for file export (item 8).
 - A split into simulation / pre-processing + reconstruction / post-processing packages over a
   shared core is possible if the measurements justify it.
-- Measure PrecompileTools workloads on both load time and time-to-first-solve.
+- **P1 (measurement):** measure the effect of PrecompileTools on both load time and
+  time-to-first-solve. It is a dependency, but no workload exists yet (`src/` and `ext/` have no
+  `@setup_workload`/`@compile_workload`), so this means writing a representative workload and
+  comparing with and without it.
 
 ### 2. Register NestedThreading and MRITestData
 **Status:** todo. **Tier:** P1.
 
 The Manifest dev-paths NestedThreading at 0.1.2; the latest release is v0.1.1. Register 0.1.2.
 Register a new MRITestData version if the examples need one (they currently use it by
-`repo-url`). Vendoring does not block registering MRT itself.
+`repo-url`). Vendoring does not block registering Ristretto itself.
 
 ### 3. Comment cleanup
 **Status:** todo. **Tier:** P1.
 
-Comments are often too verbose. MRT `src/` and `ext/` first; comments in vendored code are changed
+Comments are often too verbose. Ristretto `src/` and `ext/` first; comments in vendored code are changed
 on the fork branch that owns the code.
 
 ### 4. README
@@ -70,7 +73,11 @@ install the package, two or three examples, and a small benchmark table from the
 comparison results.
 
 ### 5. New name
-**Status:** name decided (2026-10-08); rename todo. **Tier:** P1, rename before 4, 10 and 20.
+**Status:** package renamed (branch `rename-ristretto`; GitHub repo renamed to
+`hakkelt/Ristretto.jl`, UUID kept; the former abbreviation replaced everywhere, including
+environment variables (`RISTRETTO_*`) and stored benchmark results). Still open: comments in the
+vendored AbstractOperators code naming the package (fork branches), the local checkout directory
+name, trademark check. **Tier:** P1, before 4, 10 and 20.
 
 The package becomes **Ristretto** (`Ristretto.jl`) — **R**egularized **I**maging **S**olvers
 **T**oolbox — **R**apid, **E**fficient, **T**hreaded, **T**unable, **O**pen. Free in the General
@@ -83,10 +90,10 @@ extensions, repository, docs, notebooks, benchmarks, `AGENTS.md`/`NAMING.md`.
 
 - Pages presenting a vendored package (`docs/src/low-level/abstract_operators.md`,
   `proximal_operators.md`, `custom_reconstruction.md`, ...) warn that it must be imported through
-  MRT, say that vendoring is temporary, and give the reason: MRT needs work-in-progress versions
+  Ristretto, say that vendoring is temporary, and give the reason: Ristretto needs work-in-progress versions
   of the forks that are not registered, while upstream review is slow.
 - Each fork deploys its Documenter docs from its `integration` branch to GitHub Pages (none has
-  Pages enabled as of 2026-10-08), and MRT's docs and notebooks link there.
+  Pages enabled as of 2026-10-08), and Ristretto's docs and notebooks link there.
 
 ## User-facing features
 
@@ -137,7 +144,7 @@ files. Includes a short "Installing Julia" section (juliaup), as in item 4.
 **Status:** todo. **Tier:** P2.
 
 A separate documentation page presenting the latest committed benchmark results and cross-toolkit
-comparisons (`benchmark/comparison/results/benchmark_<backend>_<n>threads.json`): MRT against BART,
+comparisons (`benchmark/comparison/results/benchmark_<backend>_<n>threads.json`): Ristretto against BART,
 SigPy, MRIReco, MIRT and MRpro, with the methodology (λ calibrated to matched accuracy,
 time-to-accuracy) and the hardware. Generated from the committed snapshot, so re-running
 `export_snapshot.jl` updates it.
@@ -196,7 +203,7 @@ was taken from NFFT3 (GPL); raise it with the maintainers.
 **Status:** todo. **Tier:** deferred (future work in the paper).
 
 In a separate package so it never affects core load time. Order: ChainRules `rrule` for the
-operators (using the true adjoint — MRT's Fourier `'` is Aᴴ/N); pretrained denoisers (e.g.
+operators (using the true adjoint — Ristretto's Fourier `'` is Aᴴ/N); pretrained denoisers (e.g.
 SNRAware, Hugging Face weights) through the existing `PlugAndPlay` and as post-processing;
 MoDL/VarNet in Lux with fastMRI weight import; RAKI; implicit neural representations; diffusion
 (via PythonCall); transformers (import only). Check weight licenses individually.
@@ -217,7 +224,7 @@ correction, motion-compensated dynamic reconstruction with registration in the l
 ### 19. KomaMRI extension
 **Status:** todo. **Tier:** P3.
 
-KomaMRI outputs MRIBase `RawAcquisitionData`, which MRT already reads, so an extension is cheap.
+KomaMRI outputs MRIBase `RawAcquisitionData`, which Ristretto already reads, so an extension is cheap.
 It needs a sequence rather than a trajectory, so it complements `simulate` rather than replacing
 it.
 
@@ -237,7 +244,7 @@ centre samples) for binning and motion-resolved reconstruction; relates to item 
 ### 25. Reconstruction pipelines: OpenRecon, Gadgetron
 **Status:** todo. **Tier:** deferred.
 
-Explore OpenRecon and Gadgetron and possible integrations (e.g. MRT as an MRD streaming
+Explore OpenRecon and Gadgetron and possible integrations (e.g. Ristretto as an MRD streaming
 reconstruction server); relates to item 20.
 
 ## Paper

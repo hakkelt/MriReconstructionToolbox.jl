@@ -157,7 +157,7 @@ trend of the samples just inside them, and return the corrected weights. The fir
 `dcf` is the readout; every remaining dimension is treated as a separate readout.
 
 The ends of a readout are where a density estimate stops being a density estimate, and both
-estimators MRT ships show it:
+estimators Ristretto ships show it:
 
 - A sample at the end of a readout has no neighbour beyond it. [`VoronoiDCF`](@ref)'s cell there is
   unbounded, so what it is actually given is the area of the clip against `bounds` — on a radial

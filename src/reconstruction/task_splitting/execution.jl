@@ -300,7 +300,7 @@ end
 
 Pick the executor for a task-split reconstruction, unless `config.task_executor` names one.
 
-Slices are independent solves, so spreading them over threads is MRT's primary parallelism and
+Slices are independent solves, so spreading them over threads is Ristretto's primary parallelism and
 the only one that pays on the problem sizes this package sees: a slice has to reach
 [`serial_blas_threshold_bytes`](@ref) before threading *inside* it returns anything, and a 2-D
 slice of a clinical volume is two orders of magnitude below that (320² `ComplexF32` = 800 KiB

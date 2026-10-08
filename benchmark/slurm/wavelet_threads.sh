@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=mrt-wavelet-threads
+#SBATCH --job-name=ristretto-wavelet-threads
 #SBATCH --nodes=1
 #SBATCH --exclusive
 #SBATCH --mem=0

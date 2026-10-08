@@ -32,14 +32,14 @@ end
     @testset "Float32 compatibility" begin
         x = randn(Float32, 8, 8)
         reg = L2Image(0.1f0)
-        result = MriReconstructionToolbox.calculate(reg, x; threaded = false)
+        result = Ristretto.calculate(reg, x; threaded = false)
         @test typeof(result) == Float32
     end
 
     @testset "Complex number compatibility" begin
         x = randn(ComplexF64, 8, 8)
         reg = L1Image(0.1)
-        result = MriReconstructionToolbox.calculate(reg, x; threaded = false)
+        result = Ristretto.calculate(reg, x; threaded = false)
         @test result isa Real
     end
 
@@ -64,7 +64,7 @@ end
     @testset "Zero regularization parameter" begin
         x = rand(5, 5)
         reg = L2Image(0.0)
-        result = MriReconstructionToolbox.calculate(reg, x; threaded = false)
+        result = Ristretto.calculate(reg, x; threaded = false)
         @test result ≈ 0.0 atol = 1.0e-15
     end
 
@@ -86,7 +86,7 @@ end
         op = get_operator(reg, x_named; threaded)
         result = op * x_named
         @test Array(result) ≈ x
-        res_calc = MriReconstructionToolbox.calculate(reg, x_named; threaded)
+        res_calc = Ristretto.calculate(reg, x_named; threaded)
         @test res_calc ≈ sum(abs2, λ .* x)
     end
 
@@ -98,7 +98,7 @@ end
         op = get_operator(reg, x_named; threaded)
         result = op * x_named
         @test Array(result) ≈ x
-        res_calc = MriReconstructionToolbox.calculate(reg, x_named; threaded)
+        res_calc = Ristretto.calculate(reg, x_named; threaded)
         @test res_calc ≈ λ * norm(x, 1)
     end
 
@@ -111,7 +111,7 @@ end
         coeffs = op * x_named
         manual = dwt(x, wavelet(WT.db2), 2)
         @test Array(coeffs) == manual
-        res_calc = MriReconstructionToolbox.calculate(reg, x_named; threaded)
+        res_calc = Ristretto.calculate(reg, x_named; threaded)
         @test res_calc ≈ λ * sum(abs, manual)
     end
 
@@ -124,7 +124,7 @@ end
         coeffs = op * x_named
         x_rec = op' * coeffs
         @test Array(x_rec) ≈ x rtol = 1.0e-10
-        res_calc = MriReconstructionToolbox.calculate(reg, x_named; threaded)
+        res_calc = Ristretto.calculate(reg, x_named; threaded)
         @test res_calc ≈ λ * sum(abs, Array(coeffs))
     end
 
@@ -141,7 +141,7 @@ end
             manual[i, j, 2] = (j == first(axes(x, 2))) ? x[i, j + 1] - x[i, j] : x[i, j] - x[i, j - 1]
         end
         @test Array(g) == manual
-        res_calc = MriReconstructionToolbox.calculate(reg, x_named; threaded)
+        res_calc = Ristretto.calculate(reg, x_named; threaded)
         @test res_calc ≈ λ * sum(sqrt.(sum(abs2, manual; dims = 3)))
     end
 
@@ -159,7 +159,7 @@ end
             manual[i, j, k, 3] = (k == first(axes(x, 3))) ? x[i, j, k + 1] - x[i, j, k] : x[i, j, k] - x[i, j, k - 1]
         end
         @test Array(g) == manual
-        res_calc = MriReconstructionToolbox.calculate(reg, x_named; threaded)
+        res_calc = Ristretto.calculate(reg, x_named; threaded)
         @test res_calc ≈ λ * sum(sqrt.(sum(abs2, manual; dims = 4)))
     end
 end
@@ -169,35 +169,35 @@ end
     # task splitting to compensate for solving all slices with one shared data scale).
     @testset "L1-type terms scale λ linearly" begin
         factor = 3.5
-        @test MriReconstructionToolbox.scale_regularization(L1Image(0.1), factor).λ ≈ 0.1 * factor
-        @test MriReconstructionToolbox.scale_regularization(TotalVariation2D(0.2), factor).λ ≈ 0.2 * factor
-        @test MriReconstructionToolbox.scale_regularization(TotalVariation3D(0.2), factor).λ ≈ 0.2 * factor
-        @test MriReconstructionToolbox.scale_regularization(L1TemporalFourier(0.3), factor).λ ≈ 0.3 * factor
-        @test MriReconstructionToolbox.scale_regularization(LowRank(0.4), factor).λ ≈ 0.4 * factor
-        @test MriReconstructionToolbox.scale_regularization(L1Wavelet2D(0.5), factor).λ ≈ 0.5 * factor
-        @test MriReconstructionToolbox.scale_regularization(L1Wavelet3D(0.5), factor).λ ≈ 0.5 * factor
+        @test Ristretto.scale_regularization(L1Image(0.1), factor).λ ≈ 0.1 * factor
+        @test Ristretto.scale_regularization(TotalVariation2D(0.2), factor).λ ≈ 0.2 * factor
+        @test Ristretto.scale_regularization(TotalVariation3D(0.2), factor).λ ≈ 0.2 * factor
+        @test Ristretto.scale_regularization(L1TemporalFourier(0.3), factor).λ ≈ 0.3 * factor
+        @test Ristretto.scale_regularization(LowRank(0.4), factor).λ ≈ 0.4 * factor
+        @test Ristretto.scale_regularization(L1Wavelet2D(0.5), factor).λ ≈ 0.5 * factor
+        @test Ristretto.scale_regularization(L1Wavelet3D(0.5), factor).λ ≈ 0.5 * factor
 
         # array-valued λ is scaled elementwise
         λ_arr = rand(4, 4)
-        @test MriReconstructionToolbox.scale_regularization(L1Image(λ_arr), factor).λ ≈ λ_arr .* factor
+        @test Ristretto.scale_regularization(L1Image(λ_arr), factor).λ ≈ λ_arr .* factor
     end
 
     # Quadratic penalty (λ²‖x‖²) and rank constraints are already scale-consistent: the data
     # term and the regularization term scale identically with x, so no correction is needed.
     @testset "Quadratic/rank-constraint terms need no correction" begin
         factor = 3.5
-        @test MriReconstructionToolbox.scale_regularization(L2Image(0.1), factor).λ == 0.1
-        @test MriReconstructionToolbox.scale_regularization(RankLimit(4), factor).max_rank == 4
+        @test Ristretto.scale_regularization(L2Image(0.1), factor).λ == 0.1
+        @test Ristretto.scale_regularization(RankLimit(4), factor).max_rank == 4
     end
 
     @testset "auxiliary fields are preserved" begin
         reg = L1Wavelet2D(0.5; levels = 3)
-        scaled = MriReconstructionToolbox.scale_regularization(reg, 2.0)
+        scaled = Ristretto.scale_regularization(reg, 2.0)
         @test scaled.wavelet == reg.wavelet
         @test scaled.levels == reg.levels
 
         reg_lr = LowRank(0.4; time_dim = 3)
-        scaled_lr = MriReconstructionToolbox.scale_regularization(reg_lr, 2.0)
+        scaled_lr = Ristretto.scale_regularization(reg_lr, 2.0)
         @test scaled_lr.time_dim == 3
     end
 end

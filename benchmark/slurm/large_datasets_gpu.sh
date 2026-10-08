@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --job-name=mrt-large-datasets-gpu
+#SBATCH --job-name=ristretto-large-datasets-gpu
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=128G
 #SBATCH --time=04:00:00
 #
-# MRT on the two full-size datasets of benchmark/large_datasets/run.jl, on one GPU (one host
+# Ristretto on the two full-size datasets of benchmark/large_datasets/run.jl, on one GPU (one host
 # thread). Run benchmark/slurm/large_datasets.sh --prepare first, so the cases are cached.
 #
 #   benchmark/slurm/submit.sh --production large_datasets_gpu.sh [run.jl args...]

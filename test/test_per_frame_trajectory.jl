@@ -35,8 +35,8 @@
 end
 
 @testitem "Per-frame trajectory: Fourier operator" tags = [:encoding, :nfft] setup = [PerFrameTrajectory] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_fourier_operator, get_image_dims, NonCartesianAcquisitionInfo, _get_sample_dims_count
+    using Ristretto
+    using Ristretto: get_fourier_operator, get_image_dims, NonCartesianAcquisitionInfo, _get_sample_dims_count
     using NamedDims, LinearAlgebra, Random
 
     n, ns, nsp, nc, nt = 16, 32, 10, 3, 4
@@ -85,8 +85,8 @@ end
 end
 
 @testitem "Per-frame trajectory: simulation, DCF and reconstruction" tags = [:acquisition, :nfft, :reconstruction] setup = [PerFrameTrajectory] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo, compute_dcf
+    using Ristretto
+    using Ristretto: NonCartesianAcquisitionInfo, compute_dcf
     using NamedDims
 
     n, ns, nsp, nc, nt = 32, 64, 24, 4, 6
@@ -148,7 +148,7 @@ end
 end
 
 @testitem "Per-frame trajectory: simulation reads frames as the constructor does" tags = [:acquisition, :nfft, :simulation] setup = [PerFrameTrajectory] begin
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using Ristretto: NonCartesianAcquisitionInfo
 
     # A plain-array trajectory with as many spokes as the image has frames: sizes cannot tell its
     # spoke axis from a frame axis, so it is shared, every frame getting all of its spokes.

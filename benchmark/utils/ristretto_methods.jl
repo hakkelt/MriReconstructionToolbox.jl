@@ -1,4 +1,4 @@
-# How MRT reconstructs each catalog method. Shared by the harness and by the comparison suite's MRT
+# How Ristretto reconstructs each catalog method. Shared by the harness and by the comparison suite's Ristretto
 # rows, so the two time exactly the same call.
 
 """
@@ -27,7 +27,7 @@ llr, ttv) by NRMSE after `OUTER_ITERATIONS` iterations, over a λ grid `10^(-4:0
 
 NRMSE falls steadily as ρ decreases down to about 0.005. Below that the cine methods flatten
 (ttv is best at 0.01, within 5% at 0.002) while the 2D ones keep improving, so `0.002` is within 5%
-of each method's best and at least matches MRT's default adaptive penalty on every method. At 0.002 the NRMSE is tv 0.035, tgv 0.034, llr 0.087, lowrank 0.107 and ttv 0.067.
+of each method's best and at least matches Ristretto's default adaptive penalty on every method. At 0.002 the NRMSE is tv 0.035, tgv 0.034, llr 0.087, lowrank 0.107 and ttv 0.067.
 L1-wavelet runs FISTA, so only its λ was calibrated (NRMSE 0.279).
 
 The calibration ran under `BartScaling`. The values are in `QuantileScaling` units, converted as
@@ -82,20 +82,20 @@ Decomposition depth of the L1-wavelet rows (`db2`), matched across toolkits.
 const WAVELET_LEVELS = parse(Int, get(ENV, "CMP_WAVELET_LEVELS", "3"))
 
 """
-    mrt_regularizer(c::BenchCase, method, λ)
+    ristretto_regularizer(c::BenchCase, method, λ)
 
 `:tv` is the isotropic `λ Σ ‖∇x‖₂` (per voxel), `:atv` the anisotropic `λ Σᵢ ‖Δⁱx‖₁`. They are
 different problems with different optima: on `shepp_logan_3d_8ch_cartesian` the isotropic one
 reaches NRMSE 0.008 where the anisotropic one reaches 0.0033.
 """
-function mrt_regularizer(c::BenchCase, method::Symbol, λ::Real)
+function ristretto_regularizer(c::BenchCase, method::Symbol, λ::Real)
     method = penalty_of(method)
     vol = c.family === :volume
     method === :tv && return vol ? TotalVariation3D(λ) : TotalVariation2D(λ)
     method === :atv && return vol ? AnisotropicTotalVariation3D(λ) : AnisotropicTotalVariation2D(λ)
     method === :wavelet && return vol ?
-        L1Wavelet3D(λ; wavelet = MriReconstructionToolbox.WT.db2, levels = WAVELET_LEVELS) :
-        L1Wavelet2D(λ; wavelet = MriReconstructionToolbox.WT.db2, levels = WAVELET_LEVELS)
+        L1Wavelet3D(λ; wavelet = Ristretto.WT.db2, levels = WAVELET_LEVELS) :
+        L1Wavelet2D(λ; wavelet = Ristretto.WT.db2, levels = WAVELET_LEVELS)
     method === :epr && return vol ? EdgePreservingRoughness3D(λ) : EdgePreservingRoughness2D(λ)
     method === :tgv && return TotalGeneralizedVariation2D(λ; ratio = 2.0)
     method === :lowrank && return LowRank(λ; time_dim = :time)
@@ -124,7 +124,7 @@ default_maxit(m::Symbol) =
     m === :cgsense ? CG_ITERATIONS : (haskey(PDHG_METHODS, m) || m === :epr_lbfgs) ? PDHG_ITERATIONS : OUTER_ITERATIONS
 
 """
-    mrt_algorithm(method, maxit; rho = ADMM_RHO)
+    ristretto_algorithm(method, maxit; rho = ADMM_RHO)
 
 Fixed-ρ ADMM with a fixed inner CG and no early stop for every regularized method except
 L1-wavelet, which runs FISTA (forcing a fixed-ρ ADMM on it wrecks it), or POGM for
@@ -132,19 +132,19 @@ L1-wavelet, which runs FISTA (forcing a fixed-ρ ADMM on it wrecks it), or POGM 
 `ChambollePock` for a PDHG row, with the step sizes `reconstruct` derives (its block-diagonal,
 density-compensated preconditioning, ahead of Vũ-Condat on both Cartesian and radial data).
 """
-function mrt_algorithm(method::Symbol, maxit::Int; rho::Real = ADMM_RHO)
-    method === :cgsense && return MriReconstructionToolbox.CGNR(; maxit, tol = 0.0)
-    method === :wavelet && return MriReconstructionToolbox.FISTA(; maxit, tol = 0.0)
-    method === :wavelet_pogm && return MriReconstructionToolbox.POGM(; maxit, tol = 0.0)
-    method === :epr_lbfgs && return MriReconstructionToolbox.LBFGS(; maxit, tol = 0.0)
-    haskey(PDHG_METHODS, method) && return MriReconstructionToolbox.ChambollePock(; maxit, tol = 0.0)
-    return MriReconstructionToolbox.ADMM(; rho, maxit, tol = 0.0, cg_tol = 0.0, cg_maxit = CG_ITERATIONS)
+function ristretto_algorithm(method::Symbol, maxit::Int; rho::Real = ADMM_RHO)
+    method === :cgsense && return Ristretto.CGNR(; maxit, tol = 0.0)
+    method === :wavelet && return Ristretto.FISTA(; maxit, tol = 0.0)
+    method === :wavelet_pogm && return Ristretto.POGM(; maxit, tol = 0.0)
+    method === :epr_lbfgs && return Ristretto.LBFGS(; maxit, tol = 0.0)
+    haskey(PDHG_METHODS, method) && return Ristretto.ChambollePock(; maxit, tol = 0.0)
+    return Ristretto.ADMM(; rho, maxit, tol = 0.0, cg_tol = 0.0, cg_maxit = CG_ITERATIONS)
 end
 
 """
-    mrt_reconstructor(c, method; λ = default_lambda(c, method), rho = admm_rho(c), maxit, acq = nothing, device = nothing) -> () -> image
+    ristretto_reconstructor(c, method; λ = default_lambda(c, method), rho = admm_rho(c), maxit, acq = nothing, device = nothing) -> () -> image
 
-A zero-argument closure running MRT's reconstruction of `c` by `method`, for `time_run`, with the
+A zero-argument closure running Ristretto's reconstruction of `c` by `method`, for `time_run`, with the
 ADMM penalty `rho` (relative to `‖𝒜‖²`; ignored by the methods that do not run ADMM). The
 acquisition is built once, outside the closure; `acq` passes one in (the comparison suite reuses
 it across rows). `maxit` defaults to [`default_maxit`](@ref).
@@ -155,7 +155,7 @@ method's values win over the algorithm's, so both must agree to run the full cou
 host acquisition there with `adapt` and copies the image back into a host `Array`, so the time is
 from host data to host image, as it is for a toolkit that takes and returns host arrays.
 """
-function mrt_reconstructor(
+function ristretto_reconstructor(
         c::BenchCase, method::Symbol;
         λ::Real = default_lambda(c, method),
         rho::Real = admm_rho(c),
@@ -164,13 +164,13 @@ function mrt_reconstructor(
         device = nothing,
     )
     direct = method === :adjoint || method === :gridding
-    a = something(acq, mrt_acquisition(c; dcf = method === :gridding))
+    a = something(acq, ristretto_acquisition(c; dcf = method === :gridding))
     m = if direct
         DirectReconstruction()
     else
-        reg = method === :cgsense ? () : mrt_regularizer(c, method, λ)
-        IterativeReconstruction(; regularization = reg, algorithm = mrt_algorithm(method, maxit; rho), maxit, reltol = 0.0)
+        reg = method === :cgsense ? () : ristretto_regularizer(c, method, λ)
+        IterativeReconstruction(; regularization = reg, algorithm = ristretto_algorithm(method, maxit; rho), maxit, reltol = 0.0)
     end
     device === nothing && return () -> reconstruct(a, m; verbosity = Silent())
-    return () -> Array(parent(reconstruct(MriReconstructionToolbox.Adapt.adapt(device, a), m; verbosity = Silent())))
+    return () -> Array(parent(reconstruct(Ristretto.Adapt.adapt(device, a), m; verbosity = Silent())))
 end

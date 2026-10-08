@@ -35,7 +35,7 @@
 include("NotebookUtils.jl")
 using .NotebookUtils
 
-using MriReconstructionToolbox
+using Ristretto
 using GeometricMedicalPhantoms: create_torso_phantom, TissueMask,
     generate_respiratory_signal, generate_cardiac_signals
 using MIRTjim: jim

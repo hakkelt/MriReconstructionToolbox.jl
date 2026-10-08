@@ -29,7 +29,7 @@ using TestItems
     @testset "materialize" begin
         x = Variable(Float32, 8, 8, 10)
         reg = L1TemporalFourier(0.1f0; time_dim = 3)
-        term = MriReconstructionToolbox.materialize(reg, x; threaded = false)
+        term = Ristretto.materialize(reg, x; threaded = false)
         @test term !== nothing
     end
 
@@ -37,13 +37,13 @@ using TestItems
         ksp = randn(ComplexF32, 8, 8, 10)
         info = AcquisitionInfo(ksp; image_size = (8, 8))
         reg = L1TemporalFourier(0.1f0; time_dim = 3)
-        dims = MriReconstructionToolbox.get_affected_dims(reg, info, 1:3)
+        dims = Ristretto.get_affected_dims(reg, info, 1:3)
         @test dims == (3,)
 
         # Named image dims must yield Symbols so that task splitting can
         # setdiff them against Symbol batch dims.
         reg_named = L1TemporalFourier(0.1f0; time_dim = :time)
-        dims_named = MriReconstructionToolbox.get_affected_dims(reg_named, info, (:x, :y, :time))
+        dims_named = Ristretto.get_affected_dims(reg_named, info, (:x, :y, :time))
         @test dims_named == (:time,)
     end
 end

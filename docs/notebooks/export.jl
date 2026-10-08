@@ -98,7 +98,7 @@ function export_one(nb_file::AbstractString, timeout::Int)
 end
 
 # Marks a page as already patched, so a re-run of the exporter does not stack the block twice.
-const POSTPROCESS_MARKER = "MRT-postprocess-marker"
+const POSTPROCESS_MARKER = "Ristretto-postprocess-marker"
 
 # Long source lines must stay reachable on a narrow screen. The element that actually clips them
 # is `div.CodeMirror`, which the template gives `overflow: hidden` (the `.jp-InputArea` rules are
@@ -257,7 +257,7 @@ function main()
     # Skip when a caller (e.g. a SLURM array with one task per notebook) already regenerated
     # every .ipynb once up front -- concurrent tasks calling regenerate_ipynb! at the same time
     # would race on the same output files.
-    get(ENV, "MRT_SKIP_REGEN", "") == "1" || regenerate_ipynb!()
+    get(ENV, "RISTRETTO_SKIP_REGEN", "") == "1" || regenerate_ipynb!()
     notebooks = matching_notebooks(selector)
     if isempty(notebooks)
         println(stderr, "No notebook matches selector \"$selector\".")

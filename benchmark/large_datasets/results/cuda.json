@@ -3,7 +3,7 @@
   "cg_iterations": 10,
   "gpu": "NVIDIA A100-SXM4-40GB",
   "hostname": "x1001c4s3b0n1",
-  "mrt_commit": {
+  "ristretto_commit": {
     "commit": "24b8ca845cbbe1c43ad65e678f2324aedf1fcbda",
     "branch": "feat/gpu-reconstruction",
     "dirty": true

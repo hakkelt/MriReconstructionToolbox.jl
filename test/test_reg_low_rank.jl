@@ -35,16 +35,16 @@ using TestItems
     @testset "materialize" begin
         x = Variable(Float64, 8, 8, 10)
         reg = LowRank(0.1; time_dim = 3)
-        term = MriReconstructionToolbox.materialize(reg, x; threaded = false)
+        term = Ristretto.materialize(reg, x; threaded = false)
         @test term !== nothing
     end
 
     @testset "get_affected_dims" begin
         reg = LowRank(0.1; time_dim = 3)
-        @test MriReconstructionToolbox.get_affected_dims(reg, nothing, 1:4) == 1:3
+        @test Ristretto.get_affected_dims(reg, nothing, 1:4) == 1:3
 
         reg_named = LowRank(0.1; time_dim = :time)
-        dims_named = MriReconstructionToolbox.get_affected_dims(reg_named, nothing, (:x, :y, :time, :coil))
+        dims_named = Ristretto.get_affected_dims(reg_named, nothing, (:x, :y, :time, :coil))
         @test dims_named == (:x, :y, :time)
     end
 
@@ -54,11 +54,11 @@ using TestItems
         acq = AcquisitionInfo(ksp)
         config = ReconstructionConfig(; verbosity = Silent())
 
-        plan_noreg = MriReconstructionToolbox.get_task_splitting_plan(acq, DirectReconstruction(), config)
+        plan_noreg = Ristretto.get_task_splitting_plan(acq, DirectReconstruction(), config)
         @test !isnothing(plan_noreg) # :time is a batch dim without regularization
 
         reg = LowRank(0.1; time_dim = :time)
-        plan = MriReconstructionToolbox.get_task_splitting_plan(acq, IterativeReconstruction(reg), config)
+        plan = Ristretto.get_task_splitting_plan(acq, IterativeReconstruction(reg), config)
         @test isnothing(plan) # LowRank couples the time dimension
     end
 end
@@ -84,7 +84,7 @@ end
     @testset "materialize" begin
         x = Variable(Float64, 8, 8, 10)
         reg = RankLimit(3; time_dim = 3)
-        term = MriReconstructionToolbox.materialize(reg, x; threaded = false)
+        term = Ristretto.materialize(reg, x; threaded = false)
         @test term !== nothing
     end
 
@@ -137,14 +137,14 @@ end
         x = randn(ComplexF64, 8, 6, 4)
         λ = 0.1
         reg = LocallyLowRank(λ; block_size = (4, 3), time_dim = 3)
-        @test MriReconstructionToolbox.calculate(reg, x; threaded) ≈ reference_llr(x, λ, (4, 3), 4)
+        @test Ristretto.calculate(reg, x; threaded) ≈ reference_llr(x, λ, (4, 3), 4)
     end
 
     @testset "incomplete boundary blocks" begin
         x = randn(7, 5, 3)
         λ = 0.2
         reg = LocallyLowRank(λ; block_size = 4, time_dim = 3)
-        @test MriReconstructionToolbox.calculate(reg, x; threaded = false) ≈ reference_llr(x, λ, (4, 4), 3)
+        @test Ristretto.calculate(reg, x; threaded = false) ≈ reference_llr(x, λ, (4, 4), 3)
     end
 
     @testset "batch dimensions are handled independently" begin
@@ -152,7 +152,7 @@ end
         λ = 0.15
         reg = LocallyLowRank(λ; block_size = 4, time_dim = 3)
         expected = reference_llr(x[:, :, :, 1], λ, (4, 4), 3) + reference_llr(x[:, :, :, 2], λ, (4, 4), 3)
-        @test MriReconstructionToolbox.calculate(reg, x; threaded = false) ≈ expected
+        @test Ristretto.calculate(reg, x; threaded = false) ≈ expected
     end
 
     @testset "prox is exact blockwise singular value thresholding" for threaded in [false, true]
@@ -160,7 +160,7 @@ end
         λ, γ = 0.1, 0.7
         reg = LocallyLowRank(λ; block_size = 4, time_dim = 3)
         var = Variable(x)
-        term = MriReconstructionToolbox.materialize(reg, var; threaded)
+        term = Ristretto.materialize(reg, var; threaded)
         f = SO.weighted_function(term)
         y = similar(x)
         fy = PC.prox!(y, f, x, γ)
@@ -182,8 +182,8 @@ end
         x = NamedDimsArray{(:x, :y, :time)}(randn(4, 4, 3))
         reg = LocallyLowRank(0.1; block_size = 2, time_dim = :time)
         op = get_operator(reg, x; threaded = false)
-        @test op isa MriReconstructionToolbox.NamedDimsOp
-        @test MriReconstructionToolbox.calculate(reg, x; threaded = false) ≈
+        @test op isa Ristretto.NamedDimsOp
+        @test Ristretto.calculate(reg, x; threaded = false) ≈
             reference_llr(unname(x), 0.1, (2, 2), 3)
     end
 
@@ -191,21 +191,21 @@ end
         ksp = randn(ComplexF32, 8, 8, 10)
         info = AcquisitionInfo(ksp; image_size = (8, 8))
         reg = LocallyLowRank(0.1f0; block_size = 4, time_dim = 3)
-        @test MriReconstructionToolbox.get_affected_dims(reg, info, 1:3) == 1:3
+        @test Ristretto.get_affected_dims(reg, info, 1:3) == 1:3
         reg_named = LocallyLowRank(0.1f0; block_size = 4, time_dim = :time)
-        @test MriReconstructionToolbox.get_affected_dims(reg_named, info, (:x, :y, :time)) == (:x, :y, :time)
+        @test Ristretto.get_affected_dims(reg_named, info, (:x, :y, :time)) == (:x, :y, :time)
     end
 
     @testset "block size validation" begin
         x = Variable(randn(4, 4, 2))
         reg = LocallyLowRank(0.1; block_size = 8, time_dim = 3)
-        @test_throws ArgumentError MriReconstructionToolbox.materialize(reg, x; threaded = false)
+        @test_throws ArgumentError Ristretto.materialize(reg, x; threaded = false)
         reg_wrong_rank = LocallyLowRank(0.1; block_size = (4, 4, 4), time_dim = 3)
-        @test_throws ArgumentError MriReconstructionToolbox.materialize(reg_wrong_rank, x; threaded = false)
+        @test_throws ArgumentError Ristretto.materialize(reg_wrong_rank, x; threaded = false)
     end
 
     @testset "scale_regularization" begin
-        reg = MriReconstructionToolbox.scale_regularization(
+        reg = Ristretto.scale_regularization(
             LocallyLowRank(0.2; block_size = 4, time_dim = 3), 2.5
         )
         @test reg.λ ≈ 0.5
@@ -239,8 +239,8 @@ end
         # The thresholded slices, then the thresholded and the plain nuclear norms, on A's storage.
         function svt(A)
             B = copy(A)
-            thresholded = MriReconstructionToolbox.ProximalOperators.batched_svt!(B, 1.0f0)
-            nuclear = MriReconstructionToolbox.ProximalOperators.batched_nuclear_norm(A)
+            thresholded = Ristretto.ProximalOperators.batched_svt!(B, 1.0f0)
+            nuclear = Ristretto.ProximalOperators.batched_nuclear_norm(A)
             return vcat(vec(B), copyto!(similar(B, 2), eltype(A)[thresholded, nuclear]))
         end
         test_on_devices(svt, A; backends = all_backends())
@@ -277,7 +277,7 @@ end
     @testset "a shifted grid needs a divisible image" begin
         x = Variable(randn(7, 8, 3))
         reg = LocallyLowRank(0.1; block_size = 4, time_dim = 3, shift = :fixed)
-        @test_throws ArgumentError MriReconstructionToolbox.materialize(reg, x; threaded = false)
+        @test_throws ArgumentError Ristretto.materialize(reg, x; threaded = false)
     end
 
     @testset "shift=:random redraws the origin on every prox call" begin
@@ -293,7 +293,7 @@ end
     end
 
     @testset "scale_regularization keeps the shift policy" begin
-        reg = MriReconstructionToolbox.scale_regularization(
+        reg = Ristretto.scale_regularization(
             LocallyLowRank(0.2; block_size = 4, time_dim = 3, shift = :random), 2.0
         )
         @test reg.λ ≈ 0.4
@@ -326,10 +326,10 @@ end
         λs = [0.1, 0.4]
         mslr = MultiScaleLowRank(λs; block_sizes = scales, time_dim = 3)
         expected_value = sum(
-            MriReconstructionToolbox.calculate(LocallyLowRank(λ; block_size = b, time_dim = 3), x) / 2
+            Ristretto.calculate(LocallyLowRank(λ; block_size = b, time_dim = 3), x) / 2
                 for (λ, b) in zip(λs, scales)
         )
-        @test MriReconstructionToolbox.calculate(mslr, x; threaded) ≈ expected_value
+        @test Ristretto.calculate(mslr, x; threaded) ≈ expected_value
 
         expected_prox = sum(
             (1 / 2) .* first(prox_of(LocallyLowRank(λ; block_size = b, time_dim = 3), x, 0.7))
@@ -340,8 +340,8 @@ end
         # A uniform vector must match the scalar form exactly.
         mslr_uniform_vec = MultiScaleLowRank(fill(0.3, length(scales)); block_sizes = scales, time_dim = 3)
         mslr_scalar = MultiScaleLowRank(0.3; block_sizes = scales, time_dim = 3)
-        @test MriReconstructionToolbox.calculate(mslr_uniform_vec, x; threaded) ≈
-            MriReconstructionToolbox.calculate(mslr_scalar, x; threaded)
+        @test Ristretto.calculate(mslr_uniform_vec, x; threaded) ≈
+            Ristretto.calculate(mslr_scalar, x; threaded)
     end
 
     @testset "get_operator" begin
@@ -356,8 +356,8 @@ end
         x = randn(ComplexF64, 8, 8, 5)
         mslr = MultiScaleLowRank(0.3; block_sizes = (4,), time_dim = 3)
         llr = LocallyLowRank(0.3; block_size = 4, time_dim = 3)
-        @test MriReconstructionToolbox.calculate(mslr, x; threaded) ≈
-            MriReconstructionToolbox.calculate(llr, x; threaded)
+        @test Ristretto.calculate(mslr, x; threaded) ≈
+            Ristretto.calculate(llr, x; threaded)
         @test first(prox_of(mslr, x)) ≈ first(prox_of(llr, x))
     end
 
@@ -378,25 +378,25 @@ end
         scales = (4, 8)
         mslr = MultiScaleLowRank(0.2; block_sizes = scales, time_dim = 3)
         expected = sum(
-            MriReconstructionToolbox.calculate(LocallyLowRank(0.2; block_size = b, time_dim = 3), x) / 2
+            Ristretto.calculate(LocallyLowRank(0.2; block_size = b, time_dim = 3), x) / 2
                 for b in scales
         )
-        @test MriReconstructionToolbox.calculate(mslr, x) ≈ expected
+        @test Ristretto.calculate(mslr, x) ≈ expected
     end
 
     @testset "get_affected_dims couples space and time" begin
         reg = MultiScaleLowRank(0.1; block_sizes = (2, 4), time_dim = 3)
-        @test MriReconstructionToolbox.get_affected_dims(reg, nothing, 1:4) == 1:3
+        @test Ristretto.get_affected_dims(reg, nothing, 1:4) == 1:3
     end
 
     @testset "scale_regularization" begin
-        reg = MriReconstructionToolbox.scale_regularization(
+        reg = Ristretto.scale_regularization(
             MultiScaleLowRank(0.2; block_sizes = (4, 8), time_dim = 3), 2.5
         )
         @test reg.λ ≈ 0.5
         @test reg.block_sizes == (4, 8)
 
-        reg_vec = MriReconstructionToolbox.scale_regularization(
+        reg_vec = Ristretto.scale_regularization(
             MultiScaleLowRank([0.2, 0.4]; block_sizes = (4, 8), time_dim = 3), 2.5
         )
         @test reg_vec.λ ≈ [0.5, 1.0]

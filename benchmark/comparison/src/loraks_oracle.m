@@ -11,7 +11,7 @@ function loraks_oracle(in_file, out_file, loraks_dir)
 %   [3] J. P. Haldar, J. Zhuo. P-LORAKS: Low-Rank Modeling of Local k-Space Neighborhoods
 %       with Parallel Imaging Data. Magnetic Resonance in Medicine 75:1499-1514, 2016.
 %
-% The LORAKS package itself is NOT redistributed with MriReconstructionToolbox: its licence
+% The LORAKS package itself is NOT redistributed with Ristretto: its licence
 % allows educational / research / non-profit use only, which is incompatible with this
 % repository's MIT licence. Download it from http://mr.usc.edu/download/LORAKS2/ and unpack it
 % into benchmark/comparison/original_implementations/LORAKS2 (gitignored). This file is the
@@ -31,7 +31,7 @@ addpath(loraks_dir);
 S = load(in_file);
 
 % lambda = 0 selects the data-consistency-constrained formulation of Eq. (6) in [1], which is
-% the formulation MRT's calibrationless `StructuredLowRank` corresponds to: the acquired
+% the formulation Ristretto's calibrationless `StructuredLowRank` corresponds to: the acquired
 % samples are held fixed and only the missing ones are filled in.
 lambda = 0;
 alg = 2;   % multiplicative half-quadratic, no FFT approximation -- the accurate reference

@@ -23,12 +23,12 @@ Only what vendoring itself forces. Today that is:
   `using ..AbstractOperators`.
 - **The inlined extension.** An `ext/` directory never loads for a submodule, so
   `ProximalOperators`' `RecursiveArrayToolsExt` is included from `src/` by hand.
-- **OSQP, removed.** MRT does not use it, so neither the weak dependency nor `IndPolyhedral`,
+- **OSQP, removed.** Ristretto does not use it, so neither the weak dependency nor `IndPolyhedral`,
   whose only implementation needs it, is vendored.
 - **The vendored `[sources]` paths**, pointing at the sibling copies under `deps/` rather than at
   a developer's own checkouts.
 
-Nothing else. Three destinations exist for a change found while developing MRT, and the patch is
+Nothing else. Three destinations exist for a change found while developing Ristretto, and the patch is
 none of them:
 
 - A fix or feature that would make sense to the upstream package goes on the branch that owns
@@ -36,7 +36,7 @@ none of them:
   reaches `deps/` through `integration` on the next sync.
 - A change with no owning branch gets one new branch for that one idea, added to
   `deps/vendor.toml`.
-- A change that is really about MRI rather than about the dependency belongs in MRT's own `src/`.
+- A change that is really about MRI rather than about the dependency belongs in Ristretto's own `src/`.
 
 `patch` regenerates these files from the current trees, so a hunk that is none of the above
 appears the moment someone edits `deps/` by hand -- which is what makes the rule enforceable

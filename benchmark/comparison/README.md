@@ -1,13 +1,13 @@
 # benchmark/comparison/
 
-Cross-toolkit MRI reconstruction benchmark: MRT vs BART / SigPy / MRIReco / MIRT / MRpro, on the
+Cross-toolkit MRI reconstruction benchmark: Ristretto vs BART / SigPy / MRIReco / MIRT / MRpro, on the
 cases of the benchmark case catalog (`benchmark/utils/`, see [`benchmark/README.md`](../README.md)),
-at matched effort or matched accuracy. Comparing one checkout of MRT against another is the MRT
+at matched effort or matched accuracy. Comparing one checkout of Ristretto against another is the Ristretto
 harness's job (`benchmark/run.jl`), not this suite's.
 
 ## Python toolkits
 
-SigPy and MRpro run in-process through PythonCall, in the interpreter `MRT_BENCH_SIGPY_PYTHON` in
+SigPy and MRpro run in-process through PythonCall, in the interpreter `RISTRETTO_BENCH_SIGPY_PYTHON` in
 `benchmark/slurm/site.env` names (CondaPkg's `Null` backend: no environment of its own is built).
 It needs Python ≥ 3.10 (MRpro's floor), and PythonCall loads its `libpython`, so on a cluster it
 must exist on the compute nodes too: a system Python of the login node may not. A standalone build
@@ -21,7 +21,7 @@ uv pip install -p /path/to/venvs/py314 torch torchvision --index-url https://dow
 uv pip install -p /path/to/venvs/py314 mrpro
 ```
 
-PythonCall rather than PyCall because the MRT solves between Python calls are multithreaded:
+PythonCall rather than PyCall because the Ristretto solves between Python calls are multithreaded:
 PyCall frees a Python object from whichever thread Julia's GC finalizes it on, which segfaults the
 process at 8 and 16 threads, while PythonCall defers such a free to the thread that holds the GIL.
 MRpro's rows are skipped when it does not import. SigPy is single-threaded on the CPU; MRpro
@@ -31,19 +31,19 @@ threads through PyTorch (`torch.set_num_threads`) and finufft (`OMP_NUM_THREADS`
 
 Each `scripts/run_<section>.jl` is a standalone, runnable Julia script (`include`s `_setup.jl`,
 `_toolkits.jl` and `_methods.jl`). It loops over the catalog cases its method family applies to and
-calls `run_method_rows!` per (case, method): MRT's row is timed with the same `mrt_reconstructor`
-call the MRT harness times, then every competitor that `supports` the pair. No section prepares
+calls `run_method_rows!` per (case, method): Ristretto's row is timed with the same `ristretto_reconstructor`
+call the Ristretto harness times, then every competitor that `supports` the pair. No section prepares
 data of its own. Every toolkit gets the same prepared case, rearranged to its layout by
 `_toolkits.jl`.
 
 | section | cases × methods |
 |---|---|
 | `base` | adjoint on the Cartesian cases |
-| `noncart` | DCF-weighted gridding on the radial cases, plus MRT at MRIReco's NFFT operating point |
+| `noncart` | DCF-weighted gridding on the radial cases, plus Ristretto at MRIReco's NFFT operating point |
 | `cgsense` | CG-SENSE on every multichannel case |
 | `sparsity` | isotropic TV, anisotropic TV, each by ADMM and by PDHG, L1-wavelet, TGV on the static cases (TGV 2D only; radial cases get the TVs and no wavelet or TGV), matched effort |
 | `dynamic` | global / locally low rank, temporal TV (ADMM and PDHG) on both cine cases, matched effort |
-| `kspace` | GRAPPA on the regularly undersampled variant of the 2D and multislice cases (MRT only — no cross-toolkit row exists, see the script's header) |
+| `kspace` | GRAPPA on the regularly undersampled variant of the 2D and multislice cases (Ristretto only — no cross-toolkit row exists, see the script's header) |
 | `accuracy_race` | time-to-target-NRMSE per toolkit, the fair comparison (see the script's header for why the other sections' fixed-iteration-count numbers are not directly comparable across toolkits) |
 
 `--data=synthetic` (default), `real` or `all` picks which catalog cases the sections iterate; the
@@ -64,8 +64,8 @@ one, under the same row labels with a `(CUDA)` suffix and recorded under backend
 
 | toolkit | on the GPU |
 |---|---|
-| MRT | the acquisition moved with `adapt(CuArray, ·)`; everything runs on the device |
-| BART | `pics -g`, from the build `MRT_BENCH_BART_CUDA` names; not the direct rows, which are not timed on the CPU either |
+| Ristretto | the acquisition moved with `adapt(CuArray, ·)`; everything runs on the device |
+| BART | `pics -g`, from the build `RISTRETTO_BENCH_BART_CUDA` names; not the direct rows, which are not timed on the CPU either |
 | SigPy | CuPy, with the k-space, maps and trajectory on `sigpy.Device(0)`. Its wavelet transform is PyWavelets on the host, so its L1-wavelet row copies every iterate to the host and back |
 | MRIReco | `arrayType = CuArray`, through RegularizedLeastSquares' and NFFT's GPU extensions |
 | MRpro | its tensors on `"cuda"`; cufinufft for the NUFFT |
@@ -82,7 +82,7 @@ calibration's: the problem is the same, and so is the precision (`ComplexF32`).
 CUDA.jl is not a dependency of this environment. A GPU run adds it through a GPUEnv overlay,
 persisted in `gpu_env/` (gitignored) and reused until this environment changes. SigPy and MRpro
 need CuPy and a CUDA build of PyTorch, which the CPU interpreter does not have, so a GPU run uses
-the interpreter `MRT_BENCH_GPU_PYTHON` names when it is set:
+the interpreter `RISTRETTO_BENCH_GPU_PYTHON` names when it is set:
 
 ```sh
 uv venv -p /path/to/uv-python/cpython-3.14.*/bin/python3.14 /path/to/venvs/py314-gpu
@@ -105,7 +105,7 @@ benchmark/slurm/submit.sh comparison_gpu.sh --sections=cgsense,sparsity
 ```
 
 The `kspace` section has no GPU rows (GRAPPA runs on a host copy), nor does the non-Cartesian
-section's second MRT operating point.
+section's second Ristretto operating point.
 
 ## Filtering a rerun
 
@@ -117,7 +117,7 @@ subprocess:
 | `--sections=sparsity,dynamic` | specific sections instead of all seven |
 | `--data=all` | which catalog cases: `synthetic` (default), `real` or `all` |
 | `--cases=shepp_logan_2d,low-rank` | case-insensitive substrings matched against a catalog case id, a section, or a method label — `shepp_logan_2d` runs the three 2D Shepp-Logan cases, `low-rank` every low-rank row across `dynamic` and `accuracy_race` |
-| `--frameworks=BART` | gates only the *competitor* toolkits (SigPy/BART/MRIReco/MIRT/MRpro); MRT's own solve always runs — it is the reference every other framework's `nrmse_mrt` is computed against, and it is cheap next to whichever toolkit is under suspicion |
+| `--frameworks=BART` | gates only the *competitor* toolkits (SigPy/BART/MRIReco/MIRT/MRpro); Ristretto's own solve always runs — it is the reference every other framework's `nrmse_ristretto` is computed against, and it is cheap next to whichever toolkit is under suspicion |
 
 ```sh
 # re-verify one suspect BART timing without paying for the other three toolkits or 7 other sections
@@ -128,11 +128,11 @@ julia --project=benchmark/comparison -t 16 --use-mkl benchmark/comparison/script
 Every section checks `should_run` / `should_run_framework` (`_setup.jl`) *before* paying for a
 solve, so a narrow filter is actually cheap, not just a smaller printout.
 
-`MRT_BENCH_SMALL=1` runs every section on the shrunken catalog in a few minutes, for a smoke test
+`RISTRETTO_BENCH_SMALL=1` runs every section on the shrunken catalog in a few minutes, for a smoke test
 on a login node:
 
 ```sh
-MRT_BENCH_SMALL=1 julia --project=benchmark/comparison -t 4 benchmark/comparison/scripts/run_all.jl --threads=4 --frameworks=none
+RISTRETTO_BENCH_SMALL=1 julia --project=benchmark/comparison -t 4 benchmark/comparison/scripts/run_all.jl --threads=4 --frameworks=none
 ```
 
 ## Results storage (`benchmark/utils/results_store.jl`)
@@ -168,18 +168,18 @@ query, done fresh each time:
 ## Calibration
 
 `scripts/calibrate_lambda.jl` fits each toolkit's own λ per case. It sweeps a log grid (8 points, 6
-for the heavy cases) at 30 outer iterations. MRT's best NRMSE is the target, and every other toolkit
+for the heavy cases) at 30 outer iterations. Ristretto's best NRMSE is the target, and every other toolkit
 gets the λ whose NRMSE is closest to it. So every section compares toolkits at matched accuracy
 rather than at a nominally equal but differently scaled λ.
 
 A row that runs a fixed-penalty ADMM also sweeps ρ, over the decades `RHO_DECADES` (default
-`-2,-1,0,1,2`) around the toolkit's default: `admm_rho(c)` for MRT, relative to `‖𝒜‖²`, and
+`-2,-1,0,1,2`) around the toolkit's default: `admm_rho(c)` for Ristretto, relative to `‖𝒜‖²`, and
 `CMP_RHO` for the others, absolute in their own operator scaling. Each toolkit keeps the ρ at which
 it reaches its best NRMSE (the `rho` table, read back by `load_rho`), and its λ is picked on that
 ρ's curve; a best ρ at the grid's edge is logged. Without a calibrated ρ, rows fall back to those
 defaults.
 
-`--frameworks=mrt,bart,...` recalibrates only the named toolkits and `--methods=tv,...` only the
+`--frameworks=ristretto,bart,...` recalibrates only the named toolkits and `--methods=tv,...` only the
 named methods. The curves of the other toolkits are read back from the case's file, so the target,
 the picks and `race_target` are always recomputed over every toolkit calibrated so far, and the
 file is merged under a lock, so several processes can calibrate one case at once.
@@ -201,7 +201,7 @@ NRMSE × 1.10, the target `run_accuracy_race.jl` races to. The ADMM and PDHG row
 the larger of their two targets, so their times are to the same accuracy. `load_lambda` falls back
 from a case to its synthetic analogue, then to the pre-catalog `results/lambda_calibration.json`,
 then to the default
-in `benchmark/utils/mrt_methods.jl`. Under `MRT_BENCH_SMALL=1` the files go to `results/lambda_small/`
+in `benchmark/utils/ristretto_methods.jl`. Under `RISTRETTO_BENCH_SMALL=1` the files go to `results/lambda_small/`
 (gitignored) instead. Rerun calibration for a case whose problem or regularization changed. It
 takes one SLURM array task per case:
 

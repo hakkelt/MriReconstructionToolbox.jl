@@ -35,7 +35,7 @@ using TestItems
         x = rand(8, 8)
         λ = 0.3
         reg = TotalVariation2D(λ)
-        result = MriReconstructionToolbox.calculate(reg, x; threaded)
+        result = Ristretto.calculate(reg, x; threaded)
         @test result isa Real
         @test result ≥ 0  # TV norm is non-negative
 
@@ -50,7 +50,7 @@ using TestItems
     @testset "materialize - constant image" for threaded in [false, true]
         x = ones(Float64, 6, 6)  # Constant image
         reg = TotalVariation2D(0.5)
-        result = MriReconstructionToolbox.calculate(reg, x; threaded)
+        result = Ristretto.calculate(reg, x; threaded)
         # TV of constant image should be zero (or very small due to boundary conditions)
         @test result ≈ 0.0 atol = 1.0e-10
     end
@@ -59,7 +59,7 @@ using TestItems
         x = zeros(Float64, 8, 8)
         x[1:4, :] .= 1.0  # Step function
         reg = TotalVariation2D(1.0)
-        result = MriReconstructionToolbox.calculate(reg, x; threaded)
+        result = Ristretto.calculate(reg, x; threaded)
         # Should have non-zero TV due to the step
         @test result > 0
     end
@@ -100,7 +100,7 @@ end
         x = rand(6, 6, 6)
         λ = 0.4
         reg = TotalVariation3D(λ)
-        result = MriReconstructionToolbox.calculate(reg, x; threaded)
+        result = Ristretto.calculate(reg, x; threaded)
         @test result isa Real
         @test result ≥ 0  # TV norm is non-negative
 
@@ -114,7 +114,7 @@ end
     @testset "materialize - constant volume" for threaded in [false, true]
         x = ones(Float64, 4, 4, 4)  # Constant volume
         reg = TotalVariation3D(0.7)
-        result = MriReconstructionToolbox.calculate(reg, x; threaded)
+        result = Ristretto.calculate(reg, x; threaded)
         # TV of constant volume should be zero (or very small due to boundary conditions)
         @test result ≈ 0.0 atol = 1.0e-10
     end
@@ -145,14 +145,14 @@ end
     @testset "materialize" for threaded in [false, true]
         x = randn(6, 6, 5)
         λ = 0.4
-        result = MriReconstructionToolbox.calculate(TemporalTotalVariation(λ; time_dim = 3), x; threaded)
+        result = Ristretto.calculate(TemporalTotalVariation(λ; time_dim = 3), x; threaded)
         @test result ≈ λ * sum(abs, diff(x; dims = 3))
     end
 
     @testset "complex data" begin
         x = randn(ComplexF64, 4, 4, 3)
         λ = 0.25
-        result = MriReconstructionToolbox.calculate(TemporalTotalVariation(λ; time_dim = 3), x; threaded = false)
+        result = Ristretto.calculate(TemporalTotalVariation(λ; time_dim = 3), x; threaded = false)
         @test result ≈ λ * sum(abs, diff(x; dims = 3))
     end
 
@@ -160,8 +160,8 @@ end
         x = NamedDimsArray{(:x, :y, :time)}(randn(4, 4, 3))
         reg = TemporalTotalVariation(0.1; time_dim = :time)
         op = get_operator(reg, x; threaded = false)
-        @test op isa MriReconstructionToolbox.NamedDimsOp
-        @test MriReconstructionToolbox.calculate(reg, x; threaded = false) ≈
+        @test op isa Ristretto.NamedDimsOp
+        @test Ristretto.calculate(reg, x; threaded = false) ≈
             0.1 * sum(abs, diff(unname(x); dims = 3))
     end
 
@@ -169,13 +169,13 @@ end
         ksp = randn(ComplexF32, 8, 8, 10)
         info = AcquisitionInfo(ksp; image_size = (8, 8))
         reg = TemporalTotalVariation(0.1f0; time_dim = 3)
-        @test MriReconstructionToolbox.get_affected_dims(reg, info, 1:3) == (3,)
+        @test Ristretto.get_affected_dims(reg, info, 1:3) == (3,)
         reg_named = TemporalTotalVariation(0.1f0; time_dim = :time)
-        @test MriReconstructionToolbox.get_affected_dims(reg_named, info, (:x, :y, :time)) == (:time,)
+        @test Ristretto.get_affected_dims(reg_named, info, (:x, :y, :time)) == (:time,)
     end
 
     @testset "scale_regularization" begin
-        reg = MriReconstructionToolbox.scale_regularization(TemporalTotalVariation(0.2; time_dim = 3), 2.5)
+        reg = Ristretto.scale_regularization(TemporalTotalVariation(0.2; time_dim = 3), 2.5)
         @test reg.λ ≈ 0.5
         @test reg.time_dim == 3
     end
@@ -212,12 +212,12 @@ end
 
     @testset "a linear ramp is free, unlike for first-order TV" begin
         ramp2 = [2.0i + 3.0j for i in 1:6, j in 1:6]
-        @test MriReconstructionToolbox.calculate(SecondOrderTotalVariation2D(1.0), ramp2) ≈ 0 atol = 1.0e-12
-        @test MriReconstructionToolbox.calculate(TotalVariation2D(1.0), ramp2) > 1
+        @test Ristretto.calculate(SecondOrderTotalVariation2D(1.0), ramp2) ≈ 0 atol = 1.0e-12
+        @test Ristretto.calculate(TotalVariation2D(1.0), ramp2) > 1
 
         ramp3 = [i + 2.0j + 3.0k for i in 1:5, j in 1:5, k in 1:5]
-        @test MriReconstructionToolbox.calculate(SecondOrderTotalVariation3D(1.0), ramp3) ≈ 0 atol = 1.0e-12
-        @test MriReconstructionToolbox.calculate(TotalVariation3D(1.0), ramp3) > 1
+        @test Ristretto.calculate(SecondOrderTotalVariation3D(1.0), ramp3) ≈ 0 atol = 1.0e-12
+        @test Ristretto.calculate(TotalVariation3D(1.0), ramp3) > 1
     end
 
     @testset "calculate is the voxelwise ℓ₂ norm of all second derivatives" begin
@@ -226,30 +226,30 @@ end
         op = get_operator(SecondOrderTotalVariation2D(λ), x; threaded = false)
         d2 = reshape(op * x, length(x), 4)
         expected = λ * sum(sqrt.(sum(abs2, d2; dims = 2)))
-        @test MriReconstructionToolbox.calculate(SecondOrderTotalVariation2D(λ), x) ≈ expected
+        @test Ristretto.calculate(SecondOrderTotalVariation2D(λ), x) ≈ expected
     end
 
     @testset "dimensions beyond the spatial ones are batch dimensions" begin
         x = randn(6, 6, 3)
         λ = 0.2
         expected = sum(
-            MriReconstructionToolbox.calculate(SecondOrderTotalVariation2D(λ), x[:, :, k]) for k in 1:3
+            Ristretto.calculate(SecondOrderTotalVariation2D(λ), x[:, :, k]) for k in 1:3
         )
-        @test MriReconstructionToolbox.calculate(SecondOrderTotalVariation2D(λ), x) ≈ expected
+        @test Ristretto.calculate(SecondOrderTotalVariation2D(λ), x) ≈ expected
     end
 
     @testset "complex input" begin
         x = randn(ComplexF64, 6, 6)
-        @test MriReconstructionToolbox.calculate(SecondOrderTotalVariation2D(0.1), x) > 0
+        @test Ristretto.calculate(SecondOrderTotalVariation2D(0.1), x) > 0
     end
 
     @testset "NamedDimsArray input" begin
         x = NamedDimsArray{(:x, :y, :time)}(randn(6, 6, 2))
         reg = SecondOrderTotalVariation2D(0.1)
         op = get_operator(reg, x; threaded = false)
-        @test op isa MriReconstructionToolbox.NamedDimsOp
-        @test MriReconstructionToolbox.calculate(reg, x; threaded = false) ≈
-            MriReconstructionToolbox.calculate(reg, unname(x); threaded = false)
+        @test op isa Ristretto.NamedDimsOp
+        @test Ristretto.calculate(reg, x; threaded = false) ≈
+            Ristretto.calculate(reg, unname(x); threaded = false)
     end
 
     @testset "too few dimensions" begin
@@ -260,15 +260,15 @@ end
     @testset "get_affected_dims" begin
         ksp = randn(ComplexF32, 8, 8, 4)
         info = AcquisitionInfo(ksp; image_size = (8, 8))
-        @test MriReconstructionToolbox.get_affected_dims(SecondOrderTotalVariation2D(0.1f0), info, 1:3) == 1:2
-        @test MriReconstructionToolbox.get_affected_dims(
+        @test Ristretto.get_affected_dims(SecondOrderTotalVariation2D(0.1f0), info, 1:3) == 1:2
+        @test Ristretto.get_affected_dims(
             SecondOrderTotalVariation3D(0.1f0), info, (:x, :y, :z, :time)
         ) == (:x, :y, :z)
     end
 
     @testset "scale_regularization" begin
-        @test MriReconstructionToolbox.scale_regularization(SecondOrderTotalVariation2D(0.2), 2.5).λ ≈ 0.5
-        @test MriReconstructionToolbox.scale_regularization(SecondOrderTotalVariation3D(0.2), 2.5).λ ≈ 0.5
+        @test Ristretto.scale_regularization(SecondOrderTotalVariation2D(0.2), 2.5).λ ≈ 0.5
+        @test Ristretto.scale_regularization(SecondOrderTotalVariation3D(0.2), 2.5).λ ≈ 0.5
     end
 end
 
@@ -278,18 +278,18 @@ end
     # mask is (:_, :b..., :_), so the direction axis is actually last. NamedDims does not check names
     # against sizes, so a dynamic image was silently mislabelled.
     x2 = NamedDimsArray{(:x, :y, :t)}(rand(ComplexF32, 8, 8, 4))
-    out2 = MriReconstructionToolbox.get_operator(TotalVariation2D(0.1), x2; threaded = false) * x2
+    out2 = Ristretto.get_operator(TotalVariation2D(0.1), x2; threaded = false) * x2
     @test size(out2) == (8, 8, 4, 2)
     @test dimnames(out2) == (:x, :y, :t, :direction)
 
     x3 = NamedDimsArray{(:x, :y, :z, :t)}(rand(ComplexF32, 6, 6, 6, 3))
-    out3 = MriReconstructionToolbox.get_operator(TotalVariation3D(0.1), x3; threaded = false) * x3
+    out3 = Ristretto.get_operator(TotalVariation3D(0.1), x3; threaded = false) * x3
     @test size(out3) == (6, 6, 6, 3, 3)
     @test dimnames(out3) == (:x, :y, :z, :t, :direction)
 
     # Without batch dims the direction axis is last either way, which is why this went unnoticed.
     xs = NamedDimsArray{(:x, :y)}(rand(ComplexF32, 8, 8))
-    outs = MriReconstructionToolbox.get_operator(TotalVariation2D(0.1), xs; threaded = false) * xs
+    outs = Ristretto.get_operator(TotalVariation2D(0.1), xs; threaded = false) * xs
     @test dimnames(outs) == (:x, :y, :direction)
 end
 
@@ -298,8 +298,8 @@ end
 
     @testset "operator matches the isotropic term's" for threaded in [false, true]
         x = rand(10, 10)
-        aniso = MriReconstructionToolbox.get_operator(AnisotropicTotalVariation2D(0.1), x; threaded)
-        iso = MriReconstructionToolbox.get_operator(TotalVariation2D(0.1), x; threaded)
+        aniso = Ristretto.get_operator(AnisotropicTotalVariation2D(0.1), x; threaded)
+        iso = Ristretto.get_operator(TotalVariation2D(0.1), x; threaded)
         @test aniso * x == iso * x
         @test aniso * x == manual_gradient(x, 2)
     end
@@ -307,34 +307,34 @@ end
     @testset "value is the ℓ₁ norm of the differences, not the ℓ₂,₁ norm" for threaded in [false, true]
         x = rand(8, 8)
         λ = 0.3
-        grad = MriReconstructionToolbox.get_operator(AnisotropicTotalVariation2D(λ), x; threaded) * x
-        value = MriReconstructionToolbox.calculate(AnisotropicTotalVariation2D(λ), x; threaded)
+        grad = Ristretto.get_operator(AnisotropicTotalVariation2D(λ), x; threaded) * x
+        value = Ristretto.calculate(AnisotropicTotalVariation2D(λ), x; threaded)
         @test value ≈ λ * sum(abs, grad)
         # The two norms coincide only when one direction is zero everywhere, so on a generic image
         # the anisotropic value is the strictly larger of the two.
-        @test value > MriReconstructionToolbox.calculate(TotalVariation2D(λ), x; threaded)
+        @test value > Ristretto.calculate(TotalVariation2D(λ), x; threaded)
     end
 
     @testset "3D" for threaded in [false, true]
         x = rand(6, 6, 6)
         λ = 0.2
-        grad = MriReconstructionToolbox.get_operator(AnisotropicTotalVariation3D(λ), x; threaded) * x
+        grad = Ristretto.get_operator(AnisotropicTotalVariation3D(λ), x; threaded) * x
         @test grad == manual_gradient(x, 3)
-        @test MriReconstructionToolbox.calculate(AnisotropicTotalVariation3D(λ), x; threaded) ≈ λ * sum(abs, grad)
+        @test Ristretto.calculate(AnisotropicTotalVariation3D(λ), x; threaded) ≈ λ * sum(abs, grad)
     end
 
     @testset "constant image has zero variation" begin
-        @test MriReconstructionToolbox.calculate(AnisotropicTotalVariation2D(0.5), ones(6, 6); threaded = false) ≈ 0.0 atol = 1.0e-10
+        @test Ristretto.calculate(AnisotropicTotalVariation2D(0.5), ones(6, 6); threaded = false) ≈ 0.0 atol = 1.0e-10
     end
 
     @testset "dimension checks" begin
-        @test_throws ArgumentError MriReconstructionToolbox.get_operator(AnisotropicTotalVariation2D(0.1), rand(10); threaded = false)
-        @test_throws ArgumentError MriReconstructionToolbox.get_operator(AnisotropicTotalVariation3D(0.1), rand(10, 10); threaded = false)
+        @test_throws ArgumentError Ristretto.get_operator(AnisotropicTotalVariation2D(0.1), rand(10); threaded = false)
+        @test_throws ArgumentError Ristretto.get_operator(AnisotropicTotalVariation3D(0.1), rand(10, 10); threaded = false)
     end
 
     @testset "scale_regularization scales λ linearly" begin
-        @test MriReconstructionToolbox.scale_regularization(AnisotropicTotalVariation2D(0.1), 2).λ ≈ 0.2
-        @test MriReconstructionToolbox.scale_regularization(AnisotropicTotalVariation3D(0.1), 2).λ ≈ 0.2
+        @test Ristretto.scale_regularization(AnisotropicTotalVariation2D(0.1), 2).λ ≈ 0.2
+        @test Ristretto.scale_regularization(AnisotropicTotalVariation3D(0.1), 2).λ ≈ 0.2
     end
 
     @testset "reconstructs an undersampled acquisition" begin

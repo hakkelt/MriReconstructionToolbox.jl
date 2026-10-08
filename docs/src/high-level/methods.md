@@ -1,6 +1,6 @@
 # Reconstruction Methods
 
-`MriReconstructionToolbox` provides a unified method taxonomy rooted in `ReconstructionMethod`. Every reconstruction task is specified by passing a method object to `reconstruct`.
+`Ristretto` provides a unified method taxonomy rooted in `ReconstructionMethod`. Every reconstruction task is specified by passing a method object to `reconstruct`.
 
 ```julia
 reconstruct(acq_data, method = DirectReconstruction(); kwargs...)
@@ -84,7 +84,7 @@ The `signal_model` keyword sets how the optimization variable maps to the image:
 #### Operator norm, step size and λ
 
 A proximal algorithm needs the Lipschitz constant of $\nabla f$, not an operator of unit norm, so
-MRT estimates $L = \|\mathcal{A}\|$ and passes $L_f = n L^2$ as the step-size hint ($n$ = number of
+Ristretto estimates $L = \|\mathcal{A}\|$ and passes $L_f = n L^2$ as the step-size hint ($n$ = number of
 optimization variables sharing $\mathcal{A}$; the data term is
 $\tfrac12\|\mathcal{A}(x_1 + \dots + x_n) - y\|^2$, whose gradient has Lipschitz constant
 $\|[\mathcal{A} \dots \mathcal{A}]\|^2 = n\|\mathcal{A}\|^2$). A smooth regularizer
@@ -103,7 +103,7 @@ reconstructed image comes back in those units too.
 
 !!! note "Why the encoding operator is not rescaled to unit norm"
     A common alternative is to normalize the operator and solve
-    $\tfrac12\|(\mathcal{A}/L)x - y\|^2 + \mathcal{R}(x)$ with $L = \|\mathcal{A}\|$. MRT does not,
+    $\tfrac12\|(\mathcal{A}/L)x - y\|^2 + \mathcal{R}(x)$ with $L = \|\mathcal{A}\|$. Ristretto does not,
     because that quietly changes both of the quantities a user reads. Substituting $x = Lv$ turns
     it into $L^2\left[\tfrac12\|\mathcal{A}v - y\|^2 + L\,\lambda\|\Psi v\|_1\right]$ for a
     degree-one homogeneous regularizer: the weight actually applied is $\lambda L$, not $\lambda$,
@@ -183,7 +183,7 @@ POCS
 
 ### Parallel Imaging Methods
 
-In addition to iterative SENSE models (`IterativeReconstruction`), `MriReconstructionToolbox` provides direct k-space autocalibrated parallel imaging:
+In addition to iterative SENSE models (`IterativeReconstruction`), `Ristretto` provides direct k-space autocalibrated parallel imaging:
 
 ```@docs
 GRAPPA
@@ -235,5 +235,5 @@ The encoding operator a method lowers to is built by an internal hook that dispa
 method's signal model:
 
 ```@docs
-MriReconstructionToolbox.model_encoding_operator
+Ristretto.model_encoding_operator
 ```

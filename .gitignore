@@ -29,7 +29,7 @@ benchmark/comparison/results/*__*.json
 # results/runs/: one immutable file per benchmark run (see benchmark/utils/results_store.jl); local working data,
 # not the same thing as a committed comparison snapshot
 benchmark/comparison/results/runs/
-# λ calibrated on the MRT_BENCH_SMALL=1 smoke cases; meaningless at full size
+# λ calibrated on the RISTRETTO_BENCH_SMALL=1 smoke cases; meaningless at full size
 /benchmark/comparison/results/lambda_small/
 
 # agent scaffolding and worktrees
@@ -49,14 +49,14 @@ benchmark/comparison/results/runs/
 
 # LORAKS Software V2.1 (Kim & Haldar, USC-SIPI-443), used only as a numerical oracle for
 # `compare_structured_low_rank.jl`. Its licence permits educational / research / non-profit use
-# and redistribution under that restriction; MriReconstructionToolbox is MIT, which grants
+# and redistribution under that restriction; Ristretto is MIT, which grants
 # commercial use, so the two cannot be shipped together. Fetch it yourself from
 # https://mr.usc.edu/download/LORAKS2/ (a form issues a personalised link) and unpack it here.
 /benchmark/comparison/original_implementations/LORAKS2/
 
 # Written by the test environment when MRITestData caches a download; per-machine state.
 # (The tracked docs/notebooks/ LocalPreferences.toml is deliberate.) The benchmark environments'
-# download path comes from MRT_BENCH_DATA_DIR and must not be committed.
+# download path comes from RISTRETTO_BENCH_DATA_DIR and must not be committed.
 /test/LocalPreferences.toml
 /benchmark/**/LocalPreferences.toml
 /benchmark/LocalPreferences.toml

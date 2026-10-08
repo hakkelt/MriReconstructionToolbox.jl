@@ -17,7 +17,7 @@
 # %% [markdown]
 # # 2 — `AcquisitionInfo`: describing the acquisition
 #
-# `AcquisitionInfo` is the validated container that every other part of MRT consumes: it holds
+# `AcquisitionInfo` is the validated container that every other part of Ristretto consumes: it holds
 # the k-space data, the sensitivity maps, the image size, the sampling pattern and the FFT-shift
 # conventions, and it checks them against each other at construction time.
 #
@@ -35,9 +35,9 @@
 include("NotebookUtils.jl")
 using .NotebookUtils
 
-using MriReconstructionToolbox
+using Ristretto
 using NamedDims
-using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator,
+using Ristretto: get_encoding_operator, get_fourier_operator,
     get_sensitivity_map_operator, get_subsampling_operator
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, MRISheppLoganIntensities
 using Random
@@ -52,7 +52,7 @@ Random.seed!(0);
 # The first (positional) argument is the k-space data. It can be a plain array, a
 # `NamedDimsArray`, or `nothing` when the acquisition has not happened yet.
 #
-# With a plain array — or with no data at all — `is3D` has to be stated: MRT cannot tell a 3D
+# With a plain array — or with no data at all — `is3D` has to be stated: Ristretto cannot tell a 3D
 # volume from a multi-slice 2D stack by shape alone, and with no data there is not even a shape
 # to go on.
 
@@ -149,7 +149,7 @@ side_by_side(
 # %% [markdown]
 # ## 4. FFT-shift conventions
 #
-# MRT assumes DC sits at the centre of the array ([k-space parts](https://mriquestions.com/parts-of-k-space.html)
+# Ristretto assumes DC sits at the centre of the array ([k-space parts](https://mriquestions.com/parts-of-k-space.html)
 # on mriquestions.com is the physical picture). Data that comes off a scanner unshifted (DC at
 # index 1), or that needs an image-space shift, is *declared* rather than pre-processed: the shift
 # is folded into the Fourier operator.
@@ -311,14 +311,14 @@ AcquisitionInfo(info_with_maps; kspace_data = noisy)
 # pass a `trajectory` and you get a `NonCartesianAcquisitionInfo`, otherwise a
 # `CartesianAcquisitionInfo`. Neither concrete type is exported — both are `public`, so both can
 # be dispatched on and named, but only after an explicit import
-# (`using MriReconstructionToolbox: CartesianAcquisitionInfo`). Nothing needs them: every
+# (`using Ristretto: CartesianAcquisitionInfo`). Nothing needs them: every
 # acquisition is built through the `AcquisitionInfo(...)` dispatch, and the concrete type is what
 # comes back. `08_non_cartesian.ipynb` builds one from a radial trajectory.
 
 # %% [markdown]
 # ## 8. Getting the operators back out
 #
-# Every operator MRT would build internally is available from the configuration. These names
+# Every operator Ristretto would build internally is available from the configuration. These names
 # are `public` but not exported, so they have to be imported explicitly.
 #
 # The encoding operator is the composition of the other three,

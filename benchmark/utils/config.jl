@@ -1,4 +1,4 @@
-# Environment knobs shared by the MRT harness (`benchmark/run.jl`) and the comparison suite.
+# Environment knobs shared by the Ristretto harness (`benchmark/run.jl`) and the comparison suite.
 #
 # Every machine-specific path comes from the environment, which `load_site_env!` fills from the
 # untracked `benchmark/slurm/site.env` for variables that are not already set. SLURM jobs get the
@@ -54,13 +54,13 @@ end
 """
     ensure_download_path!()
 
-Point MRITestData at `MRT_BENCH_DATA_DIR` when it is set, else at MRITestData's own Scratch cache
+Point MRITestData at `RISTRETTO_BENCH_DATA_DIR` when it is set, else at MRITestData's own Scratch cache
 when nothing has chosen a location yet. The package refuses to touch the disk until a location is
 configured, and the location must not be a tracked preference (it is a path of one machine).
 """
 function ensure_download_path!()
     MRITestData = Base.require(Base.PkgId(Base.UUID("b3f1a2c4-5d6e-4a7b-9c8d-0e1f2a3b4c5d"), "MRITestData"))
-    dir = get(ENV, "MRT_BENCH_DATA_DIR", "")
+    dir = get(ENV, "RISTRETTO_BENCH_DATA_DIR", "")
     if !isempty(dir)
         current = Base.invokelatest(MRITestData.get_download_path)
         (current === nothing || normpath(string(current)) != normpath(abspath(dir))) &&

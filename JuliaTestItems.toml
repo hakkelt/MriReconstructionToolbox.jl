@@ -1,10 +1,10 @@
 config-version = 1
 
 # deps/ vendors upstream package sources (AbstractOperators, StructuredOptimization,
-# ProximalOperators, ProximalAlgorithms) for the fixes and additions MRT currently depends on.
-# Their own test suites are not part of MRT's test run — they use those packages' own test
-# environments (not MRT's test/Project.toml), and would otherwise be picked up by
-# `@run_package_tests`'s package-root scan. Since the vendored copies are pruned to what MRT
+# ProximalOperators, ProximalAlgorithms) for the fixes and additions Ristretto currently depends on.
+# Their own test suites are not part of Ristretto's test run — they use those packages' own test
+# environments (not Ristretto's test/Project.toml), and would otherwise be picked up by
+# `@run_package_tests`'s package-root scan. Since the vendored copies are pruned to what Ristretto
 # compiles, deps/ no longer carries test files at all, but the exclusion stays as a guard.
 #
 # .vendor-work/ holds the scratch worktrees in which `tools/vendor.jl rebuild` assembles each

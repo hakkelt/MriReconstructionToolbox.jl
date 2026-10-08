@@ -1,5 +1,5 @@
 # Section: temporal priors on every cine catalog case — global low-rank ↔ BART `-R L -b <image>`,
-# locally low-rank ↔ `-R L -b 8`, temporal TV ↔ `-R T:32` — MRT vs BART vs MRIReco vs SigPy vs MIRT
+# locally low-rank ↔ `-R L -b 8`, temporal TV ↔ `-R T:32` — Ristretto vs BART vs MRIReco vs SigPy vs MIRT
 # vs MRpro (MRpro in the global low-rank and temporal-TV PDHG rows).
 #   julia --project=benchmark/comparison -t N benchmark/comparison/scripts/run_dynamic.jl --threads=N [--use-mkl] [--data=synthetic|real|all]
 #
@@ -18,7 +18,7 @@
 #   size>` makes the image one block.
 # * **`-R L` selects FISTA, not ADMM**, because the low-rank prox needs no linear transform. `-m`
 #   forces ADMM so both sides run the same algorithm and `-u` / `-C` mean something.
-# * **`-n` disables random block cycle spinning**, which BART applies to LLR by default. MRT's
+# * **`-n` disables random block cycle spinning**, which BART applies to LLR by default. Ristretto's
 #   `LocallyLowRank` defaults to a fixed tiling, so `-n` makes the two the same objective.
 #
 # ## Temporal TV is the one method whose accuracy depends on the *inner* solve
@@ -26,7 +26,7 @@
 # Fixed-ρ ADMM on `D_t` (a large null space: anything constant in time) barely couples `z` to
 # `D_t x` at ρ = CMP_RHO, so a *more* exact inner CG makes the result worse (measured 0.0769 at
 # cg = 10, 0.2440 at cg = 80); BART hides this behind its hardcoded `1e-3 · ‖rhs‖` inner tolerance.
-# At CMP_CG_ITERS = 10 MRT and BART agree closely, which is the operating point λ is calibrated at.
+# At CMP_CG_ITERS = 10 Ristretto and BART agree closely, which is the operating point λ is calibrated at.
 #
 # Temporal TV also runs by PDHG (`ttv_pd`, BART `-a`), which has no inner solve and no ρ, at
 # `PDHG_ITERATIONS` iterations.

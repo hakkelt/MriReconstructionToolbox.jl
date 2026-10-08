@@ -1,7 +1,7 @@
-module MriReconstructionToolboxMRIBaseExt
+module RistrettoMRIBaseExt
 
-using MriReconstructionToolbox
-using MriReconstructionToolbox: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
+using Ristretto
+using Ristretto: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
 using ArgCheck: @argcheck
 using NamedDims: NamedDimsArray
 using MRIBase: MRIBase, RawAcquisitionData, Limit, kspaceNodes
@@ -70,16 +70,16 @@ code afterwards. Ignoring these offsets — placing sample/line `i` at raw posit
 exactly the bug this constructor exists to avoid: it silently shifts the reconstructed image by
 `center - N ÷ 2` samples along the affected axis.
 
-The *image* domain needs the matching convention. MRT's default is the plain-DFT one — image
+The *image* domain needs the matching convention. Ristretto's default is the plain-DFT one — image
 origin at index 1, so a reconstruction comes out in "FFT order" — which round-trips consistently
-for k-space that MRT itself simulated, but is not how a scanner stores data: an ISMRMRD
+for k-space that Ristretto itself simulated, but is not how a scanner stores data: an ISMRMRD
 acquisition images an object centred in the FOV. This constructor therefore sets
 `shifted_image_dims` to every spatial axis (`(:x, :y)`, or `(:x, :y, :z)` when `is3D`), so
 `reconstruct` returns the object centred in the frame and no image-domain `fftshift` is needed
 either. Without it every reconstruction from real data comes out shifted by half the FOV along
 both in-plane axes.
 """
-function MriReconstructionToolbox.AcquisitionInfo(raw::RawAcquisitionData; sensitivity_maps = nothing)
+function Ristretto.AcquisitionInfo(raw::RawAcquisitionData; sensitivity_maps = nothing)
     trajectory_name = lowercase(String(get(raw.params, "trajectory", "cartesian")))
     if trajectory_name == "cartesian"
         return _cartesian_acquisition_info(raw; sensitivity_maps)
@@ -227,7 +227,7 @@ function _cartesian_acquisition_info(raw::RawAcquisitionData; sensitivity_maps =
         image_size = is3D ? (nkx, nky, nkz) : (nkx, nky),
         sensitivity_maps,
         subsampling,
-        # Scanner data images an object centred in the FOV, unlike MRT's plain-DFT default of the
+        # Scanner data images an object centred in the FOV, unlike Ristretto's plain-DFT default of the
         # image origin at index 1 — see "FFT-shift convention" in the docstring above.
         shifted_image_dims = is3D ? (:x, :y, :z) : (:x, :y),
     )
@@ -341,4 +341,4 @@ function _noncartesian_acquisition_info(raw::RawAcquisitionData; sensitivity_map
     )
 end
 
-end # module MriReconstructionToolboxMRIBaseExt
+end # module RistrettoMRIBaseExt

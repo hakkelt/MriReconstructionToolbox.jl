@@ -9,8 +9,8 @@
 using GPUEnv
 GPUEnv.activate(; include_jlarrays = false)
 using CUDA, NamedDims, Printf, Statistics, Random
-using MriReconstructionToolbox
-const Adapt = MriReconstructionToolbox.Adapt
+using Ristretto
+const Adapt = Ristretto.Adapt
 
 CUDA.functional() || error("no functional CUDA device")
 const REPS = length(ARGS) >= 1 ? parse(Int, ARGS[1]) : 5

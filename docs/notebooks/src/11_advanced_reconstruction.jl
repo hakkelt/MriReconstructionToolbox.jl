@@ -31,11 +31,11 @@
 include("NotebookUtils.jl")
 using .NotebookUtils
 
-using MriReconstructionToolbox
+using Ristretto
 using GeometricMedicalPhantoms: create_shepp_logan_phantom, create_tubes_phantom, MRISheppLoganIntensities, TubesIntensities, TubesMask
 using MIRTjim: jim
 using Plots
-using MriReconstructionToolbox.AbstractOperators: Hankel
+using Ristretto.AbstractOperators: Hankel
 using NamedDims
 using LinearAlgebra
 using Statistics
@@ -186,7 +186,7 @@ println("SNR 30 dB    L2Loss NRMSE at maxit = 40:                ", round(nrmse(
 #    c                  x(r, t)                y
 # ```
 #
-# MRT ships two: `TemporalBasis`, whose variable is a set of subspace coefficient maps, and
+# Ristretto ships two: `TemporalBasis`, whose variable is a set of subspace coefficient maps, and
 # `KSpaceToImage`, whose variable is the multi-channel k-space itself.
 
 
@@ -489,7 +489,7 @@ println("KSpaceToImage, no k-space prior  ", round(nrmse(x_ksp, img_pi), digits 
 
 # Adding the SPIRiT self-consistency term is what makes the k-space variable pay off — this is the
 # hand-built version of `SPIRiT(; iterative = true)`.
-kernel = MriReconstructionToolbox._calibrate_spirit_kernel(
+kernel = Ristretto._calibrate_spirit_kernel(
     acq_pi, SPIRiT(kernel_size = (5, 5), calib_size = (Nx, 24))
 )
 x_ksp_spirit = reconstruct(
@@ -644,7 +644,7 @@ side_by_side(
 #   about 2.7× as much per iteration (76 ms against ~210 ms on a 64²×8 slab with a `(5, 5)`
 #   window). LORAKS proper imposes both constraints at once, which here means two `Component`
 #   terms — one `:c`, one `:s` — each with its own `λ`.
-# - `kspace_center` tells `:s` and `:g` where DC sits. It defaults to MRT's centered convention
+# - `kspace_center` tells `:s` and `:g` where DC sits. It defaults to Ristretto's centered convention
 #   (`N ÷ 2 + 1`); data declared with `shifted_kspace_dims`, where DC is at index 1, has to say so.
 
 

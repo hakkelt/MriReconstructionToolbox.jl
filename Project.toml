@@ -1,4 +1,4 @@
-name = "MriReconstructionToolbox"
+name = "Ristretto"
 uuid = "5999b5f3-4ffc-4695-817d-461c6e99e3c0"
 version = "0.1.0"
 authors = ["Tamas Hakkel <hakkelt@gmail.com>"]
@@ -51,10 +51,10 @@ MKL = "33e6dc65-8f57-5167-99aa-e5a354878fb2"
 MRIBase = "f7771a9a-6e57-4e71-863b-6e4b6a2f17df"
 
 [extensions]
-MriReconstructionToolboxCUDAExt = ["CUDA", "GPUArrays"]
-MriReconstructionToolboxGPUExt = ["GPUArrays", "KernelAbstractions"]
-MriReconstructionToolboxMKLExt = "MKL"
-MriReconstructionToolboxMRIBaseExt = "MRIBase"
+RistrettoCUDAExt = ["CUDA", "GPUArrays"]
+RistrettoGPUExt = ["GPUArrays", "KernelAbstractions"]
+RistrettoMKLExt = "MKL"
+RistrettoMRIBaseExt = "MRIBase"
 
 [compat]
 ADTypes = "1.5"

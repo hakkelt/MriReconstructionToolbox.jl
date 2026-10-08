@@ -26,9 +26,9 @@ ordering is then no longer a reliable way to find the image.
 
 ```@docs
 build_model
-MriReconstructionToolbox.build_model_with_variables
-MriReconstructionToolbox.materialize
-MriReconstructionToolbox.materialize_with_auxiliaries
+Ristretto.build_model_with_variables
+Ristretto.materialize
+Ristretto.materialize_with_auxiliaries
 ```
 
 ## Two-Variable Example: Sparse + Low-Rank Wavelet Prior
@@ -39,12 +39,12 @@ We build a toy reconstruction with two variables and two regularizers:
 - Data fidelity: simple least-squares to synthetic observation `b`.
 
 ```@example so
-using MriReconstructionToolbox.StructuredOptimization
-using MriReconstructionToolbox.AbstractOperators
-using MriReconstructionToolbox.ProximalOperators
-using MriReconstructionToolbox.WaveletOperators: WaveletOp, WT, wavelet
+using Ristretto.StructuredOptimization
+using Ristretto.AbstractOperators
+using Ristretto.ProximalOperators
+using Ristretto.WaveletOperators: WaveletOp, WT, wavelet
 using SparseArrays: sprandn
-using MriReconstructionToolbox.ProximalAlgorithms: FastForwardBackward, PANOCplus
+using Ristretto.ProximalAlgorithms: FastForwardBackward, PANOCplus
 
 # Problem size (kept small for docs)
 nx, ny = 32, 32
@@ -110,10 +110,10 @@ println("L1 term: ", round(val_l1, digits=4), "; Nuclear term: ", round(val_nuc,
 ## Anatomy: Basics in One Place
 
 ```@example so
-using MriReconstructionToolbox.StructuredOptimization
-using MriReconstructionToolbox.AbstractOperators
-using MriReconstructionToolbox.ProximalOperators
-using MriReconstructionToolbox.ProximalAlgorithms: FastForwardBackward
+using Ristretto.StructuredOptimization
+using Ristretto.AbstractOperators
+using Ristretto.ProximalOperators
+using Ristretto.ProximalAlgorithms: FastForwardBackward
 
 # Variables and access
 u = Variable(10); v = Variable(10)

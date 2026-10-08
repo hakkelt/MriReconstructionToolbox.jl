@@ -60,7 +60,7 @@ function _iterative_reconstruct_core(
             solver_kwargs = (; solver_kwargs..., maxit = method.maxit)
         end
         if !isnothing(method.reltol)
-            # MRT's `reltol` is relative to the initial estimate; ProximalAlgorithms' `tol` is
+            # Ristretto's `reltol` is relative to the initial estimate; ProximalAlgorithms' `tol` is
             # absolute, and this is where the one is turned into the other.
             tol = method.reltol == 0 ? 0 : max(ϵ * 10, method.reltol * _max_abs(x₀_or_x₀s))
             stop =

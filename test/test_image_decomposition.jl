@@ -1,7 +1,7 @@
 @testitem "Component: construction, show, validation" tags = [:components] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: bind_dimensions
+    using Ristretto
+    using Ristretto: bind_dimensions
 
     c = Component(:sparse, L1Image(0.1))
     @test c.name === :sparse
@@ -13,38 +13,38 @@
 
     @test_throws ArgumentError Component(:empty)
 
-    @test_throws ArgumentError MriReconstructionToolbox.check_components((c,))
-    @test_throws ArgumentError MriReconstructionToolbox.check_components((c, Component(:sparse, L1Image(0.1))))
-    @test isnothing(MriReconstructionToolbox.check_components((c, c2)))
+    @test_throws ArgumentError Ristretto.check_components((c,))
+    @test_throws ArgumentError Ristretto.check_components((c, Component(:sparse, L1Image(0.1))))
+    @test isnothing(Ristretto.check_components((c, c2)))
 end
 
 @testitem "Component: forwarders" tags = [:components] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: bind_dimensions
-    using MriReconstructionToolbox.StructuredOptimization
+    using Ristretto
+    using Ristretto: bind_dimensions
+    using Ristretto.StructuredOptimization
 
     c = Component(:lowrank, LowRank(0.05))
     factor = 2.0
-    scaled = MriReconstructionToolbox.scale_regularization(c, factor)
+    scaled = Ristretto.scale_regularization(c, factor)
     @test scaled.regularizations[1] isa LowRank
     @test scaled.regularizations[1].λ ≈ c.regularizations[1].λ * factor
 
     c3 = Component(:sparse, L1Image(0.1))
     x = Variable(rand(8, 8))
-    t1 = MriReconstructionToolbox.materialize(c3, x; threaded = false)
-    t2 = MriReconstructionToolbox.materialize(c3.regularizations[1], x; threaded = false)
+    t1 = Ristretto.materialize(c3, x; threaded = false)
+    t2 = Ristretto.materialize(c3.regularizations[1], x; threaded = false)
     @test t1 isa typeof(t2)
 end
 
 @testitem "DecomposedImage: array semantics" tags = [:components] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: bind_dimensions
+    using Ristretto
+    using Ristretto: bind_dimensions
 
     a = rand(4, 4)
     b = rand(4, 4)
-    img = MriReconstructionToolbox.DecomposedImage(a + b, (lowrank = a, sparse = b))
+    img = Ristretto.DecomposedImage(a + b, (lowrank = a, sparse = b))
 
     @test size(img) == (4, 4)
     @test img[2, 3] ≈ (a + b)[2, 3]
@@ -63,11 +63,11 @@ end
 
 @testitem "DecomposedImage: property access forwards to components" tags = [:components] begin
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
 
     a = rand(4, 4)
     b = rand(4, 4)
-    img = MriReconstructionToolbox.DecomposedImage(a + b, (lowrank = a, sparse = b))
+    img = Ristretto.DecomposedImage(a + b, (lowrank = a, sparse = b))
 
     # Shorthand `img.lowrank` must be identical to the long form `img.components.lowrank`.
     @test img.lowrank == a
@@ -100,11 +100,11 @@ end
 @testitem "DecomposedImage: getproperty is type-stable for a literal Symbol" tags = [:components, :jet] begin
     using Test
     using JET
-    using MriReconstructionToolbox
+    using Ristretto
 
     a = rand(4, 4)
     b = rand(4, 4)
-    img = MriReconstructionToolbox.DecomposedImage(a + b, (lowrank = a, sparse = b))
+    img = Ristretto.DecomposedImage(a + b, (lowrank = a, sparse = b))
 
     get_lowrank(img) = img.lowrank
     get_total(img) = img.total
@@ -117,36 +117,36 @@ end
     # JET confirms no dynamic-dispatch/runtime-dispatch report for a literal-Symbol access, since a
     # constant Symbol is what every call site in the package and in user code actually writes
     # (`img.lowrank`, not `getproperty(img, name_variable)`).
-    @test_opt target_modules = (MriReconstructionToolbox,) get_lowrank(img)
-    @test_opt target_modules = (MriReconstructionToolbox,) get_total(img)
-    @test_opt target_modules = (MriReconstructionToolbox,) get_components(img)
+    @test_opt target_modules = (Ristretto,) get_lowrank(img)
+    @test_opt target_modules = (Ristretto,) get_total(img)
+    @test_opt target_modules = (Ristretto,) get_components(img)
 end
 
 @testitem "DecomposedImage: a component named like a struct field is rejected" tags = [:components] begin
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
 
     a = rand(4, 4)
     b = rand(4, 4)
 
     # Direct construction with a reserved component name.
-    @test_throws ArgumentError MriReconstructionToolbox.DecomposedImage(a + b, (total = a, sparse = b))
-    @test_throws ArgumentError MriReconstructionToolbox.DecomposedImage(a + b, (components = a, sparse = b))
+    @test_throws ArgumentError Ristretto.DecomposedImage(a + b, (total = a, sparse = b))
+    @test_throws ArgumentError Ristretto.DecomposedImage(a + b, (components = a, sparse = b))
 
     # The same collision caught earlier, at Component-tuple validation time.
     c1 = Component(:total, L1Image(0.1))
     c2 = Component(:sparse, L1Image(0.1))
-    @test_throws ArgumentError MriReconstructionToolbox.check_components((c1, c2))
+    @test_throws ArgumentError Ristretto.check_components((c1, c2))
     c3 = Component(:components, L1Image(0.1))
-    @test_throws ArgumentError MriReconstructionToolbox.check_components((c3, c2))
+    @test_throws ArgumentError Ristretto.check_components((c3, c2))
 end
 
 @testitem "build_model: two-component model matches hand-computed objective" tags = [:components, :minimizer] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: bind_dimensions
-    using MriReconstructionToolbox.AbstractOperators
-    using MriReconstructionToolbox.StructuredOptimization
+    using Ristretto
+    using Ristretto: bind_dimensions
+    using Ristretto.AbstractOperators
+    using Ristretto.StructuredOptimization
 
     x_true = rand(8, 8)
     y_true = rand(8, 8)
@@ -169,14 +169,14 @@ end
     model_val = f(op * combined)
 
     data_fidelity = 0.5 * sum(abs2, (𝒜 * (x_true + y_true)) .- y)
-    reg1_val = MriReconstructionToolbox.calculate(reg1, x_true; threaded = false)
-    reg2_val = MriReconstructionToolbox.calculate(reg2, y_true; threaded = false)
+    reg1_val = Ristretto.calculate(reg1, x_true; threaded = false)
+    reg2_val = Ristretto.calculate(reg2, y_true; threaded = false)
     @test isapprox(model_val, data_fidelity + reg1_val + reg2_val; rtol = 1.0e-8, atol = 1.0e-10)
 end
 
 @testitem "reconstruct: recovers additive smooth + sparse components" tags = [:components, :integration] begin
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using LinearAlgebra
     using GeometricMedicalPhantoms
 
@@ -215,9 +215,9 @@ end
 
 @testitem "reconstruct: Lf=n_components required for convergence" tags = [:components] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox.AbstractOperators
-    using MriReconstructionToolbox.StructuredOptimization
+    using Ristretto
+    using Ristretto.AbstractOperators
+    using Ristretto.StructuredOptimization
 
     x_true = rand(6, 6)
     y_true = rand(6, 6)
@@ -227,7 +227,7 @@ end
     components = (Component(:a, L1Image(0.01)), Component(:b, L1Image(0.01)))
 
     terms, vars, _ = build_model(𝒜, y, components; threaded = false, x₀s = (zero(x_true), zero(y_true)))
-    default_alg = MriReconstructionToolbox.patch_algorithm_with_default_values(FISTA(), 2)
+    default_alg = Ristretto.patch_algorithm_with_default_values(FISTA(), 2)
     @test default_alg.kwargs[:Lf] == 2
     solve(terms, default_alg; maxit = 500)
     @test all(isfinite, ~vars[1]) && all(isfinite, ~vars[2])
@@ -245,22 +245,22 @@ end
 
     # ADMM only gets `cg_maxit`. Pinning `rho` would override ADMM's adaptive penalty, which
     # converges much faster here, and pinning `cg_tol` would break its coupling to the outer `tol`.
-    admm_alg = MriReconstructionToolbox.patch_algorithm_with_default_values(ADMM(), 2)
+    admm_alg = Ristretto.patch_algorithm_with_default_values(ADMM(), 2)
     @test admm_alg.kwargs[:cg_maxit] == 10
     @test :rho ∉ keys(admm_alg.kwargs)
     @test admm_alg.kwargs[:cg_tol] == ADMM().kwargs[:cg_tol]
-    tight = MriReconstructionToolbox.patch_algorithm_with_default_values(ADMM(tol = 1.0e-12), 2)
+    tight = Ristretto.patch_algorithm_with_default_values(ADMM(tol = 1.0e-12), 2)
     @test tight.kwargs[:cg_tol] == ADMM(tol = 1.0e-12).kwargs[:cg_tol]
     @test tight.kwargs[:cg_tol] < admm_alg.kwargs[:cg_tol]
     # An explicitly passed value always wins, and the other defaults still get filled in.
-    admm_user = MriReconstructionToolbox.patch_algorithm_with_default_values(ADMM(rho = 0.25), 2)
+    admm_user = Ristretto.patch_algorithm_with_default_values(ADMM(rho = 0.25), 2)
     @test admm_user.kwargs[:rho] == 0.25
     @test admm_user.kwargs[:cg_maxit] == 10
 end
 
 @testitem "reconstruct: multi-regularization component falls back to ADMM" tags = [:components] begin
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using GeometricMedicalPhantoms
 
     nx, ny, nc = 16, 16, 2
@@ -282,9 +282,9 @@ end
 
 @testitem "reconstruct: components interact with task splitting" tags = [:components, :integration] begin
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using GeometricMedicalPhantoms
-    using MriReconstructionToolbox.StructuredOptimization
+    using Ristretto.StructuredOptimization
 
     nx, ny, nslices, nc = 16, 16, 3, 2
     img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
@@ -316,7 +316,7 @@ end
 
 @testitem "reconstruct: a NamedTuple x₀ with an unknown component name is rejected" tags = [:components] begin
     using Test
-    using MriReconstructionToolbox
+    using Ristretto
     using GeometricMedicalPhantoms
 
     # Regression: get_component_x0s falls back to copy(x̂)/zero(x̂) for any key it does not find, so a
@@ -330,20 +330,20 @@ end
     good = (lowrank = zeros(ComplexF32, nx, ny), sparse = zeros(ComplexF32, nx, ny))
     typo = (lowrnak = zeros(ComplexF32, nx, ny), sparse = zeros(ComplexF32, nx, ny))
 
-    @test isnothing(MriReconstructionToolbox.check_x₀_components_size(good, components, (nx, ny)))
-    @test_throws ArgumentError MriReconstructionToolbox.check_x₀_components_size(typo, components, (nx, ny))
+    @test isnothing(Ristretto.check_x₀_components_size(good, components, (nx, ny)))
+    @test_throws ArgumentError Ristretto.check_x₀_components_size(typo, components, (nx, ny))
     @test_throws ArgumentError reconstruct(acq, IterativeReconstruction(components...; maxit = 5); x₀ = typo, verbosity = Silent())
 
     # A partial NamedTuple is still legal: the unnamed components fall back to their defaults.
     partial = (sparse = zeros(ComplexF32, nx, ny),)
-    @test isnothing(MriReconstructionToolbox.check_x₀_components_size(partial, components, (nx, ny)))
+    @test isnothing(Ristretto.check_x₀_components_size(partial, components, (nx, ny)))
 end
 
 @testitem "reconstruct: LowRank + Sparse with NamedDimsArray and symbol time_dim" tags = [:components, :integration] begin
     using Test
     using NamedDims
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: bind_dimensions
+    using Ristretto
+    using Ristretto: bind_dimensions
 
     nx, ny, nt = 16, 16, 4
     img_true = NamedDimsArray{(:x, :y, :time)}(rand(ComplexF32, nx, ny, nt))
@@ -370,8 +370,8 @@ end
 @testitem "reconstruct: components with task splitting and NamedDimsArray" tags = [:components, :integration] begin
     using Test
     using NamedDims
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: bind_dimensions
+    using Ristretto
+    using Ristretto: bind_dimensions
 
     nx, ny, nslices, nt = 16, 16, 2, 4
     img_true = NamedDimsArray{(:x, :y, :z, :time)}(rand(ComplexF32, nx, ny, nslices, nt))
@@ -387,16 +387,16 @@ end
         Component(:tv, TemporalTotalVariation(0.01; time_dim = :time)),
     )
 
-    image_dims = MriReconstructionToolbox.get_image_dims(acq_data)
+    image_dims = Ristretto.get_image_dims(acq_data)
     @test image_dims == (:x, :y, :z, :time)
 
     # bind_dimensions is the symbol-resolution step the fix moved ahead of unnaming: every
     # component's regularizer must come back with an integer `time_dim` (4, here).
-    bound = MriReconstructionToolbox.bind_dimensions(components, image_dims)
+    bound = Ristretto.bind_dimensions(components, image_dims)
     @test bound[1].regularizations[1].time_dim == 4
     @test bound[2].regularizations[1].time_dim == 4
 
-    plan = MriReconstructionToolbox.get_task_splitting_plan(acq_data, IterativeReconstruction(bound...), ReconstructionConfig(; verbosity = Silent()))
+    plan = Ristretto.get_task_splitting_plan(acq_data, IterativeReconstruction(bound...), ReconstructionConfig(; verbosity = Silent()))
     @test plan !== nothing
     @test plan.variable_batch_dims == (3,)  # slice over :z
 end

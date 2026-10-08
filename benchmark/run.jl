@@ -1,18 +1,18 @@
-# MRT benchmark harness: every catalog case (benchmark/utils/cases.jl) × every applicable method,
+# Ristretto benchmark harness: every catalog case (benchmark/utils/cases.jl) × every applicable method,
 # timed with `time_run` (one warm-up, then the minimum of three runs; one run for heavy cases).
 #
 #   julia --project=benchmark -t N benchmark/run.jl --threads=N [options]
 #
 # Options:
-#   --use-mkl                 load MKL before MRT (BLAS backend "mkl"; default "openblas")
+#   --use-mkl                 load MKL before Ristretto (BLAS backend "mkl"; default "openblas")
 #   --cases=pat,...           case-insensitive substrings of case ids (default: every case)
 #   --methods=tv,llr,...      methods to run (default: every applicable one)
-#   --real                    include the real-data analogues (also MRT_BENCH_REAL_DATA=1)
+#   --real                    include the real-data analogues (also RISTRETTO_BENCH_REAL_DATA=1)
 #   --ref-name=NAME           label for the measured checkout (default: its branch name)
-#   --mrt=PATH                measure the MRT checkout at PATH instead of this one: re-runs this
+#   --ristretto=PATH                measure the Ristretto checkout at PATH instead of this one: re-runs this
 #                             script in PATH/benchmark's environment. PATH needs a Manifest.toml;
 #                             when it has none, this checkout's is copied in.
-#   --dev=Pkg=PATH,...        with --mrt: point the environment's manifest entry of Pkg at PATH
+#   --dev=Pkg=PATH,...        with --ristretto: point the environment's manifest entry of Pkg at PATH
 #                             (e.g. --dev=NestedThreading=/path/to/checkout). The edit stays in
 #                             PATH's untracked Manifest.toml after the run.
 #   --remeasure               measure configurations the store already has
@@ -27,7 +27,7 @@
 
 include(joinpath(@__DIR__, "utils", "cli.jl"))
 
-# ---------------------------------------------------------------- --mrt: re-run in that checkout
+# ---------------------------------------------------------------- --ristretto: re-run in that checkout
 
 # Point the `path` of Pkg's manifest entry at `path`. The entry's other keys (`deps = [...]`,
 # `uuid`, ...) and its extension tables are left as they are; only a dev'd package has a path.
@@ -43,19 +43,19 @@ function redirect_manifest_path!(manifest, pkg, path)
     return nothing
 end
 
-if _arg("mrt") !== nothing && get(ENV, "MRT_BENCH_REEXEC", "") != "1"
+if _arg("ristretto") !== nothing && get(ENV, "RISTRETTO_BENCH_REEXEC", "") != "1"
     using FileWatching: mkpidlock
-    mrt = abspath(_arg("mrt"))
-    proj = joinpath(mrt, "benchmark")
-    isfile(joinpath(proj, "Project.toml")) || error("$mrt has no benchmark/Project.toml: it predates the benchmark harness")
-    manifest = joinpath(mrt, "Manifest.toml")
+    ristretto = abspath(_arg("ristretto"))
+    proj = joinpath(ristretto, "benchmark")
+    isfile(joinpath(proj, "Project.toml")) || error("$ristretto has no benchmark/Project.toml: it predates the benchmark harness")
+    manifest = joinpath(ristretto, "Manifest.toml")
     # The holder refreshes the lock every stale_age / 2 seconds, so a short stale_age never breaks a
     # live lock; a lock left by a killed job is taken over after stale_age on the same host and
     # 5 × stale_age from another node, instead of blocking every run for hours.
-    mkpidlock(joinpath(mrt, ".benchmark_env.pid"); stale_age = 60) do
+    mkpidlock(joinpath(ristretto, ".benchmark_env.pid"); stale_age = 60) do
         if !isfile(manifest)
             cp(joinpath(@__DIR__, "..", "Manifest.toml"), manifest)
-            @info "copied this checkout's Manifest.toml into $mrt, so both measure the same dependency versions"
+            @info "copied this checkout's Manifest.toml into $ristretto, so both measure the same dependency versions"
         end
         for spec in something(_list("dev"), String[])
             pkg, path = split(spec, "="; limit = 2)
@@ -64,7 +64,7 @@ if _arg("mrt") !== nothing && get(ENV, "MRT_BENCH_REEXEC", "") != "1"
         run(`$(Base.julia_cmd()) --project=$proj -e "using Pkg; Pkg.instantiate()"`)
     end
     cmd = `$(Base.julia_cmd()) --project=$proj -t $(Threads.nthreads()) $(@__FILE__) $ARGS`
-    exit(run(addenv(ignorestatus(cmd), "MRT_BENCH_REEXEC" => "1")).exitcode)
+    exit(run(addenv(ignorestatus(cmd), "RISTRETTO_BENCH_REEXEC" => "1")).exitcode)
 end
 
 # ---------------------------------------------------------------- environment
@@ -77,14 +77,14 @@ Threads.nthreads() == NUM_THREADS || error("--threads=$NUM_THREADS but Julia run
 using LinearAlgebra, Printf, Dates
 using ThreadPinning
 using FFTW
-using MriReconstructionToolbox
+using Ristretto
 
 include(joinpath(@__DIR__, "utils", "bench_utils.jl"))
 using .BenchUtils
 using .BenchUtils: ResultsStore, time_run, timed_runs, git_ref, tree_hash, node_class, recorded_env
 
 load_site_env!()
-_flag("real") && (ENV["MRT_BENCH_REAL_DATA"] = "1")
+_flag("real") && (ENV["RISTRETTO_BENCH_REAL_DATA"] = "1")
 
 # Threads go only to allowed CPUs that are not SMT siblings: a sibling shares its core with another
 # thread of the same run, which halves that core for both.
@@ -101,19 +101,19 @@ const BACKEND = USE_MKL ? "mkl" : "openblas"
 
 # ---------------------------------------------------------------- provenance
 
-const MRT_DIR = pkgdir(MriReconstructionToolbox)
-const MRT_REF = git_ref(MRT_DIR)
+const RISTRETTO_DIR = pkgdir(Ristretto)
+const RISTRETTO_REF = git_ref(RISTRETTO_DIR)
 const NT_DIR = let id = Base.PkgId(Base.UUID("e10243f7-6390-482b-b557-80f41d32665c"), "NestedThreading")
     haskey(Base.loaded_modules, id) ? pkgdir(Base.loaded_modules[id]) : ""
 end
 const NT_REF = isempty(NT_DIR) ? (commit = "", branch = "", dirty = false) : git_ref(NT_DIR)
-const DEPS_HASH = tree_hash(MRT_DIR, "deps")
-const SRC_HASH = tree_hash(MRT_DIR, "src")
-const EXT_HASH = tree_hash(MRT_DIR, "ext")
-const PROJECT_HASH = tree_hash(MRT_DIR, "Project.toml")
+const DEPS_HASH = tree_hash(RISTRETTO_DIR, "deps")
+const SRC_HASH = tree_hash(RISTRETTO_DIR, "src")
+const EXT_HASH = tree_hash(RISTRETTO_DIR, "ext")
+const PROJECT_HASH = tree_hash(RISTRETTO_DIR, "Project.toml")
 const NT_HASH = isempty(NT_DIR) ? "" : tree_hash(NT_DIR)
-const REF_NAME = something(_arg("ref-name"), MRT_REF.branch, "unknown")
-# Two runs with equal code keys ran the same MRT package code (src/, ext/, Project.toml), the same
+const REF_NAME = something(_arg("ref-name"), RISTRETTO_REF.branch, "unknown")
+# Two runs with equal code keys ran the same Ristretto package code (src/, ext/, Project.toml), the same
 # vendored dependencies (deps/) and the same NestedThreading, whatever else differs between their
 # commits -- a commit touching only benchmark/ keeps its baseline. Uncommitted changes to any of
 # them leave no key: such a run is always measured, and never reused.
@@ -123,7 +123,7 @@ const CODE_KEY = CLEAN ? join(CODE_PARTS, ":") : ""
 const NODE = node_class()
 const ENV_VARIANT = something(_arg("env-variant"), "")
 
-@info "MRT harness" ref = REF_NAME commit = MRT_REF.commit[1:min(end, 12)] dirty = !CLEAN mrt = MRT_DIR nested_threading = NT_DIR threads = NUM_THREADS backend = BACKEND node = NODE small = small_mode()
+@info "Ristretto harness" ref = REF_NAME commit = RISTRETTO_REF.commit[1:min(end, 12)] dirty = !CLEAN ristretto = RISTRETTO_DIR nested_threading = NT_DIR threads = NUM_THREADS backend = BACKEND node = NODE small = small_mode()
 CLEAN || @warn "the measured code has uncommitted changes: results are recorded but never reused"
 
 config_key(case, method) = (CODE_KEY, NODE, case, string(method), NUM_THREADS, BACKEND, small_mode(), cine_frames(), ENV_VARIANT)
@@ -141,8 +141,8 @@ const STORED = let keys = Set{Tuple}()
 end
 
 const RUN_META = (;
-    ref_name = REF_NAME, git_commit = MRT_REF.commit, git_branch = MRT_REF.branch, git_dirty = MRT_REF.dirty,
-    deps_hash = DEPS_HASH, src_hash = SRC_HASH, ext_hash = EXT_HASH, project_hash = PROJECT_HASH, mrt_dir = MRT_DIR,
+    ref_name = REF_NAME, git_commit = RISTRETTO_REF.commit, git_branch = RISTRETTO_REF.branch, git_dirty = RISTRETTO_REF.dirty,
+    deps_hash = DEPS_HASH, src_hash = SRC_HASH, ext_hash = EXT_HASH, project_hash = PROJECT_HASH, ristretto_dir = RISTRETTO_DIR,
     nested_threading_dir = NT_DIR, nested_threading_commit = NT_REF.commit,
     nested_threading_branch = NT_REF.branch, nested_threading_hash = NT_HASH,
     code_key = CODE_KEY, node_class = NODE, hostname = gethostname(), pinned_cpus = join(PINNED_CPUS, ","),
@@ -175,7 +175,7 @@ for id in IDS
     methods = applicable_methods(c)
     METHOD_FILTER === nothing || (methods = [m for m in methods if string(m) in METHOD_FILTER])
     # A checkout that predates the primal-dual algorithm has no PDHG rows.
-    isdefined(MriReconstructionToolbox, :ChambollePock) || filter!(m -> !haskey(PDHG_METHODS, m), methods)
+    isdefined(Ristretto, :ChambollePock) || filter!(m -> !haskey(PDHG_METHODS, m), methods)
     for m in methods
         if !REMEASURE && !isempty(CODE_KEY) && config_key(id, m) in STORED
             @info "stored, skipping (--remeasure to rerun)" case = id method = m
@@ -184,11 +184,11 @@ for id in IDS
         end
         runs = something(RUNS, timed_runs(c))
         row = Dict{String, Any}(
-            "case" => id, "method" => string(m), "framework" => "MRT", "runs" => runs, "warmup" => WARMUP,
+            "case" => id, "method" => string(m), "framework" => "Ristretto", "runs" => runs, "warmup" => WARMUP,
             "lambda" => default_lambda(c, m), "source" => c.source, "real" => c.real,
         )
         try
-            f = mrt_reconstructor(c, m)
+            f = ristretto_reconstructor(c, m)
             tmin, tmed, x = time_run(f; warmup = WARMUP, runs)
             e = mag_nrmse(Array(parent(x)), c.reference)
             merge!(row, Dict("status" => "ok", "time_min_ms" => 1.0e3 * tmin, "time_median_ms" => 1.0e3 * tmed, "nrmse" => Float64(e)))

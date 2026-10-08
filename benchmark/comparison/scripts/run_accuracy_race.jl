@@ -10,10 +10,10 @@
 #     (`src/iter/admm.c:453`), and its inner CG stops at `1e-3 · ‖rhs‖` with `cg_eps` hardcoded at
 #     `src/iter/iter.c:106` — **not** settable from the CLI. With a warm start it often takes 0
 #     inner iterations, so at ρ = 0.05 `-i 20` buys 18 outer iterations whose x-update never runs
-#     and an NRMSE of 0.096, where MRT's 20 genuine iterations reach 0.003. Neither number is
+#     and an NRMSE of 0.096, where Ristretto's 20 genuine iterations reach 0.003. Neither number is
 #     wrong; they are answers to different questions.
-#   * Even the TV rows that share a penalty (isotropic: MRT, BART, SigPy; anisotropic: MRT, BART,
-#     SigPy, MRIReco) differ at the boundary (MRT mirrored, SigPy circular, MRIReco `GradientOp`
+#   * Even the TV rows that share a penalty (isotropic: Ristretto, BART, SigPy; anisotropic: Ristretto, BART,
+#     SigPy, MRIReco) differ at the boundary (Ristretto mirrored, SigPy circular, MRIReco `GradientOp`
 #     truncated), so no single λ is comparable and each toolkit needs its own.
 #   * BART and MRIReco additionally pay one-off Lipschitz estimates on their FISTA paths (`-e` is
 #     30 `𝒜ᴴ𝒜`; `power_iterations` is 2–30) that a per-iteration accounting hides.
@@ -26,8 +26,8 @@
 # The (case, method) pairs are `race_methods` of every catalog case (`_methods.jl`). The target is
 # the case's `race_target` from `calibrate_lambda.jl` (the worst toolkit's best converged NRMSE ×
 # 1.10, so every toolkit can reach it); the ADMM and PDHG rows of one TV share the larger of their
-# two targets, so the two algorithms race to the same accuracy. A case that was never calibrated falls back to 1.10 × MRT's
-# NRMSE at the top of its ladder, which is logged: that target is reachable by MRT by construction
+# two targets, so the two algorithms race to the same accuracy. A case that was never calibrated falls back to 1.10 × Ristretto's
+# NRMSE at the top of its ladder, which is logged: that target is reachable by Ristretto by construction
 # and says nothing about whether the others can reach it.
 #
 # BART's process spawn and cfl I/O are subtracted (`time_bart`), so every figure is solver time.
@@ -84,9 +84,9 @@ function addrow!(c::BenchCase, method::Symbol, target, fw, r)
     return nothing
 end
 
-function mrt_race_run(c::BenchCase, method::Symbol, λ, rho)
+function ristretto_race_run(c::BenchCase, method::Symbol, λ, rho)
     return it -> begin
-        t, _, x = time_run(mrt_reconstructor(c, method; λ, rho, maxit = it, device = MRT_DEVICE); runs = timed_runs(c))
+        t, _, x = time_run(ristretto_reconstructor(c, method; λ, rho, maxit = it, device = RISTRETTO_DEVICE); runs = timed_runs(c))
         (1000 * t, parent(x))
     end
 end
@@ -94,17 +94,17 @@ end
 for c in section_cases(_ -> true), method in race_methods(c)
     should_run(c.id, METHOD_LABEL[method]) || should_run("Accuracy race", METHOD_LABEL[method]) || continue
     λ_default = default_lambda(c, method)
-    mrt_rho = something(load_rho(c, method, "MRT"), admm_rho(c))
-    mrt_run = mrt_race_run(c, method, load_lambda(c, method, "MRT", λ_default), mrt_rho)
+    ristretto_rho = something(load_rho(c, method, "Ristretto"), admm_rho(c))
+    ristretto_run = ristretto_race_run(c, method, load_lambda(c, method, "Ristretto", λ_default), ristretto_rho)
     target = load_race_target(c, method, NaN)
     if isnan(target)
-        _, x = mrt_run(last(ladder(c, method)))
+        _, x = ristretto_run(last(ladder(c, method)))
         target = 1.1 * mag_nrmse(_score_image(c, method, x), c.reference)
-        @warn "$(c.id) $method has no calibrated race target; using 1.10 × MRT's NRMSE at $(last(ladder(c, method))) it" target
+        @warn "$(c.id) $method has no calibrated race target; using 1.10 × Ristretto's NRMSE at $(last(ladder(c, method))) it" target
     end
     println("--> $(c.id): $(METHOD_LABEL[method])  (target NRMSE ≤ $(round(target; sigdigits = 4)))")
 
-    addrow!(c, method, target, FW, race("MRT $(c.id) $method", c, method, ladder(c, method), target, mrt_run))
+    addrow!(c, method, target, FW, race("Ristretto $(c.id) $method", c, method, ladder(c, method), target, ristretto_run))
 
     for tk in COMPETITORS
         fw = framework_label(tk)

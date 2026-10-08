@@ -1,4 +1,4 @@
-# MRT on two full-size scanner datasets, one Cartesian and one non-Cartesian, at a given host thread
+# Ristretto on two full-size scanner datasets, one Cartesian and one non-Cartesian, at a given host thread
 # count or on a CUDA device:
 #
 #   julia --project=benchmark/comparison -t N benchmark/large_datasets/run.jl [options]
@@ -9,7 +9,7 @@
 #   --methods=cgsense,...  methods (default: cgsense, wavelet, tv, atv_pd)
 #   --prepare              only prepare (and cache) the cases, time nothing
 #
-# The cases (prepared once, then loaded from `<MRT_BENCH_WORK_DIR>/large_*.jls`):
+# The cases (prepared once, then loaded from `<RISTRETTO_BENCH_WORK_DIR>/large_*.jls`):
 #
 # | id | data | size |
 # |---|---|---|
@@ -51,12 +51,11 @@ if ON_GPU
     CUDA.functional() || error("--device=cuda but CUDA is not functional on $(gethostname())")
 end
 
-using MriReconstructionToolbox, NamedDims, JSON, Printf, Random, Dates, LinearAlgebra
+using Ristretto, NamedDims, JSON, Printf, Random, Dates, LinearAlgebra
 using Serialization: serialize, deserialize
 include(joinpath(@__DIR__, "..", "utils", "bench_utils.jl"))
 using .BenchUtils
 const B = BenchUtils
-const MRT = MriReconstructionToolbox
 
 load_site_env!()
 ensure_download_path!()
@@ -67,7 +66,7 @@ const LARGE_CACHE_VERSION = 1
 
 # ESPIRiT takes 18 s per 320×256 slice and 38 s per 320² radial slice here, 1.6 h for the knee's
 # 320 readout positions; the calibration-region estimate takes seconds.
-const MAPS = MRT.SelfCalibrating(; calib_size = 24)
+const MAPS = Ristretto.SelfCalibrating(; calib_size = 24)
 
 function _raw(source, id)
     M = B._mritestdata()
@@ -82,10 +81,10 @@ function prepare_knee()
     nx = length(B._readout_range(raw.profiles[1]))
     k = ComplexF32.(B._assemble_cartesian_3d_centre(raw, (nx, nky, nkz)))      # (kx, ky, kz, coil)
     raw = nothing
-    acq = MRT.CartesianAcquisitionInfo(
+    acq = Ristretto.CartesianAcquisitionInfo(
         NamedDimsArray{(:kx, :ky, :kz, :coil)}(k); is3D = true, shifted_image_dims = (:x, :y, :z),
     )
-    maps = Array(unname(MRT.estimate_sensitivities(acq; method = MAPS).sensitivity_maps))
+    maps = Array(unname(Ristretto.estimate_sensitivities(acq; method = MAPS).sensitivity_maps))
     acq = nothing
     ref = B._sense_combine(centred_ifft(k, (1, 2, 3)), maps)
     seed = B._case_seed(id)
@@ -123,7 +122,7 @@ function prepare_breast(; nkeep = 320, nspokes = 144)
     ref = Array{ComplexF32}(undef, n, n, nz)
     for z in 1:nz
         full = B._noncartesian_acq(k[:, :, :, z], traj, dcf, (n, n))
-        est = MRT.estimate_sensitivities(full; method = MAPS)
+        est = Ristretto.estimate_sensitivities(full; method = MAPS)
         maps[:, :, :, z] .= unname(est.sensitivity_maps)
         ref[:, :, z] .= B._cgsense_reference(k[:, :, :, z], traj, maps[:, :, :, z], (n, n))
         z % 10 == 0 && @info "breast: slice $z of $nz prepared"
@@ -167,7 +166,7 @@ function record!(row)
     sort!(rows; by = r -> (r["case_id"], r["method"]))
     meta = Dict(
         "backend" => BACKEND, "threads" => Threads.nthreads(), "hostname" => gethostname(),
-        "gpu" => ON_GPU ? CUDA.name(CUDA.device()) : nothing, "mrt_commit" => git_ref(joinpath(@__DIR__, "..", "..")),
+        "gpu" => ON_GPU ? CUDA.name(CUDA.device()) : nothing, "ristretto_commit" => git_ref(joinpath(@__DIR__, "..", "..")),
         "outer_iterations" => OUTER_ITERATIONS, "cg_iterations" => CG_ITERATIONS, "pdhg_iterations" => PDHG_ITERATIONS,
         "rows" => rows,
     )
@@ -190,9 +189,9 @@ for id in CASES
         device = ON_GPU ? CuArray : nothing
         λ = default_lambda(c, method)
         # Compile on the analogue: same family, trajectory and method, so the same method instances.
-        mrt_reconstructor(analogue, method; λ, device)()
+        ristretto_reconstructor(analogue, method; λ, device)()
         release!()
-        f = mrt_reconstructor(c, method; λ, device)
+        f = ristretto_reconstructor(c, method; λ, device)
         ON_GPU && CUDA.synchronize()
         t0 = time_ns()
         x = f()

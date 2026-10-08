@@ -1,7 +1,7 @@
 @testitem "Fourier Operator" tags = [:encoding, :operators, :fourier] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
+    using Ristretto
+    using Ristretto: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
     using FFTW
     using NamedDims
 
@@ -14,7 +14,7 @@
             @test img ≈ ifft(fftshift(ksp))
 
             ℱ = get_fourier_operator(wrapped_ksp; threaded, fast_planning)
-            @test ℱ isa MriReconstructionToolbox.NamedDimsOp
+            @test ℱ isa Ristretto.NamedDimsOp
             img = ℱ' * wrapped_ksp
             @test unname(img) ≈ ifft(fftshift(ksp))
             @test dimnames(img) == (:x, :y)
@@ -28,7 +28,7 @@
             @test img ≈ ifft(fftshift(ksp))
 
             ℱ = get_fourier_operator(wrapped_ksp; threaded, fast_planning)
-            @test ℱ isa MriReconstructionToolbox.NamedDimsOp
+            @test ℱ isa Ristretto.NamedDimsOp
             img = ℱ' * wrapped_ksp
             @test unname(img) ≈ ifft(fftshift(ksp))
             @test dimnames(img) == (:x, :y, :z)
@@ -42,7 +42,7 @@
             @test img ≈ ifft(fftshift(ksp, (1, 2)), (1, 2))
 
             ℱ = get_fourier_operator(wrapped_ksp; threaded, fast_planning)
-            @test ℱ isa MriReconstructionToolbox.NamedDimsOp
+            @test ℱ isa Ristretto.NamedDimsOp
             img = ℱ' * wrapped_ksp
             @test unname(img) ≈ ifft(fftshift(ksp, (1, 2)), (1, 2))
             @test dimnames(img) == (:x, :y, :z)
@@ -52,14 +52,14 @@ end
 
 @testitem "AcquisitionInfo API" tags = [:encoding, :operators, :acquisition_info] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
+    using Ristretto
+    using Ristretto: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
     using FFTW
     using NamedDims
 
     @testset "AcquisitionInfo API" begin
         ksp = rand(ComplexF32, 32, 32)
-        info = MriReconstructionToolbox.AcquisitionInfo(ksp; is3D = false)
+        info = Ristretto.AcquisitionInfo(ksp; is3D = false)
         @testset "2D Array fully-sampled" for threaded in (true, false), fast_planning in (true, false)
             ℱ = get_fourier_operator(info; threaded, fast_planning)
             img = ℱ' * ksp
@@ -73,7 +73,7 @@ end
         smaps = rand(ComplexF32, 32, 32, 4)
         wrapped_ksp = NamedDimsArray{(:kx, :ky, :coil)}(ksp)
         wrapped_smaps = NamedDimsArray{(:x, :y, :coil)}(smaps)
-        info = MriReconstructionToolbox.AcquisitionInfo(wrapped_ksp; sensitivity_maps = wrapped_smaps)
+        info = Ristretto.AcquisitionInfo(wrapped_ksp; sensitivity_maps = wrapped_smaps)
         @testset "2D NamedDims with smaps" for threaded in (true, false), fast_planning in (true, false)
             𝒜 = get_encoding_operator(info; threaded, fast_planning)
             img = 𝒜' * wrapped_ksp
@@ -87,7 +87,7 @@ end
         full_ksp = rand(ComplexF32, 32, 32)
         mask = rand(Bool, 32, 32)
         subs_ksp = full_ksp[mask]
-        info = MriReconstructionToolbox.AcquisitionInfo(subs_ksp; image_size = (32, 32), subsampling = mask)
+        info = Ristretto.AcquisitionInfo(subs_ksp; image_size = (32, 32), subsampling = mask)
         @testset "2D Array subsampled mask" for threaded in (true, false), fast_planning in (true, false)
             𝒜 = get_encoding_operator(info; threaded, fast_planning)
             img = 𝒜' * subs_ksp
@@ -102,10 +102,10 @@ end
 
 @testitem "NFFT operating point (S6)" tags = [:encoding, :operators, :nfft] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, NonCartesianAcquisitionInfo
-    using MriReconstructionToolbox.NFFTOperators: NFFTOp
-    import MriReconstructionToolbox: NFFTOperators
+    using Ristretto
+    using Ristretto: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, NonCartesianAcquisitionInfo
+    using Ristretto.NFFTOperators: NFFTOp
+    import Ristretto: NFFTOperators
     using LinearAlgebra, Random
 
     Random.seed!(0)
@@ -153,9 +153,9 @@ end
 
 @testitem "Sensitivity Map Operator" tags = [:encoding, :operators, :sensitivity_maps] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
-    using MriReconstructionToolbox.AbstractOperators
+    using Ristretto
+    using Ristretto: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
+    using Ristretto.AbstractOperators
     using NamedDims
 
     @testset "Sensitivity Map Operator" begin
@@ -172,7 +172,7 @@ end
             @test img3 ≈ dropdims(sum(conj.(smaps) .* img2, dims = 3), dims = 3)
 
             𝒮 = get_sensitivity_map_operator(wrapped_smaps; threaded)
-            @test 𝒮 isa MriReconstructionToolbox.NamedDimsOp
+            @test 𝒮 isa Ristretto.NamedDimsOp
             img2 = 𝒮 * img
             @test unname(img2) ≈ unname(reshape(img, 64, 64, 1) .* wrapped_smaps)
             @test dimnames(img2) == (:x, :y, :coil)
@@ -194,7 +194,7 @@ end
             @test img3 ≈ dropdims(sum(conj.(smaps) .* img2, dims = 4), dims = 4)
 
             𝒮 = get_sensitivity_map_operator(wrapped_smaps; threaded)
-            @test 𝒮 isa MriReconstructionToolbox.NamedDimsOp
+            @test 𝒮 isa Ristretto.NamedDimsOp
             img2 = 𝒮 * img
             @test unname(img2) ≈ unname(reshape(img, 64, 64, 64, 1) .* wrapped_smaps)
             @test dimnames(img2) == (:x, :y, :z, :coil)
@@ -207,8 +207,8 @@ end
 
 @testitem "Full Encoding Operator" tags = [:encoding, :operators, :nfft] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator, NonCartesianAcquisitionInfo
     using FFTW
     using NamedDims
 
@@ -528,7 +528,7 @@ end
             @test info isa NonCartesianAcquisitionInfo
 
             𝒩 = get_encoding_operator(info; threaded = false)
-            raw = MriReconstructionToolbox.NFFTOp((8, 8), trajectory; threaded = false)
+            raw = Ristretto.NFFTOp((8, 8), trajectory; threaded = false)
 
             @test size(𝒩, 1) == size(ksp)
             @test size(𝒩, 2) == size(img)
@@ -544,7 +544,7 @@ end
             info = AcquisitionInfo(ksp; trajectory, dcf, image_size = (8, 8))
 
             𝒩 = get_encoding_operator(info; threaded = false)
-            raw = MriReconstructionToolbox.NFFTOp((8, 8), trajectory, dcf; threaded = false)
+            raw = Ristretto.NFFTOp((8, 8), trajectory, dcf; threaded = false)
 
             @test 𝒩 * img ≈ raw * img
             @test 𝒩' * ksp ≈ raw' * ksp
@@ -558,7 +558,7 @@ end
             info = AcquisitionInfo(ksp; trajectory, image_size = (8, 8), sensitivity_maps = smaps)
 
             𝒜 = get_encoding_operator(info; threaded = false)
-            raw = MriReconstructionToolbox.NFFTOp((8, 8), trajectory; threaded = false)
+            raw = Ristretto.NFFTOp((8, 8), trajectory; threaded = false)
             coil_imgs = reshape(img, 8, 8, 1) .* smaps
             expected = similar(ksp)
             for coil in axes(expected, 3)
@@ -576,7 +576,7 @@ end
             info = AcquisitionInfo(ksp; trajectory, image_size = (8, 8))
 
             𝒩 = get_encoding_operator(info; threaded = false)
-            @test 𝒩 isa MriReconstructionToolbox.NamedDimsOp
+            @test 𝒩 isa Ristretto.NamedDimsOp
 
             ksp2 = 𝒩 * img
             img2 = 𝒩' * ksp2
@@ -588,8 +588,8 @@ end
 end
 
 @testitem "simulate_acquisition NamedDims and real image" tags = [:encoding, :simulation] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
+    using Ristretto
+    using Ristretto: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
     using NamedDims
 
     @testset "NamedDims 2D image with smaps" begin
@@ -651,8 +651,8 @@ end
 end
 
 @testitem "simulate_acquisition for NonCartesianAcquisitionInfo" tags = [:encoding, :simulation, :nfft] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: get_encoding_operator, NonCartesianAcquisitionInfo
     using NamedDims
     using LinearAlgebra
     using Random
@@ -715,13 +715,12 @@ end
 end
 
 @testitem "Fourier operator helpers match raw FFT (even and odd sizes)" tags = [:reconstruction, :encoding] begin
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto: CartesianAcquisitionInfo
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
+    using Ristretto
+    using Ristretto: get_encoding_operator, get_fourier_operator, get_sensitivity_map_operator
     using NamedDims
     using FFTW
-    const MRT = MriReconstructionToolbox
 
     for (Nx, Ny, Nc) in ((32, 32, 3), (31, 33, 3))
         k = randn(ComplexF64, Nx, Ny, Nc)
@@ -733,7 +732,7 @@ end
         acq = CartesianAcquisitionInfo(
             NamedDimsArray{(:kx, :ky, :coil)}(k); is3D = false, image_size = (Nx, Ny),
         )
-        ℱ = MRT._cartesian_fourier_op(acq, k)
+        ℱ = Ristretto._cartesian_fourier_op(acq, k)
         @test ℱ' * (ℱ * x) ≈ x
         if even
             @test ℱ' * k ≈ ifft(ifftshift(k, (1, 2)), (1, 2))
@@ -741,20 +740,20 @@ end
         end
 
         # _axis_dft_op: readout-only, k-space-side shift — exact on even and odd
-        ro = MRT._axis_dft_op(k, (1,); kspace_shift = true)
+        ro = Ristretto._axis_dft_op(k, (1,); kspace_shift = true)
         @test ro' * k ≈ ifft(ifftshift(k, 1), 1)
         @test ro * x ≈ fftshift(fft(x, 1), 1)
 
         # _axis_dft_op: no shift — exact on even and odd
-        plain = MRT._axis_dft_op(x, (1, 2))
+        plain = Ristretto._axis_dft_op(x, (1, 2))
         @test plain * x ≈ fft(x, (1, 2))
         @test plain' * k ≈ ifft(k, (1, 2))
     end
 end
 
 @testitem "named sensitivity maps with an unnamed acquisition" tags = [:encoding] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator
+    using Ristretto
+    using Ristretto: get_encoding_operator
     using NamedDims
 
     # An acquisition built without named k-space reports positional image dimensions. Named
@@ -786,8 +785,8 @@ end
 
 @testitem "threaded = false reaches every operator of the encoding chain" tags = [:encoding, :operators] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, get_subsampling_operator, CartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: get_encoding_operator, get_subsampling_operator, CartesianAcquisitionInfo
     using Random
 
     # The parts of an operator that would run threaded, read off its type: a batch loop, a
@@ -829,9 +828,9 @@ end
 
 @testitem "frame-batched coil-fused encoding operator matches the chain" tags = [:encoding, :operators] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, CartesianAcquisitionInfo, NamedDimsOp
-    using MriReconstructionToolbox.AbstractOperators: get_normal_op
+    using Ristretto
+    using Ristretto: get_encoding_operator, CartesianAcquisitionInfo, NamedDimsOp
+    using Ristretto.AbstractOperators: get_normal_op
     using NamedDims
     using Random
 
@@ -870,9 +869,9 @@ end
 
 @testitem "device encoding operator batches maps and masks over frames" tags = [:encoding, :operators, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
     using Test
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: get_encoding_operator, CartesianAcquisitionInfo
-    using MriReconstructionToolbox.AbstractOperators: get_normal_op
+    using Ristretto
+    using Ristretto: get_encoding_operator, CartesianAcquisitionInfo
+    using Ristretto.AbstractOperators: get_normal_op
     using NamedDims
     using Random
 
@@ -901,7 +900,7 @@ end
 end
 
 @testitem "3D subsampling by linear ky–kz indices" tags = [:encoding, :gpu] setup = [GpuEnvSetup, GpuHelpers] begin
-    using MriReconstructionToolbox: get_subsampling_operator
+    using Ristretto: get_subsampling_operator
 
     # `(:, v)` with `v` a linear index into the ky–kz plane: the gather must take the samples that
     # index names in every coil, and per-frame specs must do so frame by frame.

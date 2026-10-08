@@ -39,7 +39,7 @@ for backend in sort(unique(r.backend for r in latest))
                             "case_id" => r.case_id, "data_source" => r.data_source,
                             "category" => r.category, "method" => r.method, "framework" => r.framework,
                             "threads" => r.threads, "time_ms" => r.time_ms,
-                            "nrmse_gt" => r.nrmse_gt, "nrmse_mrt" => r.nrmse_mrt,
+                            "nrmse_gt" => r.nrmse_gt, "nrmse_ristretto" => r.nrmse_ristretto,
                         ) for r in sort(section_rows; by = r -> (r.case_id, r.category, r.method, r.framework))
                     ],
                 ),

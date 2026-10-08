@@ -1,6 +1,6 @@
 # Manifest of the vendored dependency stack.
 #
-# MRT vendors work-in-progress versions of its dependency stack under `deps/` because a Julia
+# Ristretto vendors work-in-progress versions of its dependency stack under `deps/` because a Julia
 # package cannot be registered with unregistered dependencies. Every vendored package is a
 # projection of a stack of branches in a personal fork, each of which is (or will become) a small
 # PR against the real upstream. This file is the single place that records which branches make up
@@ -12,11 +12,11 @@
 #   upstream  remote URL of the real upstream
 #   base      ref the integration branch is rebuilt from, in the local checkout's remote names
 #   prefix    where the package is vendored inside this repository
-#   prune     globs deleted from the vendored copy after every sync: everything MRT does not
+#   prune     globs deleted from the vendored copy after every sync: everything Ristretto does not
 #             compile. A vendored package's tests, docs, benchmarks and CI belong to the fork and
 #             run there. `ext/` cannot load at all for a package included as a submodule, so an
 #             extension is either inlined into `src/` by the patch, pruned, or -- the GPU
-#             extensions -- kept and `include`d by MRT's own `MriReconstructionToolboxGPUExt`,
+#             extensions -- kept and `include`d by Ristretto's own `RistrettoGPUExt`,
 #             which is why those `ext/` entries name what is dropped rather than the directory.
 #
 # Then one `[[<package>.stack]]` entry per branch, in merge order: a branch always appears after
@@ -30,7 +30,7 @@
 #  1. A branch is a unit of review, not a unit of work. Do not add a branch for a bugfix; push the
 #     fix to the branch whose PR introduced the code, and it reaches `deps/` on the next sync. A
 #     new entry is for a new idea, or for code that no existing branch owns.
-#  2. `deps/` is generated output. Bugs found while developing MRT are fixed on the owning branch
+#  2. `deps/` is generated output. Bugs found while developing Ristretto are fixed on the owning branch
 #     and re-vendored, never edited in place under `deps/`.
 #
 # When a branch's PR merges upstream, delete its entry, re-fetch `base`, and rebuild: everything
@@ -43,7 +43,7 @@
 # answer for it, while `rebuild`, `patch` and `sync` say which entry they need. Nothing tracked in
 # this repository, and nothing pushed to a fork, may name a path of one machine.
 
-# The fork is the upstream: OperatorCore is the user's own package. It is vendored because MRT
+# The fork is the upstream: OperatorCore is the user's own package. It is vendored because Ristretto
 # needs `is_affine` before a release has it.
 [OperatorCore]
 fork = "https://github.com/hakkelt/OperatorCore.jl.git"
@@ -60,7 +60,7 @@ pr = "hakkelt/OperatorCore.jl#2"
 
 # NFFT.jl is a monorepo: AbstractNFFTs, NFFTTools and the wrappers are packages of their own and
 # stay registered dependencies, so only the `NFFT` package at its root is vendored, with its GPU
-# extension, which MRT's `MriReconstructionToolboxGPUExt` includes.
+# extension, which Ristretto's `RistrettoGPUExt` includes.
 [NFFT]
 fork = "https://github.com/hakkelt/NFFT.jl.git"
 upstream = "https://github.com/JuliaMath/NFFT.jl.git"
@@ -432,7 +432,7 @@ prune = [
     "AGENTS.md", "CLAUDE.md", "Manifest.toml", "codecov.yml",
 ]
 
-# Under review upstream. MRT does not use OSQP, so neither its weak dependency nor the extension
+# Under review upstream. Ristretto does not use OSQP, so neither its weak dependency nor the extension
 # that goes with it is vendored -- the patch deletes `ext/ProximalOperatorsOSQPExt.jl` and the
 # `IndPolyhedral` path that needs it. The branch is in the stack because everything below is
 # based on it.
@@ -655,7 +655,7 @@ prune = [
 ]
 
 # One branch, not three: `fix/normalop-ls-multivar` and `phase-0-2-consolidation` were merged into
-# the fork's `master` as one linear history (no merge commits), so the whole of MRT's
+# the fork's `master` as one linear history (no merge commits), so the whole of Ristretto's
 # StructuredOptimization work lives there. Both old branches are still on the fork, fully contained
 # in `master`, and `check` reports them as unreferenced until they are deleted.
 #

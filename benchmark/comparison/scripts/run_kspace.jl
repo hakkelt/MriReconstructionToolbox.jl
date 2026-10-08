@@ -1,4 +1,4 @@
-# Section: k-space GRAPPA (MRT only — kept as MRT reference rows) on the regularly sampled variant
+# Section: k-space GRAPPA (Ristretto only — kept as Ristretto reference rows) on the regularly sampled variant
 # of the 2D and multislice multichannel cases (`get_case(id; pattern = :regular)`: every other phase
 # encode plus a 24-line calibration block, since GRAPPA cannot fit a kernel to a random pattern).
 #
@@ -17,7 +17,7 @@ for id in ("shepp_logan_2d_8ch_cartesian", "shepp_logan_multislice_8ch_cartesian
     DATA == "real" && break
     should_run_case(id) || continue
     c = get_case(id; pattern = :regular)
-    acq = mrt_acquisition(c)
+    acq = ristretto_acquisition(c)
     for (meth, cc) in (("GRAPPA (RSS)", RootSumSquares()), ("GRAPPA (Sensitivity)", AdjointSensitivity()))
         should_run(c.id, meth) || should_run("K-Space", meth) || continue
         println("--> $(c.id): $meth")

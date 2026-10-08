@@ -60,8 +60,8 @@
 end
 
 @testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — Cartesian" tags = [:acquisition] setup = [RawAcqHelpers] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: CartesianAcquisitionInfo
     using NamedDims: dimnames, unname
 
     @testset "asymmetric readout + partial-Fourier ky + multi-slice (:z)" begin
@@ -196,12 +196,12 @@ end
 end
 
 @testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — object stays centred in the FOV" tags = [:acquisition, :reconstruction] setup = [RawAcqHelpers] begin
-    using MriReconstructionToolbox
+    using Ristretto
     using NamedDims: unname
     using FFTW: fft, fftshift, ifftshift
 
     # A scanner images an object centred in the FOV and stores k-space with DC at the centre.
-    # MRT's plain-DFT default puts the image origin at index 1, so without `shifted_image_dims`
+    # Ristretto's plain-DFT default puts the image origin at index 1, so without `shifted_image_dims`
     # the reconstruction of such data comes out rolled by half the FOV along every spatial axis
     # (the whole object lands in the four corners). The constructor must set it for us.
     n = 16
@@ -210,7 +210,7 @@ end
     img[7, 8] = 3
     # The scanner's DFT runs over CENTRED coordinates on both sides: k and x both range over
     # -n÷2 : n÷2-1. That is `fftshift ∘ fft ∘ ifftshift`, not a bare `fft` — a bare `fft` would
-    # treat array index 1 as the spatial origin, which is MRT's own (unshifted) default.
+    # treat array index 1 as the spatial origin, which is Ristretto's own (unshifted) default.
     ksp_true = fftshift(fft(ifftshift(img)))    # DC at index n ÷ 2 + 1 = 9, as ISMRMRD stores it
 
     profiles = Profile[
@@ -228,8 +228,8 @@ end
 end
 
 @testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — non-Cartesian dispatch" tags = [:acquisition, :nfft] setup = [RawAcqHelpers] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: NonCartesianAcquisitionInfo
     using NamedDims: dimnames, unname
 
     nsamp, ncoil = 5, 1
@@ -258,8 +258,8 @@ end
 end
 
 @testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — non-Cartesian density compensation and batches" tags = [:acquisition, :nfft] setup = [RawAcqHelpers] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: NonCartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: NonCartesianAcquisitionInfo
     using NamedDims: dimnames, unname
 
     nsamp, ncoil, ninterleaf, nframe = 5, 2, 3, 4
@@ -312,8 +312,8 @@ end
 end
 
 @testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — real M4Raw data" tags = [:acquisition, :integration] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: CartesianAcquisitionInfo
     using NamedDims: dimnames, unname
     using MRITestData
     using MRIBase
@@ -357,8 +357,8 @@ end
 end
 
 @testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — real OCMR data (asymmetric-echo readout)" tags = [:acquisition, :integration] begin
-    using MriReconstructionToolbox
-    using MriReconstructionToolbox: CartesianAcquisitionInfo
+    using Ristretto
+    using Ristretto: CartesianAcquisitionInfo
     using NamedDims: dimnames
     using MRITestData
     using MRIBase
