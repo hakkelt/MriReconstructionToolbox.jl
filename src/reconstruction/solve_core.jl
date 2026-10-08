@@ -77,6 +77,9 @@ function _iterative_reconstruct_core(
             R_type(_n_vars(vars) * L^2 + _smooth_regularization_lipschitz(model, method.fidelity)) :
             nothing
         algorithm = patch_algorithm_with_default_values(selected_algorithm, Lf; eltype_real = R_type)
+        if should_estimate_L && _certified_opnorm(𝒜, method)
+            algorithm = _without_lipschitz_safeguard(algorithm)
+        end
         # The step sizes that go with a preconditioned data term (`_ChambollePockPreconditioner`).
         if !isnothing(preconditioner) && !isnothing(preconditioner.steps)
             algorithm = ProximalAlgorithms.override_parameters(algorithm; preconditioner.steps...)
@@ -596,6 +599,27 @@ function _encoding_opnorm(𝒜; residual_margin = OPNORM_REL_MARGIN)
     isfinite(AbstractOperators.opnorm_bound(𝒜)) &&
         return AbstractOperators.estimate_opnorm(𝒜; rel_margin = OPNORM_REL_MARGIN)
     return AbstractOperators.estimate_opnorm(𝒜; rel_margin = residual_margin, failure_probability = nothing)
+end
+
+# Whether the `‖𝒜‖` of `_operator_norm_for_stepsize` is at or above the norm by construction: the
+# converged `opnorm`, or a finite closed-form `opnorm_bound` (every Cartesian encoding operator).
+# Only the residual estimate of a non-Cartesian `𝒜` can come out low.
+_certified_opnorm(𝒜, method::IterativeReconstruction) =
+    method.exact_opnorm || isfinite(AbstractOperators.opnorm_bound(𝒜))
+
+# FISTA's and POGM's secant safeguard guards a fixed step against an `Lf` that came out low, at the
+# cost of a reduction over four arrays per iteration; on a GPU each reduction waits for the device,
+# and the 2D L1-wavelet FISTA row spent a fifth of its time there. With `‖𝒜‖` certified it does not
+# shorten the step (a smooth regularization term's constant is a bound with probability 1 - 10⁻³,
+# as it was before the safeguard), so it is turned off, unless the algorithm was given a setting.
+_without_lipschitz_safeguard(algorithm) = algorithm
+function _without_lipschitz_safeguard(
+        algorithm::ProximalAlgorithms.IterativeAlgorithm{
+            <:Union{ProximalAlgorithms.FastForwardBackwardIteration, ProximalAlgorithms.POGMIteration},
+        },
+    )
+    haskey(algorithm.kwargs, :lipschitz_safeguard) && return algorithm
+    return ProximalAlgorithms.override_parameters(algorithm; lipschitz_safeguard = false)
 end
 
 # `‖K‖` of a regularization operator from above, at the margin every reconstruction norm asks for.

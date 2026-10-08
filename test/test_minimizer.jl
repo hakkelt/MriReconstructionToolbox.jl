@@ -624,6 +624,20 @@ end
         # The tighter margin FISTA and POGM ask for.
         @test truth * (1 - 1.0e-5) <= _encoding_opnorm(E; residual_margin = LF_REL_MARGIN) <= truth * (1 + LF_REL_MARGIN)
     end
+
+    # FISTA's and POGM's secant safeguard runs only on the residual estimate: a closed-form bound or
+    # the exact norm cannot come out low. A setting the caller gave is kept either way.
+    using MriReconstructionToolbox: _certified_opnorm, _without_lipschitz_safeguard
+    method = IterativeReconstruction(; regularization = L1Wavelet2D(0.01))
+    E_radial = encoding(Float32, radial_trajectory(64, 40), false)
+    @test _certified_opnorm(E64, method)
+    @test !_certified_opnorm(E_radial, method)
+    @test _certified_opnorm(E_radial, IterativeReconstruction(; regularization = L1Wavelet2D(0.01), exact_opnorm = true))
+    for alg in (FISTA(), POGM())
+        @test _without_lipschitz_safeguard(alg).kwargs[:lipschitz_safeguard] == false
+    end
+    @test _without_lipschitz_safeguard(FISTA(lipschitz_safeguard = true)).kwargs[:lipschitz_safeguard] == true
+    @test :lipschitz_safeguard ∉ keys(_without_lipschitz_safeguard(ADMM()).kwargs)
 end
 
 @testitem "ADMM's penalty is relative to the curvature of the data term" tags = [:minimizer] begin

@@ -184,7 +184,9 @@ Cartesian data block):
 | 0.3 | slower |
 
 POGM, which once diverged on an `Lf` 1.2% low, restarts adaptively, and both it and FISTA shorten
-their step whenever two successive gradients show `Lf` was too small (`lipschitz_safeguard`).
+their step whenever two successive gradients show `Lf` was too small (`lipschitz_safeguard`). The
+safeguard runs only where `‖𝒜‖` is the residual estimate: a closed-form bound or the exact norm
+cannot come out low, and the safeguard's per-iteration reduction is not free on a GPU.
 """
 const OPNORM_REL_MARGIN = 0.03
 
