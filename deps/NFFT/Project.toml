@@ -38,7 +38,6 @@ Ducc0 = "0.1"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 FINUFFT = "d8beea63-0952-562e-9c6a-8e8ef7364055"
-NFFT3 = "53104703-03e8-40a5-ab01-812303a44cae"
 NFFTTools = "7424e34d-94f7-41d6-98a0-85abaf1b6c91"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Ducc0 = "47ec601d-2729-4ac9-bed9-2b3ab5fca9ff"
@@ -50,7 +49,7 @@ Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
 
 [targets]
-test = ["Test", "JLArrays", "BenchmarkTools", "FINUFFT", "NFFT3", "Zygote",
+test = ["Test", "JLArrays", "BenchmarkTools", "FINUFFT", "Zygote",
         "NFFTTools", "DataFrames", "Ducc0"]  # "NFFTTools"
 
 [extensions]
