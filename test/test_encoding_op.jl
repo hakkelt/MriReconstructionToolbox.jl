@@ -125,19 +125,19 @@ end
 
     @testset "operating point is actually forwarded" begin
         op_default = get_fourier_operator(ksp, image_size, traj)
-        # MRIReco's operating point (`TODO.md` §8): far cheaper, deliberately less accurate.
-        op_low_acc = get_fourier_operator(
-            ksp, image_size, traj; m = 3, sigma = 1.25, precompute = NFFTOperators.NFFT.TENSOR
+        # Wider kernel, coarser grid: differs from the default in every forwarded keyword.
+        op_other = get_fourier_operator(
+            ksp, image_size, traj; m = 4, sigma = 1.25, precompute = NFFTOperators.NFFT.TENSOR
         )
-        @test op_default.plan.params.m != op_low_acc.plan.params.m
-        @test op_default.plan.params.σ != op_low_acc.plan.params.σ
+        @test op_default.plan.params.m != op_other.plan.params.m
+        @test op_default.plan.params.σ != op_other.plan.params.σ
 
         # Not identical (different gridding kernel/oversampling), but not a different
-        # transform either -- both approximate the same NDFT, so a coarser grid still lands
-        # close to the fine one on a small, well-conditioned trajectory like this one.
+        # transform either -- both approximate the same NDFT, so the two land close together
+        # on a small, well-conditioned trajectory like this one.
         y_default = op_default * x
-        y_low_acc = op_low_acc * x
-        @test y_default ≈ y_low_acc rtol = 1.0e-2
+        y_other = op_other * x
+        @test y_default ≈ y_other rtol = 1.0e-2
     end
 
     @testset "get_encoding_operator forwards the same keywords" begin
@@ -145,9 +145,9 @@ end
             ksp; trajectory = traj, image_size,
         )
         𝒜_default = get_encoding_operator(info)
-        𝒜_low_acc = get_encoding_operator(info; m = 3, sigma = 1.25, precompute = NFFTOperators.NFFT.TENSOR)
-        @test 𝒜_default.plan.params.m != 𝒜_low_acc.plan.params.m
-        @test (𝒜_default * x) ≈ (𝒜_low_acc * x) rtol = 1.0e-2
+        𝒜_other = get_encoding_operator(info; m = 4, sigma = 1.25, precompute = NFFTOperators.NFFT.TENSOR)
+        @test 𝒜_default.plan.params.m != 𝒜_other.plan.params.m
+        @test (𝒜_default * x) ≈ (𝒜_other * x) rtol = 1.0e-2
     end
 end
 

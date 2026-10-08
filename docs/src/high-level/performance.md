@@ -270,23 +270,23 @@ using LinearAlgebra, FFTW
 
 `get_fourier_operator`/`get_encoding_operator` take `m`, `sigma` and `precompute` keywords that
 forward straight to `NFFTOp`/NFFT.jl, exposing the gridding operating point instead of leaving
-it fixed. Left at `nothing` (the default), **MRT's own default operating point is used**: `m = 4`,
+it fixed. Left at `nothing` (the default), **MRT's own default operating point is used**: `m = 3`,
 `σ = 1.5`, `precompute = NFFT.POLYNOMIAL` (`DEFAULT_NFFT_M`, `DEFAULT_NFFT_SIGMA`,
 `DEFAULT_NFFT_PRECOMPUTE` in `src/encoding/fourier_operators.jl`).
 
-That default was previously NFFT.jl's own (`m = 5`, `σ = 2.0`, `NFFT.POLYNOMIAL`), which is far
-more accurate than the reconstruction needs. Measured on a 128×128 radial phantom
+The default was NFFT.jl's own (`m = 5`, `σ = 2.0`, `NFFT.POLYNOMIAL`) at first, then `m = 4`,
+`σ = 1.5`; both are far more accurate than the reconstruction needs. Measured on a 128×128 radial phantom
 (`GeometricMedicalPhantoms`'s Shepp-Logan, 256 samples × 128 spokes), single thread, timings
 interleaved round-robin across configs rather than one after another (a single measurement on
 this shared login node can swing 30-60%):
 
 | m | σ | precompute | forward (min/median ms) | adjoint (min/median ms) | forward rel. error vs `m=5,σ=2` |
 |---|---|---|---|---|---|
-| 5 | 2.00 | POLYNOMIAL (former default = NFFT.jl's own) | 8.5 / 9.7 | 7.5 / 8.6 | 0 (reference) |
+| 5 | 2.00 | POLYNOMIAL (first default = NFFT.jl's own) | 8.5 / 9.7 | 7.5 / 8.6 | 0 (reference) |
 | 4 | 2.00 | POLYNOMIAL | 7.0 / 8.1 | 5.5 / 6.4 | 3.8e-8 |
-| **4** | **1.50** | **POLYNOMIAL (new MRT default)** | **4.0 / 4.5** | **4.6 / 5.3** | **2.5e-7** |
+| 4 | 1.50 | POLYNOMIAL (former default) | 4.0 / 4.5 | 4.6 / 5.3 | 2.5e-7 |
 | 3 | 2.00 | POLYNOMIAL | 6.0 / 6.8 | 4.3 / 4.9 | 2.4e-6 |
-| 3 | 1.50 | POLYNOMIAL | 2.8 / 3.2 | 3.3 / 3.8 | 1.7e-5 |
+| **3** | **1.50** | **POLYNOMIAL (MRT default)** | **2.8 / 3.2** | **3.3 / 3.8** | **1.7e-5** |
 | 3 | 1.25 | TENSOR (MRIReco's point) | 2.5 / 2.9 | 2.8 / 3.1 | 7.1e-5 |
 | 2 | 1.50 | POLYNOMIAL | 2.3 / 2.6 | 2.4 / 2.8 | 7.4e-4 |
 | 2 | 1.25 | TENSOR | 2.0 / 2.3 | 1.9 / 2.2 | 2.1e-3 |
@@ -298,13 +298,24 @@ NRMSE is dominated by sampling/DCF artifacts, not by the gridding kernel's own a
 forward relative error against the reference is the right proxy for "is this operating point
 accurate enough."
 
-`m=4, σ=1.5` is picked as the new default because its forward error (2.5e-7) is indistinguishable
-from full accuracy while it runs about 2x faster on the forward transform and about 1.6x faster
-on the adjoint than the old default; every point below it in the table trades measurably more
-accuracy for comparatively little extra speed. This default was chosen to keep passing the
-existing NFFT test suite (`test/test_encoding_op.jl`'s `"NFFT operating point (S6)"` item and the
-`:nfft`-tagged tests in `deps/AbstractOperators/NFFTOperators/test`) without loosening any
-tolerance.
+Iterative reconstructions are just as insensitive. Each method of the `benchmark/` harness was
+run at every operating point on the radial Shepp-Logan case (8 coils, 64 spokes) and the radial
+torso cine (8 coils, 34 spokes × 30 frames), in `ComplexF32`, and compared with the same
+reconstruction at `m = 8, σ = 2` (NFFT error measured against that transform as well):
+
+| NFFT error | operating point | change in magnitude NRMSE vs the `m=8` reconstruction |
+|---|---|---|
+| 6e-6 | `m=4, σ=1.5` | ≤ 3e-5 |
+| 5e-5 | `m=3, σ=1.5` (default) | ≤ 4e-5 (CG-SENSE, L1-wavelet, TV ADMM / Chambolle-Pock, low rank, temporal TV) |
+| 4e-4 – 7e-4 | `m=3, σ=1.25`; `m=2, σ=2` | ≤ 3e-4 |
+| 2e-3 | `m=2, σ=1.5` | up to 9e-4 (temporal TV 1.4% worse, TV ADMM 1% worse) |
+| 7e-3 | `m=2, σ=1.25` | up to 3e-3 (TV ADMM 9% worse) |
+
+The NRMSEs themselves are 0.03-0.27, so the default's change is at most 0.13% of them; accuracy
+starts to matter near 1e-3 NFFT error. `m = 3, σ = 1.5` is the default because it is the fastest
+point clearly below that: 1.5-1.6x faster per forward/adjoint pair than `m = 4, σ = 1.5`
+(8 threads, EPYC 7763: 2D 256² radial, 12 coils, 52 vs 76 ms; 3D 128³ kooshball, 4 coils,
+0.77 vs 1.24 s).
 
 Independently, MRIReco's operating point (`m = 3`, `σ = 1.25`, `NFFT.TENSOR`) is faster still, at
 real accuracy cost: measured per coil, 4.28 ms vs 1.00 ms for a forward error of 1.6e-7 vs 5.7e-5

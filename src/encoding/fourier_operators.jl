@@ -198,7 +198,7 @@ end
 Non-Cartesian (NFFT-backed) Fourier operator. `m`, `sigma` (`σ`) and `precompute` expose the
 gridding operating point: `m` is the interpolation kernel's half-width, `sigma` its oversampling
 factor, `precompute` the `NFFT.PrecomputeFlags` gridding strategy. Leaving them at `nothing` (the
-default) uses MRT's own default operating point (`m=4, σ=1.5, precompute=NFFT.POLYNOMIAL` —
+default) uses MRT's own default operating point (`m=3, σ=1.5, precompute=NFFT.POLYNOMIAL` —
 `DEFAULT_NFFT_M`/`DEFAULT_NFFT_SIGMA`/`DEFAULT_NFFT_PRECOMPUTE`), chosen for speed at negligible
 accuracy cost; pass explicit values for a different point on the accuracy/speed curve, e.g.
 NFFT.jl's own higher-accuracy default (`m=5, sigma=2.0`) or MRIReco's faster, less accurate one
@@ -303,28 +303,30 @@ node can swing 30-60%, so configs were timed round-robin rather than one after a
 
 | m | σ | precompute | forward (min/median ms) | adjoint (min/median ms) | forward rel. error |
 |---|---|---|---|---|---|
-| 5 | 2.00 | POLYNOMIAL (former MRT default = NFFT.jl's own default) | 8.5 / 9.7 | 7.5 / 8.6 | 0 (reference) |
+| 5 | 2.00 | POLYNOMIAL (NFFT.jl's own default) | 8.5 / 9.7 | 7.5 / 8.6 | 0 (reference) |
 | 4 | 2.00 | POLYNOMIAL | 7.0 / 8.1 | 5.5 / 6.4 | 3.8e-8 |
-| **4** | **1.50** | **POLYNOMIAL (new MRT default)** | **4.0 / 4.5** | **4.6 / 5.3** | **2.5e-7** |
+| 4 | 1.50 | POLYNOMIAL (former MRT default) | 4.0 / 4.5 | 4.6 / 5.3 | 2.5e-7 |
 | 3 | 2.00 | POLYNOMIAL | 6.0 / 6.8 | 4.3 / 4.9 | 2.4e-6 |
-| 3 | 1.50 | POLYNOMIAL | 2.8 / 3.2 | 3.3 / 3.8 | 1.7e-5 |
+| **3** | **1.50** | **POLYNOMIAL (MRT default)** | **2.8 / 3.2** | **3.3 / 3.8** | **1.7e-5** |
 | 3 | 1.25 | TENSOR (MRIReco's point) | 2.5 / 2.9 | 2.8 / 3.1 | 7.1e-5 |
 | 2 | 1.50 | POLYNOMIAL | 2.3 / 2.6 | 2.4 / 2.8 | 7.4e-4 |
 | 2 | 1.25 | TENSOR | 2.0 / 2.3 | 1.9 / 2.2 | 2.1e-3 |
 
-`m=4, σ=1.5, POLYNOMIAL` is chosen as the new default: forward relative error against the old
-default is 2.5e-7 -- indistinguishable from full accuracy for reconstruction purposes (the direct
-gridding reconstruction's NRMSE against the phantom does not move outside run-to-run noise across
-this whole table, consistent with `docs/src/high-level/performance.md`'s existing observation
-that gridding-adjoint NRMSE barely depends on the operating point) -- while running about 2x
-faster on the forward transform and about 1.6x faster on the adjoint than the old default. Every
-row below it in the table trades measurably more accuracy for comparatively little extra speed.
+`m=3, σ=1.5, POLYNOMIAL` is the default. Its error against an `m=8, σ=2` transform is about 5e-5
+in `ComplexF32`, and iterative reconstructions do not notice it: on the radial Shepp-Logan case of
+`benchmark/` (CG-SENSE, L1-wavelet, TV with ADMM and with Chambolle-Pock) and on the radial torso
+cine (low rank, temporal TV), the magnitude NRMSE against the phantom moves by at most 4e-5 from
+the `m=8, σ=2` reconstruction, at most 0.13% of the NRMSE itself. Reconstruction accuracy starts to
+depend on the operating point near 1e-3 NFFT error (`m=2`): TV with ADMM is 1% worse at
+`m=2, σ=1.5` and 9% worse at `m=2, σ=1.25`. Against the former default `m=4, σ=1.5` it is
+1.5-1.6x faster per forward/adjoint pair (8 threads, EPYC 7763: 2D 256² radial 52 vs 76 ms for
+12 coils, 3D 128³ kooshball 0.77 vs 1.24 s for 4 coils).
 
 Call `get_fourier_operator`/`get_encoding_operator` with explicit `m`, `sigma`, `precompute`
-keywords to override this (e.g. to match MRIReco's `m=3, σ=1.25, precompute=NFFT.TENSOR`, or to
-go back to the old high-accuracy default with `m=5, sigma=2.0`).
+keywords to override this (e.g. `m=4, sigma=1.5` for the former default, MRIReco's `m=3, σ=1.25,
+precompute=NFFT.TENSOR`, or NFFT.jl's own `m=5, sigma=2.0`).
 """
-const DEFAULT_NFFT_M = 4
+const DEFAULT_NFFT_M = 3
 const DEFAULT_NFFT_SIGMA = 1.5
 const DEFAULT_NFFT_PRECOMPUTE = NFFT.POLYNOMIAL
 
