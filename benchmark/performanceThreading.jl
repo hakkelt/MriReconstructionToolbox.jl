@@ -5,23 +5,20 @@ pgfplotsx()
 #gr()
 
 
-include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
 mkpath("./img/")
 mkpath("./data/")
 
 
 const threads = [1,2,4,8]
-const precomp = [NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.TENSOR]
-const packagesCtor = [NFFTPlan, NFFTPlan, FINUFFTPlan, NFFT3Plan]
-const packagesStr = ["NFFT.jl/POLY", "NFFT.jl/TENSOR", "FINUFFT", "NFFT3"]
+const precomp = [NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.POLYNOMIAL]
+const packagesCtor = [NFFTPlan, NFFTPlan, FINUFFTPlan]
+const packagesStr = ["NFFT.jl/POLY", "NFFT.jl/TENSOR", "FINUFFT"]
 const benchmarkTime = [1, 60, 60]
 #const benchmarkTime = [1, 2, 2]
 #const NBase = [4*4096, 256, 32]
 const NBase = [512*512, 512, 64]
 
-ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
-@info ccall(("nfft_get_num_threads",NFFT3.lib_path_nfft),Int64,())
 NFFT._use_threads[] = (Threads.nthreads() > 1)
 
 function nfft_performance_comparison(m = 4, σ = 2.0)
@@ -257,14 +254,14 @@ else
   df = DataFrame(data, vec(header))
 
   plot_performance(df, N=NBase[2], J=NBase[2]*NBase[2])
-  plot_performance_speedup(df, [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3", "FINUFFT"],
-                               [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3", "FINUFFT"],
-                               [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)],
+  plot_performance_speedup(df, [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "FINUFFT"],
+                               [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "FINUFFT"],
+                               [RGB(0.0,0.29,0.57), RGB(0.3,0.5,0.7), RGB(0.99,0.75,0.05)],
                                N=NBase[2], J=NBase[2]*NBase[2])
-                              
-  #plot_performance_speedup(df, [ "NFFT.jl/TENSOR", "NFFT3", "FINUFFT"],
-  #                             [ "NFFT.jl", "NFFT3", "FINUFFT"],
-  #                             [RGB(0.3,0.5,0.7), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)],
+
+  #plot_performance_speedup(df, [ "NFFT.jl/TENSOR", "FINUFFT"],
+  #                             [ "NFFT.jl", "FINUFFT"],
+  #                             [RGB(0.3,0.5,0.7), RGB(0.99,0.75,0.05)],
   #                             N=NBase[2], J=NBase[2]*NBase[2])
 end
 

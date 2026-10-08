@@ -1,19 +1,18 @@
 using NFFT, DataFrames, LinearAlgebra, Statistics, LaTeXStrings, DelimitedFiles, CuNFFT
 using Plots; pgfplotsx()
 
-include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
 
 
-const packagesCtor = [NFFTPlan, NFFTPlan, NFFTPlan, NFFTPlan,  NFFT3Plan, NFFT3Plan, FINUFFTPlan]
-const packagesStr = ["NFFT.jl/FULL", "NFFT.jl/LINEAR", "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/LINEAR", "NFFT3/TENSOR", "FINUFFT"]
-const precomp = [NFFT.FULL, NFFT.LINEAR, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.LINEAR, NFFT.TENSOR, NFFT.LINEAR]
-const blocking = [false, true, true, true, false, false, false]
+const packagesCtor = [NFFTPlan, NFFTPlan, NFFTPlan, NFFTPlan, FINUFFTPlan]
+const packagesStr = ["NFFT.jl/FULL", "NFFT.jl/LINEAR", "NFFT.jl/TENSOR", "NFFT.jl/POLY", "FINUFFT"]
+const precomp = [NFFT.FULL, NFFT.LINEAR, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.LINEAR]
+const blocking = [false, true, true, true, false]
 
-#const packagesCtor = [NFFTPlan, CuNFFT.CuNFFTPlan, NFFT3Plan, FINUFFTPlan ]
-#const packagesStr = ["NFFT.jl", "CuNFFT.jl", "NFFT3", "FINUFFT", ]
-#const precomp = [NFFT.TENSOR,  NFFT.FULL, NFFT.TENSOR, NFFT.LINEAR, ]
-#const blocking = [true, true, true, false]
+#const packagesCtor = [NFFTPlan, CuNFFT.CuNFFTPlan, FINUFFTPlan ]
+#const packagesStr = ["NFFT.jl", "CuNFFT.jl", "FINUFFT", ]
+#const precomp = [NFFT.TENSOR,  NFFT.FULL, NFFT.LINEAR, ]
+#const blocking = [true, true, false]
 
 
 const σs = range(1.25, 4, length=12)
@@ -176,19 +175,15 @@ dfσ = DataFrame(data, vec(header))
 
 
 
-plot_accuracy_m(dfm, ["NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT"],
-                     ["NFFT.jl", "NFFT3", "FINUFFT"], "accuracy_m_D2.pdf", 2,
-                     [RGB(0.0,0.29,0.57), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)])
+plot_accuracy_m(dfm, ["NFFT.jl/TENSOR", "FINUFFT"],
+                     ["NFFT.jl", "FINUFFT"], "accuracy_m_D2.pdf", 2,
+                     [RGB(0.0,0.29,0.57), RGB(0.99,0.75,0.05)])
 plot_accuracy_m(dfm, ["NFFT.jl/FULL", "NFFT.jl/TENSOR", "NFFT.jl/LINEAR", "NFFT.jl/POLY"], 
                      ["FULL", "TENSOR", "LINEAR", "POLYNOMIAL"],
                       "accuracy_m_pre_D2.pdf", 2,
                       [RGB(0.7,0.13,0.16), RGB(0.3,0.5,0.7), RGB(0.5,0.48,0.45) ,RGB(0.0,0.29,0.57)])
-plot_accuracy_sigma(dfσ, ["NFFT.jl/TENSOR", "NFFT3/TENSOR"], 
-                         ["NFFT.jl", "NFFT3"], "accuracy_sigma_D2.pdf", 2)
-
-
-@info "Mean error deviation  NFFT.jl / NFFT3"
-mean((dfm[dfm.Package.=="NFFT.jl/POLY",:ErrorTrafo] ./ dfm[dfm.Package.=="NFFT3/TENSOR",:ErrorTrafo])[1:5])
+plot_accuracy_sigma(dfσ, ["NFFT.jl/TENSOR"],
+                         ["NFFT.jl"], "accuracy_sigma_D2.pdf", 2)
 
 @info "Mean error deviation  FINUFFT / NFFT.jl"
 mean((dfm[dfm.Package.=="FINUFFT",:ErrorTrafo] ./ dfm[dfm.Package.=="NFFT.jl/POLY",:ErrorTrafo])[1:5])

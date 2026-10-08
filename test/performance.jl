@@ -1,6 +1,5 @@
 using NFFT
 using FFTW
-import NFFT3
 using DataFrames
 
 ### performance test ###

@@ -1,10 +1,7 @@
 using NFFT, LinearAlgebra#, CuNFFT
 
-include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
 
-ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
-@info ccall(("nfft_get_num_threads",NFFT3.lib_path_nfft),Int64,())
 NFFT._use_threads[] = (Threads.nthreads() > 1)
 
 function nfft_performance_simple(;N = (1024,1024), J = prod(N), m = 4, 

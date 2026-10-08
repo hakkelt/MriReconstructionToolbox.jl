@@ -12,14 +12,13 @@ An overview about the current packages and their dependencies is shown in the fo
 
 ## Implementations
 
-Currently, there are four implementations of the `AbstractNFFTs` interface:
+Currently, there are three implementations of the `AbstractNFFTs` interface:
 1. **NFFT.jl**: This is the reference implementation running on the CPU and with configurations on the GPU.
-2. **NFFT3.jl**: In the `Wrapper` directory of `NFFT.jl` there is a wrapper around the `NFFT3.jl` package following the  `AbstractNFFTs` interface. `NFFT3.jl` is itself a wrapper around the high performance C library [NFFT3](http://www.nfft.org).
-3. **FINUFFT.jl**: In the `Wrapper` directory of `NFFT.jl` there is a wrapper around the `FINUFFT.jl` package. `FINUFFT.jl` is itself a wrapper around the high performance C++ library [FINUFFT](https://finufft.readthedocs.io).
-4. **NonuniformFFTs.jl**: Pure Julia package written with generic and fast GPU kernels written with KernelAbstractions.jl.
+2. **FINUFFT.jl**: In the `Wrapper` directory of `NFFT.jl` there is a wrapper around the `FINUFFT.jl` package. `FINUFFT.jl` is itself a wrapper around the high performance C++ library [FINUFFT](https://finufft.readthedocs.io).
+3. **NonuniformFFTs.jl**: Pure Julia package written with generic and fast GPU kernels written with KernelAbstractions.jl.
 
 !!! note
-    Right now one needs to install `NFFT.jl` and manually include the wrapper files. In the future we hope to integrate the wrappers in `NFFT3.jl` and `FINUFFT.jl` directly such that it is much more convenient to switch libraries.
+    Right now one needs to install `NFFT.jl` and manually include the wrapper files. In the future we hope to integrate the wrappers in `FINUFFT.jl` directly such that it is much more convenient to switch libraries.
 
 It's possible to change between different implementation backends. Each backend has to implement a backend type, which by convention can be accessed via for example `NFFT.backend()`. There are several ways to activate a backend:
 ```julia

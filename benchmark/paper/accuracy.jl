@@ -1,14 +1,13 @@
 using NFFT, DataFrames, LinearAlgebra, Statistics, LaTeXStrings, DelimitedFiles, Random
 using Plots; pgfplotsx()
 
-include("../../Wrappers/NFFT3.jl")
 include("../../Wrappers/FINUFFT.jl")
 
 
-const packagesCtor = [NFFTPlan, NFFTPlan, NFFTPlan, NFFTPlan,  NFFT3Plan, NFFT3Plan, FINUFFTPlan]
-const packagesStr = ["NFFT.jl/FULL", "NFFT.jl/LINEAR", "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/LINEAR", "NFFT3/TENSOR", "FINUFFT"]
-const precomp = [NFFT.FULL, NFFT.LINEAR, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.LINEAR, NFFT.TENSOR, NFFT.LINEAR]
-const blocking = [false, true, true, true, false, false, false]
+const packagesCtor = [NFFTPlan, NFFTPlan, NFFTPlan, NFFTPlan, FINUFFTPlan]
+const packagesStr = ["NFFT.jl/FULL", "NFFT.jl/LINEAR", "NFFT.jl/TENSOR", "NFFT.jl/POLY", "FINUFFT"]
+const precomp = [NFFT.FULL, NFFT.LINEAR, NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.LINEAR]
+const blocking = [false, true, true, true, false]
 
 const σs = range(1.25, 4, length=12)
 const ms = 3:10
@@ -39,7 +38,7 @@ function nfft_accuracy_comparison(Ds, σs, ms, seed=2)
 
             # ground truth (numerical)
             #pNDFT = NDFTPlan(k, N)
-            pNDFT = NFFT3Plan(k, N; m=12, σ=2)
+            pNDFT = FINUFFTPlan(k, N; m=12, σ=2)
 
             g = adjoint(pNDFT) * fHat
             gHat = pNDFT * f
@@ -124,18 +123,13 @@ data, header = readdlm("data/accuracy_m.csv", ',', header=true);
 dfm = DataFrame(data, vec(header))
 
 
-plot_accuracy_m(dfm, ["NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT"],
-                     ["NFFT.jl", "NFFT3", "FINUFFT"], "accuracy_m_D2", 2,
-                     [RGB(0.0,0.29,0.57), RGB(0.94,0.53,0.12), RGB(0.99,0.75,0.05)])
+plot_accuracy_m(dfm, ["NFFT.jl/TENSOR", "FINUFFT"],
+                     ["NFFT.jl", "FINUFFT"], "accuracy_m_D2", 2,
+                     [RGB(0.0,0.29,0.57), RGB(0.99,0.75,0.05)])
 plot_accuracy_m(dfm, ["NFFT.jl/FULL", "NFFT.jl/TENSOR", "NFFT.jl/LINEAR", "NFFT.jl/POLY"], 
                      ["FULL", "TENSOR", "LINEAR", "POLYNOMIAL"],
                       "accuracy_m_pre_D2", 2,
                       [RGB(0.7,0.13,0.16), RGB(0.3,0.5,0.7), RGB(0.5,0.48,0.45) ,RGB(0.0,0.29,0.57)])
-
-@info "Mean error deviation  NFFT.jl / NFFT3"
-@info mean((dfm[dfm.Package.=="NFFT.jl/POLY",:ErrorTrafo] ./ dfm[dfm.Package.=="NFFT3/TENSOR",:ErrorTrafo])[1:5])
-@info mean((dfm[dfm.Package.=="NFFT.jl/POLY",:ErrorAdjoint] ./ dfm[dfm.Package.=="NFFT3/TENSOR",:ErrorAdjoint])[1:5])
-
 
 @info "Mean error deviation  FINUFFT / NFFT.jl"
 @info mean((dfm[dfm.Package.=="FINUFFT",:ErrorTrafo] ./ dfm[dfm.Package.=="NFFT.jl/POLY",:ErrorTrafo])[1:5])

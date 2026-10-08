@@ -3,19 +3,16 @@ using BenchmarkTools
 using Plots; pgfplotsx()
 using Plots.Measures
 
-include("../../Wrappers/NFFT3.jl")
 include("../../Wrappers/FINUFFT.jl")
 
-const packagesCtor = [NFFTPlan, NFFTPlan, NFFT3Plan, FINUFFTPlan] 
-const packagesStr = [ "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/TENSOR", "FINUFFT"]
-const precomp = [NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.LINEAR] 
-const blocking = [true, true, true, true, true]
+const packagesCtor = [NFFTPlan, NFFTPlan, FINUFFTPlan]
+const packagesStr = [ "NFFT.jl/TENSOR", "NFFT.jl/POLY", "FINUFFT"]
+const precomp = [NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.LINEAR]
+const blocking = [true, true, true, true]
 
 #const benchmarkTime = [120, 120]
 const benchmarkTime = [40, 120, 120]
 
-ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
-@info ccall(("nfft_get_num_threads",NFFT3.lib_path_nfft),Int64,())
 NFFT._use_threads[] = (Threads.nthreads() > 1)
 
 
@@ -277,11 +274,11 @@ end
 data, header = readdlm("data/performanceVsAccuracy.csv", ',', header=true);
 df = DataFrame(data, vec(header))
 
-plot_accuracy(df, [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT"],
-                  [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3", "FINUFFT"], "./img/performanceVsAccuracy")
-                  
-plot_accuracy_small(df, [ "NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT"],
-                  [ "NFFT.jl", "NFFT3", "FINUFFT"], "./img/performanceVsAccuracy")
+plot_accuracy(df, [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "FINUFFT"],
+                  [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "FINUFFT"], "./img/performanceVsAccuracy")
+
+plot_accuracy_small(df, [ "NFFT.jl/TENSOR", "FINUFFT"],
+                  [ "NFFT.jl", "FINUFFT"], "./img/performanceVsAccuracy")
 
 
 

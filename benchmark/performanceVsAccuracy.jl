@@ -3,19 +3,16 @@ using BenchmarkTools
 using Plots; pgfplotsx()
 using Plots.Measures
 
-include("../Wrappers/NFFT3.jl")
 include("../Wrappers/FINUFFT.jl")
 include("../Wrappers/DUCC0.jl")
 
-const packagesCtor = [NFFTPlan, NFFTPlan, NFFT3Plan, FINUFFTPlan, Ducc0NufftPlan]
-const packagesStr = [ "NFFT.jl/TENSOR", "NFFT.jl/POLY", "NFFT3/TENSOR", "FINUFFT", "DUCC0"]
-const precomp = [NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.TENSOR, NFFT.LINEAR, NFFT.LINEAR]
-const blocking = [true, true, true, true, true]
+const packagesCtor = [NFFTPlan, NFFTPlan, FINUFFTPlan, Ducc0NufftPlan]
+const packagesStr = [ "NFFT.jl/TENSOR", "NFFT.jl/POLY", "FINUFFT", "DUCC0"]
+const precomp = [NFFT.TENSOR, NFFT.POLYNOMIAL, NFFT.LINEAR, NFFT.LINEAR]
+const blocking = [true, true, true, true]
 
 const benchmarkTime = [10, 30, 30]
 
-ccall(("omp_set_num_threads",NFFT3.lib_path_nfft),Nothing,(Int64,),convert(Int64,Threads.nthreads()))
-@info ccall(("nfft_get_num_threads",NFFT3.lib_path_nfft),Int64,())
 NFFT._use_threads[] = (Threads.nthreads() > 1)
 
 
@@ -284,11 +281,11 @@ writedlm("data/performanceVsAccuracy.csv", Iterators.flatten(([names(df)], eachr
 data, header = readdlm("data/performanceVsAccuracy.csv", ',', header=true);
 df = DataFrame(data, vec(header))
 
-plot_accuracy(df, [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT", "DUCC0"],
-                  [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "NFFT3", "FINUFFT", "DUCC0"], "./img/performanceVsAccuracy")
-                  
-plot_accuracy_small(df, [ "NFFT.jl/TENSOR", "NFFT3/TENSOR", "FINUFFT", "DUCC0"],
-                  [ "NFFT.jl", "NFFT3", "FINUFFT", "DUCC0"], "./img/performanceVsAccuracy")
+plot_accuracy(df, [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "FINUFFT", "DUCC0"],
+                  [ "NFFT.jl/POLY", "NFFT.jl/TENSOR", "FINUFFT", "DUCC0"], "./img/performanceVsAccuracy")
+
+plot_accuracy_small(df, [ "NFFT.jl/TENSOR", "FINUFFT", "DUCC0"],
+                  [ "NFFT.jl", "FINUFFT", "DUCC0"], "./img/performanceVsAccuracy")
 
 #plot_accuracy(df, [ "NFFT.jl/POLY", "NFFT.jl/TENSOR" ], #"NFFT.jl/LINEAR"  , "LINEAR"
 #                  [ "POLYNOMIAL", "TENSOR"], "./img/performanceVsAccuracyPrecomp.pdf")
