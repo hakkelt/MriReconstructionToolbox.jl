@@ -53,11 +53,12 @@ Contourlets 90 ms, RecursiveArrayTools 73 ms. Target: 0.5–1 s.
   comparing with and without it.
 
 ### 2. Register NestedThreading and MRITestData
-**Status:** todo. **Tier:** P1.
+**Status:** done (p1). **Tier:** P1.
 
-The Manifest dev-paths NestedThreading at 0.1.2; the latest release is v0.1.1. Register 0.1.2.
-Register a new MRITestData version if the examples need one (they currently use it by
-`repo-url`). Vendoring does not block registering Ristretto itself.
+NestedThreading 0.1.2 (JuliaRegistries/General#171087) and MRITestData 0.1.1 (General#171085,
+the USC Speech dwell-time fix the examples need) are registered. Ristretto, `examples/`,
+`benchmark/`, `test/` and the notebooks take both from the registry. Vendoring does not block
+registering Ristretto itself.
 
 ### 3. Comment cleanup
 **Status:** todo. **Tier:** P1.
