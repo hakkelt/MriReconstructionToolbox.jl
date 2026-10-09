@@ -149,9 +149,8 @@ Report the per-item time before and after, and keep the slow, high-value cases (
 integration) behind a tag if they cannot be shrunk.
 
 ### 30. Re-run the examples
-**Status:** in progress (`p2`). 2026-10-09: 21 of 26 default examples ok; the large mridata.org
-set is queued on the cluster; one CMRxRecon mapping set and four fastMRI sources wait for
-credentials. **Tier:** P2.
+**Status:** done (`p2`): all 35 scripts ran on 2026-10-09 at `0e3aabe1`; table in
+`examples/README.md`. **Tier:** P2.
 
 Run every `examples/` script (`examples/run_all.jl`; the large datasets in one SLURM job) against
 the current package, fix what broke in `ext/RistrettoMRIBaseExt.jl`, preprocessing or `src/`
