@@ -133,7 +133,6 @@ function get_fourier_operator(
     )
     kspace_dims_to_shift = tuple([d for d in ksp_dims if d ∉ shifted_kspace_dims]...)
     if !isempty(kspace_dims_to_shift) || !isempty(shifted_image_dims)
-        # Wrap with shifts if needed
         ℱ = ifftshift_op(
             ℱ; domain_shifts = shifted_image_dims, codomain_shifts = kspace_dims_to_shift
         )
@@ -330,7 +329,7 @@ const DEFAULT_NFFT_M = 3
 const DEFAULT_NFFT_SIGMA = 1.5
 const DEFAULT_NFFT_PRECOMPUTE = NFFT.POLYNOMIAL
 
-# Always forward a concrete operating point: leaving `m`/`sigma`/`precompute` at `nothing` now
+# Always forward a concrete operating point: leaving `m`/`sigma`/`precompute` at `nothing`
 # substitutes Ristretto's own (lower-accuracy, faster) default rather than NFFT.jl's own default -- see
 # `DEFAULT_NFFT_M` and friends for the measured justification. The FFT inside the NFFT is planned
 # like the Cartesian DFT: `MEASURE` unless `fast_planning`. `ESTIMATE`, NFFT.jl's own default, picks

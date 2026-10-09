@@ -137,8 +137,7 @@ LinearAlgebra.opnorm(L::NamedDimsOp) = LinearAlgebra.opnorm(L.L)
 # named start vector would be drawn element by element, which a device array does not allow. On
 # the host it stays on named arrays, whose broadcasts and inner products are plain serial loops.
 # Unnamed, they are threaded `@..` broadcasts and BLAS calls, and the Polyester workers they wake
-# keep spinning into the solve that follows: the 2D 8-coil L1-wavelet FISTA row at 8 threads took
-# 82-102 ms that way against 64 ms named.
+# keep spinning into the solve that follows and slow it down.
 function AbstractOperators._powerit(L::NamedDimsOp; kwargs...)
     domain_array_type(L.L) <: Array && return @invoke AbstractOperators._powerit(L::AbstractOperator; kwargs...)
     return AbstractOperators._powerit(L.L; kwargs...)
