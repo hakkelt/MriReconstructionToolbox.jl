@@ -2,10 +2,10 @@
 
 # Tooling for the vendored dependency stack declared in `deps/vendor.toml`.
 #
-#     julia tools/vendor.jl check [pkg...]        compare the manifest with GitHub and git
-#     julia tools/vendor.jl rebuild [pkg...]      rebuild each fork's `integration` branch
-#     julia tools/vendor.jl sync [pkg...]         project `integration` into `deps/`
-#     julia tools/vendor.jl status [--json]       the state of the whole stack
+#     julia deps/vendor.jl check [pkg...]        compare the manifest with GitHub and git
+#     julia deps/vendor.jl rebuild [pkg...]      rebuild each fork's `integration` branch
+#     julia deps/vendor.jl sync [pkg...]         project `integration` into `deps/`
+#     julia deps/vendor.jl status [--json]       the state of the whole stack
 #
 # With no package names, every package in the manifest is processed. Only the standard library is
 # used, so the script runs with a bare `julia` and no project environment. `check` and `status`
@@ -630,7 +630,7 @@ json(d::Vector{<:Pair}) = "{" * join(["$(json(k)):$(json(v))" for (k, v) in d], 
 The state of the whole stack, as the text summary a terminal wants or as the JSON the dashboard
 reads. Regenerate the dashboard's data with
 
-    julia tools/vendor.jl status --json > docs/src/assets/vendor-status.json
+    julia deps/vendor.jl status --json > docs/src/assets/vendor-status.json
 """
 function status(packages; as_json::Bool = false)
     entries = Vector{Pair{String,Any}}[]
@@ -697,7 +697,7 @@ end
 # ---------------------------------------------------------------------------------------------
 
 const USAGE = """
-usage: julia tools/vendor.jl <command> [package...] [options]
+usage: julia deps/vendor.jl <command> [package...] [options]
 
   check [--no-fetch]               compare the manifest with GitHub and the local checkouts
   rebuild [--no-push] [--no-fetch] rebuild each fork's `integration` branch from the manifest

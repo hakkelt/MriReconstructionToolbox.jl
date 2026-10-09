@@ -85,10 +85,10 @@ stops being pruned has to be restored from the fork's `integration` branch once 
 Ristretto is **ahead of** its upstreams in places (its own fixes are pushed there as branches), so a sync
 is a merge, not a copy: check whether the vendored side is the newer one before overwriting it.
 
-That merge is the thing `deps/vendor.toml` and `tools/vendor.jl` exist to remove. The manifest
+That merge is the thing `deps/vendor.toml` and `deps/vendor.jl` exist to remove. The manifest
 declares, per package, which fork branches make up the vendored copy and how they are stacked;
-`julia tools/vendor.jl rebuild` merges them into one `integration` branch per fork, and
-`julia tools/vendor.jl sync` projects that branch into `deps/` as a squashed subtree, so the
+`julia deps/vendor.jl rebuild` merges them into one `integration` branch per fork, and
+`julia deps/vendor.jl sync` projects that branch into `deps/` as a squashed subtree, so the
 vendored copy records where it came from. Two rules follow, and they are what keep the sync
 one-directional:
 
@@ -106,7 +106,7 @@ they need. Nothing tracked in this repository, and nothing pushed to a fork, may
 one machine; the `[sources]` block that points the vendored copy at its siblings under `deps/` is
 supplied by `deps/patches/<package>.patch` and belongs nowhere else.
 
-`julia tools/vendor.jl check` compares the manifest against GitHub and reports mis-based PRs,
+`julia deps/vendor.jl check` compares the manifest against GitHub and reports mis-based PRs,
 branches with no PR, branches whose PR has already merged (whose code should come from upstream
 instead), branches the fork does not have or whose local tip is ahead of it, branches that push a
 path of one machine, and branches on the fork that no manifest entry refers to. Branch existence
@@ -118,7 +118,7 @@ forces: the relative imports, the inlined extension, the OSQP removal, the vendo
 paths. Nothing else belongs there. Work that would make sense to the upstream package goes on the
 branch that owns the code; work that is about MRI rather than about the dependency belongs in
 Ristretto's own `src/`. A hunk that is neither is a sign the fix was made in the wrong place —
-`julia tools/vendor.jl patch` regenerates the file, so such a hunk shows up the moment it appears.
+`julia deps/vendor.jl patch` regenerates the file, so such a hunk shows up the moment it appears.
 
 ### API gotchas
 
