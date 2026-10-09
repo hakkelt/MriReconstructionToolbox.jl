@@ -14,8 +14,8 @@ apply throughout; in particular, changes to vendored packages go on fork branche
 
 | Tier | Items |
 |---|---|
-| **P1 — now** | 5 (rename), 9, 2, 11, 1 (measurement + quick wins), 3 |
-| **P2 — documentation** | 10, 23, 6, 4, 7 + 8 |
+| **P1 — done** (PR #2, 2026-10-09) | 5 (rename), 9, 2, 11, 1 (measurement + quick wins), 3 |
+| **P2 — documentation (next)** | 10, 23, 6, 4, 7 + 8 |
 | **P3 — strengthens the paper** | 19, 20 (Python wrapper), 22 |
 | **Deferred** | 12, 13, 14, 15, rest of 1, 16, 17, 18, 24, 25, 26, 27, 28, 29 |
 
@@ -23,7 +23,8 @@ Ordering constraints: 5 before 4, 10 and 20 (a rename touches all of them); 9 an
 (notebooks are rewritten only once); 9 before 22 (simulated benchmark cases change); 7 before 8;
 2 before 15; 11 before 12.
 
-P1 items are independent of each other and can run in parallel sessions.
+P1 closed on 2026-10-09 with PR #2. What is left of items 1, 3 and 5 is listed in their **Status**
+lines and is not P1 work any more.
 
 ## Foundations and cleanup
 
