@@ -302,13 +302,13 @@ function build_section(base::RevisionResult, head::RevisionResult, base_label, h
 end
 
 function build_body(sections, base_label, head_label, julia_version, repeats)
+    processes = repeats == 1 ? "one process" : "the fastest of $repeats alternating processes"
     rendered = [build_section(b, h, base_label, head_label, t) for (t, b, h) in sections]
     return """
     ## Benchmark Results (Julia v$(julia_version))
 
     Small synthetic cases (`benchmark/ci/benchmarks.jl`), the head's suite run against both
-    revisions on the same runner: $(repeats) alternating process$(repeats == 1 ? "" : "es") per revision and
-    thread count, each entry taking its fastest process.
+    revisions on the same runner, $(processes) per revision and thread count.
 
     $(join(rendered, "\n"))
 
