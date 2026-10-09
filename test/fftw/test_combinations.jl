@@ -82,7 +82,7 @@ end
     using LinearAlgebra, Random
     using FFTWOperators
     using AbstractOperators
-    using AbstractOperators: opnorm_bound, powerit
+    using AbstractOperators: opnorm_bound
 
     # The shape a multi-channel transform chain takes when the channel weights are batched over a
     # further dimension: weight, alternate signs, transform. The sign alternation runs over the
@@ -107,8 +107,13 @@ end
     @test chain * x == F * (S * (B * x))
     @test chain' * k == B' * (S' * (F' * k))
 
-    # Folding a factor away must not cost the closed-form norm bound its certificate.
-    @test opnorm_bound(chain) >= powerit(chain; maxit = 500, rel_margin = 1.0e-12)
+    # Folding a factor away must not cost the closed-form norm bound its certificate. The bound
+    # is tight here, so it is held against the exact norm, `√(nx·ny)` for the DFT times the
+    # largest per-pixel channel norm of the weights, to a single-precision rounding: a
+    # single-precision power iteration converges to within its own rounding of the same value,
+    # from either side.
+    exact = sqrt(nx * ny) * sqrt(maximum(sum(abs2.(ComplexF64.(weights)); dims = 3)))
+    @test opnorm_bound(chain) >= exact * (1 - eps(Float32))
 end
 
 @testitem "SignAlternation pair cancels around a diagonal" tags = [:fftw, :CombinationRules] begin

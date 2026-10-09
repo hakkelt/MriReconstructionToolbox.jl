@@ -46,6 +46,11 @@ function FFTWOperators.DFT(
     )
 end
 
+# A sign alternation on device storage joins a fused run: its step derives the sign from the
+# linear index, which a device thread computes per element.
+FFTWOperators.AbstractOperators._pw_kind(::Type{<:SignAlternation{T, N, M, Th, S}}) where {T, N, M, Th, S <: AbstractGPUArray} =
+    FFTWOperators.AbstractOperators.PwMapKind()
+
 # GPU mul! for SignAlternation: uses broadcast to avoid scalar indexing
 function mul!(y::AbstractGPUArray, L::SignAlternation{T, N}, b::AbstractGPUArray) where {T, N}
     check(y, L, b)

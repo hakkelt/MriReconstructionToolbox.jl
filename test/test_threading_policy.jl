@@ -220,7 +220,8 @@ end
             (; threaded) -> DiagOp(randn(1 << 20); threaded),
             (; threaded) -> DFT(Float64, (1 << 16,); threaded),
             (; threaded) -> DCT(Float64, (1 << 16,); threaded),
-            (; threaded) -> RDFT(Float64, (1 << 16,); threaded),
+            # r2c transforms gate at 2^18, not 2^16 (`fftw_threading_threshold`).
+            (; threaded) -> RDFT(Float64, (1 << 18,); threaded),
             (; threaded) -> BatchOp(FiniteDiff(Float64, (1 << 20,); threaded = false), (8,); threaded),
         )
         for build in big_builders

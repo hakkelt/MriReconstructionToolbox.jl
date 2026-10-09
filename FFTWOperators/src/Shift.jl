@@ -637,6 +637,63 @@ end
 
 LinearAlgebra.adjoint(L::SignAlternation) = L
 
+# In a `Compose`, a sign alternation is a pointwise map: the sign of element `j` follows from
+# its linear index.
+AbstractOperators._pw_kind(::Type{<:SignAlternation{T, N, M, Th, S}}) where {T, N, M, Th, S <: Array} =
+    AbstractOperators.PwMapKind()
+
+function AbstractOperators._pw_steps(L::SignAlternation{T}) where {T}
+    strides = Base.size_to_strides(1, L.dim_in...)
+    return (PwSignAlternation{T}(map(d -> strides[d], L.dirs), map(d -> L.dim_in[d], L.dirs), prod(L.dim_in)),)
+end
+
+# -v where the indices along the dimensions with strides `strides` and sizes `sizes` have an odd
+# sum of (zero-based) parities, v elsewhere.
+struct PwSignAlternation{T, M} <: AbstractOperators.PwStep{T}
+    strides::NTuple{M, Int}
+    sizes::NTuple{M, Int}
+    len::Int
+end
+PwSignAlternation{T}(strides::NTuple{M, Int}, sizes::NTuple{M, Int}, len::Int) where {T, M} =
+    PwSignAlternation{T, M}(strides, sizes, len)
+
+AbstractOperators._pw_length(s::PwSignAlternation) = s.len
+
+_pw_flip(s::PwSignAlternation, j) =
+    isodd(sum(map((st, n) -> rem(div(j - 1, st), n), s.strides, s.sizes)))
+
+@inline AbstractOperators._pw_apply(s::PwSignAlternation{T}, v, j) where {T} =
+    convert(T, ifelse(_pw_flip(s, j), -v, v))
+
+# The CPU kernels work in segments that start at a multiple of the period and do not cross one,
+# so on a segment the parity of every dimension but the first is constant. The first dimension
+# (stride 1) alternates along the segment: across the end of a column too when its size is
+# even, which is why only an odd first size sets the period.
+function AbstractOperators._pw_period(s::PwSignAlternation)
+    p = nothing
+    for (st, n) in zip(s.strides, s.sizes)
+        q = st == 1 ? (isodd(n) ? n : nothing) : st
+        q === nothing || (p = p === nothing ? q : min(p, q))
+    end
+    return p
+end
+
+function AbstractOperators._pw_at(s::PwSignAlternation{T}, j0) where {T}
+    return PwSignSegment{T}(_pw_flip(s, j0), any(==(1), s.strides), j0)
+end
+
+# The sign alternation resolved for the segment that starts at element `j0`.
+struct PwSignSegment{T} <: AbstractOperators.PwStep{T}
+    flip0::Bool
+    alternate::Bool
+    j0::Int
+end
+
+@inline function AbstractOperators._pw_apply(s::PwSignSegment{T}, v, j) where {T}
+    flip = s.flip0 ⊻ (s.alternate & isodd(j - s.j0))
+    return convert(T, ifelse(flip, -v, v))
+end
+
 # Utility
 
 function _check_shift_dirs(::NTuple{N, Int}, dirs::NTuple{M, Int}) where {N, M}

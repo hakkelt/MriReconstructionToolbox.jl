@@ -51,15 +51,8 @@ end
     x = randn(n)
     @test norm(op' * (op * x) .- x) <= 1.0e-12
     @test norm(Wop * x .- x) <= 1.0e-12
-
-    # A biorthogonal family (lifting-scheme CDF) is not self-adjoint: the identity trait must
-    # not fire for it.
-    bop = WaveletOp(Float64, wavelet(WT.cdf97, WT.Lifting), (n,))
-    @test !AbstractOperators.has_optimized_normalop(bop)
-    @test !AbstractOperators.is_AcA_diagonal(bop)
-    @test !AbstractOperators.is_AAc_diagonal(bop)
-    @test_throws ArgumentError AbstractOperators.get_normal_op(bop)
-    @test_throws ArgumentError AbstractOperators.diag_AcA(bop)
+    # Every family `WaveletOp` accepts is an orthogonal filter bank; the lifting-scheme ones,
+    # biorthogonal CDF among them, are rejected by the constructor (tested below).
 end
 
 @testitem "WaveletOp: copy_operator" tags = [:wavelet, :WaveletOp] setup = [TestUtils] begin
