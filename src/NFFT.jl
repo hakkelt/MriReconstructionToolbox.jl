@@ -3,7 +3,6 @@ module NFFT
 using Printf
 using Base.Cartesian
 using FFTW
-using Distributed
 using SparseArrays
 using LinearAlgebra
 using OhMyThreads
