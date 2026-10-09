@@ -48,6 +48,7 @@ end
     using Ristretto
     using Ristretto: get_encoding_operator
     using Ristretto.AbstractOperators
+    using Ristretto.StructuredOptimization
 
     @testset "Linear op + L2Image" for threaded in (false, true)
         x = rand(8, 8)

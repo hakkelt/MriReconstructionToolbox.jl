@@ -1,5 +1,7 @@
-@testsnippet PerFrameTrajectory begin
+@testmodule PerFrameTrajectory begin
     using NamedDims
+
+    export radial_spokes, rotating_series, moving_square, gaussian_maps, align_nrmse
 
     # `nspokes` radial spokes whose angles continue from spoke `first` (0.3 rad apart), so consecutive
     # frames of a series sample different directions.

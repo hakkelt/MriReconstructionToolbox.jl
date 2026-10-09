@@ -12,7 +12,12 @@ using TestItems
     using Wavelets
 end
 
-@testsnippet ProxOf begin
+@testmodule ProxOf begin
+    using Ristretto
+    using Ristretto.StructuredOptimization: Variable
+
+    export SO, PC, functions_of, prox_of
+
     const SO = Ristretto.StructuredOptimization
     const PC = Ristretto.ProximalCore
 
@@ -28,14 +33,19 @@ end
     end
 end
 
-@testsnippet TestHelpers begin
+@testmodule TestHelpers begin
+    using Test: @test
     using LinearAlgebra: norm
 
+    export relative_error, test_type_stable
+
     relative_error(z, truth) = norm(z .- truth) / norm(truth)
-    test_type_stable(::Type{T}, value) where {T} = (Test.@test typeof(value) == T; value)
+    test_type_stable(::Type{T}, value) where {T} = (@test typeof(value) == T; value)
 end
 
-@testsnippet FiniteDiff begin
+@testmodule FiniteDiff begin
+    export manual_gradient
+
     # Forward difference at the first index along dimension `d`, backward difference elsewhere --
     # matches the boundary convention `get_operator` uses for the (Second)TotalVariation family.
     function manual_gradient(x::AbstractArray, ndims_spatial::Int)
@@ -76,7 +86,9 @@ end
     end
 end
 
-@testsnippet SyntheticCoils begin
+@testmodule SyntheticCoils begin
+    export synthetic_sensitivities
+
     # A smooth, complex-valued coil pattern: a Gaussian blob offset around a ring per coil, with a
     # linear phase ramp, normalized so the coils combine to unit magnitude (root-sum-of-squares).
     function synthetic_sensitivities(::Type{T}, Nx, Ny, Nc; phase_scale = 0.5) where {T}
@@ -93,10 +105,13 @@ end
     end
 end
 
-@testsnippet RadialCalibration begin
+@testmodule RadialCalibration begin
+    using Ristretto
     using Ristretto: NonCartesianAcquisitionInfo
     using NamedDims
     using LinearAlgebra: dot, norm
+
+    export radial_case, map_alignment
 
     # A radial acquisition of a block phantom through known coil sensitivities: everything the
     # non-Cartesian sensitivity-estimation tests calibrate from.
@@ -134,8 +149,11 @@ end
     check_wavelet_roundtrip(op, x, result) = (Test.@test op' * result ≈ x rtol = 1.0e-10)
 end
 
-@testsnippet ModelEval begin
+@testmodule ModelEval begin
+    using Ristretto
     using Ristretto.StructuredOptimization
+
+    export eval_term
 
     function eval_term(terms)
         vars = StructuredOptimization.extract_variables(terms)

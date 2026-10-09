@@ -1,5 +1,7 @@
-@testsnippet RawAcqHelpers begin
+@testmodule RawAcqHelpers begin
     using MRIBase: RawAcquisitionData, Profile, AcquisitionHeader, EncodingCounters, Limit
+
+    export make_profile, make_traj_profile, make_raw
 
     function make_profile(
             data::Matrix{ComplexF32}; step1 = 0, step2 = 0, slice = 0, contrast = 0, phase = 0,
@@ -61,6 +63,7 @@ end
 
 @testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — Cartesian" tags = [:acquisition] setup = [RawAcqHelpers] begin
     using Ristretto
+    using MRIBase: Profile, Limit
     using Ristretto: CartesianAcquisitionInfo
     using NamedDims: dimnames, unname
 
@@ -197,6 +200,7 @@ end
 
 @testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — object stays centred in the FOV" tags = [:acquisition, :reconstruction] setup = [RawAcqHelpers] begin
     using Ristretto
+    using MRIBase: Profile, Limit
     using NamedDims: unname
     using FFTW: fft, fftshift, ifftshift
 
@@ -229,6 +233,7 @@ end
 
 @testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — non-Cartesian dispatch" tags = [:acquisition, :nfft] setup = [RawAcqHelpers] begin
     using Ristretto
+    using MRIBase: Profile, Limit
     using Ristretto: NonCartesianAcquisitionInfo
     using NamedDims: dimnames, unname
 
@@ -259,6 +264,7 @@ end
 
 @testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — non-Cartesian density compensation and batches" tags = [:acquisition, :nfft] setup = [RawAcqHelpers] begin
     using Ristretto
+    using MRIBase: Profile, Limit
     using Ristretto: NonCartesianAcquisitionInfo
     using NamedDims: dimnames, unname
 

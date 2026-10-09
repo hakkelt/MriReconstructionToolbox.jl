@@ -95,13 +95,13 @@ end
     n = 32
     truth = [(i > n ÷ 2 ? 1.0 : 0.0) + 0.02 * j for i in 1:n, j in 1:n]
     noisy = truth .+ 0.05 .* randn(MersenneTwister(2), n, n)
-    relative_error(z) = relative_error(z, truth)
+    error_to_truth(z) = relative_error(z, truth)
 
     @testset "TGV beats TV on a ramp with an edge" begin
         tv = denoise(TotalVariation2D(0.05), noisy)
         tgv = denoise(TotalGeneralizedVariation2D(0.05), noisy)
-        @test relative_error(tgv) < relative_error(tv)
-        @test relative_error(tgv) < relative_error(noisy)
+        @test error_to_truth(tgv) < error_to_truth(tv)
+        @test error_to_truth(tgv) < error_to_truth(noisy)
     end
 
     @testset "a large ratio degenerates to total variation" begin
@@ -142,7 +142,7 @@ end
     n = 32
     truth = [(i > n ÷ 2 ? 1.0 : 0.0) + 0.02 * j for i in 1:n, j in 1:n]
     noisy = truth .+ 0.05 .* randn(MersenneTwister(3), n, n)
-    relative_error(z) = relative_error(z, truth)
+    error_to_truth(z) = relative_error(z, truth)
 
     components = (
         Component(:cartoon, TotalVariation2D(0.05)),
@@ -156,7 +156,7 @@ end
     solve(model, ADMM(maxit = 1000, rho = 1.0))
     total = reduce(+, map(v -> copy(~v), vars))
 
-    @test relative_error(total) < relative_error(noisy)
+    @test error_to_truth(total) < error_to_truth(noisy)
 
     # It must also beat plain first-order TV on this ramp-plus-edge image, which is the whole point of
     # splitting the image into a cartoon and a ramp part.
@@ -164,7 +164,7 @@ end
         Eye(noisy), noisy, (TotalVariation2D(0.05),); threaded = false, x₀ = copy(noisy),
     )
     solve(tv_model, ADMM(maxit = 1000, rho = 1.0))
-    @test relative_error(total) < relative_error(copy(~tv_x))
+    @test error_to_truth(total) < error_to_truth(copy(~tv_x))
 end
 
 @testitem "TotalGeneralizedVariation2D runs through reconstruct" tags = [:regularization, :integration] begin
@@ -305,8 +305,8 @@ end
     n = 16
     truth = [(i > n ÷ 2 ? 1.0 : 0.0) + 0.02 * j + 0.01 * k for i in 1:n, j in 1:n, k in 1:n]
     noisy = truth .+ 0.05 .* randn(MersenneTwister(5), n, n, n)
-    relative_error(z) = relative_error(z, truth)
+    error_to_truth(z) = relative_error(z, truth)
 
-    @test relative_error(denoise(TotalGeneralizedVariation3D(0.05), noisy)) <
-        relative_error(denoise(TotalVariation3D(0.05), noisy))
+    @test error_to_truth(denoise(TotalGeneralizedVariation3D(0.05), noisy)) <
+        error_to_truth(denoise(TotalVariation3D(0.05), noisy))
 end

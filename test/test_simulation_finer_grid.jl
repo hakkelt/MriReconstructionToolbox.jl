@@ -1,5 +1,7 @@
-@testsnippet FinerGridSetup begin
+@testmodule FinerGridSetup begin
     using NamedDims: unname
+
+    export blob, rel
 
     # An off-centre Gaussian on an `n`-voxel grid over the field of view [-1, 1]^D, sampled at the
     # voxel centres `-1 + (i - 1/2) 2/n`. Its spectrum is negligible beyond a 64-voxel grid's band,
