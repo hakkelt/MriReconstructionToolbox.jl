@@ -395,11 +395,17 @@ carries none unless `keep_sensitivity_maps = true` (it then carries them resampl
 reconstruction grid): reusing the maps that simulated the data is part of the same crime, and
 with measured data they are estimated (`estimate_sensitivities`).
 
+A reconstruction from such data is scored against the same object rasterized area-sampled on the
+reconstruction grid. Neither the fine phantom (a different size) nor a point-sampled phantom of
+the reconstruction's size will do: against the latter every edge counts as error, which is the
+3–5 dB pessimism above.
+
 ```@example imports
 img_fine = create_shepp_logan_phantom(202, 202, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32, supersample = 4)
 acq_128 = AcquisitionInfo(is3D = false, image_size = (128, 128), sensitivity_maps = coil_sensitivities(202, 202, 8))
 data_128 = simulate_acquisition(img_fine, acq_128)
-size(data_128.kspace_data), data_128.sensitivity_maps
+truth_128 = create_shepp_logan_phantom(128, 128, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32, supersample = 4)
+size(data_128.kspace_data), data_128.sensitivity_maps, size(truth_128)
 ```
 
 ## Advanced Simulation

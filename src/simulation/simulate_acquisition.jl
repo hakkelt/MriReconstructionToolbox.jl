@@ -20,7 +20,8 @@ reconstruction's size gets a warning, and so does an integer multiple of it, whi
 point-sampled phantom partly consistent with the model. Rasterize the phantom area-sampled
 (GeometricMedicalPhantoms' `supersample` keyword) on a grid about 1.6 times finer per axis, e.g.
 202² for a 128² reconstruction: in a study of the Shepp–Logan phantom its simulation error is
-then at the noise level of 30 dB SNR data [Guerquin-Kern et al.]. Pass
+then at the noise level of 30 dB SNR data [Guerquin-Kern et al.]. Score reconstructions against
+the same object rasterized area-sampled at `image_size`, not against a point-sampled one. Pass
 `inverse_crime_check = false` where the consistency is what a test checks.
 
 # Arguments

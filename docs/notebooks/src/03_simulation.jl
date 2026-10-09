@@ -356,10 +356,13 @@ println("3D k-space: ", size(data3.kspace_data))
 #   <https://doi.org/10.1109/TMI.2011.2174158>
 
 # %%
-nfine = 202  # ≈ 1.58 × 128
-x_fine = create_shepp_logan_phantom(
-    nfine, nfine, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32, supersample = 4
+# One function rasterizes the object at any size, so the data and the truth below describe the
+# same phantom.
+area_sampled_phantom(n) = create_shepp_logan_phantom(
+    n, n, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32, supersample = 4
 )
+nfine = 202  # ≈ 1.58 × 128
+x_fine = area_sampled_phantom(nfine)
 acq_fine = AcquisitionInfo(;
     is3D = false, image_size = (nx, ny), sensitivity_maps = coil_sensitivities(nfine, nfine, nc),
     subsampling = pattern,
@@ -371,24 +374,15 @@ println("sensitivity maps returned: ", data_fine.sensitivity_maps)
 # %% [markdown]
 # #### The ground truth for error measures
 #
-# A reconstruction lives on the 128² grid, so its error is measured against a 128² image, and
-# that image has to describe the same object the data were simulated from. The fine phantom
-# cannot be used directly (wrong size), and neither can the point-sampled 128² phantom `x` of the
-# cells above: it is the image the crime-committing data were simulated from, not the object the
-# fine phantom describes. The truth is the same phantom, with the same field of view and
-# intensities, area-sampled on the reconstruction grid — each voxel the mean of the object over
-# its area, which is what a voxel of an ideal measurement holds.
-#
-# Both halves have to change together. Below, the same TV reconstruction is scored three ways:
-# the crime (data and truth from one 128² image) is optimistic, a fine-phantom reconstruction
-# scored against the point-sampled image is pessimistic, and only the fine phantom paired with
-# the area-sampled truth gives a figure that carries over to measured data. (The coil maps are
-# kept here to isolate the phantom's effect; a fully honest simulation estimates them too.)
+# Errors are measured on the reconstruction grid, against the same object area-sampled there:
+# neither the fine phantom (wrong size) nor the point-sampled `x` above will do. The same TV
+# reconstruction is scored three ways below: the inverse crime, the fine-phantom data against the
+# point-sampled `x`, and the fine-phantom data against the area-sampled truth, the only pairing
+# whose figure carries over to measured data. The coil maps are kept to isolate the phantom's
+# effect; a fully honest simulation estimates them too.
 
 # %%
-x_truth = create_shepp_logan_phantom(
-    nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32, supersample = 4
-)
+x_truth = area_sampled_phantom(nx)
 data_fine_maps = simulate_acquisition(x_fine, acq_fine; keep_sensitivity_maps = true)
 
 tv = IterativeReconstruction(TotalVariation2D(1.0f-3); maxit = 60)
@@ -397,17 +391,17 @@ x_rec_fine = reconstruct(data_fine_maps, tv; verbosity = Silent())
 
 for (label, x̂, truth) in (
         ("128² data, point-sampled truth (inverse crime)", x_rec_crime, x),
-        ("202² data, point-sampled truth (mismatched)  ", x_rec_fine, x),
-        ("202² data, area-sampled truth                ", x_rec_fine, x_truth),
+        ("202² data, point-sampled truth (mismatched)", x_rec_fine, x),
+        ("202² data, area-sampled truth", x_rec_fine, x_truth),
     )
-    println(label, ": NRMSE = ", round(100 * nrmse(x̂, truth); digits = 1), " %")
+    println(rpad(label, 47), ": NRMSE = ", round(100 * nrmse(x̂, truth); digits = 1), " %")
 end
 
 # %%
-# Errors of the same reconstruction, on one colour scale: against the point-sampled image every
-# edge shows up as error, although the reconstruction is not wrong there.
+# Against the point-sampled image every edge counts as error.
+error_map(truth) = abs.(abs.(x_rec_fine) .- abs.(truth))
 side_by_side(
-    abs.(abs.(x_rec_fine) .- abs.(x_truth)), abs.(abs.(x_rec_fine) .- abs.(x));
+    error_map(x_truth), error_map(x);
     titles = ("error vs area-sampled truth", "error vs point-sampled x")
 )
 
