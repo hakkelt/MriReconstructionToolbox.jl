@@ -173,7 +173,9 @@ page (item 23), and what is not implemented becomes roadmap items. Then delete t
 ## User-facing features
 
 ### 7. Metadata header and result type
-**Status:** todo. **Tier:** P2.
+**Status:** in progress (`p2`). Design reviewed 2026-10-09 (`docs/design/metadata.md`: one
+geometry per volume with spacing, an `offset` that slicing updates, `DecomposedImage` dropped);
+delete the note once 7 and 8 are implemented and documented. **Tier:** P2.
 
 - `AcquisitionInfo` gets a header holding arbitrary key/value metadata.
 - `reconstruct` returns a type that is a subtype of `AbstractArray`, carrying geometry (FOV, voxel
