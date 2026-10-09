@@ -304,13 +304,13 @@ pattern = create_sampling_pattern(VariableDensitySampling(PolynomialDistribution
 acq = AcquisitionInfo(;
     is3D = false, image_size = (nx, ny), sensitivity_maps = smaps, subsampling = pattern
 )
-data = simulate_acquisition(x, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
+data = simulate_acquisition(x, acq; keep_sensitivity_maps = true)
 println("simulated k-space: ", size(data.kspace_data))
 
 # %%
 # Fully sampled single-coil, for comparison: the k-space is the whole grid.
 acq_full = AcquisitionInfo(; is3D = false, image_size = (nx, ny))
-data_full = simulate_acquisition(x, acq_full; inverse_crime_check = false, keep_sensitivity_maps = true)
+data_full = simulate_acquisition(x, acq_full; keep_sensitivity_maps = true)
 println("fully sampled k-space: ", size(data_full.kspace_data))
 jim(
     log.(abs.(data_full.kspace_data) .+ 1.0f-6);
@@ -328,7 +328,7 @@ acq3 = AcquisitionInfo(;
         VariableDensitySampling(PolynomialDistribution(3), 4.0, 0.05), (64, 64, 32)
     ),
 )
-data3 = simulate_acquisition(x3, acq3; inverse_crime_check = false, keep_sensitivity_maps = true)
+data3 = simulate_acquisition(x3, acq3; keep_sensitivity_maps = true)
 println("3D k-space: ", size(data3.kspace_data))
 
 # %% [markdown]
@@ -336,9 +336,9 @@ println("3D k-space: ", size(data3.kspace_data))
 #
 # The cells above simulate the data with the very operator that will reconstruct them, on the
 # reconstruction's own grid. That is the *inverse crime* (Kaipio & Somersalo, 2007): the data fit
-# the model exactly, so reconstructions look better than they would on measured data, and
-# `simulate_acquisition` warns about it unless `inverse_crime_check = false` says the consistency
-# is intended. Realistic data come from a finer phantom (Guerquin-Kern et al., 2012):
+# the model exactly, so reconstructions look better than they would on measured data. This is
+# what the warnings printed above are about; `inverse_crime_check = false` silences them where
+# the consistency is intended. Realistic data come from a finer phantom (Guerquin-Kern et al., 2012):
 # `image_size` is the reconstruction grid, the phantom's own size the grid the data are simulated
 # on, and only the frequencies the reconstruction grid can represent are kept. The phantom should
 # be area-sampled (`supersample`), and about 1.6 times finer per axis is enough for the
@@ -538,7 +538,7 @@ acq_dyn_same = AcquisitionInfo(
     nothing; is3D = false, image_size = (64, 64),
     sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps_dyn), subsampling = subsampling_same,
 )
-data_dyn_same = simulate_acquisition(series, acq_dyn_same; inverse_crime_check = false, keep_sensitivity_maps = true)
+data_dyn_same = simulate_acquisition(series, acq_dyn_same; keep_sensitivity_maps = true)
 println(dimnames(data_dyn_same.kspace_data), " ", size(data_dyn_same.kspace_data))
 
 # %% [markdown]
@@ -562,7 +562,7 @@ acq_dyn_varying = AcquisitionInfo(
     sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps_dyn),
     subsampling = subsampling_per_frame,
 )
-data_dyn_varying = simulate_acquisition(series, acq_dyn_varying; inverse_crime_check = false, keep_sensitivity_maps = true)
+data_dyn_varying = simulate_acquisition(series, acq_dyn_varying; keep_sensitivity_maps = true)
 println(dimnames(data_dyn_varying.kspace_data), " ", size(data_dyn_varying.kspace_data))
 
 # %% [markdown]
@@ -583,7 +583,7 @@ acq_dyn_unequal = AcquisitionInfo(
     sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps_dyn),
     subsampling = subsampling_unequal,
 )
-data_dyn_unequal = simulate_acquisition(series, acq_dyn_unequal; inverse_crime_check = false, keep_sensitivity_maps = true)
+data_dyn_unequal = simulate_acquisition(series, acq_dyn_unequal; keep_sensitivity_maps = true)
 println(typeof(data_dyn_unequal.kspace_data))
 println("per-frame k-space sizes: ", size.(parts(data_dyn_unequal.kspace_data)))
 

@@ -71,7 +71,7 @@ pattern = create_sampling_pattern(
 acq = AcquisitionInfo(;
     is3D = false, image_size = (nx, ny), sensitivity_maps = smaps, subsampling = pattern
 )
-data = simulate_acquisition(x_true + 0.01f0 * randn(ComplexF32, nx, ny), acq; inverse_crime_check = false, keep_sensitivity_maps = true)
+data = simulate_acquisition(x_true + 0.01f0 * randn(ComplexF32, nx, ny), acq; keep_sensitivity_maps = true)
 
 𝒮 = get_sensitivity_map_operator(data)
 ℱ = get_fourier_operator(data)

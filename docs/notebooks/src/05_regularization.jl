@@ -74,7 +74,7 @@ pattern = create_sampling_pattern(
 acq = AcquisitionInfo(;
     is3D = false, image_size = (nx, ny), subsampling = pattern, sensitivity_maps = smaps
 )
-data = simulate_acquisition(x_noisy, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
+data = simulate_acquisition(x_noisy, acq; keep_sensitivity_maps = true)
 
 nrmse1(x̂) = nrmse(x̂, x_true)
 x_direct = reconstruct(data)
@@ -253,7 +253,7 @@ pattern3d = create_sampling_pattern(
 acq3d = AcquisitionInfo(;
     image_size = (64, 64, 32), sensitivity_maps = smaps3d, subsampling = pattern3d
 )
-data3d = simulate_acquisition(x3d, acq3d; inverse_crime_check = false, keep_sensitivity_maps = true)
+data3d = simulate_acquisition(x3d, acq3d; keep_sensitivity_maps = true)
 
 x3d_wav = reconstruct(data3d, IterativeReconstruction(L1Wavelet3D(2.0f-3); maxit = 30))
 println("3D NRMSE: ", round(nrmse(x3d_wav, x3d), digits = 4))
@@ -774,7 +774,7 @@ acq_me = AcquisitionInfo(;
         VariableDensitySampling(PolynomialDistribution(3), 3.0, 0.05), (n, n)
     ),
 )
-data_me = simulate_acquisition(echoes, acq_me; inverse_crime_check = false, keep_sensitivity_maps = true)
+data_me = simulate_acquisition(echoes, acq_me; keep_sensitivity_maps = true)
 println(dimnames(data_me.kspace_data), " ", size(data_me.kspace_data))
 
 x_joint = reconstruct(

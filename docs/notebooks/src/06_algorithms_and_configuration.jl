@@ -61,7 +61,7 @@ acq = AcquisitionInfo(;
         VariableDensitySampling(PolynomialDistribution(3), 4.0, 0.05), (nx, ny)
     ),
 )
-data = simulate_acquisition(x_noisy, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
+data = simulate_acquisition(x_noisy, acq; keep_sensitivity_maps = true)
 nrmse1(x̂) = nrmse(x̂, x_true);          # one-argument closure over the ground truth
 
 # %% [markdown]
@@ -163,7 +163,7 @@ acq_shaded = AcquisitionInfo(
     nothing; is3D = false, image_size = (nx, ny), sensitivity_maps = maps_shaded,
     subsampling = create_sampling_pattern(UniformRandomSampling(2.0), (nx, ny)),
 )
-data_shaded = simulate_acquisition(x_true, acq_shaded; inverse_crime_check = false, keep_sensitivity_maps = true)
+data_shaded = simulate_acquisition(x_true, acq_shaded; keep_sensitivity_maps = true)
 
 # %%
 P_shaded = DiagOp(ComplexF32.(1 ./ (energy_shaded .+ 1.0f-2)))
@@ -732,7 +732,7 @@ acq_noncart = AcquisitionInfo(;
     trajectory = traj_no, image_size = (nx, ny),
     sensitivity_maps = coil_sensitivities(nx, ny, nc),
 )
-data_noncart = simulate_acquisition(x_noisy, acq_noncart; inverse_crime_check = false, keep_sensitivity_maps = true)
+data_noncart = simulate_acquisition(x_noisy, acq_noncart; keep_sensitivity_maps = true)
 
 println("--- non-Cartesian, 200 radial spokes ---")
 compare_options(data_noncart, nrmse1; maxit = 30)
@@ -812,7 +812,7 @@ acq_ms = AcquisitionInfo(
     NamedDimsArray{(:kx, :ky, :coil, :slice)}(zeros(ComplexF32, n_ms, n_ms, nc_ms, nslices));
     is3D = false, sensitivity_maps = smaps_ms
 )
-data_ms = simulate_acquisition(NamedDimsArray{(:x, :y, :slice)}(vol), acq_ms; inverse_crime_check = false, keep_sensitivity_maps = true)
+data_ms = simulate_acquisition(NamedDimsArray{(:x, :y, :slice)}(vol), acq_ms; keep_sensitivity_maps = true)
 println("multi-slice k-space: ", size(data_ms.kspace_data), " ", dimnames(data_ms.kspace_data))
 println("Julia threads: ", Threads.nthreads())
 
