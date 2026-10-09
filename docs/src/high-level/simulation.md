@@ -354,8 +354,9 @@ it would on measured data. `simulate_acquisition` therefore treats `acq_info.ima
 reconstruction grid and the phantom's own size as the grid the data are simulated on. From a
 finer phantom it keeps only the frequencies the reconstruction grid can represent (Cartesian), or
 samples the trajectory at the same physical frequencies on the phantom's grid (non-Cartesian).
-A phantom of the reconstruction's size gets a warning, and so does an integer multiple of it;
-`inverse_crime_check = false` silences both where the consistency is what is being tested.
+A phantom of the reconstruction's size gets a warning, and so does an integer multiple of it,
+each checked per spatial axis; `inverse_crime_check = false` silences both where the consistency
+is what is being tested.
 
 How fine is fine enough was measured on the modified Shepp–Logan phantom, whose continuous Fourier
 transform is known in closed form, so data can be simulated without any grid
@@ -393,7 +394,9 @@ data closer to the area-sampled reference than the analytic data are.
 Coil sensitivity maps act on the phantom, so they are made at its size. The returned acquisition
 carries none unless `keep_sensitivity_maps = true` (it then carries them resampled to the
 reconstruction grid): reusing the maps that simulated the data is part of the same crime, and
-with measured data they are estimated (`estimate_sensitivities`).
+with measured data they are estimated (`estimate_sensitivities`). Dropping them is logged as an
+info message, since a reconstruction without maps treats the coil axis as a batch axis;
+`keep_sensitivity_maps = false` drops them silently.
 
 A reconstruction from such data is scored against the same object rasterized area-sampled on the
 reconstruction grid. Neither the fine phantom (a different size) nor a point-sampled phantom of

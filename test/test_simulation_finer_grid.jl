@@ -81,9 +81,31 @@ end
     @test_logs (:warn, r"integer multiple") simulate_acquisition(blob(2n, 2n), acq)
     @test_logs simulate_acquisition(blob(51, 51), acq)
     @test_logs simulate_acquisition(blob(n, n), acq; inverse_crime_check = false)
+    # Each axis is checked on its own.
+    @test_logs (:warn, r"along spatial axes 2 the phantom has the reconstruction's size") simulate_acquisition(blob(51, n), acq)
+    @test_logs (:warn, r"along spatial axes 1 the phantom is an integer multiple") simulate_acquisition(blob(2n, 51), acq)
+    acq3 = AcquisitionInfo(is3D = true, image_size = (n, n, 8))
+    @test_logs (:warn, r"along spatial axes 3 the phantom has") simulate_acquisition(blob(51, 51, 8), acq3)
     @test_throws ArgumentError simulate_acquisition(blob(n - 1, n), acq; inverse_crime_check = false)
     maps = ComplexF64.(coil_sensitivities(n, n, 2))
     acq_maps = AcquisitionInfo(is3D = false, image_size = (n, n), sensitivity_maps = maps)
     @test_throws ArgumentError simulate_acquisition(blob(51, 51), acq_maps)
     @test simulate_acquisition(blob(n, n), acq_maps; inverse_crime_check = false, keep_sensitivity_maps = true).sensitivity_maps == maps
+    # Dropping the maps is reported unless asked for explicitly.
+    @test_logs (:info, r"no sensitivity maps") simulate_acquisition(blob(n, n), acq_maps; inverse_crime_check = false)
+    @test_logs simulate_acquisition(blob(n, n), acq_maps; inverse_crime_check = false, keep_sensitivity_maps = false)
+    @test_logs simulate_acquisition(blob(n, n), acq; inverse_crime_check = false)
+end
+
+@testitem "simulate_acquisition: shifted axes given by name, finer phantom" tags = [:simulation] setup = [FinerGridSetup] begin
+    using Ristretto, NamedDims
+    n, fine = 32, 51
+    template = NamedDimsArray{(:kx, :ky)}(zeros(ComplexF64, n, n))
+    by_name = AcquisitionInfo(template; image_size = (n, n), shifted_kspace_dims = (:kx,), shifted_image_dims = (:y,))
+    by_position = AcquisitionInfo(is3D = false, image_size = (n, n), shifted_kspace_dims = (1,), shifted_image_dims = (2,))
+    reference = simulate_acquisition(blob(fine, fine), by_position).kspace_data
+    @test simulate_acquisition(blob(fine, fine), by_name).kspace_data ≈ reference
+    named = simulate_acquisition(NamedDimsArray{(:x, :y)}(blob(fine, fine)), by_name).kspace_data
+    @test dimnames(named) == (:kx, :ky)
+    @test unname(named) ≈ reference
 end

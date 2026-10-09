@@ -676,7 +676,7 @@ end
 
         placeholder = zeros(ComplexF32, nread, nspokes, nc)
         acq_manual = NonCartesianAcquisitionInfo(placeholder; trajectory = traj, image_size = (nx, ny), sensitivity_maps = smaps)
-        y_manual = get_encoding_operator(acq_manual) * x
+        y_manual = get_encoding_operator(acq_manual; fast_planning = true) * x
         @test result.kspace_data == y_manual
     end
 
