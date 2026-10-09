@@ -909,8 +909,12 @@ end
     v = [1, 5, 9, 13, 20, 24]
     full = rand(ComplexF32, nx, ny, nz, nc)
     y = reshape(full, nx, ny * nz, nc)[:, v, :]
-    gather(full, y) = get_subsampling_operator(y, img_size, (:, v); threaded = false) * full
-    scatter(y) = get_subsampling_operator(y, img_size, (:, v); threaded = false)' * y
+    # The size and spec are captured in `let` rather than read as globals: inferring a call on
+    # untyped globals here hits an internal error of the Julia 1.13 compiler.
+    gather, scatter = let s = img_size, spec = (:, v)
+        (full, y) -> get_subsampling_operator(y, s, spec; threaded = false) * full,
+            y -> get_subsampling_operator(y, s, spec; threaded = false)' * y
+    end
     @test gather(full, y) == y
     @test reshape(scatter(y), nx, ny * nz, nc)[:, v, :] == y
     test_on_devices(gather, full, y; backends = all_backends())
@@ -920,7 +924,9 @@ end
     full5 = rand(ComplexF32, nx, ny, nz, nc, 2)
     specs = [(:, v), (:, v2)]
     y5 = stack([reshape(full5[:, :, :, :, f], nx, ny * nz, nc)[:, idx, :] for (f, idx) in enumerate((v, v2))])
-    gather5(full, y) = get_subsampling_operator(y, img_size, specs; threaded = false) * full
+    gather5 = let s = img_size, specs = specs
+        (full, y) -> get_subsampling_operator(y, s, specs; threaded = false) * full
+    end
     @test gather5(full5, y5) == y5
     test_on_devices(gather5, full5, y5; backends = all_backends())
 end

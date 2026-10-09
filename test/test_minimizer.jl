@@ -616,9 +616,9 @@ end
         return get_encoding_operator(data; threaded = false)
     end
     for traj in (radial_trajectory(64, 40), spiral_trajectory(600, 6; nturns = 4)), dcf in (false, true)
-        E = encoding(Float32, traj, dcf)
+        local E = encoding(Float32, traj, dcf)
         @test !isfinite(AbstractOperators.opnorm_bound(E))
-        truth = AbstractOperators.powerit(encoding(Float64, traj, dcf); maxit = 2000, rel_margin = 1.0e-12)
+        local truth = AbstractOperators.powerit(encoding(Float64, traj, dcf); maxit = 2000, rel_margin = 1.0e-12)
         v = _encoding_opnorm(E)
         @test truth * (1 - 1.0e-5) <= v <= truth * (1 + OPNORM_REL_MARGIN)
         @test v < AbstractOperators.estimate_opnorm(E; rel_margin = OPNORM_REL_MARGIN)
