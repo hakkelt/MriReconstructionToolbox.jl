@@ -9,6 +9,7 @@ Ristretto and another toolkit, reconstruct byte-identical inputs.
 | `utils/` | the case catalog (`BenchUtils`): phantoms, sampling, noise, real-data loaders, Ristretto method specs, timing, result store |
 | `run.jl` | the Ristretto harness: every catalog case × every applicable method, one checkout of Ristretto at a time |
 | `compare.jl` | compares two checkouts (refs) measured by `run.jl` |
+| `ci/` | the pull-request benchmark: a small BenchmarkTools suite and the driver that posts its base/head comparison |
 | `comparison/` | the cross-toolkit suite: Ristretto against BART, SigPy, MRIReco, MIRT and MRpro ([its README](comparison/README.md)) |
 | `slurm/` | SLURM scripts for both; machine paths live in the untracked `slurm/site.env` |
 | `results/` | harness results and SLURM logs (gitignored) |
@@ -136,6 +137,38 @@ about, not compared silently. Only isolated runs count unless `--placement=share
 a packed run (`matrix.sh --pack`) recorded after an isolated one would otherwise be the one compared.
 `--pick=min` takes the fastest matching result instead of the latest, for repeated measurements
 (`matrix.sh --swap-repeat`).
+
+## Pull-request benchmarks: `ci/`
+
+`.github/workflows/benchmark.yml` runs on every pull request to `master` and posts one comment,
+updated on each push, comparing the pull request with its base. `ci/benchmarks.jl` is a
+BenchmarkTools `SUITE` of small synthetic catalog cases (`RISTRETTO_BENCH_SMALL` sizes):
+
+- `solve/<case>/<method>`: `reconstruct` at a fixed iteration count, with the magnitude NRMSE
+  against the ground truth beside the time;
+- `operator/<case>/{forward,adjoint,normal}`: `mul!` with the encoding operator;
+- `setup/<case>/{operator,opnorm}`: building the encoding operator and estimating its norm.
+
+`ci/compare.jl` runs the head's suite against both revisions, each in its own copy of the `ci/`
+environment with that revision developed into it, once per thread count (`-t 1`, `-t 2`). Two
+processes of the same code differ by more than the spread within one: comparing master with itself
+on the login node (2026-10-09) flagged 2–4 of 35 entries per thread count at up to 1.7×, with one
+process per side or with the best of two. `--repeats n` runs each side in `n` alternating processes
+and keeps each entry's fastest; it did not remove those flags and doubles the run (each process
+spends about 3 minutes compiling for 25 seconds of timing), so CI runs one. An entry
+that fails on one revision (the base may lack what the head's suite uses) shows `—` and is listed.
+Run it locally against another checkout with
+
+```sh
+git worktree add --detach /tmp/base master
+julia --project=benchmark/ci -e 'using Pkg; Pkg.instantiate()'
+julia --project=benchmark/ci benchmark/ci/compare.jl --base-dir /tmp/base --head-dir . --output-dir /tmp/bench-out
+```
+
+The ratio is base/head, so above 1 the pull request is faster. 🚀 and 🐢 mark a time ratio beyond 1.2
+or below 0.8 outside the interquartile error, or a memory ratio beyond 1.5 or below 0.5; ⚠️ marks a
+solve whose NRMSE moved by more than 5 %. Shared runners are noisy: these are tripwires, not
+measurements. Timing claims come from `run.jl` on a cluster node.
 
 ## SLURM
 

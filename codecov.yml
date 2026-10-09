@@ -1,0 +1,21 @@
+# Coverage is collected from src/ and ext/ only (CI.yml, julia-processcoverage). The vendored
+# packages under deps/ are tested in their own forks.
+ignore:
+  - "deps/**"
+  - "benchmark/**"
+  - "examples/**"
+  - "docs/**"
+  - "test/**"
+
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+comment:
+  layout: "diff, files"
+  require_changes: false

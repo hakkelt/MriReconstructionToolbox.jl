@@ -1,0 +1,75 @@
+name: Benchmark
+
+# Runs the head's suite (benchmark/ci/benchmarks.jl) against the base and the head of a pull
+# request and posts the comparison as a single, updated comment. A pull request from a fork gets
+# a read-only token; it then sees the comparison in the job summary only.
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: head
+
+      - name: Check out base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+
+      - uses: julia-actions/cache@v2
+
+      - name: Instantiate the driver
+        run: julia --project=head/benchmark/ci -e 'using Pkg; Pkg.instantiate()'
+
+      # No JULIA_NUM_THREADS: compare.jl pins each suite process with -t. No OPENBLAS_NUM_THREADS
+      # either: setting it would pin BLAS for both revisions and hide what a user gets.
+      - name: Compare base and head
+        run: |
+          julia --project=head/benchmark/ci head/benchmark/ci/compare.jl \
+            --base-dir base --head-dir head --output-dir bench-out \
+            --pr "${{ github.event.pull_request.number }}" \
+            --julia-version "$(julia -e 'print(VERSION)')" \
+            --threads 1,2
+
+      - name: Job summary
+        if: always()
+        run: |
+          if [ -f bench-out/body.md ]; then cat bench-out/body.md >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Post or update the pull-request comment
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          jv=$(cat bench-out/julia_version.txt)
+          comment_id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"Benchmark Results (Julia v$jv)\"))) | .id" \
+            | head -1)
+          if [ -n "$comment_id" ]; then
+            gh api --method PATCH "repos/$REPO/issues/comments/$comment_id" -F body=@bench-out/body.md
+          else
+            gh api --method POST "repos/$REPO/issues/$PR/comments" -F body=@bench-out/body.md
+          fi

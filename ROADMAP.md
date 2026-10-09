@@ -15,13 +15,15 @@ apply throughout; in particular, changes to vendored packages go on fork branche
 | Tier | Items |
 |---|---|
 | **P1 — done** (PR #2, 2026-10-09) | 5 (rename), 9, 2, 11, 1 (measurement + quick wins), 3 |
-| **P2 — documentation (next)** | 10, 23, 6, 4, 7 + 8 |
+| **P2 — documentation (next)** | 28, 30, 29, 31, 6, 7 + 8, 10, 23, 4 |
 | **P3 — strengthens the paper** | 19, 20 (Python wrapper), 22 |
-| **Deferred** | 12, 13, 14, 15, rest of 1, 16, 17, 18, 24, 25, 26, 27, 28, 29 |
+| **Deferred** | 12, 13, 14, 15, rest of 1, 16, 17, 18, 24, 25, 26, 27 |
 
 Ordering constraints: 5 before 4, 10 and 20 (a rename touches all of them); 9 and 7 before 10
 (notebooks are rewritten only once); 9 before 22 (simulated benchmark cases change); 7 before 8;
-2 before 15; 11 before 12.
+2 before 15; 11 before 12; 28 lands on master before the P2 branch opens its PR (coverage and
+benchmark comments then report on every later change); 31 before 10 and 23 (the review's done
+parts and comparison move into those pages).
 
 P1 closed on 2026-10-09 with PR #2. What is left of items 1, 3 and 5 is listed in their **Status**
 lines and is not P1 work any more.
@@ -128,7 +130,7 @@ extensions, repository, docs, notebooks, benchmarks, `AGENTS.md`/`NAMING.md`.
   Pages enabled as of 2026-10-08), and Ristretto's docs and notebooks link there.
 
 ### 29. Faster test suite
-**Status:** todo. **Tier:** Deferred.
+**Status:** todo. **Tier:** P2.
 
 The full suite takes about 25 minutes on CI and on the login node. Find where the time goes
 (per-item durations from the TestItems runner) and cut it without losing coverage:
@@ -141,6 +143,24 @@ The full suite takes about 25 minutes on CI and on the login node. Find where th
 
 Report the per-item time before and after, and keep the slow, high-value cases (real data,
 integration) behind a tag if they cannot be shrunk.
+
+### 30. Re-run the examples
+**Status:** todo. **Tier:** P2.
+
+Run every `examples/` script (`examples/run_all.jl`; the large datasets in one SLURM job) against
+the current package, fix what broke in `ext/RistrettoMRIBaseExt.jl`, preprocessing or `src/`
+(with a test where a synthetic equivalent exists), and record a "Last verified" table (date,
+commit, ok / failed / skipped per source) in `examples/README.md`. Sources behind expiring
+credentials (fastMRI signed URLs, the CMRxRecon Synapse token) are reported as skipped when the
+credential is missing, not as failures.
+
+### 31. Literature review into the docs and the roadmap
+**Status:** todo. **Tier:** P2. **Before:** 10, 23.
+
+`comprehensive_literature_review_mri_toolboxes.md` is too long to keep as it is. Audit it against
+`src/`: what is implemented is compacted into the documentation page where the feature lives (a
+few lines and the seminal reference each), the toolbox feature matrix goes to the related-packages
+page (item 23), and what is not implemented becomes roadmap items. Then delete the file.
 
 ## User-facing features
 
@@ -199,11 +219,14 @@ theory and API pages stay. Complete but terse, with images wherever possible. Pr
 Literate.jl scripts as the single source, generating both the executed pages and the `.ipynb`
 files. Includes a short "Installing Julia" section (juliaup), as in item 4.
 
-### 23. Benchmark page
-**Status:** todo. **Tier:** P2.
+### 23. Related packages page
+**Status:** todo. **Tier:** P2. **After:** 31.
 
-A separate documentation page presenting the latest committed benchmark results and cross-toolkit
-comparisons (`benchmark/comparison/results/benchmark_<backend>_<n>threads.json`): Ristretto against BART,
+A documentation page "Related packages" with a feature comparison against other toolboxes (from
+the literature review, item 31, re-verified), the Julia MRI ecosystem (KomaMRI, MRIReco,
+MRIBase/MRIFiles, MIRT, GIRFReco, MriResearchTools, ...), reconstruction pipelines (Gadgetron,
+OpenRecon) in brief, and the benchmarks: the latest committed cross-toolkit comparison
+(`benchmark/comparison/results/benchmark_<backend>_<n>threads.json`), Ristretto against BART,
 SigPy, MRIReco, MIRT and MRpro, with the methodology (λ calibrated to matched accuracy,
 time-to-accuracy) and the hardware. Generated from the committed snapshot, so re-running
 `export_snapshot.jl` updates it.
@@ -285,10 +308,10 @@ PRs, readability separated from behaviour changes: TestItems, FastBroadcast, Nes
 KernelAbstractions; GPU NUFFT with on-the-fly kernel evaluation. NFFT.jl contains a table it says
 was taken from NFFT3 (GPL); raise it with the maintainers.
 
-### 28. Benchmarking CI job
-**Status:** todo. **Tier:** Deferred.
+### 28. CI: coverage and benchmarks
+**Status:** in progress (`ci`). **Tier:** P2.
 
-A CI workflow that runs a reduced benchmark set (`benchmark/run.jl` at the small case sizes) on
+Coverage of `src/` and `ext/` reported to Codecov from the test job. A CI workflow that runs a reduced benchmark set (`benchmark/run.jl` at the small case sizes) on
 pull requests and compares it with the base branch, so a performance regression shows up in
 review rather than in the next manual run. Shared CI runners are noisy (see the timing caveats
 in `benchmark/`), so the job reports ratios against the base run on the same runner and flags
