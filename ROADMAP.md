@@ -153,11 +153,19 @@ time-to-accuracy) and the hardware. Generated from the committed snapshot, so re
 ## Performance (fork branches)
 
 ### 11. SignAlternation fusion
-**Status:** todo. **Tier:** P1.
+**Status:** done (p1). **Tier:** P1.
 
-`SignAlternation` (FFTWOperators) has no `_pw_kind`, so it never joins the fused pointwise runs of
+`SignAlternation` (FFTWOperators) had no `_pw_kind`, so it never joined the fused pointwise runs of
 `Compose` (`src/calculus/pointwise.jl`). It was 25–43 % of a dynamic low-rank solve in earlier
-profiling. Opt it into `PwMapKind`.
+profiling. It now answers `PwMapKind` on CPU (AbstractOperators `perf/fused-pointwise`, fork PR #50)
+and on device arrays (`perf/gpu-fused-pointwise`, #36); fused results equal unfused ones bit for
+bit.
+
+Measured 2026-10-09 (`benchmark/sign_alternation_fusion.jl`, compute node, 16 cores booked) on
+`M S F C B` (mask, sign alternation, 2-D DFT, coil weighting, coil expansion), forward, against
+the same chain with the sign alternation as a pass of its own: 1.05–1.17× faster at 4 and 8
+threads (128×128×8 to 256×256×16), 0.89–1.00× at one thread. The whole fused chain is 2.2–5.3×
+faster than running every operator separately at 4–8 threads.
 
 ### 12. Odd-length shift next to a DFT
 **Status:** todo. **Tier:** deferred. **After:** 11.
