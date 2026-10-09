@@ -17,7 +17,7 @@ apply throughout; in particular, changes to vendored packages go on fork branche
 | **P1 — done** (PR #2, 2026-10-09) | 5 (rename), 9, 2, 11, 1 (measurement + quick wins), 3 |
 | **P2 — documentation (next)** | 28, 30, 29, 31, 6, 7 + 8, 10, 23, 4 |
 | **P3 — strengthens the paper** | 19, 20 (Python wrapper), 22 |
-| **Deferred** | 12, 13, 14, 15, rest of 1, 16, 17, 18, 24, 25, 26, 27 |
+| **Deferred** | 12, 13, 14, 15, rest of 1, 16, 17, 18, 24, 25, 26, 27, 32–38 |
 
 Ordering constraints: 5 before 4, 10 and 20 (a rename touches all of them); 9 and 7 before 10
 (notebooks are rewritten only once); 9 before 22 (simulated benchmark cases change); 7 before 8;
@@ -155,7 +155,9 @@ credentials (fastMRI signed URLs, the CMRxRecon Synapse token) are reported as s
 credential is missing, not as failures.
 
 ### 31. Literature review into the docs and the roadmap
-**Status:** todo. **Tier:** P2. **Before:** 10, 23.
+**Status:** in progress (`p2`). Roadmap half done: items 32–38 and notes on 17 and 24 hold what is
+not implemented (open question 2, the non-linear solver strategy, is on item 32 for later; 3 is on
+item 33; 1 is item 16; 4 no longer applies). Left: the docs half, with items 10 and 23. **Tier:** P2. **Before:** 10, 23.
 
 `comprehensive_literature_review_mri_toolboxes.md` is too long to keep as it is. Audit it against
 `src/`: what is implemented is compacted into the documentation page where the feature lives (a
@@ -335,6 +337,11 @@ MoDL/VarNet in Lux with fastMRI weight import; RAKI; implicit neural representat
 Phase unwrapping, geometric distortion correction, DC artifact removal, Gaussian smoothing, Dixon,
 QSM, MR fingerprinting. Prefer integrating existing packages, after checking their licenses.
 
+Water–fat separation: multi-echo signal model with multi-peak fat and field map, IDEAL (Reeder et
+al., doi:10.1002/mrm.20624) and graph-cut field-map estimation (Hernando et al.,
+doi:10.1002/mrm.22177). Joint water/fat/field-map estimation is non-linear; see item 32's note on
+the solver strategy.
+
 ### 18. Motion correction
 **Status:** todo. **Tier:** deferred.
 
@@ -360,6 +367,69 @@ reconstruction. MATLAB through Python or the CLI. JuliaC `--trim` is not realist
 
 Extract respiratory/cardiac self-navigation signals from the acquired data (e.g. repeated k-space
 centre samples) for binning and motion-resolved reconstruction; relates to item 18.
+
+The reconstruction half of XD-GRASP (Feng et al., doi:10.1002/mrm.25665) is already expressible
+(`TemporalTotalVariation` over the motion-state dimensions); what is missing is this item: the
+self-gating signal, the sorting into motion states, and the per-bin trajectories that result.
+
+### 32. Joint image and sensitivity estimation (JSENSE, NLINV)
+**Status:** todo. **Tier:** deferred.
+
+Estimate the image and the coil sensitivities together instead of calibrating the maps first:
+JSENSE (Ying & Sheng, doi:10.1002/mrm.21245) alternates between the two; NLINV (Uecker et al.,
+doi:10.1002/mrm.21692) solves the bilinear problem by the iteratively regularized Gauss–Newton
+method. **Open:** the non-linear solver strategy (an IRGNM in Ristretto, an alternating layer over
+the existing linear solvers, or a general non-linear optimizer) is to be discussed; the choice also
+shapes items 17 (water–fat) and 38 (quantitative mapping).
+
+### 33. B₀ off-resonance correction
+**Status:** todo. **Tier:** deferred.
+
+A forward operator with off-resonance (and optionally R₂* decay) during the readout, made fast by
+time segmentation or multi-frequency interpolation into a short sum of NFFTs (Sutton, Noll &
+Fessler, doi:10.1109/TMI.2002.808360; Fessler et al., doi:10.1109/TSP.2005.853152), supplied
+through the method's `signal_model` like `TemporalBasis`. Model factors stay on the method, so one
+acquisition can be reconstructed with and without correction; revisit whether field maps belong
+on `AcquisitionInfo` (they describe the acquisition) once this lands.
+
+### 34. EPI Nyquist ghost correction
+**Status:** todo. **Tier:** deferred.
+
+Even/odd echo phase correction from navigator lines, as a preprocessing step that returns a
+corrected `AcquisitionInfo` (Bruder et al., doi:10.1002/mrm.1910230211); entropy-based and
+reference-free variants after that. The examples include EPI data to test it on.
+
+### 35. Virtual conjugate coils
+**Status:** todo. **Tier:** deferred.
+
+Add the conjugate of the point-reflected k-space as extra virtual channels, so SENSE and GRAPPA
+exploit the phase constraint of partial Fourier without an explicit phase estimate (Blaimer et
+al., doi:10.1002/mrm.21652).
+
+### 36. Simultaneous multi-slice
+**Status:** todo. **Tier:** deferred.
+
+SMS encoding with blipped-CAIPI shifts and slice-GRAPPA / split slice-GRAPPA (Setsompop et al.,
+doi:10.1002/mrm.23097; Cauley et al., doi:10.1002/mrm.24898). Slices are then no longer separable,
+so task splitting must be told the slice dimension is coupled (as `get_affected_dims` does for a
+regularizer).
+
+### 37. PROPELLER / BLADE
+**Status:** todo. **Tier:** deferred.
+
+Blade-wise rotation, translation and phase estimation from the commonly sampled k-space centre,
+correlation weighting or rejection of corrupted blades, then gridding (Pipe,
+doi:10.1002/(SICI)1522-2594(199911)42:5<963::AID-MRM17>3.0.CO;2-L); relates to item 18.
+
+### 38. Model-based parameter mapping
+**Status:** todo. **Tier:** deferred.
+
+T₁, T₂ and T₂* maps estimated directly from k-space through a signal equation in the forward
+model, instead of fitting reconstructed contrast images (Block, Uecker & Frahm,
+doi:10.1109/TMI.2009.2023119; Sumpf et al., doi:10.1002/jmri.22633; Wang et al.,
+doi:10.1002/mrm.26726). Its linearized form is `TemporalBasis` (subspace reconstruction), which
+exists; the non-linear form depends on item 32's solver decision. `NonNegative` and `BoxConstraint`
+already cover the regularization side.
 
 ### 25. Reconstruction pipelines: OpenRecon, Gadgetron
 **Status:** todo. **Tier:** deferred.
