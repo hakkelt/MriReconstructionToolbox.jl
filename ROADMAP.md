@@ -17,7 +17,7 @@ apply throughout; in particular, changes to vendored packages go on fork branche
 | **P1 — now** | 5 (rename), 9, 2, 11, 1 (measurement + quick wins), 3 |
 | **P2 — documentation** | 10, 23, 6, 4, 7 + 8 |
 | **P3 — strengthens the paper** | 19, 20 (Python wrapper), 22 |
-| **Deferred** | 12, 13, 14, 15, rest of 1, 16, 17, 18, 24, 25 |
+| **Deferred** | 12, 13, 14, 15, rest of 1, 16, 17, 18, 24, 25, 26 |
 
 Ordering constraints: 5 before 4, 10 and 20 (a rename touches all of them); 9 and 7 before 10
 (notebooks are rewritten only once); 9 before 22 (simulated benchmark cases change); 7 before 8;
@@ -191,6 +191,17 @@ comparisons (`benchmark/comparison/results/benchmark_<backend>_<n>threads.json`)
 SigPy, MRIReco, MIRT and MRpro, with the methodology (λ calibrated to matched accuracy,
 time-to-accuracy) and the hardware. Generated from the committed snapshot, so re-running
 `export_snapshot.jl` updates it.
+
+### 26. Image shifts other than an fftshift
+**Status:** todo. **Tier:** Deferred.
+
+`shifted_image_dims` only says whether an image axis is fftshifted, i.e. moved by `n ÷ 2` voxels.
+Acquired data can need a different shift: an off-centre FOV, a scanner that places the origin
+elsewhere, or a shift by a fraction of a voxel. Let the user pass the shift per axis in voxels
+(`image_shift = (dx, dy[, dz])`, possibly non-integer), applied as a k-space phase ramp, so the
+image needs no copy and the encoding operator stays a DFT. An integer shift of `n ÷ 2` must give
+the same result as `shifted_image_dims`; the simulation's origin bookkeeping
+(`_phase_origin`, `_origin_offset` in `src/simulation/simulate_acquisition.jl`) has to follow.
 
 ## Performance (fork branches)
 
