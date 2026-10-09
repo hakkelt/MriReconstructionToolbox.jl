@@ -152,7 +152,7 @@ end
     img = zeros(ComplexF32, 16, 16)
     img[4:12, 4:12] .= 1
     img[6:8, 6:8] .= 2
-    acq = simulate_acquisition(img, AcquisitionInfo(is3D = false, image_size = (16, 16)))
+    acq = simulate_acquisition(img, AcquisitionInfo(is3D = false, image_size = (16, 16)); inverse_crime_check = false, keep_sensitivity_maps = true)
     reg = EdgePreservingRoughness2D(0.02f0)
     recon(maxit) = reconstruct(acq, IterativeReconstruction(reg; maxit); verbosity = Silent())
     x30, x31 = recon(30), recon(31)

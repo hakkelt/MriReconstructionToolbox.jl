@@ -104,7 +104,7 @@ end
     img_true = NamedDimsArray{(:x, :y, :time)}(randn(ComplexF32, Nx, Ny, Nt))
     ksp_dummy = NamedDimsArray{(:kx, :ky, :time)}(zeros(ComplexF32, Nx, Ny, Nt))
     acq = CartesianAcquisitionInfo(ksp_dummy; is3D = false)
-    acq_data = simulate_acquisition(img_true, acq)
+    acq_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     # 1. Identity basis: subspace reconstruction should match no-model reconstruction exactly
     Φ_eye = Matrix{ComplexF32}(I, Nt, Nt)
@@ -144,7 +144,7 @@ end
     end
     img_true = NamedDimsArray{(:x, :y, :time, :slice)}(imgs)
     ksp_dummy = NamedDimsArray{(:kx, :ky, :time, :slice)}(zeros(ComplexF64, Nx, Ny, Nt, Nsl))
-    acq = simulate_acquisition(img_true, CartesianAcquisitionInfo(ksp_dummy; is3D = false))
+    acq = simulate_acquisition(img_true, CartesianAcquisitionInfo(ksp_dummy; is3D = false); inverse_crime_check = false, keep_sensitivity_maps = true)
 
     method = IterativeReconstruction(;
         algorithm = CGNR(maxit = 30, tol = 1.0e-8),

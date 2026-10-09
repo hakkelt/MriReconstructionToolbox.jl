@@ -13,7 +13,7 @@
             smaps = coil_sensitivities(nx, ny, nc)
 
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
-            acq_with_data = simulate_acquisition(img_true, acq)
+            acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
             img_recon = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data; verbosity = Silent()))
 
@@ -30,7 +30,7 @@
             pattern = create_sampling_pattern(pdf, (nx, ny))
 
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern)
-            acq_with_data = simulate_acquisition(img_true, acq)
+            acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
             img_recon = test_type_stable(
                 Matrix{ComplexF32},
@@ -56,7 +56,7 @@
             pattern = create_sampling_pattern(pdf, (nx, ny))
 
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern)
-            acq_with_data = simulate_acquisition(img_true, acq)
+            acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
             img_recon = test_type_stable(
                 Matrix{ComplexF32},
@@ -78,7 +78,7 @@
             pattern = create_sampling_pattern(pdf, (nx, ny))
 
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern)
-            acq_with_data = simulate_acquisition(img_true, acq)
+            acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
             img_recon = test_type_stable(
                 Matrix{ComplexF32},
@@ -107,7 +107,7 @@
             pattern = create_sampling_pattern(pdf, (nx, ny))
 
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern)
-            acq_with_data = simulate_acquisition(img_true, acq)
+            acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
             img_fista = test_type_stable(
                 Matrix{ComplexF32},
@@ -144,7 +144,7 @@
             pattern = create_sampling_pattern(pdf, (nx, ny))
 
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern)
-            acq_with_data = simulate_acquisition(img_true, acq)
+            acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
             x_init = reconstruct(acq_with_data; verbosity = Silent())
 
@@ -177,7 +177,7 @@ end
             smaps = coil_sensitivities(nx, ny, nz, nc)
 
             acq = AcquisitionInfo(is3D = true, sensitivity_maps = smaps)
-            acq_with_data = simulate_acquisition(img_true, acq)
+            acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
             img_recon = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_with_data; verbosity = Silent()))
 
@@ -194,7 +194,7 @@ end
             pattern = create_sampling_pattern(pdf, (nx, ny, nz))
 
             acq = AcquisitionInfo(is3D = true, sensitivity_maps = smaps, subsampling = pattern)
-            acq_with_data = simulate_acquisition(img_true, acq)
+            acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
             img_recon = test_type_stable(Array{ComplexF32, 3}, reconstruct(acq_with_data, IterativeReconstruction(L1Wavelet3D(0.005); maxit = 30); verbosity = Silent()))
 
@@ -229,7 +229,7 @@ end
             ksp_ms = zeros(ComplexF32, nx, ny, nc, nslices)
             for s in 1:nslices
                 acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
-                acq_temp = simulate_acquisition(img_true_ms[:, :, s], acq)
+                acq_temp = simulate_acquisition(img_true_ms[:, :, s], acq; inverse_crime_check = false, keep_sensitivity_maps = true)
                 ksp_ms[:, :, :, s] .= acq_temp.kspace_data
             end
 
@@ -272,7 +272,7 @@ end
             ksp_ms = zeros(ComplexF32, nx, ny, nc, length(intensities))
             for s in eachindex(intensities)
                 acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
-                acq_temp = simulate_acquisition(img_true_ms[:, :, s], acq)
+                acq_temp = simulate_acquisition(img_true_ms[:, :, s], acq; inverse_crime_check = false, keep_sensitivity_maps = true)
                 ksp_ms[:, :, :, s] .= acq_temp.kspace_data
             end
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
@@ -312,7 +312,7 @@ end
             ksp_ms = zeros(ComplexF32, nx, ny, nc, 3)
             for s in 1:3
                 acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
-                acq_temp = simulate_acquisition(img_true_ms[:, :, s], acq)
+                acq_temp = simulate_acquisition(img_true_ms[:, :, s], acq; inverse_crime_check = false, keep_sensitivity_maps = true)
                 ksp_ms[:, :, :, s] .= acq_temp.kspace_data
             end
             acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
@@ -341,7 +341,7 @@ end
             pattern = create_sampling_pattern(pdf, (nx, ny))
 
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern)
-            acq_with_data = simulate_acquisition(img_true, acq)
+            acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
             img1 = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data, IterativeReconstruction(L2Image(0.01); maxit = 20, reltol = 1.0e-5); verbosity = Silent()))
             config = ReconstructionConfig(; verbosity = Silent())
@@ -367,7 +367,7 @@ end
             smaps = coil_sensitivities(nx, ny, nc)
 
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
-            acq_with_data = simulate_acquisition(img_true, acq)
+            acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
             img_st = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data; threaded = false, verbosity = Silent()))
             img_mt = test_type_stable(Matrix{ComplexF32}, reconstruct(acq_with_data; threaded = true, verbosity = Silent()))
@@ -384,7 +384,7 @@ end
             pattern = create_sampling_pattern(pdf, (nx, ny))
 
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern)
-            acq_with_data = simulate_acquisition(img_true, acq)
+            acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
             # Only the output shape is checked here, so a single iteration is enough -- 20 iterations
             # bought no extra coverage, just a slower test.
@@ -401,7 +401,7 @@ end
             smaps = coil_sensitivities(nx, ny, nc)
 
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
-            acq_with_data = simulate_acquisition(img_true, acq)
+            acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
             @test Ristretto.get_scale(FixedScaling(2.5), acq_with_data, nothing, nothing) == 2.5
             @test_throws ArgumentError FixedScaling(0.0)
@@ -486,7 +486,7 @@ end
             pattern = create_sampling_pattern(pdf, (nx, ny))
 
             acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern)
-            acq_with_data = simulate_acquisition(img_true, acq)
+            acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
             # Only the output shape is checked here, so a single iteration is enough -- 20 iterations
             # bought no extra coverage, just a slower test.
@@ -508,7 +508,7 @@ end
             ksp_ms = zeros(ComplexF32, nx, ny, nc, nslices)
             for s in 1:nslices
                 acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
-                acq_temp = simulate_acquisition(img_true_ms[:, :, s], acq)
+                acq_temp = simulate_acquisition(img_true_ms[:, :, s], acq; inverse_crime_check = false, keep_sensitivity_maps = true)
                 ksp_ms[:, :, :, s] .= acq_temp.kspace_data
             end
 
@@ -570,7 +570,7 @@ end
         img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
         smaps = coil_sensitivities(nx, ny, nc)
         acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
-        acq_with_data = simulate_acquisition(img_true, acq)
+        acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
         output = IOBuffer()
         printfunc = (args...) -> print(output, args...)
@@ -900,7 +900,7 @@ end
     acq_empty = CartesianAcquisitionInfo(;
         is3D = false, image_size = (nkx, nky), sensitivity_maps = smaps, subsampling = specs,
     )
-    acq = simulate_acquisition(truth, acq_empty)
+    acq = simulate_acquisition(truth, acq_empty; inverse_crime_check = false, keep_sensitivity_maps = true)
     ksp = acq.kspace_data
     @test is_partitioned(ksp)
     @test nparts(ksp) == nframes

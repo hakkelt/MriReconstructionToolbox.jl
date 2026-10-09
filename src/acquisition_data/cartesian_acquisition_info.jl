@@ -74,7 +74,7 @@ struct CartesianAcquisitionInfo{K, I, S, Sub, SD, ID} <: AcquisitionInfo
             for d in sK
                 @argcheck d isa Integer || d isa Symbol "shifted_kspace_dims must be Integer, Symbol, or Tuple of those"
                 if d isa Integer
-                    @argcheck d ∈ 1:ndims(ksp) "shifted_kspace_dims out of range"
+                    @argcheck d ∈ 1:(isnothing(ksp) ? length(img_size) : ndims(ksp)) "shifted_kspace_dims out of range"
                 else
                     @argcheck _has_dimnames(ksp) "shifted_kspace_dims as Symbol requires NamedDimsArray k-space"
                     @argcheck d ∈ dimnames(ksp) "shifted_kspace_dims Symbol not found in k-space dimnames"

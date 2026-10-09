@@ -138,7 +138,7 @@ acq_info = AcquisitionInfo(
    sensitivity_maps=smaps)
 
 # Simulate k-space acquisition
-data = simulate_acquisition(x, acq_info)
+data = simulate_acquisition(x, acq_info; inverse_crime_check = false, keep_sensitivity_maps = true)
 ```
 
 ### Reconstruction Examples

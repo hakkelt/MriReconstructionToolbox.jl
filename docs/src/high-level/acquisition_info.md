@@ -568,7 +568,7 @@ traj_t = NamedDimsArray{(:coord, :sample, :spoke, :time)}(rand(Float32, 2, 64, 3
 acq_t = AcquisitionInfo(;
     trajectory = traj_t, image_size = (64, 64), sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps),
 )
-series = simulate_acquisition(NamedDimsArray{(:x, :y, :time)}(rand(ComplexF32, 64, 64, nframes)), acq_t)
+series = simulate_acquisition(NamedDimsArray{(:x, :y, :time)}(rand(ComplexF32, 64, 64, nframes)), acq_t; inverse_crime_check = false, keep_sensitivity_maps = true)
 println(dimnames(series.kspace_data), size(series.kspace_data))
 ```
 

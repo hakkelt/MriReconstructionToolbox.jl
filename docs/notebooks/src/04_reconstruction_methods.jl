@@ -101,7 +101,7 @@ acq_full = AcquisitionInfo(
     NamedDimsArray{(:kx, :ky, :coil)}(zeros(ComplexF32, nx, ny, nc));
     is3D = false, sensitivity_maps = smaps
 )
-data_full = simulate_acquisition(x_true, acq_full)
+data_full = simulate_acquisition(x_true, acq_full; inverse_crime_check = false, keep_sensitivity_maps = true)
 
 # With sensitivity maps and the default combination: one combined image.
 x_adj = reconstruct(data_full, DirectReconstruction())
@@ -203,7 +203,7 @@ acq_pf = simulate_acquisition(
     img_pf,
     AcquisitionInfo(;
         is3D = false, image_size = (Nx, Ny), subsampling = subsampling_pf
-    )
+    ); inverse_crime_check = false, keep_sensitivity_maps = true
 )
 println("acquired k-space: ", size(acq_pf.kspace_data), " of ", (Nx, Ny))
 
@@ -277,7 +277,7 @@ acq_pi = add_noise(
         img_pi,
         AcquisitionInfo(;
             is3D = false, image_size = (Nx, Ny), subsampling = subsampling_pi, sensitivity_maps = sens
-        )
+        ); inverse_crime_check = false, keep_sensitivity_maps = true
     );
     snr_db = 30
 )
@@ -351,7 +351,7 @@ using Ristretto: check_applicable
 pattern_vd = create_sampling_pattern(VariableDensitySampling(PolynomialDistribution(3), R), (Nx, Ny))
 data_vd = simulate_acquisition(
     img_pi,
-    AcquisitionInfo(; is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens, subsampling = pattern_vd)
+    AcquisitionInfo(; is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens, subsampling = pattern_vd); inverse_crime_check = false, keep_sensitivity_maps = true
 )
 try
     check_applicable(GRAPPA(), data_vd)
@@ -369,7 +369,7 @@ acq_no_acs = simulate_acquisition(
     img_pi,
     AcquisitionInfo(;
         is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens, subsampling = (:, mask_no_acs)
-    )
+    ); inverse_crime_check = false, keep_sensitivity_maps = true
 )
 try
     check_applicable(GRAPPA(), acq_no_acs)

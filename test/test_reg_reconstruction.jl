@@ -20,7 +20,7 @@ using TestItems
     ksp = zeros(ComplexF32, nx, ny, nt)
     for t in 1:nt
         acq_t = AcquisitionInfo(is3D = false, image_size = (nx, ny))
-        ksp[:, :, t] = simulate_acquisition(img[:, :, t], acq_t).kspace_data
+        ksp[:, :, t] = simulate_acquisition(img[:, :, t], acq_t; inverse_crime_check = false, keep_sensitivity_maps = true).kspace_data
     end
     acq = AcquisitionInfo(NamedDimsArray{(:kx, :ky, :time)}(ksp); is3D = false)
 

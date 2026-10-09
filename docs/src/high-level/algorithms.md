@@ -60,7 +60,7 @@ smaps = coil_sensitivities(128, 128, 8);
 acq_full = AcquisitionInfo(
     image_size=(128, 128)
 )
-data_full = simulate_acquisition(x_noisy, acq_full)
+data_full = simulate_acquisition(x_noisy, acq_full; inverse_crime_check = false, keep_sensitivity_maps = true)
 
 pdf = VariableDensitySampling(PolynomialDistribution(3), 4.0, 0.05)
 pattern = create_sampling_pattern(pdf, (128, 128))
@@ -69,7 +69,7 @@ acq = AcquisitionInfo(
     subsampling=pattern,
     sensitivity_maps=smaps
 )
-data = simulate_acquisition(x_noisy, acq)
+data = simulate_acquisition(x_noisy, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 ```
 
 ### Conjugate Gradient Normal Residual (CGNR)

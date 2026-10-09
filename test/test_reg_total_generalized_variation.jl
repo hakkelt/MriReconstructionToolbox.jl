@@ -189,7 +189,7 @@ end
     img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
     smaps = coil_sensitivities(nx, ny, nc)
     pattern = create_sampling_pattern(VariableDensitySampling(PolynomialDistribution(3), 2.0, 0.15), (nx, ny))
-    acq = simulate_acquisition(img_true, AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern))
+    acq = simulate_acquisition(img_true, AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern); inverse_crime_check = false, keep_sensitivity_maps = true)
 
     img_recon = reconstruct(
         acq,

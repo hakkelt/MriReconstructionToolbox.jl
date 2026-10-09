@@ -25,11 +25,11 @@ if length(ARGS) >= 1 && ARGS[1] == "child"
         if name == "cartesian_wavelet"
             pattern = create_sampling_pattern(VariableDensitySampling(PolynomialDistribution(3), 3.0, 0.1), (n, n))
             acq = AcquisitionInfo(is3D = false, image_size = (n, n), subsampling = pattern, sensitivity_maps = smaps)
-            return simulate_acquisition(img, acq), IterativeReconstruction(L1Wavelet2D(0.005f0); algorithm = FISTA(), maxit = 20)
+            return simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true), IterativeReconstruction(L1Wavelet2D(0.005f0); algorithm = FISTA(), maxit = 20)
         elseif name == "radial_tv"
             traj = Float32.(radial_trajectory(2n, 32))
             acq = AcquisitionInfo(; trajectory = traj, image_size = (n, n), sensitivity_maps = smaps)
-            return simulate_acquisition(img, acq), IterativeReconstruction(TotalVariation2D(0.001f0); maxit = 20)
+            return simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true), IterativeReconstruction(TotalVariation2D(0.001f0); maxit = 20)
         elseif name == "cine_lowrank"
             nt = 8
             cine = NamedDimsArray{(:x, :y, :time)}(stack(circshift(img, (0, t)) for t in 1:nt))
@@ -38,7 +38,7 @@ if length(ARGS) >= 1 && ARGS[1] == "child"
                 is3D = false, image_size = (n, n), subsampling = pattern,
                 sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps),
             )
-            return simulate_acquisition(cine, acq), IterativeReconstruction(LowRank(0.01f0; time_dim = :time); maxit = 20)
+            return simulate_acquisition(cine, acq; inverse_crime_check = false, keep_sensitivity_maps = true), IterativeReconstruction(LowRank(0.01f0; time_dim = :time); maxit = 20)
         end
         error("unknown workload $name")
     end

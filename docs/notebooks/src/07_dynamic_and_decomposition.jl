@@ -149,7 +149,7 @@ smaps = NamedDimsArray{(:x, :y, :coil)}(coil_sensitivities(n, n, nc))
 acq_dyn = AcquisitionInfo(;
     is3D = false, image_size = (n, n), sensitivity_maps = smaps, subsampling = (:, mask_y)
 )
-data_dyn = simulate_acquisition(series + 0.01f0 * randn(ComplexF32, n, n, nt), acq_dyn)
+data_dyn = simulate_acquisition(series + 0.01f0 * randn(ComplexF32, n, n, nt), acq_dyn; inverse_crime_check = false, keep_sensitivity_maps = true)
 println("k-space: ", size(data_dyn.kspace_data), " ", dimnames(data_dyn.kspace_data))
 
 # %%

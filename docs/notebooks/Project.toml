@@ -23,5 +23,6 @@ Ristretto = {path = "../.."}
 ProximalCore = {rev = "master", url = "https://github.com/hakkelt/ProximalCore.jl"}
 
 [compat]
+GeometricMedicalPhantoms = "1.1"
 MRITestData = "0.1.1"
 NestedThreading = "0.1.2"

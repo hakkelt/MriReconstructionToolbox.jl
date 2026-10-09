@@ -55,7 +55,7 @@ acq_full = AcquisitionInfo(
     subsampling=pattern, 
     sensitivity_maps=smaps
 )
-data = simulate_acquisition(x_noisy, acq_full)
+data = simulate_acquisition(x_noisy, acq_full; inverse_crime_check = false, keep_sensitivity_maps = true)
 
 # Simulate 3D acquisition
 x3d = create_shepp_logan_phantom(64, 64, 32; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
@@ -69,7 +69,7 @@ acq3d = AcquisitionInfo(
     sensitivity_maps=smaps3d,
     subsampling=subsampling3d,
 )
-data3d = simulate_acquisition(x3d, acq3d)
+data3d = simulate_acquisition(x3d, acq3d; inverse_crime_check = false, keep_sensitivity_maps = true)
 
 jim(x3d; title="Shepp-Logan Phantom (3D)", size=(800,400))
 savefig("shepp_logan_phantom_3d.png"); nothing # hide

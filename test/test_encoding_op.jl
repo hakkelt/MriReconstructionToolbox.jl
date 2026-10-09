@@ -597,7 +597,7 @@ end
         img = NamedDimsArray{(:x, :y)}(rand(ComplexF32, nx, ny))
         smaps = NamedDimsArray{(:x, :y, :coil)}(coil_sensitivities(nx, ny, nc))
         acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
-        result = simulate_acquisition(img, acq)
+        result = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         @test result.kspace_data isa NamedDimsArray
         @test dimnames(result.kspace_data) == (:kx, :ky, :coil)
     end
@@ -606,7 +606,7 @@ end
         nx, ny = 16, 16
         img = NamedDimsArray{(:x, :y)}(rand(ComplexF32, nx, ny))
         acq = AcquisitionInfo(is3D = false, image_size = (nx, ny))
-        result = simulate_acquisition(img, acq)
+        result = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         @test result.kspace_data isa NamedDimsArray
         @test dimnames(result.kspace_data) == (:kx, :ky)
     end
@@ -616,7 +616,7 @@ end
         img = NamedDimsArray{(:x, :y, :z)}(rand(ComplexF32, nx, ny, nz))
         smaps = NamedDimsArray{(:x, :y, :z, :coil)}(coil_sensitivities(nx, ny, nz, nc))
         acq = AcquisitionInfo(is3D = true, sensitivity_maps = smaps)
-        result = simulate_acquisition(img, acq)
+        result = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         @test result.kspace_data isa NamedDimsArray
         @test dimnames(result.kspace_data) == (:kx, :ky, :kz, :coil)
     end
@@ -625,7 +625,7 @@ end
         nx, ny, nz = 8, 8, 4
         img = NamedDimsArray{(:x, :y, :z)}(rand(ComplexF32, nx, ny, nz))
         acq = AcquisitionInfo(is3D = true, image_size = (nx, ny, nz))
-        result = simulate_acquisition(img, acq)
+        result = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         @test result.kspace_data isa NamedDimsArray
         @test dimnames(result.kspace_data) == (:kx, :ky, :kz)
     end
@@ -635,7 +635,7 @@ end
         img = rand(Float32, nx, ny)
         smaps = ComplexF32.(coil_sensitivities(nx, ny, nc))
         acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
-        result = simulate_acquisition(img, acq)
+        result = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         @test eltype(result.kspace_data) == ComplexF32
     end
 
@@ -645,7 +645,7 @@ end
         mask = rand(Bool, nx, ny)
         smaps = NamedDimsArray{(:x, :y, :coil)}(coil_sensitivities(nx, ny, nc))
         acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = (mask,))
-        result = simulate_acquisition(img, acq)
+        result = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         @test result.kspace_data isa NamedDimsArray
     end
 end
@@ -671,7 +671,7 @@ end
 
     @testset "matches building the encoding operator by hand" begin
         acq = NonCartesianAcquisitionInfo(nothing; trajectory = traj, image_size = (nx, ny), sensitivity_maps = smaps)
-        result = simulate_acquisition(x, acq)
+        result = simulate_acquisition(x, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         @test size(result.kspace_data) == (nread, nspokes, nc)
 
         placeholder = zeros(ComplexF32, nread, nspokes, nc)
@@ -682,13 +682,13 @@ end
 
     @testset "no sensitivity maps" begin
         acq = NonCartesianAcquisitionInfo(nothing; trajectory = traj, image_size = (nx, ny))
-        result = simulate_acquisition(x, acq)
+        result = simulate_acquisition(x, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         @test size(result.kspace_data) == (nread, nspokes)
     end
 
     @testset "real image input is cast to complex" begin
         acq = NonCartesianAcquisitionInfo(nothing; trajectory = traj, image_size = (nx, ny))
-        result = simulate_acquisition(real.(x), acq)
+        result = simulate_acquisition(real.(x), acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         @test eltype(result.kspace_data) == ComplexF32
     end
 
@@ -698,14 +698,14 @@ end
         named_traj = NamedDimsArray{(:coord, :sample, :spoke)}(traj)
         plain = simulate_acquisition(
             NamedDimsArray{(:x, :y)}(x),
-            NonCartesianAcquisitionInfo(nothing; trajectory = named_traj, image_size = (nx, ny), sensitivity_maps = smaps),
+            NonCartesianAcquisitionInfo(nothing; trajectory = named_traj, image_size = (nx, ny), sensitivity_maps = smaps); inverse_crime_check = false, keep_sensitivity_maps = true
         )
         named = simulate_acquisition(
             NamedDimsArray{(:x, :y)}(x),
             NonCartesianAcquisitionInfo(
                 nothing; trajectory = named_traj, image_size = (nx, ny),
                 sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps),
-            ),
+            ); inverse_crime_check = false, keep_sensitivity_maps = true
         )
         @test dimnames(plain.kspace_data) == (:sample, :spoke, :coil)
         @test parent(plain.kspace_data) ≈ parent(named.kspace_data)
@@ -768,7 +768,7 @@ end
         nothing; is3D = false, image_size = (nx, ny), sensitivity_maps = maps, subsampling = (:, mask)
     )
     img = randn(ComplexF32, nx, ny)
-    data = simulate_acquisition(img, acq)
+    data = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
     @test size(data.kspace_data, 1) == nx
 
     𝒜 = get_encoding_operator(data)
@@ -779,7 +779,7 @@ end
         nothing; is3D = false, image_size = (nx, ny),
         sensitivity_maps = unname(maps), subsampling = (:, mask)
     )
-    data_plain = simulate_acquisition(img, acq_plain)
+    data_plain = simulate_acquisition(img, acq_plain; inverse_crime_check = false, keep_sensitivity_maps = true)
     @test unname(data.kspace_data) ≈ unname(data_plain.kspace_data)
 end
 

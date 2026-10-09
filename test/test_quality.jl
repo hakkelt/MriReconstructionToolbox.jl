@@ -146,7 +146,7 @@ end
     @test_call target_modules = (OWN_FRAMES,) create_sampling_pattern(UniformRandomSampling(2.0, 0.1), (nx, ny))
     @test_call target_modules = (OWN_FRAMES,) to_displayable_mask((:, trues(ny)), (nx, ny))
     @test_call target_modules = (OWN_FRAMES,) coil_sensitivities(nx, ny, nc)
-    @test_call target_modules = (OWN_FRAMES,) simulate_acquisition(img, AcquisitionInfo(nothing; is3D = false, image_size = (nx, ny), sensitivity_maps = smaps))
+    @test_call target_modules = (OWN_FRAMES,) simulate_acquisition(img, AcquisitionInfo(nothing; is3D = false, image_size = (nx, ny), sensitivity_maps = smaps); inverse_crime_check = false, keep_sensitivity_maps = true)
     @test_call target_modules = (OWN_FRAMES,) ReconstructionConfig(; verbosity = Silent())
     @test_call target_modules = (OWN_FRAMES,) DirectReconstruction()
     @test_call target_modules = (OWN_FRAMES,) IterativeReconstruction(L2Image(0.01))

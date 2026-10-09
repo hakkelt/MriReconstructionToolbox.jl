@@ -130,7 +130,7 @@ end
     # With named dimensions the iterate is wrapped in the image's names, which failed outright
     # while the auxiliary field was still part of it.
     named = simulate_acquisition(
-        NamedDimsArray{(:x, :y)}(x_true), CartesianAcquisitionInfo(; is3D = false, image_size = size(x_true)),
+        NamedDimsArray{(:x, :y)}(x_true), CartesianAcquisitionInfo(; is3D = false, image_size = size(x_true)); inverse_crime_check = false, keep_sensitivity_maps = true
     )
     trace = IterationTrace()
     img = reconstruct(named, IterativeReconstruction(TotalGeneralizedVariation2D(0.01); algorithm = ADMM(), maxit = 4, reltol = 0, on_iteration = trace); verbosity = Silent())

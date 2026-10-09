@@ -347,7 +347,7 @@ end
                 is3D = false, image_size = (nx, ny),
                 sensitivity_maps = coil_sensitivities(nx, ny, nc),
                 subsampling = create_sampling_pattern(RegularLatticeSampling(2; center_fraction = 0.2), (nx, ny)),
-            )
+            ); inverse_crime_check = false, keep_sensitivity_maps = true
         )
         x̂ = reconstruct(data, IterativeReconstruction(AnisotropicTotalVariation2D(1.0f-3); maxit = 40); verbosity = Silent())
         x_direct = reconstruct(data; verbosity = Silent())

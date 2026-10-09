@@ -104,7 +104,7 @@ end
     dir = mktempdir()
     withenv("RISTRETTO_FFTW_WISDOM" => dir) do
         acq = simulate_acquisition(
-            rand(ComplexF32, 32, 32), AcquisitionInfo(is3D = false, sensitivity_maps = coil_sensitivities(32, 32, 2))
+            rand(ComplexF32, 32, 32), AcquisitionInfo(is3D = false, sensitivity_maps = coil_sensitivities(32, 32, 2)); inverse_crime_check = false, keep_sensitivity_maps = true
         )
         path = plan_fft_wisdom(acq; rigor = :measure, threaded = false)
         @test path == Ristretto.fftw_wisdom_path()

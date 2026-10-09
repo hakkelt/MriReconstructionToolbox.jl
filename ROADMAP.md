@@ -117,7 +117,19 @@ One package extension per format. Known keys of the header map to DICOM tags, NI
 MRD image header fields; geometry provides the affine.
 
 ### 9. Simulation without the inverse crime
-**Status:** todo. **Tier:** P1.
+**Status:** done (p1). **Tier:** P1.
+
+Done 2026-10-09: `simulate_acquisition(phantom, acq; inverse_crime_check = true,
+keep_sensitivity_maps = false)` simulates on the phantom's grid and keeps the reconstruction
+grid's frequencies (Cartesian) or samples the same physical frequencies (non-Cartesian); maps are
+made at the phantom size and dropped from the result unless kept. GeometricMedicalPhantoms 1.1.0
+adds `supersample` (area sampling). Study (`benchmark/inverse_crime/study.jl`, 128² Shepp–Logan,
+table in `docs/src/high-level/simulation.md`): area-sampled 202² (s = 1.58) gives 3.2 % Cartesian
+k-space error, the 30 dB noise level. The TV-reconstruction SER bias against the area-sampled
+truth is +1.3–1.5 dB for 1.5 ≤ s ≤ 2 (0.6 dB at 1.3 and 3), so the planned < 0.5 dB target is not
+met by any ratio up to 2; part of it is the box filter of area sampling. Existing tests, docs pages
+and notebook sources pass `inverse_crime_check = false, keep_sensitivity_maps = true` explicitly;
+moving them to finer phantoms and estimated maps is left to item 10.
 
 Kaipio & Somersalo, doi:10.1016/j.cam.2005.09.027. Simulating on the reconstruction grid with
 the reconstruction's own forward operator makes results optimistic.

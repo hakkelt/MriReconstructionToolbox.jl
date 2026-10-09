@@ -64,7 +64,7 @@ end
         Random.seed!(seed)
         x_true = rand(ComplexF32, nx, ny)
         acq = CartesianAcquisitionInfo(; is3D = false, image_size = (nx, ny))
-        return simulate_acquisition(x_true, acq), x_true
+        return simulate_acquisition(x_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true), x_true
     end
 
     # Multi-slice, so `get_task_splitting_plan` splits it into one task per slice.
@@ -110,7 +110,7 @@ end
             NonCartesianAcquisitionInfo(
                 nothing; trajectory = traj, image_size = (N, N),
                 sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps),
-            ),
+            ); inverse_crime_check = false, keep_sensitivity_maps = true
         )
         return (; img, smaps, traj, kspace = sim.kspace_data, mask = abs.(img) .> 0.5, N, ncoil)
     end

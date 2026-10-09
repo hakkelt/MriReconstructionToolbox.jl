@@ -8,7 +8,7 @@
     img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
     smaps = coil_sensitivities(nx, ny, nc)
     pattern = create_sampling_pattern(UniformRandomSampling(3.0, 0.1), (nx, ny))
-    acq = simulate_acquisition(img_true, AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern))
+    acq = simulate_acquisition(img_true, AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern); inverse_crime_check = false, keep_sensitivity_maps = true)
     A = get_encoding_operator(acq; threaded = false)
     x̂ = A' * _measurement(acq.kspace_data)
 

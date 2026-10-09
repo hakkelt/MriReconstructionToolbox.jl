@@ -222,7 +222,7 @@ x_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensitie
 smaps = coil_sensitivities(nx, ny, 4)
 
 acq_radial = AcquisitionInfo(; trajectory = traj, image_size = (nx, ny), sensitivity_maps = smaps)
-data_radial = simulate_acquisition(x_true, acq_radial)
+data_radial = simulate_acquisition(x_true, acq_radial; inverse_crime_check = false, keep_sensitivity_maps = true)
 
 println("radial k-space: ", size(data_radial.kspace_data))
 # Radial Nyquist needs about (π/2)·N spokes; fewer than that is undersampling.
@@ -412,7 +412,7 @@ side_by_side(x_pipe, x_cg, x_tv; titles = ("gridded adjoint", "CG-SENSE", "TV co
 nspokes_us = 32
 traj_us = unname(traj)[:, :, 1:nspokes_us]
 acq_us = AcquisitionInfo(; trajectory = traj_us, image_size = (nx, ny), sensitivity_maps = smaps)
-data_us = simulate_acquisition(x_true, acq_us)
+data_us = simulate_acquisition(x_true, acq_us; inverse_crime_check = false, keep_sensitivity_maps = true)
 println(
     "spokes: ", nspokes_us, "  (acceleration ≈ ",
     round(ceil(π / 2 * nx) / nspokes_us, digits = 1), "× relative to radial Nyquist)"
@@ -517,7 +517,7 @@ plot(p_full, p_centre, p_shift; layout = (1, 3), size = (1400, 400))
 acq_gd_true = AcquisitionInfo(;
     trajectory = NamedDimsArray{(:coord, :kx, :ky)}(traj_gd_true), image_size = (nxg, nyg)
 )
-data_gd = simulate_acquisition(x_gd_true, acq_gd_true)
+data_gd = simulate_acquisition(x_gd_true, acq_gd_true; inverse_crime_check = false, keep_sensitivity_maps = true)
 
 acq_gd_naive = AcquisitionInfo(
     data_gd.kspace_data;

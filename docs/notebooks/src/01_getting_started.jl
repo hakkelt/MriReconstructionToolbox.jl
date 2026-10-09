@@ -106,7 +106,7 @@ acq = AcquisitionInfo(;
 # %%
 # A little measurement noise, then the simulated acquisition.
 x_noisy = x_true + 0.01f0 * randn(ComplexF32, nx, ny)
-data = simulate_acquisition(x_noisy, acq)
+data = simulate_acquisition(x_noisy, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
 println("k-space data: ", size(data.kspace_data), " ", eltype(data.kspace_data))
 

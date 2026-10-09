@@ -388,7 +388,7 @@ end
     img_true = ComplexF32.(reshape(range(0.0f0, 1.0f0; length = Nx * Ny), Nx, Ny))
     sens = synthetic_sensitivities(ComplexF32, Nx, Ny, Nc)
     data = simulate_acquisition(
-        img_true, AcquisitionInfo(is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens)
+        img_true, AcquisitionInfo(is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens); inverse_crime_check = false, keep_sensitivity_maps = true
     )
     # The same k-space, described without maps: its coil axis is a batch dimension unless the
     # method itself combines the channels.
@@ -428,7 +428,7 @@ end
 
     # Single-channel data has no coil axis at all: the default still works.
     single = AcquisitionInfo(
-        simulate_acquisition(img_true, AcquisitionInfo(is3D = false, image_size = (Nx, Ny))).kspace_data;
+        simulate_acquisition(img_true, AcquisitionInfo(is3D = false, image_size = (Nx, Ny)); inverse_crime_check = false, keep_sensitivity_maps = true).kspace_data;
         is3D = false, image_size = (Nx, Ny)
     )
     @test size(reconstruct(single, DirectReconstruction(); verbosity = Silent())) == (Nx, Ny)
@@ -444,7 +444,7 @@ end
     sens = synthetic_sensitivities(ComplexF32, N, N, Nc)
     traj = Float32.(radial_trajectory(N, 24))
     data = simulate_acquisition(
-        img_true, AcquisitionInfo(; trajectory = traj, image_size = (N, N), sensitivity_maps = sens)
+        img_true, AcquisitionInfo(; trajectory = traj, image_size = (N, N), sensitivity_maps = sens); inverse_crime_check = false, keep_sensitivity_maps = true
     )
 
     rec_adj = reconstruct(data, DirectReconstruction(); verbosity = Silent())
@@ -462,7 +462,7 @@ end
     sens_named = NamedDimsArray{(:x, :y, :coil)}(unname(sens))
     data_named = simulate_acquisition(
         NamedDimsArray{(:x, :y)}(img_true),
-        AcquisitionInfo(; trajectory = traj_named, image_size = (N, N), sensitivity_maps = sens_named)
+        AcquisitionInfo(; trajectory = traj_named, image_size = (N, N), sensitivity_maps = sens_named); inverse_crime_check = false, keep_sensitivity_maps = true
     )
     @test dimnames(reconstruct(data_named, DirectReconstruction(RootSumSquares()); verbosity = Silent())) == (:x, :y)
     @test dimnames(reconstruct(data_named, DirectReconstruction(NoCoilCombination()); verbosity = Silent())) == (:x, :y, :coil)
@@ -485,7 +485,7 @@ end
 
     sens = synthetic_sensitivities(ComplexF32, Nx, Ny, Nc)
     acq = AcquisitionInfo(is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens)
-    data = simulate_acquisition(img_true, acq)
+    data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     rec_adj = reconstruct(data, DirectReconstruction(coil_combination = AdjointSensitivity()); verbosity = Silent())
     rec_rss = reconstruct(data, DirectReconstruction(coil_combination = RootSumSquares()); verbosity = Silent())
@@ -506,7 +506,7 @@ end
     acq_sub = AcquisitionInfo(
         is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_y), sensitivity_maps = sens,
     )
-    data_sub = simulate_acquisition(img_true, acq_sub)
+    data_sub = simulate_acquisition(img_true, acq_sub; inverse_crime_check = false, keep_sensitivity_maps = true)
     rec_rss_sub = reconstruct(data_sub, DirectReconstruction(coil_combination = RootSumSquares()); verbosity = Silent())
     @test size(rec_rss_sub) == (Nx, Ny)
 
@@ -524,7 +524,7 @@ end
     # constructor error).
     sens_named = NamedDimsArray{(:x, :y, :coil)}(unname(sens))
     acq_named = AcquisitionInfo(is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens_named)
-    data_named = simulate_acquisition(NamedDimsArray{(:x, :y)}(img_true), acq_named)
+    data_named = simulate_acquisition(NamedDimsArray{(:x, :y)}(img_true), acq_named; inverse_crime_check = false, keep_sensitivity_maps = true)
     @test data_named.kspace_data isa NamedDimsArray
 
     rec_named_adj = reconstruct(data_named, DirectReconstruction(coil_combination = AdjointSensitivity()); verbosity = Silent())
@@ -554,7 +554,7 @@ end
     smaps = coil_sensitivities(Nx, Ny, Nc)
 
     acq = simulate_acquisition(
-        img, AcquisitionInfo(nothing; is3D = false, image_size = (Nx, Ny), sensitivity_maps = smaps)
+        img, AcquisitionInfo(nothing; is3D = false, image_size = (Nx, Ny), sensitivity_maps = smaps); inverse_crime_check = false, keep_sensitivity_maps = true
     )
     # Partial-Fourier acquisition (single coil), for the methods that need one.
     mask_y = falses(Ny)
@@ -652,7 +652,7 @@ end
             AcquisitionInfo(
                 nothing; is3D = false, image_size = (Nx, Ny), sensitivity_maps = smaps,
                 subsampling = mask,
-            )
+            ); inverse_crime_check = false, keep_sensitivity_maps = true
         )
         lowered = lower(SPIRiT(; calib_size = (16, 12), maxit = 3, iterative = true), acq_us)
         @test lowered isa IterativeReconstruction

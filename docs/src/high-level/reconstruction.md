@@ -79,7 +79,7 @@ acq_under = AcquisitionInfo(
 
 # Simulate undersampled data
 phantom = rand(ComplexF32, 64, 64)
-data = simulate_acquisition(phantom, acq_under)
+data = simulate_acquisition(phantom, acq_under; inverse_crime_check = false, keep_sensitivity_maps = true)
 
 # Reconstruct with L2 regularization
 x_tikhonov = reconstruct(data, IterativeReconstruction(L2Image(0.01); maxit = 20); verbosity = Silent())

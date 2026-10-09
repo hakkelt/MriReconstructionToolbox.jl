@@ -61,7 +61,7 @@ acq = AcquisitionInfo(;
         VariableDensitySampling(PolynomialDistribution(3), 4.0, 0.05), (nx, ny)
     ),
 )
-data = simulate_acquisition(x_noisy, acq)
+data = simulate_acquisition(x_noisy, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 nrmse1(x̂) = nrmse(x̂, x_true);          # one-argument closure over the ground truth
 
 # %% [markdown]
@@ -111,7 +111,8 @@ end
 
 # %%
 x_cgnr = reconstruct(
-    data, IterativeReconstruction(L2Image(1.0f-4); algorithm = CGNR(), maxit = 20))
+    data, IterativeReconstruction(L2Image(1.0f-4); algorithm = CGNR(), maxit = 20)
+)
 println("CGNR    NRMSE ", round(nrmse1(x_cgnr), digits = 4))
 
 # %% [markdown]
@@ -162,7 +163,7 @@ acq_shaded = AcquisitionInfo(
     nothing; is3D = false, image_size = (nx, ny), sensitivity_maps = maps_shaded,
     subsampling = create_sampling_pattern(UniformRandomSampling(2.0), (nx, ny)),
 )
-data_shaded = simulate_acquisition(x_true, acq_shaded)
+data_shaded = simulate_acquisition(x_true, acq_shaded; inverse_crime_check = false, keep_sensitivity_maps = true)
 
 # %%
 P_shaded = DiagOp(ComplexF32.(1 ./ (energy_shaded .+ 1.0f-2)))
@@ -209,9 +210,11 @@ plot!(trace_precond.iterations, trace_precond.values; label = "preconditioned", 
 
 # %%
 x_ista = reconstruct(
-    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = ISTA(), maxit = 50))
+    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = ISTA(), maxit = 50)
+)
 x_fista = reconstruct(
-    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = FISTA(), maxit = 50))
+    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = FISTA(), maxit = 50)
+)
 println("ISTA    NRMSE ", round(nrmse1(x_ista), digits = 4))
 println("FISTA   NRMSE ", round(nrmse1(x_fista), digits = 4))
 
@@ -226,7 +229,8 @@ println("FISTA   NRMSE ", round(nrmse1(x_fista), digits = 4))
 
 # %%
 x_pogm = reconstruct(
-    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = POGM(), maxit = 50))
+    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = POGM(), maxit = 50)
+)
 println("POGM    NRMSE ", round(nrmse1(x_pogm), digits = 4))
 
 # %% [markdown]
@@ -319,9 +323,11 @@ println("auto-selected NRMSE ", round(nrmse1(x_auto), digits = 4), "  (equals PO
 
 # %%
 x_forced = reconstruct(
-    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = (ADMM(),), maxit = 50))
+    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = (ADMM(),), maxit = 50)
+)
 x_extended = reconstruct(
-    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = (ISTA(), ADMM()), maxit = 50))
+    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = (ISTA(), ADMM()), maxit = 50)
+)
 println("restricted to ADMM      NRMSE ", round(nrmse1(x_forced), digits = 4))
 println(
     "extended with ISTA      NRMSE ", round(nrmse1(x_extended), digits = 4),
@@ -332,9 +338,11 @@ println(
 using Ristretto.ProximalAlgorithms: PANOC, ZeroFPR
 
 x_panoc = reconstruct(
-    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = PANOC(), maxit = 60))
+    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = PANOC(), maxit = 60)
+)
 x_zerofpr = reconstruct(
-    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = ZeroFPR(), maxit = 60))
+    data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = ZeroFPR(), maxit = 60)
+)
 println("PANOC   NRMSE ", round(nrmse1(x_panoc), digits = 4))
 println("ZeroFPR NRMSE ", round(nrmse1(x_zerofpr), digits = 4))
 
@@ -724,7 +732,7 @@ acq_noncart = AcquisitionInfo(;
     trajectory = traj_no, image_size = (nx, ny),
     sensitivity_maps = coil_sensitivities(nx, ny, nc),
 )
-data_noncart = simulate_acquisition(x_noisy, acq_noncart)
+data_noncart = simulate_acquisition(x_noisy, acq_noncart; inverse_crime_check = false, keep_sensitivity_maps = true)
 
 println("--- non-Cartesian, 200 radial spokes ---")
 compare_options(data_noncart, nrmse1; maxit = 30)
@@ -804,7 +812,7 @@ acq_ms = AcquisitionInfo(
     NamedDimsArray{(:kx, :ky, :coil, :slice)}(zeros(ComplexF32, n_ms, n_ms, nc_ms, nslices));
     is3D = false, sensitivity_maps = smaps_ms
 )
-data_ms = simulate_acquisition(NamedDimsArray{(:x, :y, :slice)}(vol), acq_ms)
+data_ms = simulate_acquisition(NamedDimsArray{(:x, :y, :slice)}(vol), acq_ms; inverse_crime_check = false, keep_sensitivity_maps = true)
 println("multi-slice k-space: ", size(data_ms.kspace_data), " ", dimnames(data_ms.kspace_data))
 println("Julia threads: ", Threads.nthreads())
 

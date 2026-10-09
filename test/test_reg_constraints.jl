@@ -91,7 +91,7 @@ end
     pdf = VariableDensitySampling(PolynomialDistribution(3), 4.0, 0.1)
     pattern = create_sampling_pattern(pdf, (nx, ny))
     acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny), subsampling = pattern)
-    data = add_noise(simulate_acquisition(x_true, acq); noise_std = 0.08f0)
+    data = add_noise(simulate_acquisition(x_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true); noise_std = 0.08f0)
 
     nrmse(rec) = norm(rec .- x_true) / norm(x_true)
     # 3e-2 under `BartScaling`, in the default `QuantileScaling`'s units for this data.
