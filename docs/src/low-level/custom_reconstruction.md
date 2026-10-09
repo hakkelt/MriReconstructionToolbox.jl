@@ -1,5 +1,18 @@
 # Custom Reconstruction with StructuredOptimization
 
+!!! note "Bundled package"
+    Ristretto ships its own copy of StructuredOptimization.jl and the packages it builds on
+    (AbstractOperators.jl, ProximalOperators.jl, ProximalAlgorithms.jl). Import them through
+    Ristretto, as `using Ristretto.StructuredOptimization` and `using
+    Ristretto.AbstractOperators`, and do not `Pkg.add` the registered packages: the bundled
+    version carries work that is not registered yet (multithreading, GPU support, new operators,
+    functions and algorithms). Upstreaming it is under way, and the bundled copy goes away once
+    the registered releases have it. Documentation of the bundled version:
+    [StructuredOptimization.jl (fork)](https://hakkelt.github.io/StructuredOptimization.jl/dev/),
+    [AbstractOperators.jl (fork)](https://hakkelt.github.io/AbstractOperators.jl/dev/),
+    [ProximalOperators.jl (fork)](https://hakkelt.github.io/ProximalOperators.jl/dev/),
+    [ProximalAlgorithms.jl (fork)](https://hakkelt.github.io/ProximalAlgorithms.jl/dev/).
+
 This page shows how to experiment with custom reconstruction problems using `StructuredOptimization.jl`, leveraging its convenient bindings to `AbstractOperators.jl` (operators like FFT, Wavelets, reshape, slicing) and `ProximalOperators.jl` (norms and penalties with fast proximal maps).
 
 ## Essentials

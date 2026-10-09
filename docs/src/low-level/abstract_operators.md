@@ -1,5 +1,14 @@
 # [AbstractOperators.jl: Matrix-Free Linear Operators](@id abstract_operators)
 
+!!! note "Bundled package"
+    Ristretto ships its own copy of AbstractOperators.jl (with FFTWOperators, NFFTOperators,
+    WaveletOperators and DSPOperators). Import them through Ristretto, as `using
+    Ristretto.AbstractOperators`, and do not `Pkg.add` the registered packages: the bundled
+    version carries work that is not registered yet (multithreading, GPU support, new operators,
+    functions and algorithms). Upstreaming it is under way, and the bundled copy goes away once
+    the registered releases have it. Documentation of the bundled version:
+    [AbstractOperators.jl (fork)](https://hakkelt.github.io/AbstractOperators.jl/dev/).
+
 ## Why Matrix-Free Operators?
 
 ### The Matrix Representation Problem
