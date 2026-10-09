@@ -203,7 +203,7 @@ profiling. It now answers `PwMapKind` on CPU (AbstractOperators `perf/fused-poin
 and on device arrays (`perf/gpu-fused-pointwise`, #36); fused results equal unfused ones bit for
 bit.
 
-Measured 2026-10-09 (`benchmark/sign_alternation_fusion.jl`, compute node, 16 cores booked) on
+Measured 2026-10-09 (a one-off benchmark, compute node, 16 cores booked) on
 `M S F C B` (mask, sign alternation, 2-D DFT, coil weighting, coil expansion), forward, against
 the same chain with the sign alternation as a pass of its own: 1.05–1.17× faster at 4 and 8
 threads (128×128×8 to 256×256×16), 0.89–1.00× at one thread. The whole fused chain is 2.2–5.3×
