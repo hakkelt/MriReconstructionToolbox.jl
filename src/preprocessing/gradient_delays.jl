@@ -105,9 +105,8 @@ function _extract_spoke_angles_and_shifts(traj::AbstractArray, ksp::AbstractArra
     ksp_mag_2d = reshape(ksp_mag, Nsamples, Nspokes)
 
     # Sample spacing of the readout, taken from the trajectory itself rather than an assumed
-    # ±0.5 span: a readout that does not span the full k-space half-width (e.g. ±0.45) previously
-    # had every estimate off by exactly 0.5/actual_extent, invisible only because every test
-    # happened to use ±0.5. `dr` is measured as the distance between consecutive samples on a
+    # ±0.5 span: a readout that does not span the full k-space half-width (e.g. ±0.45) would put
+    # every estimate off by exactly 0.5/actual_extent. `dr` is measured as the distance between consecutive samples on a
     # spoke, not as the trajectory's maximum radius: a constant per-spoke delay offset cancels
     # out of a *difference* of two samples but not out of a *magnitude*, so this stays exact even
     # though `traj` is itself the delay-corrupted trajectory whose offset is what's being
