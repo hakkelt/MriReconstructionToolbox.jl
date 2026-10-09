@@ -1,20 +1,20 @@
-@testsetup module FinerGridSetup
-using Ristretto, NamedDims
-export blob, rel
+@testsnippet FinerGridSetup begin
+    using NamedDims: unname
 
-# An off-centre Gaussian on an `n`-voxel grid over the field of view [-1, 1]^D, sampled at the
-# voxel centres `-1 + (i - 1/2) 2/n`. Its spectrum is negligible beyond a 64-voxel grid's band,
-# so finer grids must give the same data once restricted to that band.
-function blob(dims::Int...; σ = 0.12, centre = (0.21, -0.17, 0.09))
-    coords(n) = [-1 + (i - 0.5) * 2 / n for i in 1:n]
-    axes = coords.(dims)
-    return [
-        ComplexF64(exp(-sum(((axes[d][I[d]] - centre[d]) / σ)^2 for d in 1:length(dims)) / 2))
-            for I in CartesianIndices(dims)
-    ]
+    # An off-centre Gaussian on an `n`-voxel grid over the field of view [-1, 1]^D, sampled at the
+    # voxel centres `-1 + (i - 1/2) 2/n`. Its spectrum is negligible beyond a 64-voxel grid's band,
+    # so finer grids must give the same data once restricted to that band.
+    function blob(dims::Int...; σ = 0.12, centre = (0.21, -0.17, 0.09))
+        coords(n) = [-1 + (i - 0.5) * 2 / n for i in 1:n]
+        axes = coords.(dims)
+        return [
+            ComplexF64(exp(-sum(((axes[d][I[d]] - centre[d]) / σ)^2 for d in 1:length(dims)) / 2))
+                for I in CartesianIndices(dims)
+        ]
+    end
+    rel(a, b) = sqrt(sum(abs2, unname(a) .- unname(b)) / sum(abs2, unname(b)))
 end
-rel(a, b) = sqrt(sum(abs2, unname(a) .- unname(b)) / sum(abs2, unname(b)))
-end
+
 @testitem "simulate_acquisition: a finer phantom gives the data of the reconstruction grid" tags = [:simulation] setup = [FinerGridSetup] begin
     using Ristretto, NamedDims
     # Even and odd reconstruction and phantom grids; centred and FFT-ordered k-space; image origin
