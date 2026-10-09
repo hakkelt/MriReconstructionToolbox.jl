@@ -90,9 +90,8 @@ NamedDims.dimnames(p::PartitionedKSpace) =
     throw(ArgumentError("this PartitionedKSpace carries no dimension names")) : p.dimnames
 NamedDims.dimnames(p::PartitionedKSpace, d::Integer) = dimnames(p)[d]
 
-# Whether k-space carries dimension names, in either layout. The checks that used to ask
-# `ksp isa NamedDimsArray` mean this: a `PartitionedKSpace` can be named too, and skipping its
-# name checks would let a mislabelled acquisition through.
+# Whether k-space carries dimension names, in either layout: a `PartitionedKSpace` can be named
+# too, and skipping its name checks would let a mislabelled acquisition through.
 _has_dimnames(ksp) = ksp isa NamedDimsArray
 _has_dimnames(p::PartitionedKSpace) = !isnothing(p.dimnames)
 
