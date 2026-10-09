@@ -28,7 +28,7 @@ P1 items are independent of each other and can run in parallel sessions.
 ## Foundations and cleanup
 
 ### 1. Package load time
-**Status:** P1 part done (p1); the rest deferred. **Tier:** P1 (measurement + quick wins), rest deferred.
+**Status:** P1 part done (PR #2); the rest deferred. **Tier:** P1 (measurement + quick wins), rest deferred.
 
 Done 2026-10-09 (`benchmark/load_time.jl` via `benchmark/slurm/load_time.sh`, compute node
 x1001c4s3b0n1, Julia 1.13.1, 16 cores, 5 fresh processes per row):
@@ -77,7 +77,7 @@ Contourlets 90 ms, RecursiveArrayTools 73 ms. Target: 0.5–1 s.
   comparing with and without it.
 
 ### 2. Register NestedThreading and MRITestData
-**Status:** done (p1). **Tier:** P1.
+**Status:** done (PR #2). **Tier:** P1.
 
 NestedThreading 0.1.2 (JuliaRegistries/General#171087) and MRITestData 0.1.1 (General#171085,
 the USC Speech dwell-time fix the examples need) are registered. Ristretto, `examples/`,
@@ -85,7 +85,7 @@ the USC Speech dwell-time fix the examples need) are registered. Ristretto, `exa
 registering Ristretto itself.
 
 ### 3. Comment cleanup
-**Status:** done for Ristretto `src/` and `ext/` (p1); vendored code open. **Tier:** P1.
+**Status:** done for Ristretto `src/` and `ext/` (PR #2); vendored code open. **Tier:** P1.
 
 Done 2026-10-09: process history ("used to", "TODO 6"), measurement tables and timings moved out of
 the comments into the commit messages, and what-comments dropped, in `src/reconstruction`,
@@ -146,7 +146,7 @@ One package extension per format. Known keys of the header map to DICOM tags, NI
 MRD image header fields; geometry provides the affine.
 
 ### 9. Simulation without the inverse crime
-**Status:** done (p1). **Tier:** P1.
+**Status:** done (PR #2). **Tier:** P1.
 
 Done 2026-10-09: `simulate_acquisition(phantom, acq; inverse_crime_check = true,
 keep_sensitivity_maps = false)` simulates on the phantom's grid and keeps the reconstruction
@@ -194,7 +194,7 @@ time-to-accuracy) and the hardware. Generated from the committed snapshot, so re
 ## Performance (fork branches)
 
 ### 11. SignAlternation fusion
-**Status:** done (p1). **Tier:** P1.
+**Status:** done (PR #2). **Tier:** P1.
 
 `SignAlternation` (FFTWOperators) had no `_pw_kind`, so it never joined the fused pointwise runs of
 `Compose` (`src/calculus/pointwise.jl`). It was 25–43 % of a dynamic low-rank solve in earlier
