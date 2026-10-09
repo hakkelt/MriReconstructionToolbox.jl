@@ -172,9 +172,11 @@ page (item 23), and what is not implemented becomes roadmap items. Then delete t
 ## User-facing features
 
 ### 7. Metadata header and result type
-**Status:** in progress (`p2`). Design reviewed 2026-10-09 (`docs/design/metadata.md`: one
-geometry per volume with spacing, an `offset` that slicing updates, `DecomposedImage` dropped);
-delete the note once 7 and 8 are implemented and documented. **Tier:** P2.
+**Status:** done on `p2` (2026-10-09), design in `docs/design/metadata.md`, which goes once item 8
+is done. `Header` is a dictionary whose known keys are typed fields; it is optional on
+`AcquisitionInfo`, shared by its copies, and filled from MRD by the MRIBase extension.
+`reconstruct` returns a `ReconImage` with its own copy; keyword slicing moves `offset`.
+`DecomposedImage` is gone: a `ReconImage` holds the components. **Tier:** P2.
 
 - `AcquisitionInfo` gets a header holding arbitrary key/value metadata.
 - `reconstruct` returns a type that is a subtype of `AbstractArray`, carrying geometry (FOV, voxel

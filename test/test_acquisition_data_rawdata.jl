@@ -6,9 +6,12 @@
     function make_profile(
             data::Matrix{ComplexF32}; step1 = 0, step2 = 0, slice = 0, contrast = 0, phase = 0,
             repetition = 0, set = 0, average = 0, discard_pre = 0, discard_post = 0, center_sample = 0,
+            position = (0, 0, 0), read_dir = (0, 0, 0), phase_dir = (0, 0, 0), slice_dir = (0, 0, 0),
         )
         ncoil = size(data, 2)
         head = AcquisitionHeader(;
+            position = Float32.(position), read_dir = Float32.(read_dir),
+            phase_dir = Float32.(phase_dir), slice_dir = Float32.(slice_dir),
             number_of_samples = UInt16(size(data, 1)),
             available_channels = UInt16(ncoil),
             active_channels = UInt16(ncoil),
@@ -50,14 +53,17 @@
         return Profile(head, traj, data)
     end
 
-    function make_raw(profiles; encoded_size, lim1, lim2 = Limit(0, 0, 0), trajectory = "cartesian")
-        params = Dict{String, Any}(
+    function make_raw(profiles; encoded_size, lim1, lim2 = Limit(0, 0, 0), trajectory = "cartesian", params...)
+        p = Dict{String, Any}(
             "encodedSize" => collect(encoded_size),
             "trajectory" => trajectory,
             "enc_lim_kspace_encoding_step_1" => lim1,
             "enc_lim_kspace_encoding_step_2" => lim2,
         )
-        return RawAcquisitionData(params, profiles)
+        for (k, v) in params
+            p[string(k)] = v
+        end
+        return RawAcquisitionData(p, profiles)
     end
 end
 
@@ -84,7 +90,7 @@ end
         info = AcquisitionInfo(raw)
         @test info isa CartesianAcquisitionInfo
         @test info.is3D == false
-        @test info.image_size == (10, 8)
+        @test Ristretto.image_size(info) == (10, 8)
         @test dimnames(info.kspace_data) == (:kx, :ky, :coil, :z)
         @test size(info.kspace_data) == (8, 6, ncoil, 2)
         @test info.subsampling == (3:10, 3:8)
@@ -105,7 +111,7 @@ end
         @test dimnames(info.kspace_data) == (:kx, :ky, :coil)
         @test size(info.kspace_data) == (4, 4, 1)
         @test isnothing(info.subsampling)
-        @test info.image_size == (4, 4)
+        @test Ristretto.image_size(info) == (4, 4)
         @test info.shifted_image_dims == (:x, :y)
     end
 
@@ -183,7 +189,7 @@ end
         @test info.is3D == true
         @test dimnames(info.kspace_data) == (:kx, :ky, :kz, :coil)
         @test size(info.kspace_data) == (4, 4, 3, 1)
-        @test info.image_size == (4, 4, 3)
+        @test Ristretto.image_size(info) == (4, 4, 3)
     end
 
     @testset "multi-slab 3D (is3D and slice both vary) is rejected, not silently dropped" begin
@@ -196,6 +202,47 @@ end
         )
         @test_throws ArgumentError AcquisitionInfo(raw)
     end
+end
+
+@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — header" tags = [:acquisition] setup = [RawAcqHelpers] begin
+    using Test
+    using Ristretto
+    using Ristretto: header
+    using MRIBase: Profile, Limit
+
+    # Two slices of a coronal-ish acquisition: read along -x, phase along z, slices along y (LPS),
+    # 6 mm apart; `position` is the centre of each slice.
+    read_dir, phase_dir, slice_dir = (-1, 0, 0), (0, 0, 1), (0, 1, 0)
+    profiles = Profile[
+        make_profile(
+            ones(ComplexF32, 8, 1); step1, slice, center_sample = 4,
+            position = (10, 20 + 6 * slice, 30), read_dir, phase_dir, slice_dir,
+        )
+            for slice in (0, 1) for step1 in 0:7
+    ]
+    raw = make_raw(
+        profiles; encoded_size = (8, 8, 1), lim1 = Limit(0, 7, 4),
+        encodedFOV = [160.0, 80.0, 3.0], TE = [4.5], TR = 300.0, flipAngle_deg = 15.0,
+        H1resonanceFrequency_Hz = 127_731_000,
+    )
+    h = header(AcquisitionInfo(raw))
+    @test h.fov == (160.0, 80.0)
+    @test h.spacing == (20.0, 10.0)
+    @test h.slice_thickness == 3.0
+    @test h.TE == 4.5 && h.TR == 300.0 && h.flip_angle == 15.0
+    @test h.field_strength ≈ 3.0 atol = 1.0e-3
+    @test h.orientation == [-1.0 0 0; 0 0 1; 0 1 0]
+    @test h.slice_spacing == 6.0
+    # The centre voxel (index n ÷ 2 + 1 = 5) of the first slice is at its `position`.
+    @test collect(h.offset) + h.orientation * ([4, 4, 0] .* [20.0, 10.0, 0]) ≈ [10, 20, 30]
+
+    # Without direction cosines the geometry is left unset.
+    raw0 = make_raw(
+        [make_profile(ones(ComplexF32, 4, 1); step1, center_sample = 2) for step1 in 0:3];
+        encoded_size = (4, 4, 1), lim1 = Limit(0, 3, 2),
+    )
+    h0 = header(AcquisitionInfo(raw0))
+    @test isnothing(h0.orientation) && isnothing(h0.offset) && isnothing(h0.fov)
 end
 
 @testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — object stays centred in the FOV" tags = [:acquisition, :reconstruction] setup = [RawAcqHelpers] begin
@@ -249,7 +296,7 @@ end
     info = AcquisitionInfo(raw)
     @test info isa NonCartesianAcquisitionInfo
     @test info.is3D == false
-    @test info.image_size == (8, 8)
+    @test Ristretto.image_size(info) == (8, 8)
     @test dimnames(info.trajectory) == (:coord, :sample, :readout)
     @test size(info.trajectory) == (2, nsamp, length(profiles))
     @test dimnames(info.kspace_data) == (:sample, :readout, :coil)
@@ -380,7 +427,7 @@ end
         info = AcquisitionInfo(raw)
         @test info isa CartesianAcquisitionInfo
         @test dimnames(info.kspace_data) == (:kx, :ky, :coil, :time)
-        @test info.image_size == (512, 208)
+        @test Ristretto.image_size(info) == (512, 208)
         @test size(info.kspace_data) == (404, 208, 15, 19)
         # Asymmetric-echo readout: only a contiguous block of the 512-sample encoded readout was
         # acquired, recentered via `head.center_sample` (148) rather than the naive `row + 1`.

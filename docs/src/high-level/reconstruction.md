@@ -33,6 +33,35 @@ x_direct = reconstruct(acq)
 println("Reconstructed image size: ", size(x_direct))
 ```
 
+## The result: `ReconImage`
+
+`reconstruct` returns a [`ReconImage`](@ref): the image (a `NamedDimsArray` inside when the
+k-space was named) with a copy of the acquisition's [`Header`](@ref). It behaves as the array it
+holds, and keyword indexing returns a `ReconImage` whose geometry describes the part selected:
+
+```@example recon
+using NamedDims
+using Ristretto: header, image_size
+
+ksp = NamedDimsArray{(:kx, :ky, :z)}(rand(ComplexF32, 64, 64, 3))
+acq = AcquisitionInfo(ksp; header = (; fov = (220, 220), slice_spacing = 5,
+    orientation = [1.0 0 0; 0 1 0; 0 0 1], offset = (-110, -110, 0)))
+img = reconstruct(acq)
+header(img[z = 2]).offset        # moved by one slice spacing
+```
+
+```@example recon
+crop = img[x = 17:48]
+image_size(crop), header(crop).fov
+```
+
+Tagging the image (`settag!(img, :reader, "A")`) never changes the acquisition. `Array(img)` is
+a plain array, and broadcasting acts on the image data and returns a plain array.
+
+```@docs
+ReconImage
+```
+
 ## Reconstruction Workflow
 
 ### 1. Direct Reconstruction (No Regularization)

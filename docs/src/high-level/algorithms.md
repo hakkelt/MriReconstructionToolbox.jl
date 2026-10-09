@@ -534,7 +534,7 @@ setup — which is what you want when comparing two algorithms on the same probl
 The callback payload always carries `iteration`, `x` and `elapsed_ns`, plus `slice` when the
 reconstruction was split into tasks. `x` is the current estimate already inverse-scaled and
 carrying its dimension names — the same units, shape and type as the value `reconstruct`
-returns, including a `DecomposedImage` on the `Component` path. The remaining fields depend on
+returns, including a `ReconImage` holding the components on the `Component` path (without the acquisition's header). The remaining fields depend on
 what the algorithm computes, and are *absent* rather than `nothing` when it computes nothing of
 the sort:
 

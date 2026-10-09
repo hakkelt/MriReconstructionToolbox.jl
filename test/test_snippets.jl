@@ -36,11 +36,14 @@ end
 @testmodule TestHelpers begin
     using Test: @test
     using LinearAlgebra: norm
+    using Ristretto: ReconImage
 
     export relative_error, test_type_stable
 
     relative_error(z, truth) = norm(z .- truth) / norm(truth)
+    # `reconstruct` returns a `ReconImage`; the type checked is that of the image it holds.
     test_type_stable(::Type{T}, value) where {T} = (@test typeof(value) == T; value)
+    test_type_stable(::Type{T}, value::ReconImage) where {T} = (@test typeof(parent(value)) == T; value)
 end
 
 @testmodule FiniteDiff begin

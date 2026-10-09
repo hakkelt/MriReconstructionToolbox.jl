@@ -15,7 +15,6 @@ underlying optimization model.
 
 ```@docs
 Component
-DecomposedImage
 components
 total_image
 ```
@@ -47,8 +46,8 @@ println(typeof(img))
 println("Components: ", keys(components(img)))
 ```
 
-The result is a `DecomposedImage`, which behaves as an `AbstractArray` equal
-to the sum of the components:
+The result is a [`ReconImage`](@ref) whose array is the sum of the components,
+which it also holds:
 
 ```@example imgdecomp
 using LinearAlgebra
@@ -64,21 +63,22 @@ img.components.smooth isa AbstractArray
 img.smooth isa AbstractArray
 ```
 
-The struct's own fields (`total`, `components`) always resolve first, so a
-component cannot be named `total` or `components` — `reconstruct` (via
-`Component`/`check_components`) and the `DecomposedImage` constructor both
-reject that collision, since such a component would otherwise be unreachable
-through dot access:
+Each component is itself a `ReconImage` with its own copy of the acquisition's
+[`header`](@ref Ristretto.header). The image's own properties (`data`, `header`,
+`components`) always resolve first, so a component cannot be named after one of
+them — `reconstruct` (via `Component`/`check_components`) and the `ReconImage`
+constructor both reject that collision, since such a component would otherwise
+be unreachable through dot access:
 
 ```@example imgdecomp
 try
-    Ristretto.DecomposedImage(zeros(2, 2), (total = zeros(2, 2),))
+    ReconImage(zeros(2, 2); components = (header = zeros(2, 2),))
 catch e
     println(e)
 end
 ```
 
-`propertynames(img)` lists both the real fields and every component name, and
+`propertynames(img)` lists both the image's own properties and every component name, and
 accessing an unknown property raises an `ArgumentError` naming the available
 ones:
 
@@ -91,8 +91,8 @@ catch e
 end
 ```
 
-To get a plain, mutable array of the sum (rather than the read-only
-`DecomposedImage`), use `Array`:
+To get a plain array of the sum, without the header and the components, use
+`Array`:
 
 ```@example imgdecomp
 x = Array(img)

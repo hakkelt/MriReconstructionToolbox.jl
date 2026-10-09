@@ -148,7 +148,7 @@ built-in pieces. Anything needed only to *extend* the package is `public` but no
 - the concrete members of each configuration family — coil combination, data fidelity, verbosity,
   scaling, executors, partial-Fourier filters, sampling patterns, preprocessing methods;
 - `AcquisitionInfo` (its two concrete subtypes are `public`, see Rule 6.2);
-- the top-level verbs, `ReconstructionConfig`, `Component`, `DecomposedImage`, `components`,
+- the top-level verbs, `ReconstructionConfig`, `Component`, `ReconImage`, `Header`, `components`,
   `total_image`, `TemporalBasis`, `KSpaceToImage`, `pseudo_replica`.
 
 `AcquisitionInfo` is exported despite being abstract because it is also a constructor: it dispatches

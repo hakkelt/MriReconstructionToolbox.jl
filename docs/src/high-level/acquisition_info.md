@@ -307,6 +307,49 @@ k-space):
   files, for instance) therefore arrive as one long `:readout` axis; split `raw.profiles` into
   frames yourself, one `AcquisitionInfo` per frame, if you want an image per frame.
 
+## Metadata header
+
+An acquisition carries a [`Header`](@ref) with its metadata: geometry, sequence parameters, and
+anything else you pass. It is optional and may be incomplete; with no `header` keyword the
+acquisition gets an empty one. The images `reconstruct` returns carry a copy of it (see
+[`ReconImage`](@ref)), and the export functions write it.
+
+```@example acqinfo
+using Ristretto: header, image_size
+
+acq = AcquisitionInfo(rand(ComplexF32, 64, 48); is3D = false,
+    header = (; fov = (240, 180), TE = 4.2, protocol = "t1_se"))
+settag!(acq, :subject, "s01")
+header(acq)
+```
+
+The keys Ristretto knows (`fov`, `spacing`, `slice_spacing`, `slice_thickness`, `orientation`,
+`offset`, `TE`, `TR`, `TI`, `flip_angle`, `field_strength`) are checked and converted when set,
+and read as properties that are `nothing` when unset (`header(acq).TR`). Any other key is kept as
+given. When `fov`, `spacing` and the image size disagree you get a warning, not an error, since a
+scanner's field of view may describe the oversampled grid.
+
+A `Header` you pass is stored as given, not copied, and copies made with `AcquisitionInfo(acq;
+...)` or by preprocessing share it: they describe the same scan.
+
+**Coordinates.** Lengths are in mm, times in ms, angles in degrees and the field in T. Positions
+are in the patient coordinate system **LPS** (x towards the patient's left, y posterior, z
+superior), as MRD and DICOM store them; the NIfTI export converts to RAS. `orientation` is a 3×3
+matrix whose columns are the directions of the image axes x, y and z, `offset` the centre of the
+first voxel, and voxel `i` lies at `offset + orientation * ((i .- 1) .* spacing)`. For a
+multi-slice 2D acquisition, slice `k` is shifted by `(k - 1) * slice_spacing` along
+`orientation[:, 3]`. [`AcquisitionInfo(raw::RawAcquisitionData)`](#Building-from-raw-ISMRMRD-data-(MRIBase.RawAcquisitionData))
+fills all of these from the MRD header and profiles.
+
+```@docs
+Header
+Ristretto.header
+Ristretto.image_size
+settag!
+gettag
+tags
+```
+
 ## Validation Rules
 
 `AcquisitionInfo` performs comprehensive validation to ensure configuration consistency.
