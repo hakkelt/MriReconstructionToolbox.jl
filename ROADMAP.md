@@ -17,7 +17,7 @@ apply throughout; in particular, changes to vendored packages go on fork branche
 | **P1 — now** | 5 (rename), 9, 2, 11, 1 (measurement + quick wins), 3 |
 | **P2 — documentation** | 10, 23, 6, 4, 7 + 8 |
 | **P3 — strengthens the paper** | 19, 20 (Python wrapper), 22 |
-| **Deferred** | 12, 13, 14, 15, rest of 1, 16, 17, 18, 24, 25, 26, 27, 28 |
+| **Deferred** | 12, 13, 14, 15, rest of 1, 16, 17, 18, 24, 25, 26, 27, 28, 29 |
 
 Ordering constraints: 5 before 4, 10 and 20 (a rename touches all of them); 9 and 7 before 10
 (notebooks are rewritten only once); 9 before 22 (simulated benchmark cases change); 7 before 8;
@@ -125,6 +125,21 @@ extensions, repository, docs, notebooks, benchmarks, `AGENTS.md`/`NAMING.md`.
   of the forks that are not registered, while upstream review is slow.
 - Each fork deploys its Documenter docs from its `integration` branch to GitHub Pages (none has
   Pages enabled as of 2026-10-08), and Ristretto's docs and notebooks link there.
+
+### 29. Faster test suite
+**Status:** todo. **Tier:** Deferred.
+
+The full suite takes about 25 minutes on CI and on the login node. Find where the time goes
+(per-item durations from the TestItems runner) and cut it without losing coverage:
+- smaller inputs where the size does not matter to what is checked;
+- duplicated checks, e.g. the same property tested in several items or on several equivalent
+  configurations;
+- checks that no longer guard anything (superseded behaviour, or covered by a cheaper test);
+- shared fixtures built once in a `@testmodule` instead of in every item;
+- compilation: items that pay for a large, unique set of method instances.
+
+Report the per-item time before and after, and keep the slow, high-value cases (real data,
+integration) behind a tag if they cannot be shrunk.
 
 ## User-facing features
 
