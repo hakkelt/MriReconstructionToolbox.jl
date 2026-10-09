@@ -248,7 +248,7 @@ end
 function execute_single_slice(f::Function, idx, id, local_acq, config; kwargs...)
     v = config.verbosity
     # A slice keeps the solver's own periodic output (prefixed with the slice id) but not the
-    # phase log; `freq = 0` is the "final summary only" default this path has always used.
+    # phase log; `freq = 0` is the "final summary only" default.
     freq = v isa Verbose && !isnothing(v.freq) ? v.freq : 0
     local_conf = ReconstructionConfig(
         config;
