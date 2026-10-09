@@ -199,6 +199,7 @@ works, since noise is well defined per frame.
 
 ```@docs
 Ristretto.CartesianAcquisitionInfo
+Ristretto.NonCartesianAcquisitionInfo
 PartitionedKSpace
 Ristretto.is_partitioned
 ```

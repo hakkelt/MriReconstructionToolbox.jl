@@ -109,7 +109,13 @@ savefig("coil_sensitivity_maps.png"); nothing # hide
 
 ## Subsampling Patterns
 
-Subsampling patterns determine which k-space locations are measured.
+Subsampling patterns determine which k-space locations are measured. Each strategy below is a
+`Subsampling` object; `create_sampling_pattern` draws one realisation of it.
+
+```@docs
+create_sampling_pattern
+to_displayable_mask
+```
 
 ### Uniform Cartesian Sampling
 

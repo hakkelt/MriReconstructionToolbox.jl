@@ -1,3 +1,5 @@
+const FFT_PLANNING_MODES = (:auto, :estimate, :measure)
+
 """
     ReconstructionConfig(; kwargs...)
 
@@ -62,8 +64,6 @@ conf2 = ReconstructionConfig(conf; disable_task_splitting = true)
 x̂ = reconstruct(acq, IterativeReconstruction(reg; maxit = 50, reltol = 1e-6); config = conf2)
 ```
 """
-const FFT_PLANNING_MODES = (:auto, :estimate, :measure)
-
 struct ReconstructionConfig
     scaling::Scaling
     verbosity::Verbosity
