@@ -369,6 +369,49 @@ println("k-space on the 128² grid from a 202² phantom: ", size(data_fine.kspac
 println("sensitivity maps returned: ", data_fine.sensitivity_maps)
 
 # %% [markdown]
+# #### The ground truth for error measures
+#
+# A reconstruction lives on the 128² grid, so its error is measured against a 128² image, and
+# that image has to describe the same object the data were simulated from. The fine phantom
+# cannot be used directly (wrong size), and neither can the point-sampled 128² phantom `x` of the
+# cells above: it is the image the crime-committing data were simulated from, not the object the
+# fine phantom describes. The truth is the same phantom, with the same field of view and
+# intensities, area-sampled on the reconstruction grid — each voxel the mean of the object over
+# its area, which is what a voxel of an ideal measurement holds.
+#
+# Both halves have to change together. Below, the same TV reconstruction is scored three ways:
+# the crime (data and truth from one 128² image) is optimistic, a fine-phantom reconstruction
+# scored against the point-sampled image is pessimistic, and only the fine phantom paired with
+# the area-sampled truth gives a figure that carries over to measured data. (The coil maps are
+# kept here to isolate the phantom's effect; a fully honest simulation estimates them too.)
+
+# %%
+x_truth = create_shepp_logan_phantom(
+    nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32, supersample = 4
+)
+data_fine_maps = simulate_acquisition(x_fine, acq_fine; keep_sensitivity_maps = true)
+
+tv = IterativeReconstruction(TotalVariation2D(1.0f-3); maxit = 60)
+x_rec_crime = reconstruct(data, tv; verbosity = Silent())
+x_rec_fine = reconstruct(data_fine_maps, tv; verbosity = Silent())
+
+for (label, x̂, truth) in (
+        ("128² data, point-sampled truth (inverse crime)", x_rec_crime, x),
+        ("202² data, point-sampled truth (mismatched)  ", x_rec_fine, x),
+        ("202² data, area-sampled truth                ", x_rec_fine, x_truth),
+    )
+    println(label, ": NRMSE = ", round(100 * nrmse(x̂, truth); digits = 1), " %")
+end
+
+# %%
+# Errors of the same reconstruction, on one colour scale: against the point-sampled image every
+# edge shows up as error, although the reconstruction is not wrong there.
+side_by_side(
+    abs.(abs.(x_rec_fine) .- abs.(x_truth)), abs.(abs.(x_rec_fine) .- abs.(x));
+    titles = ("error vs area-sampled truth", "error vs point-sampled x")
+)
+
+# %% [markdown]
 # ## 7. Noise and SNR
 #
 # "SNR" names several different numbers in MRI, and two images of the same object can be quoted at
