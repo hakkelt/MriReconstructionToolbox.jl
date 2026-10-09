@@ -85,6 +85,12 @@ branch = "chore/drop-nfft3"
 parent = ""
 pr = "hakkelt/NFFT.jl#2"
 
+# Nothing in the package uses Distributed; loading it costs every dependent about 400 ms.
+[[NFFT.stack]]
+branch = "chore/drop-distributed"
+parent = ""
+pr = "hakkelt/NFFT.jl#3"
+
 [AbstractOperators]
 fork = "https://github.com/hakkelt/AbstractOperators.jl.git"
 upstream = "https://github.com/kul-optec/AbstractOperators.jl.git"
