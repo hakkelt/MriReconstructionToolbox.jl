@@ -386,11 +386,12 @@ function check(packages; fetch::Bool = true)
         end
         # A branch on the fork that no entry names is work that will never reach `deps/`: either
         # it is finished and belongs in the manifest, or it is dead and belongs deleted. The
-        # fork's own copy of the upstream default branch and the generated `integration` branch
-        # are not stack entries and are expected to be there.
+        # fork's own copy of the upstream default branch, the generated `integration` branch and
+        # the documentation deployed from it (`gh-pages`) are not stack entries and are expected
+        # to be there.
         if remote_branches !== nothing
             declared = Set(b.name for b in pkg.stack)
-            expected = Set(["integration", "master", "main", last(split(pkg.base, '/'))])
+            expected = Set(["integration", "gh-pages", "master", "main", last(split(pkg.base, '/'))])
             extra = sort([b for b in remote_branches if !(b in declared) && !(b in expected)])
             if !isempty(extra)
                 println("  fork branches no manifest entry refers to: ", join(extra, ", "))
