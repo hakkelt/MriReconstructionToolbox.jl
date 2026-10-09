@@ -43,7 +43,7 @@ TSVD = "9449cd9e-2762-5aa3-a617-5413e99d722e"
 Wavelets = "29a6e085-ba6d-5f35-a997-948ac2efa89a"
 
 [sources]
-ProgressMeter = {url = "https://github.com/timholy/ProgressMeter.jl", rev = "master"}
+ProgressMeter = {url = "https://github.com/timholy/ProgressMeter.jl", rev = "86a17f925dc281495cca073dba03b96581fede7e"}
 
 [weakdeps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
