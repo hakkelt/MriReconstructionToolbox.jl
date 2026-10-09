@@ -120,7 +120,9 @@ rename by deleting the old name, never by deprecating it (`AGENTS.md`): module, 
 extensions, repository, docs, notebooks, benchmarks, `AGENTS.md`/`NAMING.md`.
 
 ### 6. Fork documentation and vendoring notes
-**Status:** todo. **Tier:** P2.
+**Status:** in progress (`p2`). Pages notes added; each fork's stack has `docs/fork-pages`
+(AbstractOperators #55, ProximalOperators #21, ProximalAlgorithms #18, StructuredOptimization #8),
+which deploys `integration` to the fork's GitHub Pages as `dev`. **Tier:** P2.
 
 - Pages presenting a vendored package (`docs/src/low-level/abstract_operators.md`,
   `proximal_operators.md`, `custom_reconstruction.md`, ...) warn that it must be imported through
@@ -130,7 +132,9 @@ extensions, repository, docs, notebooks, benchmarks, `AGENTS.md`/`NAMING.md`.
   Pages enabled as of 2026-10-08), and Ristretto's docs and notebooks link there.
 
 ### 29. Faster test suite
-**Status:** todo. **Tier:** P2.
+**Status:** in progress (`p2`). Baseline 2026-10-09: CI test job 22 min with coverage; locally 214
+items, 3567 s summed (20 min wall on 4 workers), the slowest "Regularization terms in
+reconstruction" at 424 s. **Tier:** P2.
 
 The full suite takes about 25 minutes on CI and on the login node. Find where the time goes
 (per-item durations from the TestItems runner) and cut it without losing coverage:
@@ -145,7 +149,9 @@ Report the per-item time before and after, and keep the slow, high-value cases (
 integration) behind a tag if they cannot be shrunk.
 
 ### 30. Re-run the examples
-**Status:** todo. **Tier:** P2.
+**Status:** in progress (`p2`). 2026-10-09: 21 of 26 default examples ok; the large mridata.org
+set is queued on the cluster; one CMRxRecon mapping set and four fastMRI sources wait for
+credentials. **Tier:** P2.
 
 Run every `examples/` script (`examples/run_all.jl`; the large datasets in one SLURM job) against
 the current package, fix what broke in `ext/RistrettoMRIBaseExt.jl`, preprocessing or `src/`
