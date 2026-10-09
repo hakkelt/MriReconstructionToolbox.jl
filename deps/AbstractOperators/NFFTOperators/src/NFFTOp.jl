@@ -270,9 +270,11 @@ with_nfft_threading(f::F, threaded::Bool) where {F} =
     threaded ? with_full_threads(f) : with_restricted_threads(f)
 
 
-# The number of images in the stack, and of frames among them.
-_nframes(op::NFFTOp) = prod(op.dim_in[(end - op.nframe + 1):end]; init = 1)
-_nimages(op::NFFTOp) = prod(op.dim_in; init = 1) ÷ prod(op.dim_in[op.dims])
+# The number of images in the stack, and of frames among them, and the size of one image. A
+# tuple indexed by a range has no inferable length, so the sizes are gathered element by element.
+_nframes(op::NFFTOp{T, D, N}) where {T, D, N} = prod(i -> op.dim_in[i], (N - op.nframe + 1):N; init = 1)
+_nimages(op::NFFTOp) = prod(op.dim_in; init = 1) ÷ prod(i -> op.dim_in[i], op.dims; init = 1)
+_image_size(op::NFFTOp{T, D}) where {T, D} = ntuple(i -> op.dim_in[first(op.dims) + i - 1], Val(D))
 
 # The axis order of the transform's own layout, `(image, inner..., outer...)`, in the input, and
 # that of the output in the transform's `(samples, inner..., outer...)`.
@@ -352,7 +354,7 @@ function _each_image(f::F, op::NFFTOp{T, D, N, M, P, K}, ksp, img) where {F, T, 
         f(op.plan, ksp, img)
         return nothing
     end
-    image_size = op.dim_in[op.dims]
+    image_size = _image_size(op)
     nf = _nframes(op)
     nb = _nimages(op) ÷ nf
     if nb * nf == 1

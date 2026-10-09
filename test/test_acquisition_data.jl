@@ -346,7 +346,7 @@ end
             AcquisitionInfo(;
                 is3D = false, image_size = (nx, ny), subsampling = pattern,
                 sensitivity_maps = coil_sensitivities(nx, ny, nc),
-            )
+            ); inverse_crime_check = false, keep_sensitivity_maps = true
         )
         @test check_applicable(GRAPPA(), data) === nothing
     end

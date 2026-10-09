@@ -164,19 +164,16 @@ function _reconstruct(
         end
     end
 
-    # Direct reconstruction / estimate
     x̂, scale, direct_prior = _direct_reconstruct(𝒜, acq_data, x₀, method, config; scale_override)
     prior = something(prior, direct_prior)
 
     if method isa DirectMethod
-        # No regularization, return direct reconstruction
         if scale != 1 && config.disable_inverse_scale_output
             @step "Scaling image" config begin
                 x̂ ./= scale
             end
         end
     elseif method isa IterativeReconstruction
-        # Iterative reconstruction with regularization
         bound_regs = bind_dimensions(method.regularization, get_image_dims(acq_data))
         preconditioner = _chambolle_pock_preconditioner(method, acq_data; density_weights)
         build = (𝒜, y; x₀) -> build_model_with_variables(

@@ -48,6 +48,7 @@ end
     using Ristretto
     using Ristretto: get_encoding_operator
     using Ristretto.AbstractOperators
+    using Ristretto.StructuredOptimization
 
     @testset "Linear op + L2Image" for threaded in (false, true)
         x = rand(8, 8)
@@ -147,7 +148,7 @@ end
     mask = rand(Bool, nx, ny)
     mask[1, 1] = true
     acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny), subsampling = mask)
-    acq_data = simulate_acquisition(x, acq)
+    acq_data = simulate_acquisition(x, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
     𝒜 = unname(get_encoding_operator(acq_data))
     y = acq_data.kspace_data
 
@@ -180,7 +181,7 @@ end
     x_true = zeros(ComplexF32, nx, ny)
     x_true[4:8, 4:8] .= 1.0f0 + 0.5f0im
     acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny))
-    acq_data = simulate_acquisition(x_true, acq)
+    acq_data = simulate_acquisition(x_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     method = IterativeReconstruction(
         L1Image(1.0e-6);
@@ -201,7 +202,7 @@ end
     nx, ny = 16, 16
     x_true = rand(ComplexF32, nx, ny)
     acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny))
-    acq_data = simulate_acquisition(x_true, acq)
+    acq_data = simulate_acquisition(x_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     method = IterativeReconstruction(;
         algorithm = CGNR(maxit = 20, tol = 1.0e-6),
@@ -227,7 +228,7 @@ end
     mask = rand(nx, ny) .< 0.5
     mask[:, (ny ÷ 2 - 2):(ny ÷ 2 + 3)] .= true
     acq = CartesianAcquisitionInfo(; is3D = false, image_size = (nx, ny), subsampling = mask, sensitivity_maps = smaps)
-    data = simulate_acquisition(img, acq)
+    data = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     reg = TotalVariation2D(1.0e-2)
     admm = IterativeReconstruction(reg; algorithm = ADMM(rho = 0.05, maxit = 1000, tol = 0.0, cg_tol = 0.0, cg_maxit = 10), maxit = 1000, reltol = 0.0)
@@ -255,7 +256,7 @@ end
     mask = rand(nx, ny) .< 0.5
     mask[:, (ny ÷ 2 - 2):(ny ÷ 2 + 3)] .= true
     acq = CartesianAcquisitionInfo(; is3D = false, image_size = (nx, ny), subsampling = mask, sensitivity_maps = smaps)
-    data = simulate_acquisition(img, acq)
+    data = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     reg = TotalVariation2D(1.0e-2)
     admm = IterativeReconstruction(reg; algorithm = ADMM(rho = 0.05, maxit = 1000, tol = 0.0, cg_tol = 0.0, cg_maxit = 10), maxit = 1000, reltol = 0.0)
@@ -279,7 +280,7 @@ end
     traj = radial_trajectory(64, 24; ordering = GoldenAngle())
     smaps = coil_sensitivities(nx, ny, 4)
     acq = NonCartesianAcquisitionInfo(nothing; trajectory = traj, image_size = (nx, ny), sensitivity_maps = smaps)
-    data = simulate_acquisition(img, acq)
+    data = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     reg = AnisotropicTotalVariation2D(1.0e-3)
     ref = IterativeReconstruction(reg; algorithm = VuCondat(maxit = 6000, tol = 0.0), maxit = 6000, reltol = 0.0)
@@ -310,7 +311,7 @@ end
     acq_t = NonCartesianAcquisitionInfo(
         zeros(ComplexF32, 64, 24, 4, nt); trajectory = Float32.(traj_t), image_size = (nx, ny), sensitivity_maps = smaps,
     )
-    data_t = simulate_acquisition(stack(fill(img, nt)), acq_t)
+    data_t = simulate_acquisition(stack(fill(img, nt)), acq_t; inverse_crime_check = false, keep_sensitivity_maps = true)
     x_ref_t = reconstruct(data_t, ref; verbosity = Silent(), disable_task_splitting = true)
     x_cp_t = reconstruct(data_t, cp; verbosity = Silent(), disable_task_splitting = true)
     @test norm(x_cp_t - x_ref_t) / norm(x_ref_t) < 1.0e-2
@@ -334,7 +335,7 @@ end
     mask = rand(nx, ny) .< 0.5
     mask[:, (ny ÷ 2 - 2):(ny ÷ 2 + 3)] .= true
     acq = CartesianAcquisitionInfo(; is3D = false, image_size = (nx, ny), subsampling = mask, sensitivity_maps = smaps)
-    data = simulate_acquisition(img, acq)
+    data = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     # Huber with a small threshold: a smooth problem, but not a quadratic one.
     reg = EdgePreservingRoughness2D(1.0e-2; δ = 0.01)
@@ -364,7 +365,7 @@ end
     traj = radial_trajectory(64, 64; ordering = GoldenAngle())
     smaps = coil_sensitivities(nx, ny, 4)
     acq = NonCartesianAcquisitionInfo(nothing; trajectory = traj, image_size = (nx, ny), sensitivity_maps = smaps)
-    data = simulate_acquisition(img, acq)
+    data = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     𝒜 = get_encoding_operator(data)
     nrmse(rec) = norm(rec .- img) / norm(img)
@@ -388,7 +389,7 @@ end
     x_true = zeros(ComplexF32, nx, ny)
     x_true[10:22, 10:22] .= 1
     acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny))
-    acq_data = simulate_acquisition(x_true, acq)
+    acq_data = simulate_acquisition(x_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     reg = L1Image(1.0e-3)
     fista_rec = reconstruct(
@@ -417,7 +418,7 @@ end
     x_true = zeros(ComplexF32, nx, ny)
     x_true[10:22, 10:22] .= 1
     acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny))
-    acq_data = simulate_acquisition(x_true, acq)
+    acq_data = simulate_acquisition(x_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     reg = L1Image(1.0e-3)
     L = estimate_opnorm(get_encoding_operator(acq_data))
@@ -456,7 +457,7 @@ end
     nx, ny = 8, 8
     x = rand(ComplexF32, nx, ny)
     acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny))
-    acq_data = simulate_acquisition(x, acq)
+    acq_data = simulate_acquisition(x, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
     𝒜 = get_encoding_operator(acq_data)
     y = acq_data.kspace_data
 
@@ -473,7 +474,7 @@ end
     nx, ny = 16, 16
     x = rand(ComplexF32, nx, ny)
     acq = CartesianAcquisitionInfo(is3D = false, image_size = (nx, ny))
-    acq_data = simulate_acquisition(x, acq)
+    acq_data = simulate_acquisition(x, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     # Incompatible single solver (DouglasRachford with L2Loss and 2 L1 terms) throws informative ArgumentError
     method = IterativeReconstruction(L1Image(0.1), L1Image(0.2); algorithm = DouglasRachford(), fidelity = L2Loss())
@@ -541,7 +542,7 @@ end
         acq = CartesianAcquisitionInfo(
             is3D = false, image_size = (nx, ny), sensitivity_maps = smaps, subsampling = sub
         )
-        data = simulate_acquisition(x_true, acq)
+        data = simulate_acquisition(x_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
         λ = 1.0f-3
         coverage = real(sum(abs2, smaps; dims = 3)[:, :, 1])
@@ -610,14 +611,14 @@ end
     using Ristretto: _encoding_opnorm, LF_REL_MARGIN
     function encoding(T, traj, dcf)
         acq = AcquisitionInfo(; trajectory = T.(traj), image_size = (nx, ny), sensitivity_maps = Complex{T}.(maps))
-        data = simulate_acquisition(zeros(Complex{T}, nx, ny), acq)
+        data = simulate_acquisition(zeros(Complex{T}, nx, ny), acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         dcf && (data = density_compensation(data))
         return get_encoding_operator(data; threaded = false)
     end
     for traj in (radial_trajectory(64, 40), spiral_trajectory(600, 6; nturns = 4)), dcf in (false, true)
-        E = encoding(Float32, traj, dcf)
+        local E = encoding(Float32, traj, dcf)
         @test !isfinite(AbstractOperators.opnorm_bound(E))
-        truth = AbstractOperators.powerit(encoding(Float64, traj, dcf); maxit = 2000, rel_margin = 1.0e-12)
+        local truth = AbstractOperators.powerit(encoding(Float64, traj, dcf); maxit = 2000, rel_margin = 1.0e-12)
         v = _encoding_opnorm(E)
         @test truth * (1 - 1.0e-5) <= v <= truth * (1 + OPNORM_REL_MARGIN)
         @test v < AbstractOperators.estimate_opnorm(E; rel_margin = OPNORM_REL_MARGIN)
@@ -680,7 +681,7 @@ end
     traj = radial_trajectory(64, 32; ordering = GoldenAngle())
     smaps = coil_sensitivities(nx, ny, 4)
     acq = NonCartesianAcquisitionInfo(nothing; trajectory = traj, image_size = (nx, ny), sensitivity_maps = smaps)
-    data = simulate_acquisition(img, acq)
+    data = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
     c = 1.0f3
     scaled_data = NonCartesianAcquisitionInfo(
         data.kspace_data .* c; trajectory = traj, image_size = (nx, ny), sensitivity_maps = smaps .* c

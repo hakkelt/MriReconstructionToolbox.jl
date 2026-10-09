@@ -63,7 +63,7 @@ acq_pi = add_noise(
         img_pi,
         AcquisitionInfo(;
             is3D = false, image_size = (Nx, Ny), subsampling = (:, mask_pi), sensitivity_maps = sens
-        )
+        ); keep_sensitivity_maps = true
     );
     snr_db = 30
 )
@@ -96,7 +96,7 @@ acq_us = AcquisitionInfo(;
         VariableDensitySampling(PolynomialDistribution(3), 4.0, 0.05), (Nx, Ny)
     ),
 )
-data_clean = simulate_acquisition(img_pi, acq_us)
+data_clean = simulate_acquisition(img_pi, acq_us; keep_sensitivity_maps = true)
 data_us = add_noise(data_clean; snr_db = 30)
 
 x_l2 = reconstruct(data_clean, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40))
@@ -245,10 +245,10 @@ TE = collect(range(10, 240; length = nt))     # ms
 
 echo_intensities = [
     TubesIntensities(;
-            outer_cylinder = cylinder_M0 * exp(-te / cylinder_T2),
-            tube_wall = 0.0,
-            tube_fillings = tube_M0 .* exp.(-te ./ tube_T2),
-        ) for te in TE
+        outer_cylinder = cylinder_M0 * exp(-te / cylinder_T2),
+        tube_wall = 0.0,
+        tube_fillings = tube_M0 .* exp.(-te ./ tube_T2),
+    ) for te in TE
 ]
 series = NamedDimsArray{(:x, :y, :time)}(
     create_tubes_phantom(n, n, :axial; ti = echo_intensities, eltype = ComplexF32)
@@ -370,7 +370,7 @@ println("acceleration: ", round(n / sum(mask_dyn), digits = 2), "×")
 acq_dyn = AcquisitionInfo(;
     is3D = false, image_size = (n, n), sensitivity_maps = smaps_dyn, subsampling = (:, mask_dyn)
 )
-data_dyn = add_noise(simulate_acquisition(series, acq_dyn); snr_db = 25)
+data_dyn = add_noise(simulate_acquisition(series, acq_dyn; keep_sensitivity_maps = true); snr_db = 25)
 println("k-space: ", size(data_dyn.kspace_data), " ", dimnames(data_dyn.kspace_data))
 
 # %%
@@ -549,7 +549,7 @@ acq_cl_maps = add_noise(
         img_pi,
         AcquisitionInfo(;
             is3D = false, image_size = (Nx, Ny), subsampling = mask_cl, sensitivity_maps = sens
-        )
+        ); keep_sensitivity_maps = true
     );
     snr_db = 30
 )

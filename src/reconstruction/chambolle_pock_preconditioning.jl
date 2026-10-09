@@ -71,9 +71,9 @@ end
 
 # `w`, laid out like the trajectory's sample and frame axes, in `y`'s storage and reshaped to
 # broadcast against `y`: the sample axes lead `y`, the frame axes end it, and the axes between them
-# (coils, slabs) have size one.
-function _broadcast_weights(y, w)
-    nframe = _frame_dims_count(size(w), size(y))
+# (coils, slabs) have size one. `nframe`, the number of frame axes, is read from the sizes unless
+# the caller knows it.
+function _broadcast_weights(y, w, nframe::Int = _frame_dims_count(size(w), size(y)))
     nsample = ndims(w) - nframe
     shift = ndims(y) - ndims(w)
     shape = ntuple(d -> d <= nsample ? size(w, d) : d > ndims(y) - nframe ? size(w, d - shift) : 1, ndims(y))

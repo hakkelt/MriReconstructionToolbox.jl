@@ -40,6 +40,7 @@ using RecursiveArrayTools: ArrayPartition
 using FFTW: FFTW, fft, ifft, fftshift, ifftshift
 using FastBroadcast: @..
 import Scratch
+import PrecompileTools
 using ArgCheck: @argcheck
 import Adapt
 using Printf: @sprintf
@@ -234,5 +235,7 @@ function __init__()
     atexit(_save_fftw_wisdom)
     return nothing
 end
+
+include("precompile.jl")
 
 end # module Ristretto

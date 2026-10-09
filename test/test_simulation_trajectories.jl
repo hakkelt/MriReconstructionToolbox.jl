@@ -117,7 +117,7 @@ end
         @test_throws ArgumentError estimate_snr(image; signal_box = (8, 8, 8))
         # `snr` is image-domain, so it is rejected on an acquisition's k-space.
         acq = AcquisitionInfo(; is3D = false, image_size = (16, 16))
-        data = simulate_acquisition(image[1:16, 1:16], acq)
+        data = simulate_acquisition(image[1:16, 1:16], acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         @test_throws ArgumentError add_noise(data; snr = 20)
     end
 end
@@ -214,7 +214,7 @@ end
         img = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
         traj = radial_trajectory(72, 150; ordering = GoldenAngle())
         acq = AcquisitionInfo(; trajectory = traj, image_size = (nx, ny))
-        data = simulate_acquisition(img, acq)
+        data = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         @test size(data.kspace_data) == (72, 150)
         acq_dcf = density_compensation(data; method = PipeMenonDCF(maxit = 15))
         rec = reconstruct(acq_dcf; verbosity = Silent())
@@ -277,7 +277,7 @@ end
         img = create_shepp_logan_phantom(nx, ny, nz; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
         traj = kooshball_trajectory(32, 2000)
         acq = AcquisitionInfo(; trajectory = traj, image_size = (nx, ny, nz))
-        data = simulate_acquisition(img, acq)
+        data = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         @test size(data.kspace_data) == (32, 2000)
         acq_dcf = density_compensation(data; method = PipeMenonDCF(maxit = 10))
         rec = reconstruct(acq_dcf; verbosity = Silent())
@@ -327,7 +327,7 @@ end
         img = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
         traj = spiral_trajectory(1024, 6; nturns = 12)
         acq = AcquisitionInfo(; trajectory = traj, image_size = (nx, ny))
-        data = simulate_acquisition(img, acq)
+        data = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         acq_dcf = density_compensation(data; method = PipeMenonDCF(maxit = 15))
         rec = reconstruct(acq_dcf; verbosity = Silent())
 
@@ -394,7 +394,7 @@ end
     @testset "simulate_acquisition through a 4D trajectory layout" begin
         img = rand(ComplexF32, 12, 12, 12)
         acq = AcquisitionInfo(; trajectory = floret_trajectory(32, 30), image_size = (12, 12, 12))
-        @test size(simulate_acquisition(img, acq).kspace_data) == (32, 30, 3)
+        @test size(simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true).kspace_data) == (32, 30, 3)
     end
 end
 
@@ -476,7 +476,7 @@ end
         @test acq.subsampling === pf_pattern
 
         img = rand(ComplexF32, nx, ny)
-        data = simulate_acquisition(img, acq)
+        data = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         @test size(data.kspace_data) == (nx, round(Int, 0.65 * ny))
         rec = reconstruct(data, DirectReconstruction(); verbosity = Silent())
         @test size(rec) == (nx, ny)
@@ -491,7 +491,7 @@ end
         acq = AcquisitionInfo(nothing; is3D = false, image_size = (nx, ny), subsampling = grappa_pattern)
 
         img = rand(ComplexF32, nx, ny)
-        data = simulate_acquisition(img, acq)
+        data = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         @test size(data.kspace_data) == (nx, length(grappa_lines))
         rec = reconstruct(data, DirectReconstruction(); verbosity = Silent())
         @test size(rec) == (nx, ny)

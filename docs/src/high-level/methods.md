@@ -142,7 +142,7 @@ Either way the correction is skipped (keeping the bare adjoint) only when
 ADMM has no step size, but its penalty $\rho$ plays the same part: the $x$-update solves
 $(\mathcal{A}^*\mathcal{A} + \rho B^*B)\,x = \dots$, so $\rho$ only means something next to
 $\|\mathcal{A}\|^2$. That is about 1 for a Cartesian encoding and about $2\cdot10^6$ for a radial
-NFFT one, so a `rho` given to [`ADMM`](@ref) is taken **relative to** $\|\mathcal{A}\|^2$ and
+NFFT one, so a `rho` given to [`ADMM`](@ref "Alternating Direction Method of Multipliers (ADMM)") is taken **relative to** $\|\mathcal{A}\|^2$ and
 multiplied by it (the Rayleigh quotient above, or $L^2$ where $L$ was estimated); the initial
 `rho` of a `penalty_sequence` is treated the same way. An absolute penalty tuned on Cartesian data
 is seven orders of magnitude too small for radial data: $\rho/\|\mathcal{A}\|^2$ falls below

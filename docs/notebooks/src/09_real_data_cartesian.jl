@@ -359,8 +359,10 @@ for (label, maps) in (
         ("SelfCalibrating", maps_selfcal), ("AdaptiveCombine", maps_adaptive), ("ESPIRiT", maps_espirit),
     )
     x̂ = reconstruct(AcquisitionInfo(acq_white; sensitivity_maps = maps))
-    println(rpad(label, 18), " direct reconstruction, background level ",
-        round(mean(abs.(unname(x̂))[1:12, 1:12]), sigdigits = 3))
+    println(
+        rpad(label, 18), " direct reconstruction, background level ",
+        round(mean(abs.(unname(x̂))[1:12, 1:12]), sigdigits = 3)
+    )
 end
 
 # %% [markdown]
@@ -378,8 +380,10 @@ acq_norm = normalize_sensitivity_maps(acq_espirit)
 for (label, maps) in (("estimated", maps_espirit), ("normalized", acq_norm.sensitivity_maps))
     sos = dropdims(sum(abs2, unname(maps); dims = 3), dims = 3)
     inside = sos[sos .> 1.0e-3 * maximum(sos)]
-    println(rpad(label, 12), " sum_c |S_c|^2 over the object: ",
-        round.(extrema(inside), sigdigits = 4))
+    println(
+        rpad(label, 12), " sum_c |S_c|^2 over the object: ",
+        round.(extrema(inside), sigdigits = 4)
+    )
 end
 
 # %% [markdown]

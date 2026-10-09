@@ -12,7 +12,7 @@
         NamedDimsArray{(:kx, :ky)}(zeros(ComplexF32, Nx, Ny));
         is3D = false,
     )
-    acq_sim = simulate_acquisition(img, acq)
+    acq_sim = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     # 1. Validation tests
     @test_throws ArgumentError pseudo_replica(acq_sim; replicas = 1)
@@ -66,7 +66,7 @@ end
         NamedDimsArray{(:kx, :ky, :time)}(zeros(ComplexF32, Nx, Ny, Nt));
         is3D = false,
     )
-    acq_sim = simulate_acquisition(img_series, acq)
+    acq_sim = simulate_acquisition(img_series, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     # Reconstruct with subspace model
     method_subspace = IterativeReconstruction(;

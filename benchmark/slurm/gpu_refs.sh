@@ -14,8 +14,6 @@
 #   comparison [run_all.jl args...]   Ristretto's rows of the comparison suite on CUDA (the suite runs
 #                                     with --frameworks=Ristretto, one host thread, OpenBLAS)
 #   task_splitting [reps]             benchmark/gpu_task_splitting.jl
-#   batched_svt [reps]                benchmark/gpu_batched_svt.jl
-#   dcf [reps]                        benchmark/gpu_dcf.jl
 #
 # Round r runs the refs in the given order when r is odd and in reverse when it is even. Each
 # checkout runs its own copy of the benchmark scripts. The comparison run files a ref writes are
@@ -34,12 +32,12 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ ${#REFS[@]} -ge 1 ] && [ $# -ge 1 ] || {
-    echo "usage: gpu_refs.sh --refs=name:path,... [--rounds=N] comparison|task_splitting|batched_svt|dcf [args...]" >&2
+    echo "usage: gpu_refs.sh --refs=name:path,... [--rounds=N] comparison|task_splitting [args...]" >&2
     exit 2
 }
 BENCH="$1"; shift
 case "$BENCH" in
-    comparison | task_splitting | batched_svt | dcf) ;;
+    comparison | task_splitting) ;;
     *) echo "### unknown benchmark $BENCH" >&2; exit 2 ;;
 esac
 
@@ -60,10 +58,6 @@ run_ref() {
                     --threads=1 --device=cuda --frameworks=Ristretto "$@" ;;
             task_splitting)
                 "$JULIA_BIN" --project=test --threads=8 benchmark/gpu_task_splitting.jl "$@" ;;
-            batched_svt)
-                "$JULIA_BIN" --project=test --threads=8 benchmark/gpu_batched_svt.jl "$@" ;;
-            dcf)
-                "$JULIA_BIN" --project=test --threads=8 benchmark/gpu_dcf.jl "$@" ;;
         esac
     ) || echo "### ref $name, round $round failed"
     if [ "$BENCH" = comparison ]; then

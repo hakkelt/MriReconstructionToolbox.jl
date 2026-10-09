@@ -95,7 +95,7 @@ end
         using NamedDims
         x = NamedDimsArray{(:x, :y, :time)}(rand(ComplexF32, 16, 16, 6))
         acq = AcquisitionInfo(is3D = false, image_size = (16, 16), subsampling = (:, trues(16)))
-        data = simulate_acquisition(x, acq)
+        data = simulate_acquisition(x, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
         rec = reconstruct(data, IterativeReconstruction(RankLimit(2; time_dim = :time); maxit = 5); verbosity = Silent())
         @test size(rec) == size(x)
     end

@@ -6,12 +6,11 @@ Ristretto.jl provides everything you need to reconstruct images from MRI k-space
 
 ## Installation
 
-**Note:** This package is not yet registered in the Julia General registry. The versions of AbstractOperators, OperatorCore, ProximalOperators, ProximalAlgorithms and StructuredOptimization it needs are still under review upstream, so they ship inside the package; only NestedThreading has to be added from GitHub first:
+**Note:** This package is not yet registered in the Julia General registry. The versions of AbstractOperators, OperatorCore, ProximalOperators, ProximalAlgorithms and StructuredOptimization it needs are still under review upstream, so they ship inside the package. Install it from GitHub:
 
 ```julia
 using Pkg
 
-Pkg.add(url="https://github.com/hakkelt/NestedThreading.jl", rev="perf/thread-grants")
 Pkg.add(url="https://github.com/hakkelt/Ristretto.jl")
 ```
 
@@ -139,7 +138,7 @@ acq_info = AcquisitionInfo(
    sensitivity_maps=smaps)
 
 # Simulate k-space acquisition
-data = simulate_acquisition(x, acq_info)
+data = simulate_acquisition(x, acq_info; inverse_crime_check = false, keep_sensitivity_maps = true)
 ```
 
 ### Reconstruction Examples

@@ -196,7 +196,7 @@ end
     pdf = VariableDensitySampling(PolynomialDistribution(3), 2.0, 0.15)
     pattern = create_sampling_pattern(pdf, (nx, ny))
     acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps, subsampling = pattern)
-    acq_with_data = simulate_acquisition(img_true, acq)
+    acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     img_recon = reconstruct(
         acq_with_data,
@@ -267,7 +267,7 @@ end
     img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
     smaps = coil_sensitivities(nx, ny, nc)
     acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
-    acq_with_data = simulate_acquisition(img_true, acq)
+    acq_with_data = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     components = (
         Component(:multi, L1Wavelet2D(0.001), TotalVariation2D(0.001)),
@@ -293,7 +293,7 @@ end
     ksp_ms = zeros(ComplexF32, nx, ny, nc, nslices)
     for s in 1:nslices
         acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
-        ksp_ms[:, :, :, s] = simulate_acquisition(img_true, acq).kspace_data
+        ksp_ms[:, :, :, s] = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true).kspace_data
     end
     acq_ms = AcquisitionInfo(ksp_ms; is3D = false, sensitivity_maps = smaps_ms)
 
@@ -324,7 +324,7 @@ end
     nx, ny, nc = 16, 16, 2
     img_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
     smaps = coil_sensitivities(nx, ny, nc)
-    acq = simulate_acquisition(img_true, AcquisitionInfo(is3D = false, sensitivity_maps = smaps))
+    acq = simulate_acquisition(img_true, AcquisitionInfo(is3D = false, sensitivity_maps = smaps); inverse_crime_check = false, keep_sensitivity_maps = true)
 
     components = (Component(:lowrank, L2Image(0.01)), Component(:sparse, L1Image(0.01)))
     good = (lowrank = zeros(ComplexF32, nx, ny), sparse = zeros(ComplexF32, nx, ny))
@@ -349,7 +349,7 @@ end
     img_true = NamedDimsArray{(:x, :y, :time)}(rand(ComplexF32, nx, ny, nt))
     smaps = NamedDimsArray{(:x, :y, :coil)}(rand(ComplexF32, nx, ny, 2))
     acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
-    ksp = simulate_acquisition(img_true, acq).kspace_data
+    ksp = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true).kspace_data
     acq_data = AcquisitionInfo(acq, kspace_data = ksp)
 
     components = (
@@ -377,7 +377,7 @@ end
     img_true = NamedDimsArray{(:x, :y, :z, :time)}(rand(ComplexF32, nx, ny, nslices, nt))
     smaps = NamedDimsArray{(:x, :y, :coil, :z)}(rand(ComplexF32, nx, ny, 2, nslices))
     acq = AcquisitionInfo(is3D = false, sensitivity_maps = smaps)
-    ksp = simulate_acquisition(img_true, acq).kspace_data
+    ksp = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true).kspace_data
     acq_data = AcquisitionInfo(acq, kspace_data = ksp)
 
     # Both components affect only :time, so :z stays a batch dimension: the task-splitting

@@ -24,7 +24,7 @@ function stack_acquisition(n, nc, nb, name)
     smaps = ComplexF32.(coil_sensitivities(n, n, nc))
     pattern = create_sampling_pattern(UniformRandomSampling(2.0, 0.1), (n, n))
     one_slice = AcquisitionInfo(is3D = false, image_size = (n, n), sensitivity_maps = smaps, subsampling = pattern)
-    ksp = stack(unname(simulate_acquisition((1 + 0.1f0 * b) .* img, one_slice).kspace_data) for b in 1:nb)
+    ksp = stack(unname(simulate_acquisition((1 + 0.1f0 * b) .* img, one_slice; inverse_crime_check = false, keep_sensitivity_maps = true).kspace_data) for b in 1:nb)
     maps = name === :z ?
         NamedDimsArray{(:x, :y, :coil, :z)}(repeat(smaps, 1, 1, 1, nb)) :
         NamedDimsArray{(:x, :y, :coil)}(smaps)

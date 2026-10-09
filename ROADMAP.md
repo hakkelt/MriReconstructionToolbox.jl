@@ -17,7 +17,7 @@ apply throughout; in particular, changes to vendored packages go on fork branche
 | **P1 — now** | 5 (rename), 9, 2, 11, 1 (measurement + quick wins), 3 |
 | **P2 — documentation** | 10, 23, 6, 4, 7 + 8 |
 | **P3 — strengthens the paper** | 19, 20 (Python wrapper), 22 |
-| **Deferred** | 12, 13, 14, 15, rest of 1, 16, 17, 18, 24, 25 |
+| **Deferred** | 12, 13, 14, 15, rest of 1, 16, 17, 18, 24, 25, 26, 27, 28, 29 |
 
 Ordering constraints: 5 before 4, 10 and 20 (a rename touches all of them); 9 and 7 before 10
 (notebooks are rewritten only once); 9 before 22 (simulated benchmark cases change); 7 before 8;
@@ -28,7 +28,32 @@ P1 items are independent of each other and can run in parallel sessions.
 ## Foundations and cleanup
 
 ### 1. Package load time
-**Status:** todo. **Tier:** P1 (measurement + quick wins), rest deferred.
+**Status:** P1 part done (PR #2); the rest deferred. **Tier:** P1 (measurement + quick wins), rest deferred.
+
+Done 2026-10-09 (`benchmark/load_time.jl` via `benchmark/slurm/load_time.sh`, compute node
+x1001c4s3b0n1, Julia 1.13.1, 16 cores, 5 fresh processes per row):
+
+- `Distributed` is gone from the load path: dropped from `[deps]`, and ProgressMeter is taken from
+  its `master` through `[sources]` (timholy/ProgressMeter.jl#366 moved Distributed to an
+  extension but is unreleased). **Before registering Ristretto, replace that `[sources]` entry
+  with a compat bound on the first ProgressMeter release that contains #366.** On the compute
+  node this saves only ~40 ms (`using` 1.37 → 1.30–1.36 s); the 409 ms above was the login node.
+- A PrecompileTools workload (16² Cartesian direct + L1-wavelet, radial TV, NamedDims cine
+  low-rank, 2 iterations each, `ESTIMATE` plans, wisdom off; `src/precompile.jl`) is **kept**. It
+  fails the original gate (≤ 10 % load cost), but the maintainer accepted the ~2 s load for the
+  first-solve speedup (2026-10-09). `precompile_workload = false` in `LocalPreferences.toml` turns
+  it off.
+
+  | | `using` | first solve, Cartesian / radial / cine | pkgimage | precompile |
+  |---|---|---|---|---|
+  | no workload, 1 thread | 1.33 s | 15.1 / 18.6 / 17.6 s | 19 MB | 36 s |
+  | workload, 1 thread | 2.05 s (+54 %) | 1.47 / 0.27 / 0.08 s | 118 MB | 141 s |
+  | no workload, 8 threads | 1.31 s | 15.0 / 20.0 / 17.0 s | | |
+  | workload, 8 threads | 2.02 s | 7.4 / 8.0 / 7.5 s | | |
+
+  The `Ristretto` entry of `@time_imports` goes from 83 ms to 806 ms: the cost is loading the
+  larger image. A Cartesian-only workload still gave an 81 MB image. At 8 threads the workload
+  helps only half, as precompilation runs the serial paths; covering the threaded paths is open.
 
 Measured 2026-10-08 (login node, `-t 1`): warm `using Ristretto` takes 3.5 s.
 Largest `@time_imports` entries: Distributed 409 ms (96 % compilation), SparseArrays 384 ms,
@@ -53,14 +78,20 @@ Contourlets 90 ms, RecursiveArrayTools 73 ms. Target: 0.5–1 s.
   comparing with and without it.
 
 ### 2. Register NestedThreading and MRITestData
-**Status:** todo. **Tier:** P1.
+**Status:** done (PR #2). **Tier:** P1.
 
-The Manifest dev-paths NestedThreading at 0.1.2; the latest release is v0.1.1. Register 0.1.2.
-Register a new MRITestData version if the examples need one (they currently use it by
-`repo-url`). Vendoring does not block registering Ristretto itself.
+NestedThreading 0.1.2 (JuliaRegistries/General#171087) and MRITestData 0.1.1 (General#171085,
+the USC Speech dwell-time fix the examples need) are registered. Ristretto, `examples/`,
+`benchmark/`, `test/` and the notebooks take both from the registry. Vendoring does not block
+registering Ristretto itself.
 
 ### 3. Comment cleanup
-**Status:** todo. **Tier:** P1.
+**Status:** done for Ristretto `src/` and `ext/` (PR #2); vendored code open. **Tier:** P1.
+
+Done 2026-10-09: process history ("used to", "TODO 6"), measurement tables and timings moved out of
+the comments into the commit messages, and what-comments dropped, in `src/reconstruction`,
+`src/encoding`, `src/acquisition_data`, `src/preprocessing` and `ext/`; one comment-only commit
+per directory. Why-comments, invariants and references stay.
 
 Comments are often too verbose. Ristretto `src/` and `ext/` first; comments in vendored code are changed
 on the fork branch that owns the code.
@@ -95,6 +126,21 @@ extensions, repository, docs, notebooks, benchmarks, `AGENTS.md`/`NAMING.md`.
 - Each fork deploys its Documenter docs from its `integration` branch to GitHub Pages (none has
   Pages enabled as of 2026-10-08), and Ristretto's docs and notebooks link there.
 
+### 29. Faster test suite
+**Status:** todo. **Tier:** Deferred.
+
+The full suite takes about 25 minutes on CI and on the login node. Find where the time goes
+(per-item durations from the TestItems runner) and cut it without losing coverage:
+- smaller inputs where the size does not matter to what is checked;
+- duplicated checks, e.g. the same property tested in several items or on several equivalent
+  configurations;
+- checks that no longer guard anything (superseded behaviour, or covered by a cheaper test);
+- shared fixtures built once in a `@testmodule` instead of in every item;
+- compilation: items that pay for a large, unique set of method instances.
+
+Report the per-item time before and after, and keep the slow, high-value cases (real data,
+integration) behind a tag if they cannot be shrunk.
+
 ## User-facing features
 
 ### 7. Metadata header and result type
@@ -116,7 +162,19 @@ One package extension per format. Known keys of the header map to DICOM tags, NI
 MRD image header fields; geometry provides the affine.
 
 ### 9. Simulation without the inverse crime
-**Status:** todo. **Tier:** P1.
+**Status:** done (PR #2). **Tier:** P1.
+
+Done 2026-10-09: `simulate_acquisition(phantom, acq; inverse_crime_check = true,
+keep_sensitivity_maps = false)` simulates on the phantom's grid and keeps the reconstruction
+grid's frequencies (Cartesian) or samples the same physical frequencies (non-Cartesian); maps are
+made at the phantom size and dropped from the result unless kept. GeometricMedicalPhantoms 1.1.0
+adds `supersample` (area sampling). Study (`benchmark/inverse_crime/study.jl`, 128² Shepp–Logan,
+table in `docs/src/high-level/simulation.md`): area-sampled 202² (s = 1.58) gives 3.2 % Cartesian
+k-space error, the 30 dB noise level. The TV-reconstruction SER bias against the area-sampled
+truth is +1.3–1.5 dB for 1.5 ≤ s ≤ 2 (0.6 dB at 1.3 and 3), so the planned < 0.5 dB target is not
+met by any ratio up to 2; part of it is the box filter of area sampling. Existing tests, docs pages
+and notebook sources pass `inverse_crime_check = false, keep_sensitivity_maps = true` explicitly;
+moving them to finer phantoms and estimated maps is left to item 10.
 
 Kaipio & Somersalo, doi:10.1016/j.cam.2005.09.027. Simulating on the reconstruction grid with
 the reconstruction's own forward operator makes results optimistic.
@@ -149,14 +207,43 @@ SigPy, MRIReco, MIRT and MRpro, with the methodology (λ calibrated to matched a
 time-to-accuracy) and the hardware. Generated from the committed snapshot, so re-running
 `export_snapshot.jl` updates it.
 
+### 26. Image shifts other than an fftshift
+**Status:** todo. **Tier:** Deferred.
+
+`shifted_image_dims` only says whether an image axis is fftshifted, i.e. moved by `n ÷ 2` voxels.
+Acquired data can need a different shift: an off-centre FOV, a scanner that places the origin
+elsewhere, or a shift by a fraction of a voxel. Let the user pass the shift per axis in voxels
+(`image_shift = (dx, dy[, dz])`, possibly non-integer), applied as a k-space phase ramp, so the
+image needs no copy and the encoding operator stays a DFT. An integer shift of `n ÷ 2` must give
+the same result as `shifted_image_dims`; the simulation's origin bookkeeping
+(`_phase_origin`, `_origin_offset` in `src/simulation/simulate_acquisition.jl`) has to follow.
+
+### 27. Surfacelet and shearlet sparsifiers
+**Status:** todo. **Tier:** Deferred.
+
+1. Finish the surfacelet transform in Contourlets.jl (`src/transforms/surfacelet3d.jl`, with its
+   GPU extension).
+2. Implement shearlets there as well.
+3. Integrate both as sparsifying transforms, the way contourlets are: an operator in the
+   AbstractOperators fork (`ContourletOperators`) and a regularizer in `src/regularization/`
+   with tests and a section in `docs/src/high-level/regularization.md`.
+
 ## Performance (fork branches)
 
 ### 11. SignAlternation fusion
-**Status:** todo. **Tier:** P1.
+**Status:** done (PR #2). **Tier:** P1.
 
-`SignAlternation` (FFTWOperators) has no `_pw_kind`, so it never joins the fused pointwise runs of
+`SignAlternation` (FFTWOperators) had no `_pw_kind`, so it never joined the fused pointwise runs of
 `Compose` (`src/calculus/pointwise.jl`). It was 25–43 % of a dynamic low-rank solve in earlier
-profiling. Opt it into `PwMapKind`.
+profiling. It now answers `PwMapKind` on CPU (AbstractOperators `perf/fused-pointwise`, fork PR #50)
+and on device arrays (`perf/gpu-fused-pointwise`, #36); fused results equal unfused ones bit for
+bit.
+
+Measured 2026-10-09 (a one-off benchmark, compute node, 16 cores booked) on
+`M S F C B` (mask, sign alternation, 2-D DFT, coil weighting, coil expansion), forward, against
+the same chain with the sign alternation as a pass of its own: 1.05–1.17× faster at 4 and 8
+threads (128×128×8 to 256×256×16), 0.89–1.00× at one thread. The whole fused chain is 2.2–5.3×
+faster than running every operator separately at 4–8 threads.
 
 ### 12. Odd-length shift next to a DFT
 **Status:** todo. **Tier:** deferred. **After:** 11.
@@ -196,6 +283,15 @@ Open an issue proposing the series to the NFFT.jl maintainer first (not yet awar
 PRs, readability separated from behaviour changes: TestItems, FastBroadcast, NestedThreading,
 KernelAbstractions; GPU NUFFT with on-the-fly kernel evaluation. NFFT.jl contains a table it says
 was taken from NFFT3 (GPL); raise it with the maintainers.
+
+### 28. Benchmarking CI job
+**Status:** todo. **Tier:** Deferred.
+
+A CI workflow that runs a reduced benchmark set (`benchmark/run.jl` at the small case sizes) on
+pull requests and compares it with the base branch, so a performance regression shows up in
+review rather than in the next manual run. Shared CI runners are noisy (see the timing caveats
+in `benchmark/`), so the job reports ratios against the base run on the same runner and flags
+only large changes.
 
 ## New domains (survey first)
 

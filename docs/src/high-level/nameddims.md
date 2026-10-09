@@ -260,7 +260,7 @@ mask = create_sampling_pattern(pdf, (256, 256))
 acq = AcquisitionInfo(image_size=(256, 256),
                       sensitivity_maps=smaps,
                       subsampling=mask)
-acq = simulate_acquisition(img_true, acq)
+acq = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
 # acq.kspace_data is now NamedDimsArray{(:kx, :ky, :coil)}
 
@@ -291,7 +291,7 @@ mask = create_sampling_pattern(pdf, (256, 256))
 acq = AcquisitionInfo(image_size=(256, 256), 
                       sensitivity_maps=smaps,
                       subsampling=mask)
-acq = simulate_acquisition(img_true, acq)
+acq = simulate_acquisition(img_true, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
 # K-space is now (:kx, :ky, :coil, :cardiac_phase)
 dimnames(acq.kspace_data)

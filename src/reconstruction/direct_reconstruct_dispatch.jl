@@ -127,7 +127,7 @@ variable_dims(method::DirectReconstruction, acq::AcquisitionInfo) = output_dims(
 
 An *explicit* `AdjointSensitivity` on an acquisition without sensitivity maps is an error: that
 combination is defined by the maps, and without them the coil axis is a batch dimension (see
-[`lower`](@ref)), so the channels are never seen together.
+`lower`), so the channels are never seen together.
 
 `RootSumSquares` is not affected. It is defined without maps -- it is the maps-free reference
 every sensitivity-based reconstruction is compared against -- and `_direct_reconstruct_coil_combined`

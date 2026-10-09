@@ -192,7 +192,7 @@ AcquisitionInfo(ksp; is3D = false, shifted_kspace_dims = (1, 2))
 
 # %%
 x_shift_demo = create_shepp_logan_phantom(64, 64, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
-acq_centred = simulate_acquisition(x_shift_demo, AcquisitionInfo(nothing; is3D = false, image_size = (64, 64)))
+acq_centred = simulate_acquisition(x_shift_demo, AcquisitionInfo(nothing; is3D = false, image_size = (64, 64)); keep_sensitivity_maps = true)
 ksp_dc1 = ifftshift(unname(acq_centred.kspace_data))   # move the centre of k-space to index (1, 1)
 
 x_declared = reconstruct(AcquisitionInfo(ksp_dc1; is3D = false, shifted_kspace_dims = (1, 2)))

@@ -28,9 +28,8 @@ function _iterative_reconstruct_core(
         end
     end
     # `‖𝒜‖` is wanted only as a step size: a proximal algorithm needs `Lf`, not a unit-norm
-    # operator. Scaling `𝒜` by `1/L` instead did three things at once — supplied the step size,
-    # multiplied the effective regularization weight by `L`, and returned the image `L` times too
-    # large — and only the first was intended. See `docs/src/high-level/methods.md`, "Operator
+    # operator. Scaling `𝒜` by `1/L` would also multiply the effective regularization weight by `L`
+    # and return the image `L` times too large. See `docs/src/high-level/methods.md`, "Operator
     # norm, step size and λ".
     # `@printing_step`, not `@step`: `@step`'s verbose path runs its body inside `@spawn`, so the
     # `model` / `vars` bindings would live only in that task's closure — the solve closures below
@@ -110,34 +109,14 @@ function _iterative_reconstruct_core(
             # this scope leaves FFTW, NFFT and Polyester alone and lets them decide. BLAS is the
             # one pool with no such policy: an iterative solve drives it almost entirely through
             # level-1 calls on one work item, which are memory-bandwidth-bound and gain nothing
-            # from a thread team, while each call still pays to start one.
-            #
-            # A solve used to run every sub-16-MiB problem with *every* pool pinned instead, which
-            # silently serialised each `@batch` kernel and stopped
-            # `_coil_fused_encoding_operator` from being built at all (it gates on `threaded`).
-            # Dropping the size gate but keeping BLAS narrow is what the measurements support.
-            # Real data, 256x256 single-coil, TV-ADMM 20 it, 8 threads, min of 3:
-            #
-            # | scope around the solve        |   ms |
-            # |-------------------------------|------|
-            # | nothing narrowed              | 584.0 |
-            # | every pool pinned             | 247.4 |
-            # | counted pools pinned          | 243.1 |
-            # | BLAS/MKL pinned (this)        | 233.3 |
-            # | everything but Polyester      | 231.4 |
-            #
-            # i.e. BLAS alone accounts for the whole 2.5x, and narrowing anything further buys
-            # nothing. `threaded = false` for the same case is 285.8 ms, so building the operators
-            # threaded and pinning BLAS beats turning threading off wholesale.
+            # from a thread team, while each call still pays to start one. Narrowing any other
+            # pool would serialise the kernels that do gain from threads.
             #
             # The narrowing is a soft default, not a hard limit, so the calls that are worth
             # threading take BLAS back for themselves: a large factorization
             # (`ProximalOperators.with_factorization_threads`, and the per-block SVDs of the
             # low-rank family through it), a large `gemm` (`AbstractOperators.BLAS3_THREAD_WORK`)
-            # and a large CG step (`ProximalAlgorithms.CG_BLAS_THREAD_BYTES`). A low-rank solve
-            # used to skip the narrowing altogether for its SVDs, leaving every level-1 call
-            # threaded as well: OpenBLAS, 8 threads, locally-low-rank cine, 533 ms against 294 ms
-            # with the narrowing on.
+            # and a large CG step (`ProximalAlgorithms.CG_BLAS_THREAD_BYTES`).
             with_serial_blas() do
                 solve(model, algorithm; solver_kwargs...)
             end
@@ -183,9 +162,8 @@ _first_x0(x₀s::Tuple) = x₀s[1]
 _n_vars(::Variable) = 1
 _n_vars(vars::Tuple) = length(vars)
 
-# Solution extraction: defensive copy guarantees the returned reconstructed array is never
-# aliased to internal solver buffers or caller-provided initial guesses (TODO 6: measured memory delta
-# is ~0.21% of total solve allocation, well below the 2% threshold, protecting against aliasing bugs).
+# A copy, so the returned image is never aliased to the solver's buffers or to a caller-provided
+# initial guess.
 _extract_solution(x_var::Variable) = copy(~x_var)
 _extract_solution(vars::Tuple) = map(v -> copy(~v), vars)
 
@@ -317,9 +295,8 @@ function get_reasonable_freq(maxit)
 end
 
 # `AbstractCGIteration`, not the two concrete unpreconditioned types: `PCGIteration` and
-# `PCGNRIteration` (`CG(; P)` / `CGNR(; P)`) are Krylov methods too, and naming only the plain
-# pair silently sent every preconditioned solve down the proximal path -- paying `estimate_opnorm`
-# for an `Lf` hint that a Krylov subspace never reads.
+# `PCGNRIteration` (`CG(; P)` / `CGNR(; P)`) are Krylov methods too, and a Krylov subspace never
+# reads the `Lf` hint that `estimate_opnorm` would be paid for.
 _is_krylov_solver(::ProximalAlgorithms.IterativeAlgorithm{<:ProximalAlgorithms.AbstractCGIteration}) = true
 _is_krylov_solver(::Type{<:ProximalAlgorithms.AbstractCGIteration}) = true
 _is_krylov_solver(algs::Tuple) = all(_is_krylov_solver, algs)
@@ -578,23 +555,16 @@ _admm_curvature(𝒜, acq_data, config) =
 # Lanczos is taken (`failure_probability = nothing`) instead of the probabilistic bound. The
 # probabilistic bound's step count is set by the worst spectrum of the size, and encoding operators
 # are far from it: every non-Cartesian trajectory oversamples the k-space centre, so without
-# density compensation the top eigenvalue of `𝒜ᴴ𝒜` stands clear of the rest (`λ₂/λ₁` = 0.13-0.86
-# over radial full and half spokes, spirals, SPARKLING, stack of stars, kooshball, phyllotaxis and
-# FLORET, 1-16 coils, 1-16× undersampling, and the real breast radial and speech spiral data), and
-# with it the top few are within 1% of each other with nothing above them. Over those 61 operators
-# Lanczos met the 1% stop in 4-21 steps and was never below `‖𝒜‖`, against 26-29 steps for the
-# probabilistic bound at 3%, whose value is moreover `(1 + OPNORM_REL_MARGIN)` high; the margin race
-# measured the residual estimate 12-21% faster to a target error on non-Cartesian FISTA, POGM and
-# PDHG. It is not a certificate: a top eigenvalue the start vector barely sees would go unnoticed.
+# density compensation the top eigenvalue of `𝒜ᴴ𝒜` stands clear of the rest, and with it the top
+# few are within 1% of each other with nothing above them; Lanczos stops in a few steps either way.
+# It is not a certificate: a top eigenvalue the start vector barely sees would go unnoticed.
 # FISTA and POGM shorten their step when successive gradients show it was too long
 # (`lipschitz_safeguard`), which covers the rest.
 #
 # `residual_margin` is the residual test's margin when there is no closed-form bound; a closed-form
 # bound is certified at `OPNORM_REL_MARGIN` whatever it is, since certifying it more tightly costs
-# 22-47 steps and changes nothing returned. The residual estimate stops as soon as it is within the
-# margin, so the margin is also how high it may come out: at 3% it was 1-2.3% above `‖𝒜‖` without
-# density compensation (4-5 steps), at 0.1% within 0.1% (6-7 steps), on radial, spiral, the
-# harness and the real breast radial and speech spiral operators.
+# tens of steps and changes nothing returned. The residual estimate stops as soon as it is within
+# the margin, so the margin is also how high it may come out.
 function _encoding_opnorm(𝒜; residual_margin = OPNORM_REL_MARGIN)
     isfinite(AbstractOperators.opnorm_bound(𝒜)) &&
         return AbstractOperators.estimate_opnorm(𝒜; rel_margin = OPNORM_REL_MARGIN)
@@ -608,10 +578,10 @@ _certified_opnorm(𝒜, method::IterativeReconstruction) =
     method.exact_opnorm || isfinite(AbstractOperators.opnorm_bound(𝒜))
 
 # FISTA's and POGM's secant safeguard guards a fixed step against an `Lf` that came out low, at the
-# cost of a reduction over four arrays per iteration; on a GPU each reduction waits for the device,
-# and the 2D L1-wavelet FISTA row spent a fifth of its time there. With `‖𝒜‖` certified it does not
-# shorten the step (a smooth regularization term's constant is a bound with probability 1 - 10⁻³,
-# as it was before the safeguard), so it is turned off, unless the algorithm was given a setting.
+# cost of a reduction over four arrays per iteration, and on a GPU each reduction waits for the
+# device. With `‖𝒜‖` certified it does not shorten the step (a smooth regularization term's
+# constant is a bound with probability 1 - 10⁻³), so it is turned off, unless the algorithm was
+# given a setting.
 _without_lipschitz_safeguard(algorithm) = algorithm
 function _without_lipschitz_safeguard(
         algorithm::ProximalAlgorithms.IterativeAlgorithm{
@@ -636,8 +606,7 @@ function _operator_norm_for_stepsize(𝒜, method::IterativeReconstruction, conf
     #
     # The iteration is level-1 BLAS on one work item, like the solve, so it runs under the
     # same serial-BLAS scope. Outside it, its `dot` and `norm` start MKL's OpenMP team at full
-    # width, which re-pins the Julia threads: the 2D 8-coil L1-wavelet FISTA row at 8 threads went
-    # from 64 to 196 ms once the iteration ran on plain arrays. OpenBLAS was unaffected.
+    # width, which re-pins the Julia threads and slows the solve that follows.
     @printing_step "Estimating the operator norm" config begin
         L = with_serial_blas() do
             method.exact_opnorm ? LinearAlgebra.opnorm(𝒜) : _encoding_opnorm(𝒜; residual_margin = LF_REL_MARGIN)
@@ -674,8 +643,7 @@ function _term_gradient_lipschitz(t::StructuredOptimization.Term)
     return Float64(t.lambda * L_f * normK^2)
 end
 
-# Lipschitz constant of `∇f`. A smooth function this does not know contributes nothing, which is
-# what every smooth term contributed before the constant was taken into account at all.
+# Lipschitz constant of `∇f`. A smooth function this does not know contributes nothing.
 _gradient_lipschitz(f::SqrNormL2) = Float64(maximum(f.lambda))
 _gradient_lipschitz(f::SeparableHuberLoss) = Float64(maximum(f.mu))
 _gradient_lipschitz(f::HuberLoss) = Float64(f.mu)

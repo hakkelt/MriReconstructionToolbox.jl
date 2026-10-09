@@ -29,26 +29,33 @@ A typical simulation workflow:
 ```@example imports
 using Ristretto
 
-# 1. Create a phantom (ground truth image)
-img = create_shepp_logan_phantom(256, 256, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
+# 1. Create a phantom (ground truth image), area-sampled on a grid about 1.6× finer than the
+#    256 × 256 reconstruction (see "Avoiding the inverse crime" below)
+img = create_shepp_logan_phantom(404, 404, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32, supersample = 4)
 
-# 2. Generate coil sensitivity maps
-smaps = coil_sensitivities(256, 256, 8)
+# 2. Generate coil sensitivity maps on the phantom's grid
+smaps = coil_sensitivities(404, 404, 8)
 
-# 3. Create a subsampling pattern
+# 3. Create a subsampling pattern on the reconstruction grid
 pdf = VariableDensitySampling(PolynomialDistribution(3), 3.0, 0.1)
 pattern = create_sampling_pattern(pdf, (256, 256))
 
 # 4. Simulate the acquisition
 acq = AcquisitionInfo(is3D=false,
+                      image_size=(256, 256),
                       sensitivity_maps=smaps,
                       subsampling=pattern)
-acq_with_data = simulate_acquisition(img, acq)
+acq_with_data = simulate_acquisition(img, acq; keep_sensitivity_maps = true)
 
 # 5. Reconstruct and compare
 img_recon = reconstruct(acq_with_data, IterativeReconstruction(L1Wavelet2D(5e-3)); verbosity = Silent())
 nothing # hide
 ```
+
+The returned acquisition carries the maps resampled to the reconstruction grid only because
+`keep_sensitivity_maps = true` asks for them; with real data they would be estimated
+(`estimate_sensitivities`), and so would they in a simulation that should not reuse the model it
+was generated with.
 
 ## Phantoms
 
@@ -102,7 +109,13 @@ savefig("coil_sensitivity_maps.png"); nothing # hide
 
 ## Subsampling Patterns
 
-Subsampling patterns determine which k-space locations are measured.
+Subsampling patterns determine which k-space locations are measured. Each strategy below is a
+`Subsampling` object; `create_sampling_pattern` draws one realisation of it.
+
+```@docs
+create_sampling_pattern
+to_displayable_mask
+```
 
 ### Uniform Cartesian Sampling
 
@@ -329,7 +342,7 @@ using NamedDims
 
 traj = radial_trajectory(128, 96; ordering = GoldenAngle())
 acq_radial = AcquisitionInfo(; trajectory = traj, image_size = (256, 256))
-data_radial = simulate_acquisition(img, acq_radial)
+data_radial = simulate_acquisition(img, acq_radial; inverse_crime_check = false)
 size(data_radial.kspace_data)
 ```
 
@@ -337,6 +350,71 @@ size(data_radial.kspace_data)
 
 ```@docs
 simulate_acquisition
+```
+
+### Avoiding the inverse crime
+
+Simulating data with the operator that later reconstructs them, on the reconstruction's own grid,
+is the *inverse crime* [1]: the data fit the model exactly, so a reconstruction looks better than
+it would on measured data. `simulate_acquisition` therefore treats `acq_info.image_size` as the
+reconstruction grid and the phantom's own size as the grid the data are simulated on. From a
+finer phantom it keeps only the frequencies the reconstruction grid can represent (Cartesian), or
+samples the trajectory at the same physical frequencies on the phantom's grid (non-Cartesian).
+A phantom of the reconstruction's size gets a warning, and so does an integer multiple of it,
+each checked per spatial axis; `inverse_crime_check = false` silences both where the consistency
+is what is being tested.
+
+How fine is fine enough was measured on the modified Shepp–Logan phantom, whose continuous Fourier
+transform is known in closed form, so data can be simulated without any grid
+(`benchmark/inverse_crime/study.jl`). Reconstruction grid 128 × 128; the table gives the relative
+error of data simulated from rasterized phantoms of `s` times that size. *Point*: each voxel takes
+the value at its centre. *Area*: the mean of 4 × 4 sub-voxel samples (GeometricMedicalPhantoms'
+`supersample = 4`).
+
+| ratio `s` | phantom | Cartesian, point | Cartesian, area | radial, point | radial, area |
+|---|---|---|---|---|---|
+| 1 (inverse crime) | 128² | 21.2 % | 8.2 % | 3.0 % | 1.1 % |
+| 1.3 | 166² | 14.2 % | 5.1 % | 2.0 % | 0.6 % |
+| 1.5 | 192² | 11.2 % | 3.5 % | 1.7 % | 0.5 % |
+| 1.58 | 202² | 10.8 % | 3.2 % | 1.6 % | 0.4 % |
+| 1.7 | 218² | 8.7 % | 2.6 % | 1.2 % | 0.3 % |
+| 2 | 256² | 7.7 % | 2.0 % | 1.2 % | 0.3 % |
+| 3 | 384² | 4.2 % | 0.9 % | 0.7 % | 0.1 % |
+
+Area sampling matters more than the ratio: it cuts the error three- to fourfold. Larger is always
+more accurate, at a cost that grows as `s^D`, so the ratio is a cost/accuracy choice. The
+recommendation is the smallest area-sampled ratio whose error reaches the noise level of 30 dB
+data (3.2 %): **about 1.6 times the reconstruction size per axis, area-sampled**, e.g. a 202²
+phantom for a 128² reconstruction. Round ratios are best avoided: at `s = 2` every voxel centre
+of the reconstruction grid is also one of the phantom, which makes errors measured against a
+point-sampled phantom about 7 % optimistic.
+
+The effect on a reconstruction was measured as in [2]: the signal-to-error ratio of a total
+variation reconstruction from 3-fold undersampled data simulated from the rasterized phantom,
+minus that from the analytic data, both against the area-sampled 128² phantom. Area-sampled
+phantoms come out 1.3–1.5 dB optimistic for `1.5 ≤ s ≤ 2` (0.6 dB at 1.3 and at 3), point-sampled
+ones 3–5 dB pessimistic; the inverse crime itself is 6.8 dB optimistic with an area-sampled
+phantom. Part of the remaining bias is the box filter that area sampling applies, which brings the
+data closer to the area-sampled reference than the analytic data are.
+
+Coil sensitivity maps act on the phantom, so they are made at its size. The returned acquisition
+carries none unless `keep_sensitivity_maps = true` (it then carries them resampled to the
+reconstruction grid): reusing the maps that simulated the data is part of the same crime, and
+with measured data they are estimated (`estimate_sensitivities`). Dropping them is logged as an
+info message, since a reconstruction without maps treats the coil axis as a batch axis;
+`keep_sensitivity_maps = false` drops them silently.
+
+A reconstruction from such data is scored against the same object rasterized area-sampled on the
+reconstruction grid. Neither the fine phantom (a different size) nor a point-sampled phantom of
+the reconstruction's size will do: against the latter every edge counts as error, which is the
+3–5 dB pessimism above.
+
+```@example imports
+img_fine = create_shepp_logan_phantom(202, 202, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32, supersample = 4)
+acq_128 = AcquisitionInfo(is3D = false, image_size = (128, 128), sensitivity_maps = coil_sensitivities(202, 202, 8))
+data_128 = simulate_acquisition(img_fine, acq_128)
+truth_128 = create_shepp_logan_phantom(128, 128, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32, supersample = 4)
+size(data_128.kspace_data), data_128.sensitivity_maps, size(truth_128)
 ```
 
 ## Advanced Simulation
@@ -421,3 +499,12 @@ acq_pf = AcquisitionInfo(nothing; is3D=false, image_size=(ny, ny), subsampling=p
 acq_grappa = AcquisitionInfo(nothing; is3D=false, image_size=(ny, ny), subsampling=grappa_pattern)
 nothing # hide
 ```
+
+## References
+
+1. Kaipio, J., Somersalo, E., "Statistical inverse problems: discretization, model reduction and
+   inverse crimes", Journal of Computational and Applied Mathematics 198(2):493–504 (2007).
+   <https://doi.org/10.1016/j.cam.2005.09.027>
+2. Guerquin-Kern, M., Lejeune, L., Pruessmann, K. P., Unser, M., "Realistic analytical phantoms
+   for parallel magnetic resonance imaging", IEEE Transactions on Medical Imaging 31(3):626–636
+   (2012). <https://doi.org/10.1109/TMI.2011.2174158>

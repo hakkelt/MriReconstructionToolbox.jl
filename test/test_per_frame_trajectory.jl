@@ -1,5 +1,7 @@
-@testsnippet PerFrameTrajectory begin
+@testmodule PerFrameTrajectory begin
     using NamedDims
+
+    export radial_spokes, rotating_series, moving_square, gaussian_maps, align_nrmse
 
     # `nspokes` radial spokes whose angles continue from spoke `first` (0.3 rad apart), so consecutive
     # frames of a series sample different directions.
@@ -97,7 +99,7 @@ end
         trajectory = NamedDimsArray{(:coord, :sample, :spoke, :time)}(traj),
         sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps), image_size = (n, n),
     )
-    acq = simulate_acquisition(NamedDimsArray{(:x, :y, :time)}(img), template)
+    acq = simulate_acquisition(NamedDimsArray{(:x, :y, :time)}(img), template; inverse_crime_check = false, keep_sensitivity_maps = true)
     @test dimnames(acq.kspace_data) == (:sample, :spoke, :coil, :time)
     @test size(acq.kspace_data) == (ns, nsp, nc, nt)
 
@@ -108,7 +110,7 @@ end
             NonCartesianAcquisitionInfo(;
                 trajectory = NamedDimsArray{(:coord, :sample, :spoke)}(traj[:, :, :, t]),
                 sensitivity_maps = NamedDimsArray{(:x, :y, :coil)}(smaps), image_size = (n, n),
-            ),
+            ); inverse_crime_check = false, keep_sensitivity_maps = true
         )
         @test parent(acq.kspace_data)[:, :, :, t] ≈ parent(one.kspace_data)
     end
@@ -156,22 +158,22 @@ end
     traj = radial_spokes(ns, nsp, 0)
     smaps = rand(ComplexF32, n, n, nc)
     shared = NonCartesianAcquisitionInfo(nothing; trajectory = traj, image_size = (n, n), sensitivity_maps = smaps)
-    @test size(simulate_acquisition(rand(ComplexF32, n, n, nsp), shared).kspace_data) == (ns, nsp, nc, nsp)
+    @test size(simulate_acquisition(rand(ComplexF32, n, n, nsp), shared; inverse_crime_check = false, keep_sensitivity_maps = true).kspace_data) == (ns, nsp, nc, nsp)
     # Named axes make the same trajectory a per-frame one, a spoke per frame.
     named = NonCartesianAcquisitionInfo(
         nothing; trajectory = NamedDimsArray{(:coord, :sample, :time)}(traj), image_size = (n, n), sensitivity_maps = smaps,
     )
-    @test size(simulate_acquisition(NamedDimsArray{(:x, :y, :time)}(rand(ComplexF32, n, n, nsp)), named).kspace_data) == (ns, nc, nsp)
+    @test size(simulate_acquisition(NamedDimsArray{(:x, :y, :time)}(rand(ComplexF32, n, n, nsp)), named; inverse_crime_check = false, keep_sensitivity_maps = true).kspace_data) == (ns, nc, nsp)
     # An acquisition that carries k-space has had its frames read by its constructor already.
     template = NonCartesianAcquisitionInfo(
         zeros(ComplexF32, ns, nc, nsp); trajectory = traj, image_size = (n, n), sensitivity_maps = smaps,
     )
-    @test size(simulate_acquisition(rand(ComplexF32, n, n, nsp), template).kspace_data) == (ns, nc, nsp)
+    @test size(simulate_acquisition(rand(ComplexF32, n, n, nsp), template; inverse_crime_check = false, keep_sensitivity_maps = true).kspace_data) == (ns, nc, nsp)
 
     # 4-D maps of a 2-D encoding are `(x, y, coil, slice)`: the coil count is their third axis.
     nsl = 2
     multislice = NonCartesianAcquisitionInfo(
         nothing; trajectory = traj, image_size = (n, n), sensitivity_maps = rand(ComplexF32, n, n, nc, nsl),
     )
-    @test size(simulate_acquisition(rand(ComplexF32, n, n, nsl), multislice).kspace_data) == (ns, nsp, nc, nsl)
+    @test size(simulate_acquisition(rand(ComplexF32, n, n, nsl), multislice; inverse_crime_check = false, keep_sensitivity_maps = true).kspace_data) == (ns, nsp, nc, nsl)
 end

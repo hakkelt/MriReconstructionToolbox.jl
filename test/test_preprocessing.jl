@@ -31,7 +31,7 @@
         is3D = false,
         sensitivity_maps = sens,
     )
-    acq_sim = simulate_acquisition(img, acq)
+    acq_sim = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
     # Add correlated noise to k-space
     ksp_flat = reshape(permutedims(unname(acq_sim.kspace_data), (3, 1, 2)), Nc, :)
     ksp_noisy_flat = ksp_flat + L_true * randn(ComplexF32, Nc, size(ksp_flat, 2))
@@ -69,7 +69,7 @@ end
         is3D = false,
         sensitivity_maps = sens,
     )
-    acq_sim = simulate_acquisition(img, acq)
+    acq_sim = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     acq_comp, C = compress_coils(acq_sim, Nv; method = SVDCompression())
     @test size(C) == (Nv, Nc)
@@ -115,7 +115,7 @@ end
         is3D = false,
         sensitivity_maps = sens_true,
     )
-    acq_sim = simulate_acquisition(img, acq)
+    acq_sim = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     # 1. SelfCalibrating
     acq_selfcal = estimate_sensitivities(acq_sim; method = SelfCalibrating(calib_size = 16))
@@ -180,7 +180,7 @@ end
             NamedDimsArray{(:kx, :ky, :coil)}(zeros(ComplexF32, Nx, Ny, Nc));
             is3D = false, sensitivity_maps = sens_true,
         )
-        return simulate_acquisition(img, acq)
+        return simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
     end
 
     ksp = NamedDimsArray{(:kx, :ky, :coil, :z)}(
@@ -363,7 +363,7 @@ end
         NamedDimsArray{(:kx, :ky, :coil)}(zeros(ComplexF32, Nx, Ny, Nc));
         is3D = false, sensitivity_maps = sens_true,
     )
-    acq_sim = simulate_acquisition(img, acq)
+    acq_sim = simulate_acquisition(img, acq; inverse_crime_check = false, keep_sensitivity_maps = true)
 
     # Only the central `measured` phase-encode lines are kept, mirroring a real acquisition where
     # `kspace_data` stores just the measured extent rather than a zero-filled `image_size` grid.

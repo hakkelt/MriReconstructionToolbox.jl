@@ -274,7 +274,7 @@ end
     acq_sim = CartesianAcquisitionInfo(;
         is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens, subsampling = patt,
     )
-    ksp = simulate_acquisition(NamedDimsArray{(:x, :y)}(img), acq_sim).kspace_data
+    ksp = simulate_acquisition(NamedDimsArray{(:x, :y)}(img), acq_sim; inverse_crime_check = false, keep_sensitivity_maps = true).kspace_data
 
     # The reconstruction gets the coil data and nothing else: no sensitivity maps, no ACS
     # kernel. That is what makes this calibrationless.
@@ -288,7 +288,7 @@ end
     acq_full = CartesianAcquisitionInfo(;
         is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens,
     )
-    ksp_full = simulate_acquisition(NamedDimsArray{(:x, :y)}(img), acq_full).kspace_data
+    ksp_full = simulate_acquisition(NamedDimsArray{(:x, :y)}(img), acq_full; inverse_crime_check = false, keep_sensitivity_maps = true).kspace_data
     truth = rss(
         abs.(
             unname(
@@ -549,7 +549,7 @@ end
     mask = falses(N)
     mask[1:20] .= true                                          # 62 % of ky, from one side
     ksp_full = simulate_acquisition(
-        NamedDimsArray{(:x, :y)}(img), CartesianAcquisitionInfo(; is3D = false, image_size = (N, N))
+        NamedDimsArray{(:x, :y)}(img), CartesianAcquisitionInfo(; is3D = false, image_size = (N, N)); inverse_crime_check = false, keep_sensitivity_maps = true
     ).kspace_data
     acq = CartesianAcquisitionInfo(
         ksp_full[:, mask]; is3D = false, image_size = (N, N), subsampling = (:, mask),

@@ -1,3 +1,5 @@
+const FFT_PLANNING_MODES = (:auto, :estimate, :measure)
+
 """
     ReconstructionConfig(; kwargs...)
 
@@ -62,8 +64,6 @@ conf2 = ReconstructionConfig(conf; disable_task_splitting = true)
 x̂ = reconstruct(acq, IterativeReconstruction(reg; maxit = 50, reltol = 1e-6); config = conf2)
 ```
 """
-const FFT_PLANNING_MODES = (:auto, :estimate, :measure)
-
 struct ReconstructionConfig
     scaling::Scaling
     verbosity::Verbosity
@@ -178,9 +178,8 @@ function construct_config(kwargs)
     end
 end
 
-# Keywords that used to live on `ReconstructionConfig` but are properties of a method, not of a run. Naming
-# them explicitly turns what would be "unknown keyword" into a message that says where the
-# parameter went.
+# Keywords that are properties of a method, not of a run. Naming them explicitly turns what would
+# be "unknown keyword" into a message that says where the parameter belongs.
 const _METHOD_OWNED_KWARGS = Dict{Symbol, String}(
     :maxit => "Pass `maxit` to the reconstruction method instead, e.g. `IterativeReconstruction(reg; maxit = 50)` or `POCS(; maxit = 20)`.",
     :tol => "The stopping tolerance is `reltol`, and it belongs to the reconstruction method, e.g. `IterativeReconstruction(reg; reltol = 1e-6)`.",
