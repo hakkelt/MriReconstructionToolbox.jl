@@ -17,7 +17,7 @@ apply throughout; in particular, changes to vendored packages go on fork branche
 | **P1 — now** | 5 (rename), 9, 2, 11, 1 (measurement + quick wins), 3 |
 | **P2 — documentation** | 10, 23, 6, 4, 7 + 8 |
 | **P3 — strengthens the paper** | 19, 20 (Python wrapper), 22 |
-| **Deferred** | 12, 13, 14, 15, rest of 1, 16, 17, 18, 24, 25, 26 |
+| **Deferred** | 12, 13, 14, 15, rest of 1, 16, 17, 18, 24, 25, 26, 27, 28 |
 
 Ordering constraints: 5 before 4, 10 and 20 (a rename touches all of them); 9 and 7 before 10
 (notebooks are rewritten only once); 9 before 22 (simulated benchmark cases change); 7 before 8;
@@ -203,6 +203,16 @@ image needs no copy and the encoding operator stays a DFT. An integer shift of `
 the same result as `shifted_image_dims`; the simulation's origin bookkeeping
 (`_phase_origin`, `_origin_offset` in `src/simulation/simulate_acquisition.jl`) has to follow.
 
+### 27. Surfacelet and shearlet sparsifiers
+**Status:** todo. **Tier:** Deferred.
+
+1. Finish the surfacelet transform in Contourlets.jl (`src/transforms/surfacelet3d.jl`, with its
+   GPU extension).
+2. Implement shearlets there as well.
+3. Integrate both as sparsifying transforms, the way contourlets are: an operator in the
+   AbstractOperators fork (`ContourletOperators`) and a regularizer in `src/regularization/`
+   with tests and a section in `docs/src/high-level/regularization.md`.
+
 ## Performance (fork branches)
 
 ### 11. SignAlternation fusion
@@ -258,6 +268,15 @@ Open an issue proposing the series to the NFFT.jl maintainer first (not yet awar
 PRs, readability separated from behaviour changes: TestItems, FastBroadcast, NestedThreading,
 KernelAbstractions; GPU NUFFT with on-the-fly kernel evaluation. NFFT.jl contains a table it says
 was taken from NFFT3 (GPL); raise it with the maintainers.
+
+### 28. Benchmarking CI job
+**Status:** todo. **Tier:** Deferred.
+
+A CI workflow that runs a reduced benchmark set (`benchmark/run.jl` at the small case sizes) on
+pull requests and compares it with the base branch, so a performance regression shows up in
+review rather than in the next manual run. Shared CI runners are noisy (see the timing caveats
+in `benchmark/`), so the job reports ratios against the base run on the same runner and flags
+only large changes.
 
 ## New domains (survey first)
 
