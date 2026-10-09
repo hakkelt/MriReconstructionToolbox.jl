@@ -39,8 +39,10 @@ x1001c4s3b0n1, Julia 1.13.1, 16 cores, 5 fresh processes per row):
   with a compat bound on the first ProgressMeter release that contains #366.** On the compute
   node this saves only ~40 ms (`using` 1.37 → 1.30–1.36 s); the 409 ms above was the login node.
 - A PrecompileTools workload (16² Cartesian direct + L1-wavelet, radial TV, NamedDims cine
-  low-rank, 2 iterations each, `ESTIMATE` plans, wisdom off) was measured and **not kept**: it
-  fails the agreed gate (time-to-first-solve −30 % at ≤ 10 % load cost).
+  low-rank, 2 iterations each, `ESTIMATE` plans, wisdom off; `src/precompile.jl`) is **kept**. It
+  fails the original gate (≤ 10 % load cost), but the maintainer accepted the ~2 s load for the
+  first-solve speedup (2026-10-09). `precompile_workload = false` in `LocalPreferences.toml` turns
+  it off.
 
   | | `using` | first solve, Cartesian / radial / cine | pkgimage | precompile |
   |---|---|---|---|---|
@@ -51,8 +53,7 @@ x1001c4s3b0n1, Julia 1.13.1, 16 cores, 5 fresh processes per row):
 
   The `Ristretto` entry of `@time_imports` goes from 83 ms to 806 ms: the cost is loading the
   larger image. A Cartesian-only workload still gave an 81 MB image. At 8 threads the workload
-  helps only half, as precompilation runs the serial paths. Revisit when load time has been cut
-  elsewhere (the trade is +0.7 s per session against −14…18 s on the first solve).
+  helps only half, as precompilation runs the serial paths; covering the threaded paths is open.
 
 Measured 2026-10-08 (login node, `-t 1`): warm `using Ristretto` takes 3.5 s.
 Largest `@time_imports` entries: Distributed 409 ms (96 % compilation), SparseArrays 384 ms,
