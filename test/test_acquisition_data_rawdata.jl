@@ -67,7 +67,7 @@
     end
 end
 
-@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — Cartesian" tags = [:acquisition] setup = [RawAcqHelpers] begin
+@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — Cartesian" tags = [:extension, :acquisition] setup = [RawAcqHelpers] begin
     using Ristretto
     using MRIBase: Profile, Limit
     using Ristretto: CartesianAcquisitionInfo
@@ -204,7 +204,7 @@ end
     end
 end
 
-@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — header" tags = [:acquisition] setup = [RawAcqHelpers] begin
+@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — header" tags = [:extension, :acquisition] setup = [RawAcqHelpers] begin
     using Test
     using Ristretto
     using Ristretto: header
@@ -245,7 +245,7 @@ end
     @test isnothing(h0.orientation) && isnothing(h0.offset) && isnothing(h0.fov)
 end
 
-@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — object stays centred in the FOV" tags = [:acquisition, :reconstruction] setup = [RawAcqHelpers] begin
+@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — object stays centred in the FOV" tags = [:extension, :acquisition, :reconstruction] setup = [RawAcqHelpers] begin
     using Ristretto
     using MRIBase: Profile, Limit
     using NamedDims: unname
@@ -278,7 +278,7 @@ end
     @test rec ≈ (rec[7, 8] / 3) .* abs.(img)                 # whole image, not just the peak
 end
 
-@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — non-Cartesian dispatch" tags = [:acquisition, :nfft] setup = [RawAcqHelpers] begin
+@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — non-Cartesian dispatch" tags = [:extension, :acquisition, :nfft] setup = [RawAcqHelpers] begin
     using Ristretto
     using MRIBase: Profile, Limit
     using Ristretto: NonCartesianAcquisitionInfo
@@ -309,7 +309,7 @@ end
     end
 end
 
-@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — non-Cartesian density compensation and batches" tags = [:acquisition, :nfft] setup = [RawAcqHelpers] begin
+@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — non-Cartesian density compensation and batches" tags = [:extension, :acquisition, :nfft] setup = [RawAcqHelpers] begin
     using Ristretto
     using MRIBase: Profile, Limit
     using Ristretto: NonCartesianAcquisitionInfo
@@ -364,7 +364,7 @@ end
     end
 end
 
-@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — real M4Raw data" tags = [:acquisition, :integration] begin
+@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — real M4Raw data" tags = [:extension, :acquisition, :integration] begin
     using Ristretto
     using Ristretto: CartesianAcquisitionInfo
     using NamedDims: dimnames, unname
@@ -409,7 +409,7 @@ end
     end
 end
 
-@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — real OCMR data (asymmetric-echo readout)" tags = [:acquisition, :integration] begin
+@testitem "AcquisitionInfo(::MRIBase.RawAcquisitionData) — real OCMR data (asymmetric-echo readout)" tags = [:extension, :acquisition, :integration] begin
     using Ristretto
     using Ristretto: CartesianAcquisitionInfo
     using NamedDims: dimnames

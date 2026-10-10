@@ -21,7 +21,7 @@ using TestItems
     voxel_lps(i, j, k) = collect(h.offset) .+ R * ([i - 1, j - 1, k - 1] .* [2.0, 2.0, 4.0])
 end
 
-@testitem "export: layout and geometry shared by the writers" tags = [:export] setup = [ExportCase] begin
+@testitem "export: layout and geometry shared by the writers" tags = [:export, :extension] setup = [ExportCase] begin
     using Test
     using Ristretto
     using Ristretto: _export_volume, _lps_affine, _json
@@ -43,7 +43,7 @@ end
     @test _json(Dict("a" => Any[1, 2.5], "b\"" => nothing, "c" => "x\ny")) == "{\"a\": [1, 2.5], \"b\\\"\": null, \"c\": \"x\\u000ay\"}"
 end
 
-@testitem "export: NIfTI with a JSON sidecar" tags = [:export] setup = [ExportCase] begin
+@testitem "export: NIfTI with a JSON sidecar" tags = [:export, :extension] setup = [ExportCase] begin
     using Test
     using Ristretto
     using NIfTI
@@ -72,7 +72,7 @@ end
     @test !isfile(joinpath(dir, "plain.json"))
 end
 
-@testitem "export: DICOM series" tags = [:export] setup = [ExportCase] begin
+@testitem "export: DICOM series" tags = [:export, :extension] setup = [ExportCase] begin
     using Test
     using Ristretto
     using DICOM
@@ -94,7 +94,7 @@ end
     @test pixels ≈ abs.(Array(img)[:, :, 2, 2]) rtol = 1.0e-4
 end
 
-@testitem "export: MRD images" tags = [:export] setup = [ExportCase] begin
+@testitem "export: MRD images" tags = [:export, :extension] setup = [ExportCase] begin
     using Test
     using Ristretto
     using MRIFiles

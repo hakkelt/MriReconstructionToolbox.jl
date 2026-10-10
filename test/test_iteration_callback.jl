@@ -69,7 +69,8 @@ end
 
         @test !isempty(trace)
         @test trace.iterations == 1:length(trace)
-        @test trace.values[end] ≈ Float64(sum(abs2, x̂))
+        # Both are Float32 sums over the same image, accumulated in a different order.
+        @test trace.values[end] ≈ Float64(sum(abs2, x̂)) rtol = 1.0e-6
         @test keys(trace.metrics[1]) == metric_keys
         @test all(isfinite, values(trace.metrics[1]))
     end
