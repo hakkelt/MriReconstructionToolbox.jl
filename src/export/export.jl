@@ -131,7 +131,7 @@ end
 _json(io::IO, x) = _json(io, string(x))
 
 function _json_escape(io::IO, s::AbstractString)
-    for c in String(s)
+    for c in String(s)::String
         if c == '"' || c == '\\'
             print(io, '\\', c)
         elseif c < ' '
