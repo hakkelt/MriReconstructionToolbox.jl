@@ -172,11 +172,10 @@ page (item 23), and what is not implemented becomes roadmap items. Then delete t
 ## User-facing features
 
 ### 7. Metadata header and result type
-**Status:** done on `p2` (2026-10-09), design in `docs/design/metadata.md`, which goes once item 8
-is done. `Header` is a dictionary whose known keys are typed fields; it is optional on
-`AcquisitionInfo`, shared by its copies, and filled from MRD by the MRIBase extension.
-`reconstruct` returns a `ReconImage` with its own copy; keyword slicing moves `offset`.
-`DecomposedImage` is gone: a `ReconImage` holds the components. **Tier:** P2.
+**Status:** done on `p2` (2026-10-09). `Header` is a dictionary whose known keys are typed fields;
+it is optional on `AcquisitionInfo`, shared by its copies, and filled from MRD by the MRIBase
+extension. `reconstruct` returns a `ReconImage` with its own copy; keyword slicing moves `offset`.
+`DecomposedImage` is gone: a `ReconImage` holds the components. Geometry is stored in LPS. **Tier:** P2.
 
 - `AcquisitionInfo` gets a header holding arbitrary key/value metadata.
 - `reconstruct` returns a type that is a subtype of `AbstractArray`, carrying geometry (FOV, voxel
@@ -185,10 +184,15 @@ is done. `Header` is a dictionary whose known keys are typed fields; it is optio
 - Header contents come from the MRD header (MRIBase extension) or other acquisition metadata, and
   feed the export formats of item 8.
 
-Write a short design note before implementing.
+The design note written before the implementation (reviewed 2026-10-09) now lives in the
+`Header` and `ReconImage` docstrings and the acquisition-data, reconstruction and export pages.
 
 ### 8. Export to NIfTI, DICOM, MRD
-**Status:** todo. **Tier:** P2. **After:** 7.
+**Status:** done on `p2` (2026-10-10). `write_nifti` (NIfTI extension; RAS `sform`, BIDS-style JSON
+sidecar), `write_dicom` (DICOM extension; magnitude MR image series, 16-bit with a rescale slope,
+tags in `ImageComments`) and `write_mrd` (MRIFiles extension; ISMRMRD HDF5 images, tags as meta
+attributes). Each file was read back by nibabel, pydicom and the `ismrmrd` Python package with the
+same geometry; docs page `high-level/export.md`. **Tier:** P2. **After:** 7.
 
 One package extension per format. Known keys of the header map to DICOM tags, NIfTI fields and
 MRD image header fields; geometry provides the affine.

@@ -37,6 +37,7 @@ makedocs(;
             "Simulation Tools" => "high-level/simulation.md",
             "Reconstruction Methods" => "high-level/methods.md",
             "Reconstruction" => "high-level/reconstruction.md",
+            "Export" => "high-level/export.md",
             "Regularization" => "high-level/regularization.md",
             "Optimization Algorithms" => "high-level/algorithms.md",
             "Named Dimensions" => "high-level/nameddims.md",

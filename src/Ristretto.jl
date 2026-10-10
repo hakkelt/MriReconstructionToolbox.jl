@@ -102,6 +102,7 @@ export TemporalBasis, KSpaceToImage
 # Image decomposition
 export Component, ReconImage, components, total_image
 export Header, settag!, gettag, tags
+export write_nifti, write_dicom, write_mrd
 
 # Preprocessing
 export density_compensation, PipeMenonDCF, VoronoiDCF, correct_dcf_edges
@@ -194,6 +195,7 @@ include("regularization/reference_prior_reg.jl")
 include("regularization/plug_and_play_reg.jl")
 
 include("reconstruction/recon_image.jl")
+include("export/export.jl")
 include("reconstruction/components.jl")
 include("reconstruction/methods/coil_combination.jl")
 include("reconstruction/data_fidelity.jl")

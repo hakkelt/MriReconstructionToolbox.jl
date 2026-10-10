@@ -218,9 +218,11 @@ _to_header(h) = Header(pairs(h))
 """
     header(x) -> Header
 
-The metadata [`Header`](@ref) of an [`AcquisitionInfo`](@ref) or a [`ReconImage`](@ref).
+The metadata [`Header`](@ref) of an [`AcquisitionInfo`](@ref) or a [`ReconImage`](@ref); a
+`Header` is its own header, so the tag functions also take one.
 """
 function header end
+header(h::Header) = h
 
 """
     image_size(x) -> Tuple

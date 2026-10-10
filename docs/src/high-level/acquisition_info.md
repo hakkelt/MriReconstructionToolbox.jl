@@ -312,7 +312,7 @@ k-space):
 An acquisition carries a [`Header`](@ref) with its metadata: geometry, sequence parameters, and
 anything else you pass. It is optional and may be incomplete; with no `header` keyword the
 acquisition gets an empty one. The images `reconstruct` returns carry a copy of it (see
-[`ReconImage`](@ref)), and the export functions write it.
+[`ReconImage`](@ref)), and the [export functions](export.md) write it.
 
 ```@example acqinfo
 using Ristretto: header, image_size
