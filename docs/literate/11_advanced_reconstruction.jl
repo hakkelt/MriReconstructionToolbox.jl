@@ -1,23 +1,6 @@
-# -*- coding: utf-8 -*-
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,src//jl:percent
-#     text_representation:
-#       extension: .jl
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.15.2
-#   kernelspec:
-#     display_name: Julia 1.12.7
-#     language: julia
-#     name: julia-1.12
-# ---
-
-# %% [markdown]
 # # 11 — Advanced reconstruction methods
 #
-# Two mechanisms go past the "operator + regularizer" pattern the rest of the notebooks use:
+# Two mechanisms go past the "operator + regularizer" pattern the rest of the tutorials use:
 # **data fidelity** terms that change how the mismatch to the measured k-space is scored, and
 # **signal models** that change what the optimization variable itself is. Structured low-rank
 # k-space filling — including ALOHA's transform-domain weighting — is presented here too, as an
@@ -27,7 +10,6 @@
 # 1. Data fidelity — `L2Loss`, `HardConsistency`, `NoFidelity`
 # 2. Signal models — `TemporalBasis`, `KSpaceToImage`, and calibrationless structured low-rank
 
-# %%
 include("NotebookUtils.jl")
 using .NotebookUtils
 
@@ -43,11 +25,9 @@ using Random
 
 Random.seed!(0);
 
-# %% [markdown]
 # `img_pi`, `sens` and `acq_pi` below are the same R = 2, 8-channel, 24-line-ACS phantom setup
-# used throughout notebook 4 — reproduced here so this notebook runs standalone.
+# used throughout tutorial 4 — reproduced here so this tutorial runs standalone.
 
-# %%
 Nx, Ny, Nc = 128, 128, 8
 img_pi = ComplexF32.(abs.(create_shepp_logan_phantom(Nx, Ny, :axial; ti = MRISheppLoganIntensities())))
 sens = coil_sensitivities(Nx, Ny, Nc)
@@ -68,7 +48,6 @@ acq_pi = add_noise(
     snr_db = 30
 )
 
-# %% [markdown]
 # ## 1. Data fidelity
 #
 # `IterativeReconstruction(...; fidelity = ...)` chooses how the measurements enter the problem.
@@ -84,12 +63,11 @@ acq_pi = add_noise(
 # noiseless data first — and why the second cell then shows what noise does to it.
 #
 # The algorithms named below (`DouglasRachford`, `POGM`) are picked because they accept the
-# corresponding term; notebook 6 covers which solver goes with which problem. `POGM` is the
+# corresponding term; tutorial 6 covers which solver goes with which problem. `POGM` is the
 # default proximal-gradient solver, and is named explicitly here only so the comparison reads as
 # a statement about the *fidelity term* with everything else held fixed.
 
-# %%
-# A 4x variable-density mask, first with exact (noiseless) measurements.
+## A 4x variable-density mask, first with exact (noiseless) measurements.
 acq_us = AcquisitionInfo(;
     is3D = false, image_size = (Nx, Ny), sensitivity_maps = sens,
     subsampling = create_sampling_pattern(
@@ -122,13 +100,11 @@ side_by_side(
     titles = ("L2Loss", "HardConsistency", "NoFidelity"), size = (1200, 350)
 )
 
-# %% [markdown]
 # `NoFidelity` is the outlier, and it should be: with no data term the solver never looks at `y`
 # at all, so it can only denoise the zero-filled adjoint it started from. The aliasing the other two
 # *undo* is merely smoothed, which is why the result lands slightly behind the zero-filled image it
 # began with. It is a building block, not a reconstruction.
 
-# %% [markdown]
 # ### Why `HardConsistency` is a statement about the noise
 #
 # $\{x : \mathcal{A}x = y\}$ asks the solution to reproduce every measured sample exactly — noise
@@ -138,7 +114,6 @@ side_by_side(
 # doing exactly what was asked, so the failure mode is *silent*: the error grows the harder the
 # solver works.
 
-# %%
 for label in ("noiseless", "SNR 30 dB")
     data = label == "noiseless" ? data_clean : data_us
     errs = map((10, 40, 100)) do maxit
@@ -157,7 +132,6 @@ end
 x_l2_noisy = reconstruct(data_us, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40))
 println("SNR 30 dB    L2Loss NRMSE at maxit = 40:                ", round(nrmse(x_l2_noisy, img_pi), digits = 4))
 
-# %% [markdown]
 # On exact data more iterations help, as they should. On noisy data the same run gets *worse* with
 # every iteration, and ends far behind the `L2Loss` reconstruction of the same data. The rule that
 # follows:
@@ -173,8 +147,6 @@ println("SNR 30 dB    L2Loss NRMSE at maxit = 40:                ", round(nrmse(
 # - **`NoFidelity`** is for denoising an estimate you already have, or as a component of a custom
 #   model.
 
-
-# %% [markdown]
 # ## 2. Signal models
 #
 # A regularizer says what an image *should look like*. A signal model goes further: it changes
@@ -189,8 +161,6 @@ println("SNR 30 dB    L2Loss NRMSE at maxit = 40:                ", round(nrmse(
 # Ristretto ships two: `TemporalBasis`, whose variable is a set of subspace coefficient maps, and
 # `KSpaceToImage`, whose variable is the multi-channel k-space itself.
 
-
-# %% [markdown]
 # ### 2.1 `TemporalBasis` — subspace (low-rank) modelling of the time dimension
 #
 # #### What a temporal basis is
@@ -223,7 +193,6 @@ println("SNR 30 dB    L2Loss NRMSE at maxit = 40:                ", round(nrmse(
 # Pedersen 2009; Petzschner 2011), and it is what T2-shuffling (Tamir et al., MRM 2017) and MR
 # fingerprinting reconstructions are built on.
 
-# %% [markdown]
 # #### A phantom that really is low-dimensional
 #
 # The tubes phantom from `GeometricMedicalPhantoms` is the natural object here: it is a physical
@@ -234,7 +203,6 @@ println("SNR 30 dB    L2Loss NRMSE at maxit = 40:                ", round(nrmse(
 # compartments, seven exponentials: a genuinely low-dimensional series, which is what this section
 # is about.
 
-# %%
 n, nt, ncoils = 96, 24, 4
 
 tube_T2 = Float64[25, 45, 70, 110, 180, 300]      # ms, one per tube (short to long)
@@ -260,7 +228,7 @@ side_by_side(
     size = (1100, 340)
 )
 
-# %%
+#-
 plot(
     TE, [[tube_M0[i] * exp(-te / tube_T2[i]) for te in TE] for i in eachindex(tube_T2)];
     label = reshape(["tube $i (T2 = $(round(Int, tube_T2[i])) ms)" for i in eachindex(tube_T2)], 1, :),
@@ -268,13 +236,11 @@ plot(
     legend = :outertopright, size = (800, 350)
 )
 
-# %% [markdown]
 # #### How low-dimensional? The Casorati spectrum
 #
 # The singular values of the Casorati matrix say how many basis functions the series actually
 # needs. A handful of exponentials at different rates is a textbook low-rank family.
 
-# %%
 casorati = reshape(unname(series), n * n, nt)
 F = svd(casorati)
 σ = F.S ./ F.S[1]
@@ -286,7 +252,6 @@ plot(
     title = "Casorati spectrum of the echo series", size = (650, 330)
 )
 
-# %% [markdown]
 # #### Where the basis comes from in practice
 #
 # The SVD above uses the ground-truth series, which you do not have at reconstruction time. In
@@ -305,13 +270,12 @@ plot(
 # PCA variants instead build the dictionary from low-resolution training data acquired in the same
 # scan.
 
-# %%
-# Step 1-2: a "Bloch-simulated" dictionary — here the analytic spin-echo decay over a log-spaced
-# T2 range, which is what the extended-phase-graph simulation reduces to for this sequence.
+## Step 1-2: a "Bloch-simulated" dictionary — here the analytic spin-echo decay over a log-spaced
+## T2 range, which is what the extended-phase-graph simulation reduces to for this sequence.
 T2_dict = exp.(range(log(15), log(400); length = 256))
 dictionary = Float32[exp(-te / t2) for te in TE, t2 in T2_dict]
 
-# Step 3: the temporal basis.
+## Step 3: the temporal basis.
 Φ_full = Matrix{ComplexF32}(svd(dictionary).U)
 println("dictionary: ", size(dictionary), "   basis: ", size(Φ_full))
 
@@ -322,14 +286,12 @@ plot(
     size = (700, 350)
 )
 
-# %% [markdown]
 # #### How many basis functions? The projection error
 #
 # Before running any reconstruction, the basis can be scored directly: project the true series onto
 # the first $K$ dictionary components and measure what is lost. That is the *model error floor* —
 # no reconstruction using this basis can do better.
 
-# %%
 proj_err = Float64[]
 for K in 1:12
     Φ = Φ_full[:, 1:K]
@@ -347,19 +309,16 @@ plot(
     title = "Model error floor vs. K", size = (700, 350)
 )
 
-# %% [markdown]
 # The dictionary basis tracks the (unattainable) data SVD closely and the error falls off a cliff
 # by $K \approx 4$–$6$: six exponentials at six rates need six components, and the dictionary found
 # them without being told the tissue parameters.
 
-# %% [markdown]
 # #### Reconstruction at K = 2, 4, 8
 #
 # Now undersample. All echoes share one phase-encoding pattern here — a real subspace acquisition
 # would vary it per echo, which helps considerably more — and the data is noisy, so both effects a
 # subspace model is good at are in play.
 
-# %%
 smaps_dyn = NamedDimsArray{(:x, :y, :coil)}(coil_sensitivities(n, n, ncoils))
 
 mask_dyn = falses(n)
@@ -373,7 +332,7 @@ acq_dyn = AcquisitionInfo(;
 data_dyn = add_noise(simulate_acquisition(series, acq_dyn; keep_sensitivity_maps = true); snr_db = 25)
 println("k-space: ", size(data_dyn.kspace_data), " ", dimnames(data_dyn.kspace_data))
 
-# %%
+#-
 x_zf_dyn = reconstruct(data_dyn)
 x_cg_dyn = reconstruct(data_dyn, IterativeReconstruction(; algorithm = CGNR(), maxit = 40))
 
@@ -393,32 +352,28 @@ for K in (1, 2, 4, 8)
     println("TemporalBasis, K = ", rpad(K, 2), "   ", round(nrmse(x̂, series), digits = 4))
 end
 
-# %% [markdown]
 # The pattern is the one to remember: $K = 1$ **underfits** — a single decay cannot describe six
 # tissues — while $K = 8$ starts spending its extra components on noise. The best $K$ sits just
 # past the knee of the projection-error curve, and the subspace reconstruction beats the
 # unconstrained CG reconstruction by a wide margin even though it is solving for a third as many
 # unknowns.
 
-# %%
 side_by_side(
     unname(series)[:, :, 12], unname(x_cg_dyn)[:, :, 12],
     unname(subspace_recons[2])[:, :, 12], unname(subspace_recons[4])[:, :, 12];
     titles = ("truth, echo 12", "CG, no model", "K = 2", "K = 4")
 )
 
-# %%
+#-
 difference_image(
     unname(subspace_recons[4])[:, :, 12], unname(series)[:, :, 12];
     title = "K = 4 error, echo 12", size = (450, 380)
 )
 
-# %% [markdown]
 # Because the coefficient maps are the variable, the *fitted decay curve* is available everywhere,
 # not just the images — which is the point of the whole exercise for parameter mapping.
 
-# %%
-# The ROI is one tube, isolated with `TubesMask`: only the third tube's filling is selected.
+## The ROI is one tube, isolated with `TubesMask`: only the third tube's filling is selected.
 roi = create_tubes_phantom(
     n, n, :axial;
     ti = TubesMask(; outer_cylinder = false, tube_wall = false, tube_fillings = [i == 3 for i in 1:6])
@@ -434,7 +389,6 @@ plot(
     title = "Recovered signal evolution", size = (700, 350)
 )
 
-# %% [markdown]
 # #### Other places this model is the right one
 #
 # - **Quantitative / parameter mapping.** Multi-echo $T_2$ (above), inversion-recovery $T_1$,
@@ -449,14 +403,12 @@ plot(
 # - **Cardiac cine and real-time imaging.** The *k-t* PCA family, with the basis learned from
 #   training data acquired in the same scan. Beware: cine dynamics are driven by *motion*, and a
 #   moving edge is much less low-rank than a decaying exponential — expect to need more components,
-#   or a locally low-rank model instead (see notebook 7).
+#   or a locally low-rank model instead (see tutorial 7).
 #
 # When the low-dimensional structure is real but you cannot write down a basis in advance, use a
-# low-rank *regularizer* (`LowRank`, `LocallyLowRank`, notebook 7) instead: same intuition, learned
+# low-rank *regularizer* (`LowRank`, `LocallyLowRank`, tutorial 7) instead: same intuition, learned
 # during the solve, at the cost of a penalty rather than a hard constraint.
 
-
-# %% [markdown]
 # ### 2.2 `KSpaceToImage` — solving in the k-space domain
 #
 # The other signal model turns the problem inside out. The optimization variable is the full
@@ -476,9 +428,8 @@ plot(
 # Because $\mathcal{P}\mathcal{P}^*$ is diagonal, `HardConsistency()` is closed-form here, which is
 # why the lowered SPIRiT can use it without an inner CG.
 
-# %%
-# Plain CG in the k-space domain, no k-space regularizer: this just interpolates nothing and
-# combines the coils, so it is the k-space-domain spelling of a zero-filled reconstruction.
+## Plain CG in the k-space domain, no k-space regularizer: this just interpolates nothing and
+## combines the coils, so it is the k-space-domain spelling of a zero-filled reconstruction.
 x_ksp = reconstruct(
     acq_pi,
     IterativeReconstruction(;
@@ -487,8 +438,8 @@ x_ksp = reconstruct(
 )
 println("KSpaceToImage, no k-space prior  ", round(nrmse(x_ksp, img_pi), digits = 4))
 
-# Adding the SPIRiT self-consistency term is what makes the k-space variable pay off — this is the
-# hand-built version of `SPIRiT(; iterative = true)`.
+## Adding the SPIRiT self-consistency term is what makes the k-space variable pay off — this is the
+## hand-built version of `SPIRiT(; iterative = true)`.
 kernel = Ristretto._calibrate_spirit_kernel(
     acq_pi, SPIRiT(kernel_size = (5, 5), calib_size = (Nx, 24))
 )
@@ -497,8 +448,8 @@ x_ksp_spirit = reconstruct(
     IterativeReconstruction(
         SPIRiTConsistency(kernel; λ = 1.0);
         signal_model = KSpaceToImage(RootSumSquares()),
-        # POGM carries the gradient-based adaptive restart by default, which is what the
-        # `FISTA(adaptive = true)` this cell used to name was after.
+        ## POGM carries the gradient-based adaptive restart by default, which is what the
+        ## `FISTA(adaptive = true)` this cell used to name was after.
         fidelity = HardConsistency(), algorithm = POGM(), maxit = 30
     )
 )
@@ -509,8 +460,6 @@ side_by_side(
     titles = ("k-space CG, no prior", "+ SPIRiT consistency"), size = (900, 360)
 )
 
-
-# %% [markdown]
 # ### 2.3 No calibration region at all: structured low-rank k-space
 #
 # Both methods above need an ACS block. Take it away — an irregular sampling pattern with no
@@ -538,9 +487,8 @@ side_by_side(
 # The penalty lives on k-space, not on the image, so the reconstruction is set up with
 # `signal_model = KSpaceToImage(...)` — the same trick `SPIRiT(; iterative = true)` uses above.
 
-# %%
-# Calibrationless data: irregular ky sampling at R = 2, and no dense centre (the second argument
-# of `UniformRandomSampling` is the fraction of fully-sampled central lines — here, none).
+## Calibrationless data: irregular ky sampling at R = 2, and no dense centre (the second argument
+## of `UniformRandomSampling` is the fraction of fully-sampled central lines — here, none).
 mask_cl = create_sampling_pattern(UniformRandomSampling(2.0, 0.0), (Nx, Ny))
 println("sampled ky lines: ", sum(mask_cl[2]), " / ", Ny, "  (no ACS block)")
 
@@ -554,24 +502,22 @@ acq_cl_maps = add_noise(
     snr_db = 30
 )
 
-# The reconstruction is handed the coil data and nothing else -- rebuilding the acquisition
-# without `sensitivity_maps` is what makes this calibrationless.
+## The reconstruction is handed the coil data and nothing else -- rebuilding the acquisition
+## without `sensitivity_maps` is what makes this calibrationless.
 acq_cl = AcquisitionInfo(
     acq_cl_maps.kspace_data; is3D = false, image_size = (Nx, Ny), subsampling = mask_cl
 )
 
-# Without maps, `DirectReconstruction` returns the individual coil images, so combine them here.
+## Without maps, `DirectReconstruction` returns the individual coil images, so combine them here.
 rss(x) = sqrt.(dropdims(sum(abs2, unname(x); dims = 3); dims = 3))
 x_zf = rss(reconstruct(acq_cl, DirectReconstruction()))
 println("zero-filled RSS  ", round(nrmse(x_zf, img_pi), digits = 4))
 
-# %% [markdown]
 # Before reconstructing, it is worth looking at the object the whole method rests on. Lift the
 # zero-filled multi-coil k-space into its block-Hankel matrix and look at the singular values: if
 # the low-rank story is true, they should fall off a cliff. The index at which they do is the
 # `max_rank` to ask for.
 
-# %%
 ksp_grid = zeros(ComplexF32, Nx, Ny, Nc)
 ksp_grid[:, mask_cl[2], :] .= unname(acq_cl.kspace_data)
 
@@ -587,7 +533,7 @@ plot(
 )
 vline!([25]; ls = :dash, lw = 2, label = "max_rank = 25")
 
-# %%
+#-
 slr(reg) = reconstruct(
     acq_cl,
     IterativeReconstruction(
@@ -607,7 +553,6 @@ side_by_side(
     titles = ("zero-filled RSS", "LORAKS-C", "SAKE", "ground truth")
 )
 
-# %% [markdown]
 # Both forms turn an unusable zero-filled image into a usable one from data that GRAPPA and
 # SPIRiT cannot touch, and the hard-rank form is the more accurate of the two here — which is the
 # usual finding, and the reason SAKE is stated as a rank constraint in the first place. The
@@ -647,8 +592,6 @@ side_by_side(
 # - `kspace_center` tells `:s` and `:g` where DC sits. It defaults to Ristretto's centered convention
 #   (`N ÷ 2 + 1`); data declared with `shifted_kspace_dims`, where DC is at index 1, has to say so.
 
-
-# %% [markdown]
 # ### 2.4 ALOHA: transform-domain weighting
 #
 # Plain structured low-rank asks only that k-space samples relate linearly across a small
@@ -665,7 +608,6 @@ side_by_side(
 # same `ProximalAverage` construction `MultiScaleLowRank` uses. Everything else — `window`,
 # `max_rank` vs. `λ`, `structure = :c` — is unchanged.
 
-# %%
 x_aloha_tv = slr(StructuredLowRank(; max_rank = 25, window = (5, 5), weights = :tv))
 
 println("zero-filled RSS      ", round(nrmse(x_zf, img_pi), digits = 4))
@@ -677,7 +619,6 @@ side_by_side(
     titles = ("SAKE (unweighted)", "ALOHA (weights=:tv)", "ground truth"), size = (1050, 350)
 )
 
-# %% [markdown]
 # On this particular phantom and sampling pattern, unweighted SAKE is already the more accurate
 # of the two — the TV-sparsity assumption the weighting encodes is not the dominant structure
 # here, so the extra constraint mostly adds bias rather than resolving power. The weighting is
@@ -686,7 +627,6 @@ side_by_side(
 # a plain structured-low-rank result is not accurate enough *and* the object plausibly has the
 # transform-domain sparsity being assumed — not as a default upgrade.
 
-# %% [markdown]
 # ## References
 #
 # [1] P. J. Shin, P. E. Z. Larson, M. A. Ohliger, M. Elad, J. M. Pauly, D. B. Vigneron, and
@@ -725,7 +665,6 @@ side_by_side(
 # Medicine*, vol. 77, no. 1, pp. 180–195, 2017,
 # doi: [10.1002/mrm.26102](https://doi.org/10.1002/mrm.26102).
 
-# %% [markdown]
 # ## Further reading
 #
 # From *Questions and Answers in MRI*:
@@ -738,8 +677,6 @@ side_by_side(
 # - [Compressed sensing](https://mriquestions.com/compressed-sensing.html) — the background for
 #   calibrationless reconstruction.
 
-# %% [markdown]
 # ## Environment
 
-# %%
 print_versions()

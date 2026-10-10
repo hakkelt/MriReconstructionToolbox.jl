@@ -1,5 +1,7 @@
 # Image Decomposition
 
+*Tutorial: [Dynamic imaging and decomposition](../tutorials/07_dynamic_and_decomposition.md).*
+
 Image decomposition models the reconstructed image as a sum of additive
 components, each with its own regularizer — the canonical example being
 low-rank + sparse (L+S) decomposition of dynamic MRI. This is a different

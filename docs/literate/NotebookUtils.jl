@@ -1,15 +1,15 @@
 #=
 NotebookUtils.jl
 
-Shared preamble for the docs/notebooks/*.ipynb example notebooks. Every notebook's first code
-cell does:
+Shared preamble for the tutorials in docs/literate/ and the notebooks made from them. Every
+tutorial's first code cell does:
 
     include("NotebookUtils.jl")
     using .NotebookUtils
 
-This module exists so the 12 notebooks do not each re-fix the same two display glitches, and do
-not each re-implement the same three or four tiny plotting helpers. See docs/notebooks/README.md
-for how it fits into the notebook workflow.
+This module exists so the 12 tutorials do not each re-fix the same two display glitches, and do
+not each re-implement the same three or four tiny plotting helpers. docs/make.jl copies it next
+to the generated notebooks.
 =#
 module NotebookUtils
 

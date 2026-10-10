@@ -236,7 +236,7 @@ end
 3. **Implement adjoint**: For `LinearOperator`, also implement `mul!` for `AdjointOperator`
 4. **Test correctness**: Verify `⟨Lx, y⟩ = ⟨x, L'y⟩` for random inputs
 
-For complete details on implementing custom operators, see the [AbstractOperators.jl documentation](https://hakkelt.github.io/AbstractOperators.jl/stable/custom/).
+For complete details on implementing custom operators, see the [AbstractOperators.jl documentation](https://hakkelt.github.io/AbstractOperators.jl/dev/custom/).
 
 ## Operators in AbstractOperators.jl
 
@@ -323,6 +323,6 @@ x̂, _ = @minimize ls(𝒜 * v - ksp) + 0.01 * norm(𝒲 * v, 1)
 
 ## Further Reading
 
-- **AbstractOperators.jl Documentation**: [https://hakkelt.github.io/AbstractOperators.jl/stable/](https://hakkelt.github.io/AbstractOperators.jl/stable/)
-- **Custom Operators Guide**: [https://hakkelt.github.io/AbstractOperators.jl/stable/custom/](https://hakkelt.github.io/AbstractOperators.jl/stable/custom/)
-- **Operator Properties**: Learn about [operator traits and properties](https://hakkelt.github.io/AbstractOperators.jl/stable/properties/)
+- **AbstractOperators.jl Documentation**: [https://hakkelt.github.io/AbstractOperators.jl/dev/](https://hakkelt.github.io/AbstractOperators.jl/dev/)
+- **Custom Operators Guide**: [https://hakkelt.github.io/AbstractOperators.jl/dev/custom/](https://hakkelt.github.io/AbstractOperators.jl/dev/custom/)
+- **Operator Properties**: Learn about [operator traits and properties](https://hakkelt.github.io/AbstractOperators.jl/dev/properties/)

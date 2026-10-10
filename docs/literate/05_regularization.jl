@@ -1,20 +1,3 @@
-# -*- coding: utf-8 -*-
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,src//jl:percent
-#     text_representation:
-#       extension: .jl
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.15.2
-#   kernelspec:
-#     display_name: Julia 1.12.7
-#     language: julia
-#     name: julia-1.12
-# ---
-
-# %% [markdown]
 # # 5 — Regularization
 #
 # Undersampled reconstruction is ill-posed: many images explain the measured samples. Ristretto solves
@@ -22,8 +5,8 @@
 # $$ \min_x \tfrac12\|\mathcal{A}x - y\|_2^2 + \sum_i \lambda_i R_i(x) $$
 #
 # See `docs/src/high-level/regularization.md` for the full reference list and a "Choosing a
-# regularizer" table. Temporal and low-rank terms have a notebook of their own
-# (`07_dynamic_and_decomposition.ipynb`) because they need a dynamic series.
+# regularizer" table. Temporal and low-rank terms have a tutorial of their own
+# (`07_dynamic_and_decomposition.md`) because they need a dynamic series.
 #
 # **Contents**
 # 1. The common test problem
@@ -36,7 +19,6 @@
 # 8. Constraints
 # 9. Combining terms, and choosing λ
 
-# %%
 include("NotebookUtils.jl")
 using .NotebookUtils
 
@@ -52,19 +34,17 @@ using Random
 
 Random.seed!(0);
 
-# %% [markdown]
 # ## 1. The common test problem
 #
 # 128², eight coils, 4× variable-density undersampling, a little noise.
 
-# %%
 nx, ny, nc = 128, 128, 8
 
 x_true = create_shepp_logan_phantom(
     nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32
 )
-# Noise on the image itself, at a clinical SNR (notebook 03 §7): `snr` is the mean signal in a box
-# at the centre of the image over the noise level, the ratio `estimate_snr` measures back.
+## Noise on the image itself, at a clinical SNR (tutorial 03 §7): `snr` is the mean signal in a box
+## at the centre of the image over the noise level, the ratio `estimate_snr` measures back.
 x_noisy = add_noise(x_true; snr = 100)
 smaps = coil_sensitivities(nx, ny, nc)
 pattern = create_sampling_pattern(
@@ -81,15 +61,14 @@ x_direct = reconstruct(data)
 println("direct (adjoint) NRMSE: ", round(nrmse1(x_direct), digits = 4))
 jim(x_direct; title = "starting point: direct reconstruction", size = (400, 350))
 
-# %%
-# A helper that reconstructs and reports, used throughout the notebook.
+#-
+## A helper that reconstructs and reports, used throughout the tutorial.
 function show_recon(method, title; kwargs...)
     x̂ = reconstruct(data, method; kwargs...)
     println(title, " — NRMSE ", round(nrmse1(x̂), digits = 4))
     return x̂
 end
 
-# %% [markdown]
 # ## 2. Image-domain terms
 #
 # ### `L2Image` (Tikhonov)
@@ -120,12 +99,11 @@ end
 # - SigPy — `sigpy.prox.L2Reg`, or `sigpy.mri.app.SenseRecon(..., lamda=λ)`.
 # - MRIReco.jl — `L2Regularization(λ)`, the default `reg` of its CG-SENSE solver.
 
-# %%
 x_l2_good = show_recon(IterativeReconstruction(L2Image(1.0f-4); maxit = 40), "L2Image λ=1e-4 (well chosen)")
 x_l2_over = show_recon(IterativeReconstruction(L2Image(1.0f0); maxit = 40), "L2Image λ=1e0 (over-regularized)")
 
-# The over-regularized solution is heavily shrunk in magnitude; rescale it to the well-chosen
-# image's peak before display, so the comparison is about lost structure, not lost brightness.
+## The over-regularized solution is heavily shrunk in magnitude; rescale it to the well-chosen
+## image's peak before display, so the comparison is about lost structure, not lost brightness.
 x_l2_over_scaled = x_l2_over .* (maximum(abs, x_l2_good) / maximum(abs, x_l2_over))
 side_by_side(
     x_l2_good, x_l2_over_scaled;
@@ -135,7 +113,6 @@ side_by_side(
     ),
 )
 
-# %% [markdown]
 # ### `L1Image`
 #
 # **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 + \lambda\|x\|_1$
@@ -159,11 +136,9 @@ side_by_side(
 # - SigPy — `sigpy.prox.L1Reg`.
 # - MRIReco.jl — `L1Regularization(λ)`.
 
-# %%
 x_l1 = show_recon(IterativeReconstruction(L1Image(5.0f-3); maxit = 40), "L1Image λ=5e-3")
 jim(x_l1; title = "L1Image", size = (400, 350))
 
-# %% [markdown]
 # ## 3. Transform sparsity
 #
 # ### `L1Wavelet2D`
@@ -195,7 +170,6 @@ jim(x_l1; title = "L1Image", size = (400, 350))
 #   transform is given as a separate operator argument (`MRIReco.jl` builds one with
 #   `MRIOperators.WaveletOp(shape)`), and the ℓ₁ penalty is applied to its output.
 
-# %%
 reg_w = L1Wavelet2D(2.0f-3)
 𝒲 = get_operator(reg_w, x_true)
 coeffs = 𝒲 * x_noisy
@@ -207,8 +181,8 @@ jim(
     layout = (1, 2), size = (800, 350)
 )
 
-# %%
-# Options: the wavelet family and the number of decomposition levels.
+#-
+## Options: the wavelet family and the number of decomposition levels.
 x_haar = show_recon(IterativeReconstruction(L1Wavelet2D(2.0f-3; wavelet = WT.haar); maxit = 60), "Haar")
 x_db8 = show_recon(IterativeReconstruction(L1Wavelet2D(2.0f-3; wavelet = WT.db8, levels = 3); maxit = 60), "db8, 3 levels")
 
@@ -218,7 +192,6 @@ jim(
     layout = (1, 2), size = (800, 350)
 )
 
-# %% [markdown]
 # ### `L1Wavelet3D`
 #
 # **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 + \lambda\|\mathcal{W}_{3D}x\|_1$
@@ -244,7 +217,6 @@ jim(
 # - MRIReco.jl — as in the 2D case, `reg = L1Regularization(λ)` plus a `regTrafo` built for the 3D
 #   shape (`MRIOperators.WaveletOp((nx, ny, nz))`).
 
-# %%
 x3d = create_shepp_logan_phantom(64, 64, 32; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
 smaps3d = coil_sensitivities(64, 64, 32, 4)
 pattern3d = create_sampling_pattern(
@@ -259,22 +231,20 @@ x3d_wav = reconstruct(data3d, IterativeReconstruction(L1Wavelet3D(2.0f-3); maxit
 println("3D NRMSE: ", round(nrmse(x3d_wav, x3d), digits = 4))
 jim(x3d_wav[:, :, 9:4:29]; title = "L1Wavelet3D, four slices", nrow = 1, size = (1000, 280))
 
-# %% [markdown]
 # > **2D and 3D regularizers are not tied to 2D and 3D encoding.** The `2D`/`3D` in a regularizer's
 # > name says how many dimensions its *transform* spans, not what kind of acquisition it may be
 # > used with. Beyond the two obvious pairings there are two useful mixed ones:
 # >
 # > - a **2D regularizer on 3D-encoded data** applies the transform slice by slice. Every slice is
 # >   then regularized independently, which is what lets the reconstruction split into per-slice
-# >   tasks (notebook 06 §8) and makes it the faster of the two.
+# >   tasks (tutorial 06 §8) and makes it the faster of the two.
 # > - a **3D regularizer on multi-slice 2D-encoded data** couples the slices through the transform.
 # >   It cannot be split, so it costs more, but it exploits correlation between neighbouring slices
 # >   and usually gives the better image — provided the slices really are a contiguous volume.
 # >
-# > The same applies to every other `2D`/`3D` pair in this notebook (`TotalVariation2D/3D`,
+# > The same applies to every other `2D`/`3D` pair in this tutorial (`TotalVariation2D/3D`,
 # > `AnisotropicTotalVariation2D/3D`, and the rest).
 
-# %% [markdown]
 # ### `L1Contourlet`
 #
 # **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 + \lambda\|\mathcal{C}x\|_1$
@@ -300,7 +270,6 @@ jim(x3d_wav[:, :, 9:4:29]; title = "L1Wavelet3D, four slices", nrow = 1, size = 
 #
 # No direct equivalent anywhere else: the transform itself would have to be supplied.
 
-# %%
 reg_c = L1Contourlet(2.0f-3)
 𝒞 = get_operator(reg_c, x_true)
 bands = 𝒞 * x_noisy
@@ -316,7 +285,6 @@ jim(
     layout = (rows_c, cols_c), size = (330 * cols_c, 330 * rows_c)
 )
 
-# %% [markdown]
 # ## 4. Total variation
 #
 # ### `TotalVariation2D`
@@ -352,7 +320,6 @@ jim(
 #   `GradientOp` transform instead, because `TVRegularization` routes through an inexact nested
 #   dual solve.
 
-# %%
 reg_tv = TotalVariation2D(1.0f-3)
 ∇ = get_operator(reg_tv, x_true)
 grad = ∇ * x_noisy
@@ -365,7 +332,6 @@ jim(
     layout = (1, 3), size = (1050, 300)
 )
 
-# %% [markdown]
 # ### `TotalVariation3D`
 #
 # **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 +
@@ -386,12 +352,10 @@ jim(
 #   shape and the dimensions the gradient acts over, so 3D is the same type with different
 #   arguments.
 
-# %%
 x3d_tv = reconstruct(data3d, IterativeReconstruction(TotalVariation3D(1.0f-3); maxit = 30))
 println("3D TV NRMSE: ", round(nrmse(x3d_tv, x3d), digits = 4))
 jim(x3d_tv[:, :, 9:4:29]; title = "TotalVariation3D, four slices", nrow = 1, size = (1000, 280))
 
-# %% [markdown]
 # ### `AnisotropicTotalVariation2D` / `AnisotropicTotalVariation3D`
 #
 # **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 +
@@ -426,7 +390,6 @@ jim(x3d_tv[:, :, 9:4:29]; title = "TotalVariation3D, four slices", nrow = 1, siz
 # - MRIReco.jl — `L1Regularization(λ)` with a `GradientOp` `regTrafo`, which is exactly this term
 #   (its `TVRegularization` is the isotropic one).
 
-# %%
 x_tv_aniso = show_recon(
     IterativeReconstruction(AnisotropicTotalVariation2D(1.0f-3); maxit = 60),
     "AnisotropicTotalVariation2D λ=1e-3"
@@ -438,7 +401,6 @@ jim(
     layout = (1, 3), size = (1050, 300)
 )
 
-# %% [markdown]
 # ### Second-order TV and TGV
 #
 # **Problem:** second-order TV adds the term as written,
@@ -474,11 +436,10 @@ jim(
 # **Availability in other toolboxes:**
 #
 # - BART — `pics -R G:7:0:λ` for TGV (and `-R C` / `-R V` for the infimal-convolution variants of
-#   notebook 7 §5).
+#   tutorial 7 §5).
 # - SigPy — none.
 # - MRIReco.jl — none.
 
-# %%
 x_tv2 = show_recon(
     IterativeReconstruction(
         TotalVariation2D(1.0f-3), SecondOrderTotalVariation2D(2.0f-3);
@@ -499,7 +460,6 @@ jim(
     layout = (1, 3), size = (1050, 300)
 )
 
-# %% [markdown]
 # ### `EdgePreservingRoughness2D` (Huber)
 #
 # **Problem:** $\min_x \tfrac12\|\mathcal{A}x - y\|_2^2 +
@@ -535,37 +495,35 @@ jim(
 # - BART — none.
 # - SigPy — none.
 
-# %%
 using Statistics: quantile
 
 diffs = abs.(diff(abs.(x_direct); dims = 1))
 δ = Float32(quantile(vec(diffs), 0.15))
 println("δ from the 15th percentile of |∇x_direct|: ", round(δ, digits = 5))
 
-# A larger iteration budget than the other terms in this notebook get, and for a reason worth
-# knowing. Huber is the only *smooth* regularizer here, so it joins the data term in `f` rather
-# than becoming a proximal term `g`. Ristretto sizes the proximal-gradient step from the encoding
-# operator alone (`Lf = n‖𝒜‖²`, notebook 06 §7), which does not see the curvature the Huber term
-# adds, so the step is a little too long for this `f` and the solver spends iterations correcting
-# instead of descending. It converges to the same place — it just takes longer to get there.
-#
-# A natural question at this point is whether a smooth term could go to CG or CGNR instead, since
-# those need no step size at all. It cannot: CG and CGNR minimize a *quadratic*, where the
-# gradient is a fixed linear operator and a Krylov subspace means something. Huber's gradient is
-# linear only below `δ` and constant-slope above it, so there is no such operator — which is
-# exactly what `CGNRIteration`'s `get_assumptions` declaration says when it asks for a
-# least-squares model, and why the parser never offers it this one. The classical way to get CG's
-# speed here is *quadratic majorization* (Fessler's optimization transfer): replace the Huber
-# term at each outer step by a weighted quadratic that touches it at the current iterate, and
-# solve that inner least-squares problem with CG. Ristretto has no such surrogate — it hands the term to
-# the proximal-gradient family as a smooth function and pays the iterations instead.
+## A larger iteration budget than the other terms in this tutorial get, and for a reason worth
+## knowing. Huber is the only *smooth* regularizer here, so it joins the data term in `f` rather
+## than becoming a proximal term `g`. Ristretto sizes the proximal-gradient step from the encoding
+## operator alone (`Lf = n‖𝒜‖²`, tutorial 06 §7), which does not see the curvature the Huber term
+## adds, so the step is a little too long for this `f` and the solver spends iterations correcting
+## instead of descending. It converges to the same place — it just takes longer to get there.
+##
+## A natural question at this point is whether a smooth term could go to CG or CGNR instead, since
+## those need no step size at all. It cannot: CG and CGNR minimize a *quadratic*, where the
+## gradient is a fixed linear operator and a Krylov subspace means something. Huber's gradient is
+## linear only below `δ` and constant-slope above it, so there is no such operator — which is
+## exactly what `CGNRIteration`'s `get_assumptions` declaration says when it asks for a
+## least-squares model, and why the parser never offers it this one. The classical way to get CG's
+## speed here is *quadratic majorization* (Fessler's optimization transfer): replace the Huber
+## term at each outer step by a weighted quadratic that touches it at the current iterate, and
+## solve that inner least-squares problem with CG. Ristretto has no such surrogate — it hands the term to
+## the proximal-gradient family as a smooth function and pays the iterations instead.
 x_huber = show_recon(
     IterativeReconstruction(EdgePreservingRoughness2D(1.0f-3; δ = δ); maxit = 300, reltol = 0.0),
     "EdgePreservingRoughness2D"
 )
 jim(x_huber; title = "Huber roughness penalty", size = (400, 350))
 
-# %% [markdown]
 # ## 5. Non-convex sparsity
 #
 # **Problem:** in the penalty form,
@@ -603,13 +561,12 @@ jim(x_huber; title = "Huber roughness penalty", size = (400, 350))
 # The `count` constraint form has no equivalent in any of the three; it is the sparsity analogue of
 # `RankLimit`.
 
-# %%
 x_hard = show_recon(
     IterativeReconstruction(L0Wavelet2D(threshold = 2.0f-4); maxit = 40),
     "L0Wavelet2D threshold (warm start)"; x₀ = x_wav
 )
 
-# The `count` form constrains the *number* of non-zero coefficients instead of penalizing them.
+## The `count` form constrains the *number* of non-zero coefficients instead of penalizing them.
 x_sparsity = show_recon(
     IterativeReconstruction(L0Wavelet2D(count = 2000); maxit = 40),
     "L0Wavelet2D count=2000 (warm start)"; x₀ = x_wav
@@ -622,14 +579,12 @@ jim(
     layout = (1, 3), size = (1050, 300)
 )
 
-# %% [markdown]
 # `L0Image` is the same hard thresholding applied to the pixels themselves rather than to wavelet
 # coefficients — the ℓ₀ counterpart of `L1Image`, with the same `threshold` and `count` forms. It
 # suits an object that is sparse in the image domain (angiography, hardware, the tubes phantom of
 # §7); on a Shepp–Logan phantom, which is piecewise constant but not sparse, it is the wrong prior
 # and the cell below shows exactly that.
 
-# %%
 x_l0_image = show_recon(
     IterativeReconstruction(L0Image(threshold = 2.0f-4); maxit = 40),
     "L0Image threshold (warm start)"; x₀ = x_wav
@@ -646,7 +601,6 @@ jim(
     layout = (1, 3), size = (1050, 300)
 )
 
-# %% [markdown]
 # ## 6. Plug-and-play priors
 #
 # **Problem:** there is no explicit penalty to write down. The problem solved is
@@ -692,16 +646,15 @@ jim(
 # difference coming from the adaptive step size (the plug-and-play term has no objective value to
 # backtrack on). Because the implicit prior has no value function, the reported objective is
 # `NaN` and objective-based convergence checks are meaningless — this is the one place in the
-# notebook where the algorithm has to be pinned explicitly: `ISTA` or `ADMM` with a
+# tutorial where the algorithm has to be pinned explicitly: `ISTA` or `ADMM` with a
 # fixed iteration budget, never a line-search algorithm.
 #
 # `complex_handling` decides what the denoiser sees: `:split` (default) denoises the real and
 # imaginary parts separately, `:magnitude` denoises the magnitude and keeps the phase — the
 # latter is what matches complex soft thresholding.
 
-# %%
-# The denoiser is called as `denoiser(image, σ)` with `σ = strength * sqrt(γ)`, and the prox of
-# `L1Image(λ)` corresponds to thresholding at `σ²` — hence `strength = sqrt(λ)` below.
+## The denoiser is called as `denoiser(image, σ)` with `σ = strength * sqrt(γ)`, and the prox of
+## `L1Image(λ)` corresponds to thresholding at `σ²` — hence `strength = sqrt(λ)` below.
 soft(image, σ) = sign.(image) .* max.(abs.(image) .- σ^2, 0)
 
 λ_pnp = 5.0f-3
@@ -717,12 +670,10 @@ x_l1_ista = reconstruct(
 )
 println("‖PnP − L1Image‖/‖L1Image‖ = ", round(norm(x_pnp - x_l1_ista) / norm(x_l1_ista), digits = 6))
 
-# %% [markdown]
 # (With this Ristretto version, the accelerated proximal-gradient path rejects the term at
 # problem-parsing time — both `POGM` and `FISTA` require a convex proximable term — while `ISTA`
 # and `ADMM` work.)
 
-# %% [markdown]
 # ## 7. Joint sparsity and reference priors
 #
 # ### `JointSparsity`
@@ -752,16 +703,15 @@ println("‖PnP − L1Image‖/‖L1Image‖ = ", round(norm(x_pnp - x_l1_ista) 
 #   ℓ₂,₁ norm over that axis. The same `B` argument makes `-R W` a joint-sparse wavelet penalty.
 # - SigPy — no packaged joint-sparsity app; the ℓ₂,₁ prox would have to be supplied by hand.
 
-# %%
-# Three "echoes" of the same anatomy with different contrast: six tubes at fixed relative
-# fillings, scaled together per echo the way multi-echo signal decays — a more realistic
-# multi-contrast test than a single phantom uniformly dimmed.
+## Three "echoes" of the same anatomy with different contrast: six tubes at fixed relative
+## fillings, scaled together per echo the way multi-echo signal decays — a more realistic
+## multi-contrast test than a single phantom uniformly dimmed.
 n = 64
 base_fillings = [0.1, 0.3, 0.5, 0.7, 0.9, 1.0]
 echo_intensities = [TubesIntensities(tube_fillings = base_fillings .* w) for w in (1.0, 0.7, 0.45)]
-# Named dimensions, so the term says which axis the contrasts live on by name rather than by
-# position: `dim = :echo` reads as what it means and survives a change in the dimension order,
-# where `dim = 3` silently regularizes the wrong axis.
+## Named dimensions, so the term says which axis the contrasts live on by name rather than by
+## position: `dim = :echo` reads as what it means and survives a change in the dimension order,
+## where `dim = 3` silently regularizes the wrong axis.
 echoes = NamedDimsArray{(:x, :y, :echo)}(
     create_tubes_phantom(n, n, :axial; ti = echo_intensities, eltype = ComplexF32)
 )
@@ -783,7 +733,6 @@ x_joint = reconstruct(
 println("joint NRMSE: ", round(nrmse(x_joint, echoes), digits = 4))
 jim(x_joint; title = "JointSparsity — three echoes", nrow = 1, size = (900, 300))
 
-# %% [markdown]
 # ### `ReferencePrior`
 #
 # **Problem:**
@@ -818,7 +767,6 @@ jim(x_joint; title = "JointSparsity — three echoes", nrow = 1, size = (900, 30
 # Ristretto picks the solver automatically — two non-smooth terms together mean ADMM, without needing
 # `algorithm = ADMM()` spelled out.
 
-# %%
 x_ref = x_wav                                   # pretend this is a prior high-quality scan
 x_piccs = show_recon(
     IterativeReconstruction(ReferencePrior(1.0f-2, x_ref), L1Wavelet2D(1.0f-3); maxit = 40),
@@ -826,7 +774,6 @@ x_piccs = show_recon(
 )
 jim(x_piccs; title = "reference-constrained reconstruction", size = (400, 350))
 
-# %% [markdown]
 # ## 8. Constraints
 #
 # **Problem:** a constraint, not a penalty — which is why these carry no λ:
@@ -860,7 +807,6 @@ jim(x_piccs; title = "reference-constrained reconstruction", size = (400, 350))
 # - MRIReco.jl — `PositiveRegularization()` for non-negativity and `RealRegularization()` for the
 #   real-valued constraint, both of which take the real part the way Ristretto's `:real` handling does.
 
-# %%
 println(NonNegative())
 println(BoxConstraint(0.0, 1.0))
 
@@ -870,13 +816,11 @@ catch e
     println("\nOn complex data, default (:error): ", sprint(showerror, e))
 end
 
-# %% [markdown]
 # `complex_handling = :real` projects onto the real, non-negative orthant instead of throwing:
 # the imaginary part is discarded and the real part clamped at 0. On the real, non-negative
-# Shepp–Logan phantom used throughout this notebook, adding that constraint to TV should only
+# Shepp–Logan phantom used throughout this tutorial, adding that constraint to TV should only
 # help — it rules out images the true one could never be.
 
-# %%
 x_tv_only = show_recon(IterativeReconstruction(TotalVariation2D(1.0f-3); maxit = 60), "TV alone")
 x_tv_pos = show_recon(
     IterativeReconstruction(TotalVariation2D(1.0f-3), NonNegative(; complex_handling = :real); maxit = 60),
@@ -886,14 +830,12 @@ println("NonNegative(:real) improves on TV alone: ", nrmse1(x_tv_pos) < nrmse1(x
 
 side_by_side(x_tv_only, x_tv_pos; titles = ("TV alone", "TV + NonNegative(:real)"))
 
-# %% [markdown]
 # ## 9. Combining terms, and choosing λ
 #
 # Terms are simply listed; Ristretto picks a solver that can handle the combination (ADMM, in
 # practice, as soon as there is more than one non-smooth term or a non-tight operator) — no
 # `algorithm = ...` keyword is needed here either.
 
-# %%
 x_combo = show_recon(
     IterativeReconstruction(L1Wavelet2D(1.5f-3), TotalVariation2D(5.0f-4); maxit = 60),
     "L1Wavelet2D + TotalVariation2D"
@@ -904,7 +846,6 @@ jim(
     layout = (1, 2), size = (800, 350)
 )
 
-# %% [markdown]
 # ### Starting values for λ
 #
 # Because the problem solved is $\tfrac12\|\mathcal{A}x-y\|^2 + \lambda R(x)$ with no operator
@@ -928,7 +869,6 @@ jim(
 #
 # Too noisy or aliased → increase λ; too smooth → decrease it; move in factors of 2–5.
 
-# %%
 λs = Float32[8.0e-4, 2.0e-3, 5.0e-3, 1.2e-2]
 sweep = map(λs) do λ
     x̂ = reconstruct(data, IterativeReconstruction(L1Wavelet2D(λ); maxit = 40))
@@ -936,28 +876,24 @@ sweep = map(λs) do λ
 end
 jim(sweep...; layout = grid_layout(length(sweep)), size = (1000, 660))
 
-# %% [markdown]
 # ### Not covered here
 #
 # The temporal and low-rank terms — `L1TemporalFourier`, `TemporalTotalVariation`, `LowRank`,
 # `RankLimit`, `LocallyLowRank`, `MultiScaleLowRank` — need a dynamic series; they are covered in
-# `07_dynamic_and_decomposition.ipynb`, together with the additive `Component` models (L+S).
+# `07_dynamic_and_decomposition.md`, together with the additive `Component` models (L+S).
 
-# %% [markdown]
 # ## Further reading
 #
 # Why any of this is necessary, from *Questions and Answers in MRI*:
 #
 # - [Compressed sensing](https://mriquestions.com/compressed-sensing.html) — the three ingredients
-#   (incoherent sampling, a sparsifying transform, iterative reconstruction) this whole notebook is
+#   (incoherent sampling, a sparsifying transform, iterative reconstruction) this whole tutorial is
 #   the third of.
 # - [k-space: parts](https://mriquestions.com/parts-of-k-space.html) — why undersampling the
 #   periphery costs detail rather than contrast, which is what every λ here trades against.
 # - [Parallel imaging: noise](https://mriquestions.com/noise-in-pi.html) — the noise amplification
 #   these penalties are suppressing.
 
-# %% [markdown]
 # ## Environment
 
-# %%
 print_versions()

@@ -1,27 +1,10 @@
-# -*- coding: utf-8 -*-
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,src//jl:percent
-#     text_representation:
-#       extension: .jl
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.15.2
-#   kernelspec:
-#     display_name: Julia 1.12.7
-#     language: julia
-#     name: julia-1.12
-# ---
-
-# %% [markdown]
 # # 10 — Real dynamic data: cardiac cine
 #
-# The dynamic machinery of notebook 7 on real scanner data: a fully sampled 1.5 T cardiac cine
+# The dynamic machinery of tutorial 7 on real scanner data: a fully sampled 1.5 T cardiac cine
 # from [OCMR](https://ocmr.info), retrospectively undersampled and reconstructed with temporal,
 # low-rank and low-rank-plus-sparse models.
 #
-# This notebook is also the place where the comparison is done *honestly*. A table of methods
+# This tutorial is also the place where the comparison is done *honestly*. A table of methods
 # each run at a λ someone once picked says nothing: half of what looks like "method A beats
 # method B" is really "λ_A happened to suit this dataset". So every method here gets its own
 # small λ sweep, is shown at its own best setting, and is scored twice — once globally, and once
@@ -32,7 +15,7 @@
 # > *OCMR (v1.0) — Open-Access Multi-Coil k-Space Dataset for Cardiovascular Magnetic Resonance
 # > Imaging*, arXiv:2008.03410 (2020). The first run downloads ~200 MB.
 #
-# > **Runtime.** This is by far the slowest notebook in the set: **twenty minutes to forty** end to
+# > **Runtime.** This is by far the slowest tutorial in the set: **twenty minutes to forty** end to
 # > end (measured: 21 min with `JULIA_NUM_THREADS=8` on a compute node, 39 min with four threads on
 # > a shared one),
 # > most of it in the λ sweep of section 6 (fifty-six reconstructions of a 256 × 208 × 19 cine)
@@ -53,7 +36,6 @@
 # 10. Real non-Cartesian data: a spiral real-time scan
 # 11. What actually wins, and when
 
-# %%
 include("NotebookUtils.jl")
 using .NotebookUtils
 
@@ -71,7 +53,6 @@ using Random
 
 Random.seed!(0);
 
-# %% [markdown]
 # ## 1. From ISMRMRD file to `AcquisitionInfo` in one call
 #
 # `AcquisitionInfo(::MRIBase.RawAcquisitionData)` (the package extension that loading `MRIBase`
@@ -88,9 +69,8 @@ Random.seed!(0);
 # * **The image-domain convention.** A scanner images an object centred in the FOV, whereas Ristretto's
 #   default is the plain-DFT one (image origin at index 1). The constructor sets
 #   `shifted_image_dims` on both spatial axes, so **no `fftshift` appears anywhere in this
-#   notebook** — without it every frame would come out rolled by half the FOV.
+#   tutorial** — without it every frame would come out rolled by half the FOV.
 
-# %%
 if MRITestData.get_download_path() === nothing
     MRITestData.set_download_path!(:cache)
 end
@@ -108,7 +88,6 @@ println("reconstructed to:  ", Int.(raw.params["reconSize"]))
 println("readout coverage:  ", acq_enc.subsampling[1], " of 1:", acq_enc.image_size[1])
 println("cardiac phases:    ", size(acq_enc.kspace_data, :time))
 
-# %% [markdown]
 # ## 2. Readout oversampling and coil compression
 #
 # ### Removing the readout oversampling
@@ -122,12 +101,11 @@ println("cardiac phases:    ", size(acq_enc.kspace_data, :time))
 # sampled axis, so the discarded half is simply anatomy outside the prescribed FOV. Doing it
 # first halves the size of every reconstruction below.
 #
-# The round trip is worth reading closely, because it is the one place in these two notebooks
+# The round trip is worth reading closely, because it is the one place in these two tutorials
 # where the FFT-shift convention has to be written out by hand. `reconstruct` hands back centred
 # images (`shifted_image_dims`), so going back to centred k-space is `fftshift ∘ fft ∘ ifftshift`
 # along both spatial axes — *not* a bare `fft`, which would treat array index 1 as the origin.
 
-# %%
 coil_enc = reconstruct(acq_enc)    # no maps => one image per coil
 nx_recon = Int(raw.params["reconSize"][1])
 x_lo = (size(coil_enc, :x) - nx_recon) ÷ 2 + 1
@@ -140,26 +118,25 @@ acq_cine = AcquisitionInfo(
 )
 println("encoded  ", size(acq_enc.kspace_data), " -> cine ", size(acq_cine.kspace_data))
 
-# The crop is a projection, so re-reconstructing must return exactly what we cropped.
+## The crop is a projection, so re-reconstructing must return exactly what we cropped.
 round_trip = unname(reconstruct(acq_cine))
 println("round-trip error: ", norm(round_trip - coil_cropped) / norm(coil_cropped))
 
-# %%
-# Fifteen channels is more than this problem needs; compressing to six virtual coils cuts the
-# cost of every iterative reconstruction below by more than half at no visible cost in quality.
+#-
+## Fifteen channels is more than this problem needs; compressing to six virtual coils cuts the
+## cost of every iterative reconstruction below by more than half at no visible cost in quality.
 acq_cine, _ = compress_coils(acq_cine, 6; method = SVDCompression())
 ksp_cine = unname(acq_cine.kspace_data)
 nkx, nky, ncoil, nframes = size(ksp_cine)
 println("after coil compression: ", size(ksp_cine))
 
-# %% [markdown]
 # ## 3. Sensitivity maps
 #
 # Calibrate from a **single frame**, not the time average: cardiac motion smears a temporally
 # averaged calibration region and corrupts the ESPIRiT maps. (Handing the whole cine to
 # `estimate_sensitivities` would not average it — a `:time` axis on Cartesian k-space is a batch
 # dimension, so every frame would get its own maps — but that is twenty calibrations to carry
-# through the rest of the notebook, each from one frame's worth of signal.)
+# through the rest of the tutorial, each from one frame's worth of signal.)
 #
 # Take the frame out with the copy constructor rather than by slicing the bare array. Sensitivity
 # maps live in the image domain, so they inherit whatever FFT-shift convention they were
@@ -167,7 +144,6 @@ println("after coil compression: ", size(ksp_cine))
 # convention and hand back maps rolled by half the FOV relative to this acquisition. Going
 # through the `AcquisitionInfo` carries `shifted_image_dims` along and cannot get that wrong.
 
-# %%
 acq_frame1 = AcquisitionInfo(acq_cine; kspace_data = acq_cine.kspace_data[time = 1])
 smaps = estimate_sensitivities(
     acq_frame1; method = ESPIRiT(calib_size = 24, kernel_size = 6)
@@ -175,7 +151,6 @@ smaps = estimate_sensitivities(
 println("maps: ", size(smaps), " ", dimnames(smaps))
 jim(abs.(unname(smaps)); title = "ESPIRiT maps (frame 1)", nrow = 2, size = (1000, 500))
 
-# %% [markdown]
 # ## 4. The reference, and which frame to look at
 #
 # With the maps in hand the reference is the adjoint reconstruction of the *fully sampled* data
@@ -189,12 +164,10 @@ jim(abs.(unname(smaps)); title = "ESPIRiT maps (frame 1)", nrow = 2, size = (100
 #
 # This is why the reference comes after the maps rather than in section 2: it depends on them.
 
-# %%
 acq_ref = AcquisitionInfo(acq_cine; sensitivity_maps = smaps)
 reference = abs.(unname(reconstruct(acq_ref)))
 println("reference: ", size(reference), "  (ESPIRiT maps + adjoint)")
 
-# %% [markdown]
 # ### Which frame to look at
 #
 # A cine has no "most representative" frame, but it does have a most *informative* one: the
@@ -203,7 +176,6 @@ println("reference: ", size(reference), "  (ESPIRiT maps + adjoint)")
 # picture below uses it rather than an arbitrary index. (This dataset is a single slice — the
 # ISMRMRD `slice` counter never varies — so there is no slice to choose, only a frame.)
 
-# %%
 temporal_mean = mean(reference; dims = 3)
 frame_deviation = [norm(reference[:, :, t] - temporal_mean[:, :, 1]) for t in 1:nframes]
 frame = argmax(frame_deviation)
@@ -218,11 +190,10 @@ animate_slices(
     title = t -> "reference, frame $t of $nframes" * (t == frame ? "  (most dynamic)" : ""),
 )
 
-# %% [markdown]
 # ## 5. Two retrospective sampling patterns
 #
 # The sampling pattern decides in advance how much a temporal model can possibly gain, so this
-# notebook uses two of them at the **same** net acceleration:
+# tutorial uses two of them at the **same** net acceleration:
 #
 # * **Fixed** — uniform R = 3 plus a fully sampled centre block, the same ky lines at every
 #   frame. The aliasing is then identical in every frame, i.e. perfectly *coherent* in time. A
@@ -243,7 +214,6 @@ animate_slices(
 # `[(:, mask_t) for t in 1:nframes]` — alongside a fixed-shape k-space array, which is why both
 # masks are built with the same line count.
 
-# %%
 R, acs = 3, 8
 center = (nky ÷ 2 - acs):(nky ÷ 2 + acs)
 mask_fixed = falses(nky)
@@ -251,10 +221,10 @@ mask_fixed[1:R:nky] .= true
 mask_fixed[center] .= true
 nlines = sum(mask_fixed)
 
-# The interleaved patterns: the centre block in every frame, plus enough randomly chosen outer
-# lines to reach the same total. Equal counts per frame are a requirement, not a nicety — the
-# simulated k-space is one dense array, so every frame has to contribute the same number of
-# lines.
+## The interleaved patterns: the centre block in every frame, plus enough randomly chosen outer
+## lines to reach the same total. Equal counts per frame are a requirement, not a nicety — the
+## simulated k-space is one dense array, so every frame has to contribute the same number of
+## lines.
 outer = setdiff(1:nky, center)
 n_outer = nlines - length(center)
 rng = MersenneTwister(0)
@@ -274,9 +244,9 @@ println(
     "   union over time: ", sum(reduce(.|, masks_interleaved)), " of ", nky
 )
 
-# Both acquisitions are built with the copy constructor, `AcquisitionInfo(info; field = value)`,
-# so `image_size`, `is3D` and — the one that bites — `shifted_image_dims` are inherited rather
-# than retyped.
+## Both acquisitions are built with the copy constructor, `AcquisitionInfo(info; field = value)`,
+## so `image_size`, `is3D` and — the one that bites — `shifted_image_dims` are inherited rather
+## than retyped.
 acq_fixed = AcquisitionInfo(
     acq_cine;
     kspace_data = acq_cine.kspace_data[ky = mask_fixed],
@@ -294,8 +264,8 @@ acq_interleaved = AcquisitionInfo(
 )
 println(acq_interleaved)
 
-# %%
-# What the two patterns look like as (ky, frame) maps, and what their aliasing does to each frame.
+#-
+## What the two patterns look like as (ky, frame) maps, and what their aliasing does to each frame.
 pattern_fixed = repeat(mask_fixed, 1, nframes)
 pattern_interleaved = reduce(hcat, masks_interleaved)
 
@@ -304,13 +274,13 @@ x_zf_interleaved = reconstruct(acq_interleaved)
 
 zf_fixed_mag = abs.(unname(x_zf_fixed))
 zf_interleaved_mag = abs.(unname(x_zf_interleaved))
-# One colour scale over both series and every frame: the two zero-filled images are on the same
-# scale by construction, and a per-frame scale would make the animation flicker.
+## One colour scale over both series and every frame: the two zero-filled images are on the same
+## scale by construction, and a per-frame scale would make the animation flicker.
 cl_zf = (0.0, max(maximum(zf_fixed_mag), maximum(zf_interleaved_mag)))
 
-# The point of the interleaved pattern is that it changes from frame to frame, which a static
-# (ky, frame) map states but does not show. Animating it, with a marker on the row being played,
-# puts the pattern and the aliasing it produces on the same clock.
+## The point of the interleaved pattern is that it changes from frame to frame, which a static
+## (ky, frame) map states but does not show. Animating it, with a marker on the row being played,
+## puts the pattern and the aliasing it produces on the same clock.
 animate_frames(nframes; fps = 8) do t
     p_fixed = jim(pattern_fixed; title = "fixed pattern", aspect_ratio = :auto, xlabel = "ky", ylabel = "frame")
     hline!(p_fixed, [t]; color = :crimson, lw = 2, label = "")
@@ -327,7 +297,6 @@ animate_frames(nframes; fps = 8) do t
     )
 end
 
-# %% [markdown]
 # ### How the reconstructions are scored
 #
 # Two numbers, both against the fully sampled reference of section 4, on magnitude, with
@@ -341,15 +310,14 @@ end
 #   where a temporal or low-rank prior can differ from a frame-by-frame one at all, so it is the
 #   number that actually discriminates between the methods.
 
-# %%
 support = reference .> 0.1maximum(reference)
 motion = dropdims(std(reference; dims = 3); dims = 3)
-# The threshold is deliberately low. The temporal standard deviation peaks on the *myocardial
-# wall*, where a bright muscle edge sweeps across a pixel and the intensity swings the whole way;
-# the blood pool inside the ventricle changes much less from phase to phase, and a 25% threshold
-# keeps only the wall and calls the chamber it encloses static. Ten percent takes in the cavity,
-# the outflow tract and the vessels — the whole moving structure, which is what the dynamic score
-# is supposed to be about.
+## The threshold is deliberately low. The temporal standard deviation peaks on the *myocardial
+## wall*, where a bright muscle edge sweeps across a pixel and the intensity swings the whole way;
+## the blood pool inside the ventricle changes much less from phase to phase, and a 25% threshold
+## keeps only the wall and calls the chamber it encloses static. Ten percent takes in the cavity,
+## the outflow tract and the vessels — the whole moving structure, which is what the dynamic score
+## is supposed to be about.
 dynamic = repeat(motion .> 0.1maximum(motion), 1, 1, nframes)
 println("object pixels: ", sum(support), "   dynamic pixels: ", sum(dynamic))
 
@@ -368,12 +336,12 @@ for (name, x) in ("fixed" => x_zf_fixed, "interleaved" => x_zf_interleaved)
     @printf("zero-filled %-12s global %.4f   dynamic %.4f\n", name, s.global_err, s.dynamic_err)
 end
 
-# %%
+#-
 cl_ref_masks = (0.0, maximum(reference))
 
-# The two masks are what the scores are computed over, so they are worth seeing against the
-# moving image rather than next to a single arbitrary frame: the dynamic mask should cover
-# exactly what changes as the animation plays.
+## The two masks are what the scores are computed over, so they are worth seeing against the
+## moving image rather than next to a single arbitrary frame: the dynamic mask should cover
+## exactly what changes as the animation plays.
 animate_frames(nframes; fps = 8) do t
     jim(
         jim(reference[:, :, t]; title = "reference (ESPIRiT + adjoint)", clim = cl_ref_masks),
@@ -384,7 +352,6 @@ animate_frames(nframes; fps = 8) do t
     )
 end
 
-# %% [markdown]
 # ## 6. Choosing λ per method
 #
 # Every method below is a different penalty on a different transform, so its λ lives on a
@@ -407,7 +374,6 @@ end
 # This cell is the expensive one — fifty-six reconstructions, around twenty-five minutes on a
 # shared node with four threads. Everything after it is cheap except the timing table.
 
-# %%
 sweeps = (
     "L2Image (per frame)" =>
         (Float32[2.0e-2, 8.0e-2, 3.0e-1, 1.0], λ -> IterativeReconstruction(L2Image(λ); maxit = 20)),
@@ -421,19 +387,19 @@ sweeps = (
         (Float32[3.0e-2, 1.0e-1, 3.0e-1, 1.0], λ -> IterativeReconstruction(LowRank(λ; time_dim = :time); maxit = 30)),
     "LocallyLowRank" =>
         (Float32[3.0e-3, 1.0e-2, 3.0e-2, 1.0e-1], λ -> IterativeReconstruction(LocallyLowRank(λ; block_size = 8, time_dim = :time); maxit = 30)),
-    # L+S has two knobs, not one. Sweeping both would be sixteen reconstructions per pattern, so
-    # the sparse weight is held at a value swept separately (a two-parameter grid, off to one
-    # side, over λ_L ∈ [1e-2, 2] × λ_S ∈ [1e-4, 3e-2]) and only λ_L is swept here. Tying the two
-    # at a fixed ratio — the obvious shortcut — does not work: at the λ_L this model actually
-    # wants, a ratio of 1/5 puts λ_S around 6e-2, which soft-thresholds S to *exactly zero* and
-    # quietly turns "L+S" into a plain `LowRank` run under another name. λ_S = 3e-3 is where the
-    # separate sweep put the minimum, and it leaves S non-zero on a few per cent of the voxels.
-    #
-    # The sparse term is a plain `L1Image`, which is what Otazo's L+S actually uses: an entrywise
-    # penalty on S in the image domain. A temporal-TV sparse term penalizes *change* rather than
-    # magnitude, which lets the constant part of the anatomy sit in S at no cost and pushes the
-    # motion into L — the two components then come out swapped, with L looking sparse and S
-    # looking low-rank.
+    ## L+S has two knobs, not one. Sweeping both would be sixteen reconstructions per pattern, so
+    ## the sparse weight is held at a value swept separately (a two-parameter grid, off to one
+    ## side, over λ_L ∈ [1e-2, 2] × λ_S ∈ [1e-4, 3e-2]) and only λ_L is swept here. Tying the two
+    ## at a fixed ratio — the obvious shortcut — does not work: at the λ_L this model actually
+    ## wants, a ratio of 1/5 puts λ_S around 6e-2, which soft-thresholds S to *exactly zero* and
+    ## quietly turns "L+S" into a plain `LowRank` run under another name. λ_S = 3e-3 is where the
+    ## separate sweep put the minimum, and it leaves S non-zero on a few per cent of the voxels.
+    ##
+    ## The sparse term is a plain `L1Image`, which is what Otazo's L+S actually uses: an entrywise
+    ## penalty on S in the image domain. A temporal-TV sparse term penalizes *change* rather than
+    ## magnitude, which lets the constant part of the anatomy sit in S at no cost and pushes the
+    ## motion into L — the two components then come out swapped, with L looking sparse and S
+    ## looking low-rank.
     "L+S (LowRank+L1Image)" =>
         (
         Float32[1.0e-1, 3.0e-1, 6.0e-1, 1.0],
@@ -464,10 +430,8 @@ best_fixed = sweep(acq_fixed)
 println("\n--- interleaved pattern ---")
 best_interleaved = sweep(acq_interleaved);
 
-# %% [markdown]
 # ## 7. The comparison, at each method's best λ
 
-# %%
 function summary_table(name, best, x_zf)
     @printf("%s\n%-24s %9s %9s\n", name, "", "global", "dynamic")
     s = scores(x_zf)
@@ -482,7 +446,7 @@ end
 summary_table("FIXED pattern (same lines every frame)", best_fixed, x_zf_fixed)
 summary_table("INTERLEAVED pattern (lines shift with frame)", best_interleaved, x_zf_interleaved)
 
-# %%
+#-
 plot(
     plot(
         [r.λs for (_, r) in best_fixed], [r.errs for (_, r) in best_fixed];
@@ -499,14 +463,14 @@ plot(
     layout = (2, 1), size = (1000, 800)
 )
 
-# %%
-# Animated over the cardiac cycle rather than frozen on one frame: what separates these methods
-# is temporal behaviour — over-smoothing, residual aliasing that moves — and a still frame is
-# precisely where that hides. Every panel is locked to the reference's colour scale so the
-# animation does not flicker and the panels stay comparable.
-# Amplitude-aligned to the reference first, the same least-squares scaling `scores` uses, since
-# different reconstructions come back on different scales and a shared colour limit would
-# otherwise say more about the scaling than about the image.
+#-
+## Animated over the cardiac cycle rather than frozen on one frame: what separates these methods
+## is temporal behaviour — over-smoothing, residual aliasing that moves — and a still frame is
+## precisely where that hides. Every panel is locked to the reference's colour scale so the
+## animation does not flicker and the panels stay comparable.
+## Amplitude-aligned to the reference first, the same least-squares scaling `scores` uses, since
+## different reconstructions come back on different scales and a shared colour limit would
+## otherwise say more about the scaling than about the image.
 align(a) = a .* (sum(a .* reference) / sum(abs2, a))
 panels = (
     ("reference", reference),
@@ -522,24 +486,22 @@ animate_frames(nframes; fps = 8) do t
     )
 end
 
-# %% [markdown]
 # L+S is the one entry that reconstructs *two* images. It is worth opening up, because the split
 # is the whole point of the model: the low-rank part should hold the static chest wall and the
 # slowly varying background, and the sparse part should hold only what moves. If `S` looks like a
 # faint copy of the whole anatomy rather than an outline of the heart, the two weights are wrong.
 
-# %%
 r_ls = best_interleaved[findfirst(((l, _),) -> startswith(l, "L+S"), best_interleaved)][2]
 x_ls = r_ls.x
 L, S = x_ls.components.lowrank, x_ls.components.sparse
 L_mag, S_mag, LS_mag = abs.(unname(L)), abs.(unname(S)), abs.(unname(x_ls))
 
-# A single frame cannot show what "low-rank" and "sparse" mean here — the split is a statement
-# about time. Played as an animation, `L` should sit almost still while `S` flickers only where
-# the heart moves. `S` needs its own colour scale — it is an order of magnitude weaker than `L`
-# — and that scale is set from the *dynamic* pixels rather than from `S`'s global maximum, which
-# sits on a rim of edge pixels at the top and bottom of the FOV. Scaling to that rim leaves the
-# panel black and hides the thing the panel exists to show.
+## A single frame cannot show what "low-rank" and "sparse" mean here — the split is a statement
+## about time. Played as an animation, `L` should sit almost still while `S` flickers only where
+## the heart moves. `S` needs its own colour scale — it is an order of magnitude weaker than `L`
+## — and that scale is set from the *dynamic* pixels rather than from `S`'s global maximum, which
+## sits on a rim of edge pixels at the top and bottom of the FOV. Scaling to that rim leaves the
+## panel black and hides the thing the panel exists to show.
 cl_ls = (0.0, maximum(LS_mag))
 cl_s = (0.0, maximum(S_mag[dynamic]))
 animate_frames(nframes; fps = 8) do t
@@ -552,7 +514,6 @@ animate_frames(nframes; fps = 8) do t
     )
 end
 
-# %% [markdown]
 # ## 8. Timing, measured properly
 #
 # A bare `@elapsed` around the first call to a reconstruction measures Julia compiling it, which
@@ -562,7 +523,6 @@ end
 # estimate of the work actually done. (`BenchmarkTools.@benchmark` does all of this properly and would be the right tool if
 # these were microseconds; at tens of seconds per sample its statistics are unaffordable here.)
 
-# %%
 function best_of(f, n = 2)
     f()                                        # warm-up: compile everything
     return minimum(@elapsed(f()) for _ in 1:n)
@@ -574,21 +534,18 @@ for (label, r) in best_interleaved
     @printf("%-24s %6.2f s  (best of 2, after warm-up)\n", label, t)
 end
 
-# %% [markdown]
 # The per-frame methods are the fast ones for a structural reason, not an implementation one: a
 # purely spatial regularizer leaves `:time` a batch dimension, so `reconstruct` splits the
-# problem into `nframes` independent solves and runs them in parallel (notebook 7, section 5).
+# problem into `nframes` independent solves and runs them in parallel (tutorial 7, section 5).
 # A temporal or low-rank penalty couples the frames, so there is one large problem instead —
 # see how the number changes with `JULIA_NUM_THREADS`.
 
-# %% [markdown]
 # ## 9. The temporal profile
 #
 # A y–t cut through the heart is the standard way to look at a cine reconstruction: temporal
 # blurring and residual aliasing that are invisible in a single frame show up immediately as
 # smearing or as banding along the time axis.
 
-# %%
 col = argmax(vec(sum(motion; dims = 1)))
 println("profiling column ", col)
 
@@ -606,8 +563,8 @@ jim(
     layout = (2, 3), size = (1400, 800)
 )
 
-# %%
-# And the intensity of one voxel through the cardiac cycle.
+#-
+## And the intensity of one voxel through the cardiac cycle.
 row = argmax(vec(sum(motion; dims = 2)))
 plot(
     reference[row, col, :]; label = "reference", lw = 3, xlabel = "cardiac phase", ylabel = "|x|",
@@ -621,7 +578,6 @@ for (label, p) in profiles
 end
 plot!()
 
-# %% [markdown]
 # ## 10. Real non-Cartesian data: a spiral real-time scan
 #
 # Everything above is Cartesian, because this cine is. Rather than synthesize a radial trajectory
@@ -673,12 +629,11 @@ plot!()
 # * **dcf** `(:sample, :interleaf)` — density-compensation weights, which this file ships: the
 #   third row of the MRD trajectory table is the vendor's own weighting, rising from 0 at the
 #   centre of k-space to 1 at the edge. Without it the adjoint counts the centre thirteen times
-#   over and returns a blurred image (`08_non_cartesian.ipynb` §3–§4).
+#   over and returns a blurred image (`08_non_cartesian.md` §3–§4).
 #
 # Each profile is one interleaf, tagged in `idx.kspace_encode_step_1`, and they arrive in a
 # scrambled order (12, 3, 10, 0, …) that repeats every 13.
 
-# %%
 entry_spiral = MRITestData.dataset(MRITestData.USC_SPEECH, "sub054/2drt/09_northwind1_r1")
 raw_spiral = MRITestData.load_raw(entry_spiral)
 
@@ -720,8 +675,8 @@ println(
     round(1000 / (narms * raw_spiral.params["TR"]), digits = 1), " frames/s"
 )
 
-# The approach to steady state, straight off the raw profiles: total k-space energy per frame,
-# relative to the frame the reconstruction window starts at. No image needed to see it.
+## The approach to steady state, straight off the raw profiles: total k-space energy per frame,
+## relative to the frame the reconstruction window starts at. No image needed to see it.
 frame_energy(g) = sqrt(
     sum(p -> sum(abs2, p.data), @view raw_spiral.profiles[((g - 1) * narms + 1):(g * narms)])
 )
@@ -731,7 +686,6 @@ println(
     round.([frame_energy(g) / energy_ref for g in 1:8], digits = 2)
 )
 
-# %% [markdown]
 # ### The reference movie, and maps from spiral data
 #
 # Sorting each block of thirteen by its interleaf counter makes every frame present its arms in the
@@ -747,7 +701,6 @@ println(
 # and averaging suppresses the noise a single 78 ms frame carries. Pass `average_dims = ()` for
 # one set of maps per frame.
 
-# %%
 acq_spiral_series = AcquisitionInfo(
     NamedDimsArray{(:sample, :interleaf, :coil, :time)}(ksp_spiral);
     trajectory = traj_spiral, dcf = dcf_spiral, image_size = (nx_sp, ny_sp),
@@ -766,7 +719,6 @@ animate_slices(
     title = t -> "13 arms/frame, $t of $nframes_sp",
 )
 
-# %% [markdown]
 # ### Buying frame rate by dropping arms
 #
 # Undersampling a spiral means acquiring fewer interleaves per frame, and unlike every retrospective
@@ -788,7 +740,6 @@ animate_slices(
 # error. The dynamic mask is built the same way too, from the temporal standard deviation — on this
 # data it selects the tongue, lips and velum rather than the static skull.
 
-# %%
 arms = [1, 6, 11]
 acq_spiral_us = AcquisitionInfo(
     NamedDimsArray{(:sample, :interleaf, :coil, :time)}(ksp_spiral[:, arms, :, :]);
@@ -804,12 +755,12 @@ println(
 
 support_sp = reference_sp .> 0.1maximum(reference_sp)
 motion_sp = dropdims(std(reference_sp; dims = 3); dims = 3)
-# The threshold is 30% here where the cine used 10%, and it is intersected with the object mask.
-# Both changes are about this dataset rather than about a better rule: a real-time frame is far
-# noisier than a breath-held cine one, so the temporal standard deviation of pure background
-# clears a 10% threshold in places, and speech moves a *larger fraction* of the object than a
-# heartbeat does — at 10% the "dynamic" mask covers the object and the two scores stop being
-# different measurements. At 30% it is the tongue, the oral cavity and the pharyngeal wall.
+## The threshold is 30% here where the cine used 10%, and it is intersected with the object mask.
+## Both changes are about this dataset rather than about a better rule: a real-time frame is far
+## noisier than a breath-held cine one, so the temporal standard deviation of pure background
+## clears a 10% threshold in places, and speech moves a *larger fraction* of the object than a
+## heartbeat does — at 10% the "dynamic" mask covers the object and the two scores stop being
+## different measurements. At 30% it is the tongue, the oral cavity and the pharyngeal wall.
 dynamic_sp = repeat(motion_sp .> 0.3maximum(motion_sp), 1, 1, nframes_sp) .& support_sp
 println("object pixels: ", sum(support_sp), "   dynamic pixels: ", sum(dynamic_sp))
 
@@ -823,7 +774,7 @@ function scores_sp(x̂)
     )
 end
 
-# %%
+#-
 sweeps_sp = (
     "L1Wavelet2D (per frame)" =>
         (Float32[1.0e-2, 3.0e-2, 1.0e-1], λ -> IterativeReconstruction(L1Wavelet2D(λ); maxit = 40)),
@@ -851,7 +802,6 @@ best_spiral = map(sweeps_sp) do (label, (λs, build))
     return label => results[b][2]
 end;
 
-# %% [markdown]
 # All three land within a few per cent of each other, and the order the cine produced is gone: the
 # per-frame wavelet comes out *ahead* of both temporal models here, and every one of the three is
 # a clear improvement on the density-compensated adjoint. Low-rank being competitive is the
@@ -873,7 +823,6 @@ end;
 # already usable; the reason to accelerate here is to resolve faster speech, which is a question
 # this comparison cannot answer because the reference cannot see it either.
 
-# %%
 align_sp(a) = a .* (sum(a .* reference_sp) / sum(abs2, a))
 cl_sp = (0.0, maximum(reference_sp))
 panels_sp = (
@@ -890,13 +839,12 @@ animate_frames(nframes_sp; fps = 8) do t
     )
 end
 
-# %% [markdown]
 # ## 11. What actually wins, and when
 #
 # Read the dynamic-region columns of the two summary tables above — each method at its own best
 # λ — rather than a table copied into this cell, which would go stale the moment any λ grid or
 # sampling pattern changed. Four things are worth taking away from them, and one is a caveat
-# about this notebook itself.
+# about this tutorial itself.
 #
 # **The sampling pattern decides the ranking, not the regularizer.** Interleaving makes the
 # *zero-filled* image markedly worse: the aliasing is no longer a single coherent ghost but
@@ -923,10 +871,10 @@ end
 # does not. If a hundred slices have to
 # be reconstructed by tomorrow, the wavelet is the rational choice. The temporal models earn their
 # cost when the acceleration is high enough that the per-frame problem is not solvable at all —
-# which is a claim about R = 6–10, and not something this notebook measured.
+# which is a claim about R = 6–10, and not something this tutorial measured.
 #
 # **The caveat: a two-knob model needs a two-knob search, and `L+S` is the cautionary tale.**
-# An earlier version of this notebook tied its two weights at a fixed ratio and swept them as one
+# An earlier version of this tutorial tied its two weights at a fixed ratio and swept them as one
 # parameter, which is the obvious way to keep the sweep affordable. It was wrong in a way that
 # flattered the method rather than penalizing it: at the λ_L the model wants, the tied λ_S is
 # large enough to soft-threshold `S` to *exactly zero*, so the row labelled "L+S" was a plain
@@ -944,10 +892,9 @@ end
 # with a genuinely sparse dynamic component — contrast uptake, a bolus — and this dataset has
 # neither.
 #
-# The general lesson is the one the notebook opens with, one level up: an under-searched method
+# The general lesson is the one the tutorial opens with, one level up: an under-searched method
 # looks like a bad method, and a method searched along the wrong axis can look like a good one.
 
-# %% [markdown]
 # ## Further reading
 #
 # From *Questions and Answers in MRI*:
@@ -960,8 +907,6 @@ end
 # - [Compressed sensing](https://mriquestions.com/compressed-sensing.html) — the reconstruction
 #   side of the same bargain.
 
-# %% [markdown]
 # ## Environment
 
-# %%
 print_versions()

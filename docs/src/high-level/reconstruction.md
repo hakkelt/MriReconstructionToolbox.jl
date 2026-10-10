@@ -1,5 +1,7 @@
 # [Image Reconstruction](@id reconstruction)
 
+*Tutorial: [Getting started](../tutorials/01_getting_started.md).*
+
 The `reconstruct` function is the primary high-level interface for MRI image reconstruction from k-space data. It accepts an `AcquisitionInfo` object and an `ReconstructionMethod` (defaulting to `DirectReconstruction()`), with automatic task splitting and performance optimization.
 
 ## API Reference

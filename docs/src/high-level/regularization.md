@@ -1,5 +1,7 @@
 # Regularization
 
+*Tutorial: [Regularization](../tutorials/05_regularization.md).*
+
 Regularization is essential for reconstructing high-quality images from undersampled k-space data. This page explains the available regularization methods and how to use them.
 
 ## Why Regularization?

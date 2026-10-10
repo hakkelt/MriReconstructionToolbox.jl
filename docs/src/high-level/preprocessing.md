@@ -1,5 +1,7 @@
 # Pre-processing
 
+*Tutorials: [Real Cartesian data](../tutorials/09_real_data_cartesian.md), [Non-Cartesian](../tutorials/08_non_cartesian.md).*
+
 `Ristretto` provides functional pre-processing transforms for multi-coil MRI data.
 All pre-processing functions operate on `AcquisitionInfo` instances as pure functions `AcquisitionInfo -> AcquisitionInfo`, preserving all acquisition metadata and dimension names.
 

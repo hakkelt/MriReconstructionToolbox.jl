@@ -1,26 +1,9 @@
-# -*- coding: utf-8 -*-
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,src//jl:percent
-#     text_representation:
-#       extension: .jl
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.15.2
-#   kernelspec:
-#     display_name: Julia 1.12.7
-#     language: julia
-#     name: julia-1.12
-# ---
-
-# %% [markdown]
 # # 3 — Simulation tools
 #
 # Ristretto has everything needed to fabricate a realistic acquisition: coil sensitivity maps,
 # sampling-pattern generators, a forward simulator and noise. The phantoms themselves come from
 # [GeometricMedicalPhantoms.jl](https://github.com/hakkelt/GeometricMedicalPhantoms.jl), a separate
-# package. This notebook is a tour of all of them.
+# package. This tutorial is a tour of all of them.
 #
 # **Contents**
 # 1. Phantoms (2D and 3D)
@@ -33,7 +16,6 @@
 # 7. Noise and SNR
 # 8. A dynamic series
 
-# %%
 include("NotebookUtils.jl")
 using .NotebookUtils
 
@@ -49,21 +31,19 @@ using Random
 
 Random.seed!(0);
 
-# %% [markdown]
 # ## 1. Phantoms
 #
 # Phantoms come from [GeometricMedicalPhantoms.jl](https://github.com/hakkelt/GeometricMedicalPhantoms.jl).
 # `MRISheppLoganIntensities()` gives the ellipse intensities MRI papers use (rather than the CT
 # values of the original Shepp–Logan), and the phantom can be produced directly as `ComplexF32`.
 
-# %%
 x2d = create_shepp_logan_phantom(
     256, 256, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32
 )
 jim(x2d; title = "2D Shepp–Logan (axial)", size = (400, 350))
 
-# %%
-# Other orientations of the same 3D model.
+#-
+## Other orientations of the same 3D model.
 jim(
     jim(create_shepp_logan_phantom(128, 128, :axial; ti = MRISheppLoganIntensities()); title = "axial"),
     jim(create_shepp_logan_phantom(128, 128, :coronal; ti = MRISheppLoganIntensities()); title = "coronal"),
@@ -71,35 +51,32 @@ jim(
     layout = (1, 3), size = (1000, 300)
 )
 
-# %%
-# A 3D volume: (nx, ny, nz). Scrolled through as an animation rather than laid out as a montage —
-# a volume is easier to read when the slices occupy the same place on the page one after another.
+#-
+## A 3D volume: (nx, ny, nz). Scrolled through as an animation rather than laid out as a montage —
+## a volume is easier to read when the slices occupy the same place on the page one after another.
 x3d = create_shepp_logan_phantom(128, 128, 32; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
 println(size(x3d), " ", eltype(x3d))
 animate_slices(x3d; title = i -> "3D Shepp-Logan, slice $i of 32", fps = 6, size = (400, 350))
 
-# %% [markdown]
 # ## 2. Coil sensitivity maps
 #
 # `coil_sensitivities(nx, ny[, nz], ncoils)` returns smooth complex profiles arranged around the
 # field of view — enough structure for parallel imaging to be non-trivial.
 
-# %%
 smaps = coil_sensitivities(128, 128, 8)
 println(size(smaps), " ", eltype(smaps))
 jim(smaps; title = "Coil sensitivity maps (magnitude)", nrow = 2, size = (800, 400))
 
-# %%
-# The phase is what makes coil combination non-trivial.
+#-
+## The phase is what makes coil combination non-trivial.
 jim(angle.(smaps); title = "Coil sensitivity phase", nrow = 2, size = (800, 400), clim = (-π, π))
 
-# %%
-# 3D maps: (nx, ny, nz, ncoils).
+#-
+## 3D maps: (nx, ny, nz, ncoils).
 smaps3d = coil_sensitivities(64, 64, 16, 8)
 println(size(smaps3d))
 jim(smaps3d[:, :, 8, :]; title = "3D maps, central slice", nrow = 2, size = (800, 400))
 
-# %% [markdown]
 # ## 3. Sampling patterns
 #
 # A `Subsampling` object describes *how* to sample; `create_sampling_pattern` draws one
@@ -108,17 +85,15 @@ jim(smaps3d[:, :, 8, :]; title = "3D maps, central slice", nrow = 2, size = (800
 # is essentially free (the whole readout arrives during one gradient echo), and it is undersampled
 # only in rare cases.
 
-# %% [markdown]
 # ### Uniform random sampling
 
-# %%
 pdf = UniformRandomSampling(3.0)                    # R = 3, default 10% central band
 pattern = create_sampling_pattern(pdf, (256, 256))
 println(typeof(pattern))
 println("acquired phase encodes: ", sum(pattern[2]), " of 256")
 
-# %%
-# Uniform random sampling with different fully-sampled centre fractions.
+#-
+## Uniform random sampling with different fully-sampled centre fractions.
 p1 = jim(to_displayable_mask(create_sampling_pattern(UniformRandomSampling(3.0), (256, 256)), (256, 256)); title = "cf = 0.1", kaxes...)
 p2 = jim(to_displayable_mask(create_sampling_pattern(UniformRandomSampling(3.0, 0.3), (256, 256)), (256, 256)); title = "cf = 0.3", kaxes...)
 p3 = jim(
@@ -129,13 +104,11 @@ p3 = jim(
 )
 jim(p1, p2, p3; layout = (1, 3), size = (1000, 320))
 
-# %% [markdown]
 # ### Variable density
 #
 # The compressed-sensing workhorse: sample the centre of k-space densely and the periphery
 # sparsely. The density profile is either Gaussian or polynomial.
 
-# %%
 using Ristretto: construct_weights
 
 function show_density(pdf, label)
@@ -151,46 +124,42 @@ end
 
 show_density(VariableDensitySampling(GaussianDistribution(1 / 3), 3.0), "Gaussian σ=1/3")
 
-# %%
+#-
 show_density(VariableDensitySampling(GaussianDistribution(1 / 5), 3.0), "Gaussian σ=1/5")
 
-# %%
+#-
 show_density(VariableDensitySampling(PolynomialDistribution(2), 3.0), "Polynomial p=2")
 
-# %%
+#-
 show_density(VariableDensitySampling(PolynomialDistribution(4), 3.0), "Polynomial p=4")
 
-# %% [markdown]
 # ### Poisson disk
 #
 # Keeps a minimum distance between samples, so the coverage is uniform without the clumping of
 # purely random sampling — the incoherent-but-even pattern favoured for 2D-undersampled 3D
 # acquisitions.
 
-# %%
 pat_pd = create_sampling_pattern(PoissonDiskSampling(3.0), (128, 128); subsample_freq_encoding = true)
 jim(to_displayable_mask(pat_pd, (128, 128)); title = "Poisson disk, R = 3", size = (400, 350), kaxes...)
 
-# %% [markdown]
 # ### Regular lattice sampling, and partial Fourier
 #
 # The other half of the sampling world: not incoherent at all, but exactly the pattern
 # autocalibrated parallel imaging needs. `RegularLatticeSampling` acquires every R-th phase
 # encode, optionally with a fully sampled autocalibration (ACS) band in the centre. It is
 # deterministic — one realisation *is* the pattern — and it is what
-# [`GRAPPA`](04_reconstruction_methods.ipynb) requires: its kernel is defined by a fixed geometric
+# [`GRAPPA`](04_reconstruction_methods.md) requires: its kernel is defined by a fixed geometric
 # relation between a hole and its neighbours, which only a regular lattice has.
 #
 # `PartialFourierSampling` is a separate generator, not an option of the lattice. It acquires a
 # contiguous band from one end of k-space and nothing past it, exploiting the Hermitian symmetry
 # of k-space rather than coil encoding, and it is reconstructed by
-# [`Homodyne` or `POCS`](04_reconstruction_methods.ipynb) rather than by a parallel-imaging
+# [`Homodyne` or `POCS`](04_reconstruction_methods.md) rather than by a parallel-imaging
 # method. Combining the two would leave a pattern that neither handles as intended.
 
-# %%
-# Drawn on a 64-line grid rather than 256: at three panels across a page, a 256-line mask is
-# rescaled to fewer pixels than it has lines, and every-third-line sampling comes out as a solid
-# block or a moiré pattern rather than as the lines it is. The acceleration is the same either way.
+## Drawn on a 64-line grid rather than 256: at three panels across a page, a 256-line mask is
+## rescaled to fewer pixels than it has lines, and every-third-line sampling comes out as a solid
+## block or a moiré pattern rather than as the lines it is. The acceleration is the same either way.
 n_show = 64
 pat_reg = create_sampling_pattern(RegularLatticeSampling(3), (n_show, n_show))
 pat_acs = create_sampling_pattern(RegularLatticeSampling(3; center_fraction = 0.1), (n_show, n_show))
@@ -207,18 +176,16 @@ jim(
     layout = (1, 3), size = (1000, 320)
 )
 
-# %% [markdown]
 # ## 4. Patterns in 3D
 #
 # In 3D both phase-encoding directions can be undersampled, and the pattern is a 3-tuple.
 
-# %%
 pat3d = create_sampling_pattern(VariableDensitySampling(PolynomialDistribution(2), 4.0), (128, 128, 64))
 mask3d = zeros(Bool, 128, 128, 64)
 mask3d[pat3d...] .= true
 println("acceleration: ", round(length(mask3d) / sum(mask3d), digits = 2), "×")
 
-# The axis labels already say which plane each panel is, so the panels carry no titles.
+## The axis labels already say which plane each panel is, so the panels carry no titles.
 jim(
     jim(mask3d[:, :, 32]; xlabel = "kx", ylabel = "ky"),
     jim(mask3d[:, 64, :]; xlabel = "kx", ylabel = "kz"),
@@ -226,7 +193,6 @@ jim(
     layout = (1, 3), size = (1000, 300)
 )
 
-# %% [markdown]
 # ## 5. Hand-written patterns
 #
 # `subsampling` does not have to come from a generator. The **default idiom** for a
@@ -243,8 +209,7 @@ jim(
 # how to reach a variant it does not cover (an offset start, an asymmetric ACS block, a
 # per-dimension rule of your own).
 
-# %%
-# Partial Fourier: the first 65% of phase encodes, as a plain range.
+## Partial Fourier: the first 65% of phase encodes, as a plain range.
 ny = 256
 subsampling_pf = (:, 1:round(Int, 0.65 * ny))
 acq_pf = AcquisitionInfo(
@@ -252,11 +217,11 @@ acq_pf = AcquisitionInfo(
 )
 println("phase encodes: ", length(subsampling_pf[2]), " of ", ny)
 
-# %%
-# Regular R = 4 with a 21-line autocalibration (ACS) band — the GRAPPA-style pattern. A
-# strided range unioned with the ACS range states the acceleration and the calibration extent
-# directly; recovering either number from a boolean mask would mean scanning it (or plotting
-# it, as below) instead of just reading the expression.
+#-
+## Regular R = 4 with a 21-line autocalibration (ACS) band — the GRAPPA-style pattern. A
+## strided range unioned with the ACS range states the acceleration and the calibration extent
+## directly; recovering either number from a boolean mask would mean scanning it (or plotting
+## it, as below) instead of just reading the expression.
 acs_half = 10
 subsampling_grappa = (:, sort(union(1:4:ny, (ny ÷ 2 - acs_half):(ny ÷ 2 + acs_half))))
 acq_grappa_like = AcquisitionInfo(
@@ -264,7 +229,7 @@ acq_grappa_like = AcquisitionInfo(
 )
 println("net acceleration: ", round(ny / length(subsampling_grappa[2]), digits = 2), "×")
 
-# The generator states the same two patterns without the index arithmetic.
+## The generator states the same two patterns without the index arithmetic.
 println(
     "same pattern from RegularLatticeSampling: ",
     sort(findall(create_sampling_pattern(RegularLatticeSampling(4; center_fraction = 21 / 256), (256, 256))[2])) ==
@@ -276,8 +241,8 @@ println(
         collect(subsampling_pf[2])
 )
 
-# %%
-# The two patterns above, rendered as masks purely for display.
+#-
+## The two patterns above, rendered as masks purely for display.
 mask_grappa = falses(ny)
 mask_grappa[subsampling_grappa[2]] .= true
 mask_pf = falses(ny)
@@ -288,14 +253,12 @@ jim(
     layout = (1, 2), size = (800, 320)
 )
 
-# %% [markdown]
 # ## 6. `simulate_acquisition`
 #
 # `simulate_acquisition(image, acq)` applies the encoding operator described by `acq` and
 # returns a *new* `AcquisitionInfo` carrying the simulated k-space. Whatever the configuration
 # describes — coils, undersampling, shifts, 3D, batch dimensions — is what gets simulated.
 
-# %%
 nx, ny, nc = 128, 128, 8
 x = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
 smaps = coil_sensitivities(nx, ny, nc)
@@ -307,8 +270,8 @@ acq = AcquisitionInfo(;
 data = simulate_acquisition(x, acq; keep_sensitivity_maps = true)
 println("simulated k-space: ", size(data.kspace_data))
 
-# %%
-# Fully sampled single-coil, for comparison: the k-space is the whole grid.
+#-
+## Fully sampled single-coil, for comparison: the k-space is the whole grid.
 acq_full = AcquisitionInfo(; is3D = false, image_size = (nx, ny))
 data_full = simulate_acquisition(x, acq_full; keep_sensitivity_maps = true)
 println("fully sampled k-space: ", size(data_full.kspace_data))
@@ -317,9 +280,9 @@ jim(
     title = "log |k-space|", size = (400, 350), kaxes...
 )
 
-# %%
-# 3D acquisition. (The variable-density weights need a reasonably long kz axis; a very short
-# one — 16 partitions, say — makes the polynomial density go negative and throws.)
+#-
+## 3D acquisition. (The variable-density weights need a reasonably long kz axis; a very short
+## one — 16 partitions, say — makes the polynomial density go negative and throws.)
 x3 = create_shepp_logan_phantom(64, 64, 32; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
 acq3 = AcquisitionInfo(;
     image_size = (64, 64, 32),
@@ -331,7 +294,6 @@ acq3 = AcquisitionInfo(;
 data3 = simulate_acquisition(x3, acq3; keep_sensitivity_maps = true)
 println("3D k-space: ", size(data3.kspace_data))
 
-# %% [markdown]
 # ### Avoiding the inverse crime
 #
 # The cells above simulate the data with the very operator that will reconstruct them, on the
@@ -355,9 +317,8 @@ println("3D k-space: ", size(data3.kspace_data))
 #   parallel magnetic resonance imaging", IEEE Trans. Med. Imaging 31(3):626–636, 2012,
 #   <https://doi.org/10.1109/TMI.2011.2174158>
 
-# %%
-# One function rasterizes the object at any size, so the data and the truth below describe the
-# same phantom.
+## One function rasterizes the object at any size, so the data and the truth below describe the
+## same phantom.
 area_sampled_phantom(n) = create_shepp_logan_phantom(
     n, n, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32, supersample = 4
 )
@@ -371,7 +332,6 @@ data_fine = simulate_acquisition(x_fine, acq_fine)
 println("k-space on the 128² grid from a 202² phantom: ", size(data_fine.kspace_data))
 println("sensitivity maps returned: ", data_fine.sensitivity_maps)
 
-# %% [markdown]
 # #### The ground truth for error measures
 #
 # Errors are measured on the reconstruction grid, against the same object area-sampled there:
@@ -381,7 +341,6 @@ println("sensitivity maps returned: ", data_fine.sensitivity_maps)
 # whose figure carries over to measured data. The coil maps are kept to isolate the phantom's
 # effect; a fully honest simulation estimates them too.
 
-# %%
 x_truth = area_sampled_phantom(nx)
 data_fine_maps = simulate_acquisition(x_fine, acq_fine; keep_sensitivity_maps = true)
 
@@ -397,15 +356,14 @@ for (label, x̂, truth) in (
     println(rpad(label, 47), ": NRMSE = ", round(100 * nrmse(x̂, truth); digits = 1), " %")
 end
 
-# %%
-# Against the point-sampled image every edge counts as error.
+#-
+## Against the point-sampled image every edge counts as error.
 error_map(truth) = abs.(abs.(x_rec_fine) .- abs.(truth))
 side_by_side(
     error_map(x_truth), error_map(x);
     titles = ("error vs area-sampled truth", "error vs point-sampled x")
 )
 
-# %% [markdown]
 # ## 7. Noise and SNR
 #
 # "SNR" names several different numbers in MRI, and two images of the same object can be quoted at
@@ -415,7 +373,7 @@ side_by_side(
 # controls directly; and the *clinical* one, a bare ratio of signal to noise measured in the
 # reconstructed image, which is what a scanner acceptance test and a radiologist mean. (Others in
 # common use — the multiple-acquisition and difference-image methods, and the parallel-imaging
-# g-factor maps of notebook 09 — measure the same physical quantity by repeating the acquisition
+# g-factor maps of tutorial 09 — measure the same physical quantity by repeating the acquisition
 # instead of segmenting one image.)
 #
 # `add_noise` covers both conventions, and which one to use follows from where the noise is added.
@@ -455,16 +413,15 @@ side_by_side(
 # corner standard deviation is no longer the noise level and the number is not an SNR — that is what
 # the multiple-acquisition estimator `pseudo_replica` is for.
 
-# %%
-# k-space noise: the number is in dB, and it is relative to the k-space RMS.
+## k-space noise: the number is in dB, and it is relative to the k-space RMS.
 recs = map((40, 20, 10)) do snr_db
     rec = reconstruct(add_noise(data_full; snr_db = snr_db))
     jim(rec; title = "$(snr_db) dB on k-space\nimage SNR $(round(estimate_snr(rec), digits = 1))")
 end
 jim(recs...; layout = (1, 3), size = (1100, 340))
 
-# %%
-# Image-domain noise: the number is the clinical SNR, and `estimate_snr` recovers it.
+#-
+## Image-domain noise: the number is the clinical SNR, and `estimate_snr` recovers it.
 x_clean = create_shepp_logan_phantom(
     256, 256, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32
 )
@@ -474,17 +431,17 @@ noisy_images = map((50, 20, 8)) do target
 end
 jim(noisy_images...; layout = (1, 3), size = (1100, 340))
 
-# %%
-# The two regions the number is actually computed from, shown rather than described: the centre box
-# the mean signal is averaged over, and the four corner boxes the noise standard deviation is taken
-# in. Each is displayed as the image masked to that region, so it is visible *which* voxels
-# contribute and what they contain — note that the corner panel is pure noise, which is the
-# assumption the whole method rests on. The centre panel is a fair warning about the other half:
-# a Shepp–Logan phantom has its small structures exactly where a centred box lands, so the box
-# straddles three intensities rather than sitting in uniform tissue. The round trip still holds
-# because `add_noise(; snr)` measures over the same box, but on real data a box placed like this
-# would be reporting the mean of an edge. A uniform-phantom acceptance test does not have the
-# problem, and `signal_box` is there to shrink the box when the object does.
+#-
+## The two regions the number is actually computed from, shown rather than described: the centre box
+## the mean signal is averaged over, and the four corner boxes the noise standard deviation is taken
+## in. Each is displayed as the image masked to that region, so it is visible *which* voxels
+## contribute and what they contain — note that the corner panel is pure noise, which is the
+## assumption the whole method rests on. The centre panel is a fair warning about the other half:
+## a Shepp–Logan phantom has its small structures exactly where a centred box lands, so the box
+## straddles three intensities rather than sitting in uniform tissue. The round trip still holds
+## because `add_noise(; snr)` measures over the same box, but on real data a box placed like this
+## would be reporting the mean of an edge. A uniform-phantom acceptance test does not have the
+## problem, and `signal_box` is there to shrink the box when the object does.
 img20 = add_noise(x_clean; snr = 20)
 mag = abs.(img20)
 sig_mask, noise_mask = snr_masks(img20)          # the default boxes: an eighth of each dimension
@@ -504,31 +461,29 @@ jim(
     layout = (1, 3), size = (1150, 380),
 )
 
-# %% [markdown]
 # ## 8. A dynamic series
 #
 # A batch dimension (here `:time`) is simulated exactly like anything else. For a realistic
 # dynamic series, `create_torso_phantom` from GeometricMedicalPhantoms.jl (already a dependency
-# of these notebooks) takes a `respiratory_signal` (in litres, from `generate_respiratory_signal`)
+# of these tutorials) takes a `respiratory_signal` (in litres, from `generate_respiratory_signal`)
 # and `cardiac_volumes` (chamber volumes in millilitres, from `generate_cardiac_signals`), and
 # returns a 4D `(nx, ny, nz, nt)` phantom that breathes and beats along with them. A single coronal
 # slice (through the diaphragm, where respiratory motion is largest, and through the heart) gives a
 # 2D dynamic series driven by both motions instead of a hand-rolled bolus.
 
-# %%
 using NamedDims
 
 nt = 16
 rr = 15.0                                  # breaths per minute
 hr = 75.0                                  # beats per minute
 breath_seconds = 60 / rr                   # one respiratory cycle
-# Sample one full cycle with the nt frames, rather than several cycles at four frames each: at a
-# coarser temporal resolution consecutive frames land at near-identical respiratory phases and the
-# series looks static even though the phantom is moving.
+## Sample one full cycle with the nt frames, rather than several cycles at four frames each: at a
+## coarser temporal resolution consecutive frames land at near-identical respiratory phases and the
+## series looks static even though the phantom is moving.
 fs = nt / breath_seconds                   # frame rate, one respiratory cycle over nt frames
 t_resp, resp_liters = generate_respiratory_signal(breath_seconds, fs, rr)
-# The heart beats several times per respiratory cycle, so the same frame times carry ~3 cardiac
-# cycles at 75 bpm: the chamber volumes vary much faster than the lung volume.
+## The heart beats several times per respiratory cycle, so the same frame times carry ~3 cardiac
+## cycles at 75 bpm: the chamber volumes vary much faster than the lung volume.
 t_card, chamber_ml = generate_cardiac_signals(breath_seconds, fs, hr)
 cardiac_volumes = map(v -> v[1:nt], chamber_ml)
 vol_dyn = create_torso_phantom(
@@ -551,14 +506,13 @@ plot(
     layout = (1, 2), size = (1000, 300)
 )
 
-# %%
-# Played rather than tiled: the diaphragm sweep and the chamber beat are motions, and a strip of
-# static frames is the wrong display for a motion.
+#-
+## Played rather than tiled: the diaphragm sweep and the chamber beat are motions, and a strip of
+## static frames is the wrong display for a motion.
 animate_slices(
     series; title = i -> "dynamic series, frame $i of $nt", fps = 8, size = (400, 350),
 )
 
-# %% [markdown]
 # #### The same pattern for every frame
 #
 # The `(:, mask)`/index-expression idiom from section 5 applies unchanged to a series with a
@@ -568,7 +522,6 @@ animate_slices(
 # already the right idiom for "a different pattern per frame" when every frame selects the same
 # *number* of samples (see below).
 
-# %%
 smaps_dyn = coil_sensitivities(64, 64, 4)
 subsampling_same = (:, 1:2:64)
 acq_dyn_same = AcquisitionInfo(
@@ -578,7 +531,6 @@ acq_dyn_same = AcquisitionInfo(
 data_dyn_same = simulate_acquisition(series, acq_dyn_same; keep_sensitivity_maps = true)
 println(dimnames(data_dyn_same.kspace_data), " ", size(data_dyn_same.kspace_data))
 
-# %% [markdown]
 # #### A different pattern per frame
 #
 # The interesting case for temporal regularizers: incoherent aliasing across time, so that a
@@ -587,10 +539,9 @@ println(dimnames(data_dyn_same.kspace_data), " ", size(data_dyn_same.kspace_data
 # but *equal-count* set of phase encodes (an equal-count requirement, since the simulated
 # k-space is one dense array).
 
-# %%
 ny_dyn = 64
-# Alternate between two R=2 patterns (odd/even phase encodes) — incoherent frame to frame,
-# same number of samples every frame.
+## Alternate between two R=2 patterns (odd/even phase encodes) — incoherent frame to frame,
+## same number of samples every frame.
 subsampling_per_frame = [(:, isodd(t) ? (1:2:ny_dyn) : (2:2:ny_dyn)) for t in 1:nt]
 println("acquired phase encodes per frame: ", length.(getindex.(subsampling_per_frame, 2)))
 
@@ -602,7 +553,6 @@ acq_dyn_varying = AcquisitionInfo(
 data_dyn_varying = simulate_acquisition(series, acq_dyn_varying; keep_sensitivity_maps = true)
 println(dimnames(data_dyn_varying.kspace_data), " ", size(data_dyn_varying.kspace_data))
 
-# %% [markdown]
 # #### Unequal sample counts per frame
 #
 # When the per-frame specs select *different numbers* of samples — a more aggressive schedule
@@ -611,7 +561,6 @@ println(dimnames(data_dyn_varying.kspace_data), " ", size(data_dyn_varying.kspac
 # k-space array per frame. `reconstruct` still returns a plain `Array`: the partitioning is an
 # internal storage detail of the measurement, not something that propagates to the image.
 
-# %%
 subsampling_unequal = [(:, 1:(t + 1):ny_dyn) for t in 1:nt]      # acceleration increases with t
 println("acquired phase encodes per frame: ", length.(getindex.(subsampling_unequal, 2)))
 
@@ -627,10 +576,9 @@ println("per-frame k-space sizes: ", size.(parts(data_dyn_unequal.kspace_data)))
 rec_unequal = reconstruct(data_dyn_unequal)
 println(typeof(rec_unequal), " ", size(rec_unequal))
 
-# %% [markdown]
 # ## Further reading
 #
-# The physics behind the objects this notebook fabricates, from *Questions and Answers in MRI*:
+# The physics behind the objects this tutorial fabricates, from *Questions and Answers in MRI*:
 #
 # - [k-space: data](https://mriquestions.com/data-for-k-space.html) — what one phase encode is, and
 #   why the readout direction of §3 is free.
@@ -643,8 +591,6 @@ println(typeof(rec_unequal), " ", size(rec_unequal))
 # - [Parallel imaging: noise](https://mriquestions.com/noise-in-pi.html) — where the g-factor comes
 #   from once these patterns are reconstructed.
 
-# %% [markdown]
 # ## Environment
 
-# %%
 print_versions()

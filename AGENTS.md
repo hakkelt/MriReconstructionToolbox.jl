@@ -178,7 +178,8 @@ Add a `test/test_reg_<name>.jl` (`@testitem`, `tags = [:regularization]`) and a 
   have several); keep begin/end nesting shallow.
 - Tags in use: `:encoding`, `:regularization`, `:reconstruction`, `:acquisition`, `:simulation`,
   `:minimizer`, `:components`, `:integration`, `:nfft`, `:quality` (+ `:aqua`, `:jet`),
-  `:operators`, `:gpu`. Combine as needed.
+  `:operators`, `:gpu`, `:export`, `:extension` (an item that exercises a package extension in
+  `ext/`). Combine as needed.
 - Device coverage lives in the existing items, not in separate ones: an item that builds a case
   adds `setup = [GpuEnvSetup, GpuHelpers]`, the `:gpu` tag, and a `test_on_devices(f, args...)`
   call after its host assertions (`test/test_snippets.jl`). `GpuEnvSetup` loads every backend
@@ -191,6 +192,19 @@ Add a `test/test_reg_<name>.jl` (`@testitem`, `tags = [:regularization]`) and a 
   ```
 - Quality: Aqua (`piracies=false`, `persistent_tasks=false`, `stale_deps=false`) and JET, in
   `test/test_quality.jl`.
+- CI counts coverage with `--code-coverage=@src`, then reruns the `:extension` items
+  (`RISTRETTO_TEST_TAGS=extension`) with `--code-coverage=@ext`. `--code-coverage=user` would
+  instrument the vendored `deps/` too and makes the suite several times slower.
+- The README's code blocks run in `test/test_readme.jl`; keep them runnable.
+
+## Documentation
+
+`docs/make.jl` builds one Documenter site. The tutorials are Literate.jl scripts in
+`docs/literate/` (`# ` lines are prose, `## ` lines are code comments, `#-` splits a code block),
+executed on every build into the gitignored `docs/src/tutorials/`, each also written as a
+notebook to download. `RISTRETTO_DOCS_TUTORIALS=01,09` builds only those tutorials, `none` none.
+The related-packages page reads the committed benchmark snapshots through
+`docs/benchmark_tables.jl`.
 
 ## Formatting
 

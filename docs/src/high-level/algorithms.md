@@ -1,5 +1,7 @@
 # Optimization Algorithms
 
+*Tutorial: [Algorithms and configuration](../tutorials/06_algorithms_and_configuration.md).*
+
 Ristretto supports multiple iterative optimization algorithms for solving MRI reconstruction problems. This guide helps you choose and configure the right algorithm for your needs.
 
 ## Quick Algorithm Selection

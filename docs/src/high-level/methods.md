@@ -1,5 +1,7 @@
 # Reconstruction Methods
 
+*Tutorial: [Reconstruction methods](../tutorials/04_reconstruction_methods.md).*
+
 `Ristretto` provides a unified method taxonomy rooted in `ReconstructionMethod`. Every reconstruction task is specified by passing a method object to `reconstruct`.
 
 ```julia

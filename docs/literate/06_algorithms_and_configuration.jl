@@ -1,20 +1,3 @@
-# -*- coding: utf-8 -*-
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,src//jl:percent
-#     text_representation:
-#       extension: .jl
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.15.2
-#   kernelspec:
-#     display_name: Julia 1.12.7
-#     language: julia
-#     name: julia-1.12
-# ---
-
-# %% [markdown]
 # # 6 — Algorithms and configuration
 #
 # Two knobs decide how a reconstruction runs: the *method* (what problem is solved, and with
@@ -34,7 +17,6 @@
 # 9. A convergence comparison
 # 10. `ReconstructionConfig` and run settings
 
-# %%
 include("NotebookUtils.jl")
 using .NotebookUtils
 
@@ -64,7 +46,6 @@ acq = AcquisitionInfo(;
 data = simulate_acquisition(x_noisy, acq; keep_sensitivity_maps = true)
 nrmse1(x̂) = nrmse(x̂, x_true);          # one-argument closure over the ground truth
 
-# %% [markdown]
 # ## 1. Which solver, and why
 #
 # `IterativeReconstruction` is handed a *tuple* of candidate algorithms and takes the first one
@@ -87,12 +68,10 @@ nrmse1(x̂) = nrmse(x̂, x_true);          # one-argument closure over the groun
 # `get_assumptions` is where each solver declares its own shape; the demonstration below reads
 # the declarations straight off `DEFAULT_ALGORITHMS` rather than restating the table by hand.
 
-# %%
 for alg in DEFAULT_ALGORITHMS
     println(nameof(typeof(alg).parameters[1]), ": ", get_assumptions(alg))
 end
 
-# %% [markdown]
 # Two consequences worth spelling out:
 #
 # - A model with **no** non-smooth term is a plain least-squares problem, so it reaches CG or
@@ -102,20 +81,17 @@ end
 #   (`is_AAc_diagonal` — orthogonal and tight-frame transforms: wavelets, temporal Fourier), and
 #   fails for finite differences, which is why TV lands on ADMM.
 
-# %% [markdown]
 # ## 2. The solvers
 #
 # ### CGNR — smooth problems
 #
 # Least squares with an optional quadratic penalty. No step size to tune, few iterations needed.
 
-# %%
 x_cgnr = reconstruct(
     data, IterativeReconstruction(L2Image(1.0f-4); algorithm = CGNR(), maxit = 20)
 )
 println("CGNR    NRMSE ", round(nrmse1(x_cgnr), digits = 4))
 
-# %% [markdown]
 # ### Preconditioned CG-SENSE
 #
 # CGNR is the one solver here that takes a preconditioner: `CGNR(; P, P_is_inverse)`. Unregularized
@@ -138,11 +114,10 @@ println("CGNR    NRMSE ", round(nrmse1(x_cgnr), digits = 4))
 # same accuracy, not a different answer, so the comparison below is error against iteration count —
 # the same way §9 compares the solvers themselves.
 
-# %%
 using Ristretto.AbstractOperators: DiagOp
 
-# The notebook's own maps, multiplied by a smooth 20x falloff along x: a real image, a real
-# sampling pattern, and a coil array with the geometry the preconditioner assumes.
+## The tutorial's own maps, multiplied by a smooth 20x falloff along x: a real image, a real
+## sampling pattern, and a coil array with the geometry the preconditioner assumes.
 maps_flat = coil_sensitivities(nx, ny, nc)
 falloff = Float32[0.05f0 + 0.95f0 * exp(-3.0f0 * ((i - 1) / (nx - 1))^2) for i in 1:nx, _ in 1:ny]
 maps_shaded = copy(maps_flat)
@@ -165,7 +140,7 @@ acq_shaded = AcquisitionInfo(
 )
 data_shaded = simulate_acquisition(x_true, acq_shaded; keep_sensitivity_maps = true)
 
-# %%
+#-
 P_shaded = DiagOp(ComplexF32.(1 ./ (energy_shaded .+ 1.0f-2)))
 
 rel_err(x̂) = nrmse(unname(x̂)[support], x_true[support])
@@ -186,8 +161,8 @@ reconstruct(
     )
 )
 
-# How many iterations each needs to reach the other's final accuracy — the number preconditioning
-# is supposed to move.
+## How many iterations each needs to reach the other's final accuracy — the number preconditioning
+## is supposed to move.
 target = trace_plain.values[end]
 its_plain = findfirst(<=(target), trace_plain.values)
 its_precond = findfirst(<=(target), trace_precond.values)
@@ -201,14 +176,12 @@ plot(
 )
 plot!(trace_precond.iterations, trace_precond.values; label = "preconditioned", lw = 2)
 
-# %% [markdown]
 # ### ISTA / FISTA — one non-smooth term
 #
 # Proximal gradient, with (FISTA) and without (ISTA) Nesterov acceleration. The acceleration is
 # free, so ISTA is never the default; both have to be named explicitly, because the proximal-gradient
 # slot in `DEFAULT_ALGORITHMS` belongs to POGM (next section).
 
-# %%
 x_ista = reconstruct(
     data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = ISTA(), maxit = 50)
 )
@@ -218,7 +191,6 @@ x_fista = reconstruct(
 println("ISTA    NRMSE ", round(nrmse1(x_ista), digits = 4))
 println("FISTA   NRMSE ", round(nrmse1(x_fista), digits = 4))
 
-# %% [markdown]
 # ### POGM — the same shape as FISTA, faster convergence rate
 #
 # POGM (Proximal Optimized Gradient Method, Taylor 2018) accepts the same model shape as FISTA
@@ -227,26 +199,22 @@ println("FISTA   NRMSE ", round(nrmse1(x_fista), digits = 4))
 # proximal-gradient slot in `DEFAULT_ALGORITHMS` — swapping in `algorithm = FISTA()` costs nothing
 # but has no reason to be the default.
 
-# %%
 x_pogm = reconstruct(
     data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = POGM(), maxit = 50)
 )
 println("POGM    NRMSE ", round(nrmse1(x_pogm), digits = 4))
 
-# %% [markdown]
 # ### ADMM — several terms, or a non-tight operator
 #
 # Splits the problem into pieces with easy proximal maps. Slower per iteration, but it is what
 # makes TV and multi-term models solvable.
 
-# %%
 x_admm = reconstruct(
     data,
     IterativeReconstruction(L1Wavelet2D(1.5f-3), TotalVariation2D(5.0f-4); algorithm = ADMM(), maxit = 50)
 )
 println("ADMM    NRMSE ", round(nrmse1(x_admm), digits = 4))
 
-# %% [markdown]
 # ### Douglas–Rachford — two proximable terms
 #
 # The natural solver when data consistency is a *constraint* rather than a penalty:
@@ -256,12 +224,11 @@ println("ADMM    NRMSE ", round(nrmse1(x_admm), digits = 4))
 # The NRMSE below is poor, and that is a property of the *model*, not of the solver: an equality
 # constraint forces the reconstruction to reproduce the measured k-space including its noise, and
 # under heavy SENSE undersampling the projection amplifies that noise along the directions where
-# $\mathcal{A}\mathcal{A}^*$ is nearly singular. Notebook 05 §4 measures this in detail (a
+# $\mathcal{A}\mathcal{A}^*$ is nearly singular. Tutorial 05 §4 measures this in detail (a
 # better-converged projection makes it worse, not better) and says where `HardConsistency` does
 # belong. Douglas–Rachford itself is fine — give it a model whose two proximal maps are
 # well-conditioned.
 
-# %%
 x_dr = reconstruct(
     data,
     IterativeReconstruction(
@@ -271,29 +238,26 @@ x_dr = reconstruct(
 )
 println("DR + hard consistency NRMSE ", round(nrmse1(x_dr), digits = 4))
 
-# %%
+#-
 side_by_side(
     x_cgnr, x_pogm, x_admm;
     titles = ("CGNR (L2)", "POGM (wavelet)", "ADMM (wavelet+TV)")
 )
 
-# %% [markdown]
 # ### Letting Ristretto choose
 #
 # **The recommended form is to leave `algorithm` out entirely.** The default tuple already covers
 # every model this package can build, in a sensible order, and the choice then tracks whatever
 # regularizers you happen to have combined.
 
-# %%
 x_auto = reconstruct(
     data,
-    # no `algorithm`, and the same budget as the POGM run above, so the two are comparable term
-    # by term
+    ## no `algorithm`, and the same budget as the POGM run above, so the two are comparable term
+    ## by term
     IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 50)
 )
 println("auto-selected NRMSE ", round(nrmse1(x_auto), digits = 4), "  (equals POGM: ", x_auto ≈ x_pogm, ")")
 
-# %% [markdown]
 # Passing a tuple is the second-choice form, and it is for *restricting* or *extending* the
 # candidate set rather than for picking a solver (a bare `algorithm = POGM()` does that).
 #
@@ -304,7 +268,7 @@ println("auto-selected NRMSE ", round(nrmse1(x_auto), digits = 4), "  (equals PO
 # - **Extend** when the solver you want is not in the defaults. `ISTA()` is not: the
 #   unaccelerated proximal gradient is only reachable by naming it. That matters when the
 #   proximal map changes from iteration to iteration — `LocallyLowRank(; shift = :random)` in
-#   notebook 07 is the example — because momentum and line search both assume a fixed objective.
+#   tutorial 07 is the example — because momentum and line search both assume a fixed objective.
 #
 #   `ISTA` is not in the defaults for a structural reason rather than an arbitrary one: the tuple
 #   is scanned in order and the first entry whose assumptions the model satisfies wins, so an
@@ -321,7 +285,6 @@ println("auto-selected NRMSE ", round(nrmse1(x_auto), digits = 4), "  (equals PO
 # accept exactly the smooth-plus-prox shape POGM does. They spend more per iteration — a line
 # search, and an L-BFGS buffer — and usually need far fewer of them.
 
-# %%
 x_forced = reconstruct(
     data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = (ADMM(),), maxit = 50)
 )
@@ -334,7 +297,7 @@ println(
     "  (equals ISTA: ", x_extended ≈ x_ista, ")"
 )
 
-# %%
+#-
 using Ristretto.ProximalAlgorithms: PANOC, ZeroFPR
 
 x_panoc = reconstruct(
@@ -346,7 +309,6 @@ x_zerofpr = reconstruct(
 println("PANOC   NRMSE ", round(nrmse1(x_panoc), digits = 4))
 println("ZeroFPR NRMSE ", round(nrmse1(x_zerofpr), digits = 4))
 
-# %% [markdown]
 # ## 3. `maxit`, `reltol` and early stopping
 #
 # Both belong to the *method*, because only a method has iterations.
@@ -375,35 +337,31 @@ println("ZeroFPR NRMSE ", round(nrmse1(x_zerofpr), digits = 4))
 # > `algorithm = FISTA(maxit = 500)` becomes reachable: passed together with a `maxit` on the
 # > method, the method's value would be merged in last and overwrite it.
 
-# %%
 x_loose = reconstruct(data, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 200, reltol = 1.0f-3))
 x_tight = reconstruct(data, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 200, reltol = 1.0f-6))
 println("reltol 1e-3 NRMSE ", round(nrmse1(x_loose), digits = 4), "   (stopped early)")
 println("reltol 1e-6 NRMSE ", round(nrmse1(x_tight), digits = 4), "   (ran further)")
 
-# %% [markdown]
 # The looser tolerance gives the *lower* NRMSE, which is not a mistake: stopping early is itself
 # a form of regularization, and the extra iterations the tighter run buys are spent fitting the
 # noise the data term is asking it to fit. `reltol` controls how faithfully the *objective* is
 # minimized; whether that objective's minimizer is the best image is λ's job.
 
-# %%
-# Defer to the algorithm's own iteration count.
+## Defer to the algorithm's own iteration count.
 x_alg = reconstruct(
     data,
     IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = FISTA(maxit = 30), maxit = nothing)
 )
 println("algorithm-owned maxit: NRMSE ", round(nrmse1(x_alg), digits = 4))
 
-# %%
-# Passing an iteration parameter to `reconstruct` is an error rather than being ignored.
+#-
+## Passing an iteration parameter to `reconstruct` is an error rather than being ignored.
 try
     reconstruct(data, IterativeReconstruction(L1Wavelet2D(2.0f-3)); maxit = 10)
 catch e
     println(sprint(showerror, e))
 end
 
-# %% [markdown]
 # ### What early stopping actually tests
 #
 # **The quantity.** Every solver compares one scalar against the threshold, and in each case it
@@ -441,21 +399,19 @@ end
 # index in that last row: equal to `maxit` means the budget ran out; smaller than `maxit` — and
 # usually off the printing grid — means the tolerance fired.
 
-# %%
 println("reltol = 1e-3, maxit = 200 — watch the last row's index:")
 reconstruct(
     data, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 200, reltol = 1.0f-3);
     verbosity = Verbose(; timing = false)
 );
 
-# %%
+#-
 println("reltol = 0, maxit = 20 — the tolerance is switched off, so the budget decides:")
 reconstruct(
     data, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 20, reltol = 0.0);
     verbosity = Verbose(; timing = false, freq = 5)
 );
 
-# %% [markdown]
 # ## 4. Verbosity
 #
 # Three mutually exclusive output modes, given to `reconstruct` (they are run settings, not
@@ -464,32 +420,29 @@ reconstruct(
 # `true` would not say which of `ProgressBar()` and `Verbose()` was meant, and it is rejected.
 #
 # `Silent()` is the **default**: a reconstruction prints nothing unless it is asked to, which is why
-# the cells in this notebook pass `verbosity` only where the output is the point — the two
+# the cells in this tutorial pass `verbosity` only where the output is the point — the two
 # early-stopping runs in §3, and the cells below.
 
-# %%
 reconstruct(data, IterativeReconstruction(L2Image(1.0f-4); maxit = 5); verbosity = :silent);   # the default, via the shorthand
 
-# %%
+#-
 reconstruct(data, IterativeReconstruction(L2Image(1.0f-4); maxit = 5); verbosity = ProgressBar());
 
-# %% [markdown]
 # `freq` is **optional**. Left out, Ristretto derives a printing frequency from the method's `maxit`
 # (roughly twenty rows over the run, rounded to one of 1, 5, 10, 20, 50, 100), which is what you
 # want almost always. Pass it only to override that: `freq = 1` for every iteration, `freq = 0`
 # for a single end-of-run summary line, `freq = -1` to drop the solver's output while keeping
 # Ristretto's own phase log.
 
-# %%
 println("--- Verbose(): frequency chosen from maxit = 60 ---")
 reconstruct(data, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 60); verbosity = Verbose(; timing = false));
 
-# %%
+#-
 println("--- Verbose(; freq = 1): overridden, every iteration ---")
 reconstruct(data, IterativeReconstruction(L2Image(1.0f-4); maxit = 5); verbosity = Verbose(; freq = 1, timing = false));
 
-# %%
-# The log can be redirected anywhere — here into a vector, e.g. for a dashboard or a test.
+#-
+## The log can be redirected anywhere — here into a vector, e.g. for a dashboard or a test.
 messages = String[]
 reconstruct(
     data, IterativeReconstruction(L2Image(1.0f-4); maxit = 5);
@@ -497,7 +450,6 @@ reconstruct(
 )
 println(length(messages), " messages captured; first: ", first(messages))
 
-# %% [markdown]
 # ## 5. Data scaling
 #
 # The absolute magnitude of the k-space is not neutral, for two reasons that have nothing to do
@@ -523,7 +475,6 @@ println(length(messages), " messages captured; first: ", first(messages))
 # scaled back unless you ask otherwise, so the choice does not change the units you get out — it
 # changes the units the solver works in, and therefore what λ means.
 
-# %%
 for scaling in (NoScaling(), QuantileScaling(), BartScaling(), MeasurementBasedScaling())
     x̂ = reconstruct(
         data, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40);
@@ -535,14 +486,12 @@ for scaling in (NoScaling(), QuantileScaling(), BartScaling(), MeasurementBasedS
     )
 end
 
-# %% [markdown]
 # The spread is small here because the simulated data is already close to unit scale, so there
 # is little for a scaling to fix. Multiply the k-space by 1000 — the kind of factor that
 # separates one scanner's raw units from another's — and point 1 becomes unmissable: with
 # `NoScaling` the same λ now under-regularizes badly, while `QuantileScaling` returns bit-for-bit
 # the reconstruction it gave on the original data.
 
-# %%
 for factor in (1.0f0, 1.0f3)
     data_scaled = AcquisitionInfo(data; kspace_data = data.kspace_data .* factor)
     for scaling in (NoScaling(), QuantileScaling())
@@ -557,8 +506,8 @@ for factor in (1.0f0, 1.0f3)
     end
 end
 
-# %%
-# Keep the internally scaled units instead of mapping back.
+#-
+## Keep the internally scaled units instead of mapping back.
 x_scaled_back = reconstruct(
     data, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 40);
     scaling = BartScaling()
@@ -570,14 +519,12 @@ x_unscaled = reconstruct(
 println("max|x| scaled back:  ", round(maximum(abs, x_scaled_back), digits = 3))
 println("max|x| left scaled:  ", round(maximum(abs, x_unscaled), digits = 3))
 
-# %% [markdown]
 # ## 6. Warm starts
 #
 # `x₀` seeds the solver. Useful for parameter sweeps, staged reconstructions, and the non-convex
 # terms whose result depends on where they start. It is also what the stopping threshold is
 # measured against (§3), so a warm start changes the tolerance as well as the starting point.
 
-# %%
 x_stage1 = reconstruct(data, IterativeReconstruction(L1Wavelet2D(5.0f-3); maxit = 40))
 x_stage2 = reconstruct(
     data, IterativeReconstruction(L1Wavelet2D(1.0f-3); maxit = 40); x₀ = x_stage1
@@ -585,7 +532,6 @@ x_stage2 = reconstruct(
 println("stage 1 NRMSE ", round(nrmse1(x_stage1), digits = 4))
 println("stage 2 NRMSE ", round(nrmse1(x_stage2), digits = 4))
 
-# %% [markdown]
 # ## 7. Operator-norm and normal-operator options
 #
 # ### What `‖𝒜‖` is used for
@@ -618,7 +564,6 @@ println("stage 2 NRMSE ", round(nrmse1(x_stage2), digits = 4))
 # faster, because the badly-scaled warm start costs more iterations than the estimate costs
 # milliseconds. The cell below measures exactly that.
 
-# %%
 𝒜 = get_encoding_operator(data)
 estimate_opnorm(𝒜)                                                       # warm up
 t_estimate = minimum(@elapsed(estimate_opnorm(𝒜)) for _ in 1:5)
@@ -634,7 +579,6 @@ for kwargs in ((;), (; disable_operator_normalization = true))
     )
 end
 
-# %% [markdown]
 # ### The three options
 #
 # **`exact_opnorm = true`** — replace `estimate_opnorm` with `LinearAlgebra.opnorm`, run to
@@ -683,9 +627,8 @@ end
 # with $\sigma = N$ — the right quantity for the solver and for a line search, but scaled if you
 # wanted to read off $\tfrac12\|\mathcal{A}x - y\|^2$ itself.
 
-# %%
-# `Lf = n‖𝒜‖²` with n = 1: computed once here (the same `𝒜` as above), then handed to the
-# algorithm.
+## `Lf = n‖𝒜‖²` with n = 1: computed once here (the same `𝒜` as above), then handed to the
+## algorithm.
 L = estimate_opnorm(𝒜)
 println("‖A‖ = ", round(L, digits = 6))
 
@@ -699,8 +642,8 @@ x_manual = reconstruct(
 )
 println("hand-supplied Lf reproduces the default run exactly: ", x_manual ≈ x_default)
 
-# %%
-# The three options on the Cartesian problem this notebook has used throughout.
+#-
+## The three options on the Cartesian problem this tutorial has used throughout.
 function compare_options(acq_data, err; maxit = 40)
     for (label, kwargs) in (
             ("default", (;)),
@@ -719,14 +662,12 @@ end
 println("--- Cartesian, 128², 8 coils ---")
 compare_options(data, nrmse1)
 
-# %% [markdown]
 # The same three options on a **non-Cartesian** acquisition — radial, 200 golden-angle spokes of
-# 256 samples over the same phantom and coils (notebook 08 is where non-Cartesian encoding is
+# 256 samples over the same phantom and coils (tutorial 08 is where non-Cartesian encoding is
 # covered properly). This is also where the normal-operator substitution stops being a footnote:
 # for an NFFT the normal operator is a Toeplitz embedding, one FFT pair on a padded grid, where
 # running $\mathcal{A}$ and $\mathcal{A}^*$ separately means two full gridding passes instead.
 
-# %%
 traj_no = radial_trajectory(256, 200; ordering = GoldenAngle())
 acq_noncart = AcquisitionInfo(;
     trajectory = traj_no, image_size = (nx, ny),
@@ -737,7 +678,6 @@ data_noncart = simulate_acquisition(x_noisy, acq_noncart; keep_sensitivity_maps 
 println("--- non-Cartesian, 200 radial spokes ---")
 compare_options(data_noncart, nrmse1; maxit = 30)
 
-# %% [markdown]
 # Several rows in those two tables are worth explaining, because none of them is obvious.
 # (Wall-clock timings vary from run to run; the *reasons* below are the part to keep.)
 #
@@ -783,7 +723,6 @@ compare_options(data_noncart, nrmse1; maxit = 30)
 # `𝒜`, the objective being minimized is identical in both runs. The cell below checks that
 # directly by giving both enough iterations to converge.
 
-# %%
 for (label, kwargs) in (("default", (;)), ("exact_opnorm", (; exact_opnorm = true)))
     x̂ = reconstruct(
         data, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 300, reltol = 0.0, kwargs...)
@@ -791,7 +730,6 @@ for (label, kwargs) in (("default", (;)), ("exact_opnorm", (; exact_opnorm = tru
     println(rpad(label, 14), " NRMSE after 300 iterations ", round(nrmse1(x̂), digits = 5))
 end
 
-# %% [markdown]
 # ## 8. Task splitting and threading
 #
 # When the data has batch dimensions that *nothing couples* — slices, contrasts, echoes, or time
@@ -801,9 +739,8 @@ end
 # whole mechanism off.
 #
 # (Do not confuse it with *image decomposition* — `Component`, L+S — which splits one image into
-# additive parts inside a single solve. Notebook 07 covers that.)
+# additive parts inside a single solve. Tutorial 07 covers that.)
 
-# %%
 n_ms, nslices, nc_ms = 128, 32, 4
 vol = create_shepp_logan_phantom(n_ms, n_ms, nslices; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
 smaps_ms = NamedDimsArray{(:x, :y, :coil)}(coil_sensitivities(n_ms, n_ms, nc_ms))
@@ -816,14 +753,12 @@ data_ms = simulate_acquisition(NamedDimsArray{(:x, :y, :slice)}(vol), acq_ms; ke
 println("multi-slice k-space: ", size(data_ms.kspace_data), " ", dimnames(data_ms.kspace_data))
 println("Julia threads: ", Threads.nthreads())
 
-# %% [markdown]
 # 32 slices of 128² with 4 coils, 150 proximal-gradient iterations each: large enough that the per-slice
 # solve dominates the fork/join overhead, which a 64² × 8-slice problem does not.
 #
 # Wall-clock timings vary from run to run, so each configuration below is measured three times and
 # the **best** time is reported; treat the ratios, not the absolute seconds, as the result.
 
-# %%
 method_ms = IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 150, reltol = 0.0)
 warmup_ms = IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 2)
 
@@ -846,7 +781,6 @@ println("split, one slice at a time  : ", round(t_seq, digits = 2), " s   (", ro
 println("not split at all            : ", round(t_none, digits = 2), " s   (", round(t_none / t_par, digits = 2), "× slower)")
 println("same answer all three: ", x_par ≈ x_seq && x_par ≈ x_none)
 
-# %% [markdown]
 # The unsplit run is the slowest of the three even though it is doing the same arithmetic: it
 # solves one big problem whose iterate is the whole stack, so every slice is dragged along until
 # the *last* one converges, and the operators work on 32× larger arrays.
@@ -859,7 +793,6 @@ println("same answer all three: ", x_par ≈ x_seq && x_par ≈ x_none)
 # > is wrong, and both are converged to the requested tolerance; they simply do not have to be
 # > bit-identical.
 
-# %% [markdown]
 # ### Which dimensions can be split
 #
 # `get_affected_dims(reg, acq_or_nothing, image_dims)` is the interface function that decides
@@ -867,7 +800,6 @@ println("same answer all three: ", x_par ≈ x_seq && x_par ≈ x_none)
 # `get_task_splitting_plan`: start from the non-Fourier image dimensions and remove every
 # dimension any term in the model affects. What is left over is split.
 
-# %%
 using Ristretto: get_affected_dims
 
 image_dims = (:x, :y, :slice, :time)
@@ -899,7 +831,6 @@ for reg in regularizers
     )
 end
 
-# %% [markdown]
 # Reading the rows, and *why* each one couples what it does:
 #
 # | term | couples | because |
@@ -915,7 +846,6 @@ end
 # candidates for splitting in the first place (they are Fourier-encoded), so a 2D regularizer
 # leaves both batch dimensions free.
 
-# %% [markdown]
 # ### Threading notes
 #
 # Ristretto parallelizes *across* slices and keeps each slice's work single-threaded, because a 128²
@@ -934,10 +864,9 @@ end
 # FFTW plans each transform before its first use, either instantly from a heuristic or by timing
 # candidate algorithms (0.1–0.2 s per 2D transform), whose plans run up to several times faster.
 # Ristretto picks one from the problem size, algorithm and iteration count; when you will reconstruct
-# the same acquisition many times — this notebook does — `fft_planning = :measure` pays the
+# the same acquisition many times — this tutorial does — `fft_planning = :measure` pays the
 # timing once and every later reconstruction reuses the plans.
 
-# %%
 using LinearAlgebra: BLAS
 using FFTW
 
@@ -947,7 +876,6 @@ using FFTW
 @show get(ENV, "KMP_BLOCKTIME", "unset")
 @show Ristretto.serial_blas_threshold_bytes()
 
-# %% [markdown]
 # ## 9. A convergence comparison
 #
 # `on_iteration` calls back once per solver iteration with the current image estimate, already
@@ -960,8 +888,7 @@ using FFTW
 # `reltol = 0` matters here: with the default tolerance a solver would stop early and truncate its
 # own curve.
 
-# %%
-# Warm up first, so the traced timings below measure the solve and not first-call compilation.
+## Warm up first, so the traced timings below measure the solve and not first-call compilation.
 for alg in (ISTA(), FISTA(), POGM(), ADMM())
     reconstruct(
         data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = alg, maxit = 2)
@@ -985,7 +912,6 @@ for (label, alg) in (("ISTA", ISTA()), ("FISTA", FISTA()), ("POGM", POGM()), ("A
     )
 end
 
-# %% [markdown]
 # **Plot it against both axes.** One ADMM iteration costs several times what one FISTA
 # iteration costs — it solves an inner linear system and updates a set of dual variables every
 # step — as the printed times above show for the same iteration count. A plot against iteration
@@ -993,7 +919,6 @@ end
 # most work per step; a plot against wall-clock time is what you actually pay for. Neither plot
 # alone is the answer, which is why the figure has both.
 
-# %%
 p_iter = plot(; xlabel = "iteration", ylabel = "NRMSE", yscale = :log10, title = "per iteration")
 p_time = plot(; xlabel = "wall-clock time (s)", ylabel = "NRMSE", yscale = :log10, title = "per second")
 for label in ("ISTA", "FISTA", "POGM", "ADMM")
@@ -1003,17 +928,15 @@ for label in ("ISTA", "FISTA", "POGM", "ADMM")
 end
 plot(p_iter, p_time; layout = (1, 2), size = (950, 380))
 
-# %% [markdown]
 # `trace.metrics` carries whatever the algorithm itself computed, so the same run also yields the
 # solver's own convergence diagnostics — and which fields exist is a property of the algorithm,
 # not something to guess at.
 
-# %%
 for label in ("ISTA", "FISTA", "POGM", "ADMM")
     println(rpad(label, 6), " metric fields: ", keys(traces[label].metrics[1]))
 end
 
-# %%
+#-
 plot(
     [m.fixed_point_residual for m in traces["FISTA"].metrics];
     label = "FISTA fixed-point residual", lw = 2, yscale = :log10, xlabel = "iteration"
@@ -1025,7 +948,6 @@ plot!(
     label = "ADMM dual residual", lw = 2, size = (700, 380), ylabel = "residual"
 )
 
-# %% [markdown]
 # ## 10. `ReconstructionConfig` and run settings
 #
 # Everything in §4, §5 and §8 — and only those — is a *run setting*: it describes how a
@@ -1047,7 +969,6 @@ plot!(
 # switches `exact_opnorm` and `disable_operator_normalization` (§7), all of which are
 # constructor keywords of `IterativeReconstruction`.
 
-# %%
 config = ReconstructionConfig(;
     verbosity = Silent(),
     scaling = QuantileScaling(),
@@ -1058,8 +979,8 @@ x1 = reconstruct(data, IterativeReconstruction(L1Wavelet2D(2.0f-3); maxit = 30);
 x2 = reconstruct(data, IterativeReconstruction(TotalVariation2D(1.0f-3); maxit = 30); config = config)
 println("reused config for two methods: ", round(nrmse1(x1), digits = 4), ", ", round(nrmse1(x2), digits = 4))
 
-# %%
-# An existing config can be extended, and individual keywords still win over it per call.
+#-
+## An existing config can be extended, and individual keywords still win over it per call.
 config_loud = ReconstructionConfig(config; verbosity = Verbose())
 x3 = reconstruct(
     data, IterativeReconstruction(L2Image(1.0f-4); maxit = 5);
@@ -1067,16 +988,15 @@ x3 = reconstruct(
 )
 println("silenced despite a verbose config")
 
-# %%
-# A method-owned keyword aimed at the run settings says where it belongs, rather than being
-# quietly dropped.
+#-
+## A method-owned keyword aimed at the run settings says where it belongs, rather than being
+## quietly dropped.
 try
     reconstruct(data, IterativeReconstruction(L1Wavelet2D(2.0f-3)); on_iteration = IterationTrace())
 catch e
     println(sprint(showerror, e))
 end
 
-# %% [markdown]
 # ## Further reading
 #
 # From *Questions and Answers in MRI*, for what the iteration is ultimately buying:
@@ -1086,8 +1006,6 @@ end
 # - [Parallel imaging: noise](https://mriquestions.com/noise-in-pi.html) — the g-factor, and why
 #   convergence to the least-squares solution is not the same as a good image.
 
-# %% [markdown]
 # ## Environment
 
-# %%
 print_versions()

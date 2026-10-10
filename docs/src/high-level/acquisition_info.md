@@ -1,5 +1,7 @@
 # AcquisitionInfo
 
+*Tutorial: [AcquisitionInfo](../tutorials/02_acquisition_info.md).*
+
 `AcquisitionInfo` is a validated configuration container for MRI acquisition parameters. It centralizes k-space data, sensitivity maps, image dimensions, subsampling patterns, and FFT shift conventions, performing comprehensive validation at construction time to catch configuration errors early.
 
 Benefits:

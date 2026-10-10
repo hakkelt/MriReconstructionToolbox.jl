@@ -1,5 +1,7 @@
 # Custom Reconstruction with StructuredOptimization
 
+*Tutorial: [Low-level interface](../tutorials/12_low_level_interface.md).*
+
 !!! note "Bundled package"
     Ristretto ships its own copy of StructuredOptimization.jl and the packages it builds on
     (AbstractOperators.jl, ProximalOperators.jl, ProximalAlgorithms.jl). Import them through

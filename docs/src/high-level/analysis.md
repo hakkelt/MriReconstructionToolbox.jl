@@ -1,5 +1,7 @@
 # Noise and Reconstruction Analysis
 
+*Tutorial: [Real Cartesian data](../tutorials/09_real_data_cartesian.md).*
+
 `Ristretto` provides analysis tools for evaluating noise propagation, SNR maps, and g-factor geometry in MRI reconstructions.
 
 ## Pseudo-Replica Noise Propagation
