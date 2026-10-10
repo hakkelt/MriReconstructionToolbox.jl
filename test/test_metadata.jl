@@ -121,6 +121,8 @@ end
     R = [0.0 0 1; 1 0 0; 0 1 0]          # x → L-P-S column 1 = (0,1,0), ...
     h = Header(; fov = (16, 12, 8), spacing = (2, 2, 2), orientation = R, offset = (10, 20, 30))
     img = ReconImage(NamedDimsArray{(:x, :y, :z, :time)}(rand(8, 6, 4, 3)), h)
+    @test size(img, :time) == 3
+    @test axes(img, :y) == Base.OneTo(6)
 
     crop = img[x = 3:6]
     @test crop isa ReconImage

@@ -8,8 +8,8 @@ parameters and the tags (see [`Header`](@ref)). The first `spatial_ndims` axes o
 image axes; [`image_size`](@ref) is their size. When it is not given, it is the length of the
 header's `spacing` or `fov`, or else the number of leading axes named `:x`, `:y`, `:z`.
 
-It is an `AbstractArray` that behaves as `data`: positional indexing, `size`, broadcasting and
-`Array(img)` all act on the image. `parent(img)` returns `data` and `dimnames(img)` its dimension
+It is an `AbstractArray` that behaves as `data`: positional indexing, `size` (also by dimension
+name, `size(img, :x)`), broadcasting and `Array(img)` all act on the image. `parent(img)` returns `data` and `dimnames(img)` its dimension
 names. Keyword indexing names the dimensions, as for a `NamedDimsArray`, and keeps the header with
 its geometry updated to the part selected:
 
@@ -64,6 +64,8 @@ Base.parent(img::ReconImage) = getfield(img, :data)
 
 Base.size(img::ReconImage) = size(parent(img))
 Base.axes(img::ReconImage) = axes(parent(img))
+Base.size(img::ReconImage, d::Symbol) = size(parent(img), d)
+Base.axes(img::ReconImage, d::Symbol) = axes(parent(img), d)
 Base.IndexStyle(::Type{<:ReconImage{T, N, A}}) where {T, N, A} = IndexStyle(A)
 Base.@propagate_inbounds Base.getindex(img::ReconImage, i::Int...) = parent(img)[i...]
 Base.@propagate_inbounds Base.setindex!(img::ReconImage, v, i::Int...) = (parent(img)[i...] = v; img)
