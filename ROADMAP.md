@@ -100,7 +100,9 @@ Comments are often too verbose. Ristretto `src/` and `ext/` first; comments in v
 on the fork branch that owns the code.
 
 ### 4. README
-**Status:** todo. **Tier:** P2. **After:** 5.
+**Status:** done (`p2`, 2026-10-10): installation, three high-level examples, a
+low-level one, a benchmark table from `docs/benchmark_tables.jl`, badges; `test/test_readme.jl`
+runs its code. **Tier:** P2. **After:** 5.
 
 Short and focused: what the package is, how to install Julia (one or two lines: juliaup), how to
 install the package, two or three examples, and a small benchmark table from the committed
@@ -120,9 +122,10 @@ rename by deleting the old name, never by deprecating it (`AGENTS.md`): module, 
 extensions, repository, docs, notebooks, benchmarks, `AGENTS.md`/`NAMING.md`.
 
 ### 6. Fork documentation and vendoring notes
-**Status:** in progress (`p2`). Pages notes added; each fork's stack has `docs/fork-pages`
-(AbstractOperators #55, ProximalOperators #21, ProximalAlgorithms #18, StructuredOptimization #8),
-which deploys `integration` to the fork's GitHub Pages as `dev`. **Tier:** P2.
+**Status:** done (`p2`, 2026-10-10). Pages notes added; each fork's stack has `docs/fork-pages`
+(AbstractOperators #55, ProximalOperators #21, ProximalAlgorithms #18, StructuredOptimization #8,
+open for review), which deploys `integration` to the fork's GitHub Pages as `dev`; all four `dev`
+sites are up, and the low-level pages and tutorial 12 link them. **Tier:** P2.
 
 - Pages presenting a vendored package (`docs/src/low-level/abstract_operators.md`,
   `proximal_operators.md`, `custom_reconstruction.md`, ...) warn that it must be imported through
@@ -132,9 +135,16 @@ which deploys `integration` to the fork's GitHub Pages as `dev`. **Tier:** P2.
   Pages enabled as of 2026-10-08), and Ristretto's docs and notebooks link there.
 
 ### 29. Faster test suite
-**Status:** in progress (`p2`). Baseline 2026-10-09: CI test job 22 min with coverage; locally 214
-items, 3567 s summed (20 min wall on 4 workers), the slowest "Regularization terms in
-reconstruction" at 424 s. **Tier:** P2.
+**Status:** done (`p2`, 2026-10-10); the CI time on the `p2` PR is the figure to confirm. Baseline
+2026-10-09: CI test job 22 min with coverage; locally 214 items, 3567 s summed on 4 workers.
+Measured item by item in one process as CI runs them (1 thread, no GPU): 3909 s with
+`--code-coverage=user`, 2393 s after (225 items), which includes ~350 s of one-off precompilation
+that `--check-bounds=yes` (as `Pkg.test` sets it) causes and the baseline did not pay. Most of the
+gain: coverage now counts only `src/` (and `ext/` in a second run of the `:extension` items), since
+`user` also instrumented the vendored `deps/` and made solver loops 4–10× slower (TGV3D 375 s →
+21 s). The rest: shorter ADMM/VuCondat budgets where the extra iterations moved nothing (TGV,
+infimal convolution, preconditioned Chambolle–Pock reference), and no host solve in
+`test_on_devices` when there is no device. No `:slow` tag was needed. **Tier:** P2.
 
 The full suite takes about 25 minutes on CI and on the login node. Find where the time goes
 (per-item durations from the TestItems runner) and cut it without losing coverage:
@@ -160,9 +170,12 @@ credentials (fastMRI signed URLs, the CMRxRecon Synapse token) are reported as s
 credential is missing, not as failures.
 
 ### 31. Literature review into the docs and the roadmap
-**Status:** in progress (`p2`). Roadmap half done: items 32–38 and notes on 17 and 24 hold what is
-not implemented (open question 2, the non-linear solver strategy, is on item 32 for later; 3 is on
-item 33; 1 is item 16; 4 no longer applies). Left: the docs half, with items 10 and 23. **Tier:** P2. **Before:** 10, 23.
+**Status:** done (`p2`, 2026-10-10). Not implemented: items 32–38 and notes on 16, 17 and 24 (open
+question 2, the non-linear solver strategy, is on item 32; 3 is on item 33; 1 is item 16; 4 no
+longer applies). Implemented: a few lines and the seminal references on the page where each
+feature lives (methods, preprocessing, acquisition data, analysis, regularization, theory), the
+method-API design in `low-level/custom_reconstruction.md`, the feature matrix on the
+related-packages page (item 23). The review file is deleted. **Tier:** P2. **Before:** 10, 23.
 
 `comprehensive_literature_review_mri_toolboxes.md` is too long to keep as it is. Audit it against
 `src/`: what is implemented is compacted into the documentation page where the feature lives (a
@@ -226,7 +239,13 @@ the reconstruction's own forward operator makes results optimistic.
 Update tests, docs and notebooks that rely on the current behaviour.
 
 ### 10. One documentation site
-**Status:** todo. **Tier:** P2. **After:** 5, 7, 9.
+**Status:** done (`p2`, 2026-10-10). The twelve notebooks are Literate scripts in
+`docs/literate/`, executed into `docs/src/tutorials/` on every build and written as notebooks to
+download; `docs/notebooks/` (jupytext, IJulia, export and SLURM scripts) is gone. Home page cut
+to installation (juliaup), a three-line example and a map of the site; each reference page links
+its tutorial. Docs CI caches the MRITestData downloads and runs 2 threads. Item 9 leftover:
+tutorial 01 simulates from a finer area-sampled phantom; the other tutorials keep their phantoms
+(tutorial 03 explains the inverse crime on them). **Tier:** P2. **After:** 5, 7, 9.
 
 Merge the notebooks (`docs/notebooks/`) and the Documenter pages (`docs/src/`) into a single
 Documenter site in which every topic has one home: tutorials come from the notebooks; reference,
@@ -235,7 +254,12 @@ Literate.jl scripts as the single source, generating both the executed pages and
 files. Includes a short "Installing Julia" section (juliaup), as in item 4.
 
 ### 23. Related packages page
-**Status:** todo. **Tier:** P2. **After:** 31.
+**Status:** done (`p2`, 2026-10-10). `docs/src/related_packages.md`: feature matrix
+of BART, SigPy, Gadgetron, MRIReco.jl, MIRT.jl, MRpro and Ristretto re-verified against each
+project's source and docs (October 2026), benchmark tables generated at build time from the
+committed snapshots by `docs/benchmark_tables.jl` (time to accuracy, matched effort, thread
+scaling, GPU, hardware), the Julia ecosystem and the pipelines. Snapshot schema 3 records
+dates, CPU, GPU, Julia and BLAS; the harness now stores the CPU model. **Tier:** P2. **After:** 31.
 
 A documentation page "Related packages" with a feature comparison against other toolboxes (from
 the literature review, item 31, re-verified), the Julia MRI ecosystem (KomaMRI, MRIReco,
@@ -342,7 +366,10 @@ operators (using the true adjoint — Ristretto's Fourier `'` is Aᴴ/N); pretra
 SNRAware, Hugging Face weights) through the existing `PlugAndPlay` and as post-processing;
 MoDL/VarNet in Lux with fastMRI weight import; RAKI; implicit neural representations; diffusion
 (via PythonCall); transformers (import only). Check weight licenses individually.
-`comprehensive_literature_review_mri_toolboxes.md` §2.7.2 and §5.10 scope this.
+Unrolled networks (VarNet: Hammernik et al., MRM 2018, doi:10.1002/mrm.26977; MoDL: Aggarwal et
+al., IEEE TMI 2019, doi:10.1109/TMI.2018.2865356) train the regularizer and the step sizes end to
+end through the forward operator, an execution model `reconstruct` does not have; that is why
+this lives in its own package.
 
 ### 17. Post-processing
 **Status:** todo. **Tier:** deferred.
