@@ -31,7 +31,8 @@ case_label(id) = join(filter(!isempty, [get(CASE_WORDS, w, w) for w in split(id,
 fmt_ms(t) = t < 0 ? "—" : t < 10 ? @sprintf("%.2f", t) : t < 1000 ? @sprintf("%.0f", t) : @sprintf("%.1f s", t / 1000)
 
 # One row per (case, method), one column per toolkit: time, and the NRMSE against the ground
-# truth when `nrmse`. The fastest time in a row is bold.
+# truth when `nrmse`. The fastest time in a row is bold. A row only Ristretto ran compares
+# nothing and is left out.
 function comparison_markdown(backend, threads; category, nrmse = true, method_filter = _ -> true)
     available(backend, threads) || return "*No snapshot for $backend at $threads threads.*\n"
     rows = filter(b -> b["category"] == category && method_filter(b["method"]), snapshot(backend, threads)["benchmarks"])
@@ -47,7 +48,7 @@ function comparison_markdown(backend, threads; category, nrmse = true, method_fi
             f = framework(b["framework"])
             isnothing(f) || (cells[f] = b)
         end
-        isempty(cells) && continue
+        length(cells) < 2 && continue
         times = [b["time_ms"] for b in values(cells) if b["time_ms"] > 0]
         best = isempty(times) ? -1.0 : minimum(times)
         out = map(cols) do f
@@ -99,7 +100,10 @@ function hardware_markdown(backend, threads)
         "BLAS $(part("blas_vendor")); measured $(run["dates"][1]) to $(run["dates"][2]).\n"
 end
 
-# The README's table: the accuracy race at one backend and thread count, times only.
-readme_table(backend = "openblas", threads = 8) = comparison_markdown(backend, threads; category = "Accuracy race", nrmse = false)
+# The README's table: the accuracy race at one backend and thread count, times only, without the
+# PDHG variants of the rows.
+readme_table(backend = "openblas", threads = 8) = comparison_markdown(
+    backend, threads; category = "Accuracy race", nrmse = false, method_filter = m -> !occursin("(PDHG)", m),
+)
 
 end
