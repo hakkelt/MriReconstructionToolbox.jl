@@ -663,6 +663,13 @@ VoronoiDCF
 correct_dcf_edges
 ```
 
+`PipeMenonDCF` iterates $w \leftarrow w / (C * w)$, with $C$ the gridding kernel convolution,
+until the weighted sampling density is flat (Pipe & Menon 1999); `VoronoiDCF` takes each sample's
+weight as the area of its Voronoi cell (Rasche et al. 1999).
+
+- Pipe, J. G., & Menon, P. (1999). *Sampling density compensation in MRI: Rationale and an iterative numerical solution.* Magnetic Resonance in Medicine, 41(1), 179-186. <https://doi.org/10.1002/(SICI)1522-2594(199901)41:1%3C179::AID-MRM25%3E3.0.CO;2-V>
+- Rasche, V., Proksa, R., Sinkus, R., Börnert, P., & Eggers, H. (1999). *Resampling of data between arbitrary grids using convolution interpolation.* IEEE Transactions on Medical Imaging, 18(5), 385-392.
+
 ## Integration with Other Functions
 
 `AcquisitionInfo` is accepted by:
