@@ -6,7 +6,7 @@
 
 Simulate the k-space an acquisition described by `acq_info` would measure from `phantom`.
 
-`acq_info.image_size` is the grid the data will be reconstructed on; the phantom's spatial size
+`image_size(acq_info)` is the grid the data will be reconstructed on; the phantom's spatial size
 is the grid it is simulated on, and must be at least as large along every spatial axis. Both
 grids cover the same field of view. When the phantom is finer, its full k-space is computed on
 its own grid and only the frequencies the reconstruction grid can represent are kept (Cartesian),
@@ -61,11 +61,11 @@ function simulate_acquisition(
     )
     acq_info = _with_positional_shifts(acq_info)
     grid = _simulation_grid(phantom, acq_info)
-    _check_simulation_grid(grid, acq_info.image_size, inverse_crime_check)
+    _check_simulation_grid(grid, image_size(acq_info), inverse_crime_check)
     _check_simulation_maps(acq_info, grid)
-    ksp = if _has_unequal_sample_counts(nothing, acq_info.image_size, acq_info.subsampling)
+    ksp = if _has_unequal_sample_counts(nothing, image_size(acq_info), acq_info.subsampling)
         _simulate_partitioned_acquisition(phantom, acq_info)
-    elseif grid == acq_info.image_size
+    elseif grid == image_size(acq_info)
         _simulate_on_grid(phantom, acq_info)
     else
         _simulate_on_finer_grid(phantom, acq_info, grid)
@@ -79,9 +79,9 @@ function simulate_acquisition(
         inverse_crime_check::Bool = true, keep_sensitivity_maps::Union{Bool, Nothing} = nothing,
     )
     grid = _simulation_grid(phantom, acq_info)
-    _check_simulation_grid(grid, acq_info.image_size, inverse_crime_check)
+    _check_simulation_grid(grid, image_size(acq_info), inverse_crime_check)
     _check_simulation_maps(acq_info, grid)
-    ksp = if grid == acq_info.image_size
+    ksp = if grid == image_size(acq_info)
         _simulate_on_grid(phantom, acq_info)
     else
         _simulate_on_finer_grid(phantom, acq_info, grid)
@@ -125,7 +125,7 @@ function _kspace_template(image, acq_info::CartesianAcquisitionInfo)
         else
             ksp_dims = _get_dimnames_from_subsampling(
                 full_ksp_dims,
-                acq_info.image_size,
+                image_size(acq_info),
                 acq_info.subsampling,
             )
         end
@@ -220,7 +220,7 @@ function _simulate_partitioned_acquisition(image, acq_info::CartesianAcquisition
     end
     return PartitionedKSpace(
         collect(frame_ksps);
-        ragged_dim = _ragged_subsampling_dim(acq_info.image_size, specs),
+        ragged_dim = _ragged_subsampling_dim(image_size(acq_info), specs),
         dimnames = ksp_names,
     )
 end
@@ -293,7 +293,7 @@ end
 function _simulation_grid(phantom, acq_info::AcquisitionInfo)
     nspatial = acq_info.is3D ? 3 : 2
     @argcheck ndims(phantom) >= nspatial "the phantom must have at least $nspatial dimensions"
-    return _leading_size(phantom, acq_info.image_size)
+    return _leading_size(phantom, image_size(acq_info))
 end
 
 _leading_size(x, ::NTuple{N, Integer}) where {N} = ntuple(d -> size(x, d), Val(N))
@@ -357,8 +357,8 @@ function _returned_maps(acq_info::AcquisitionInfo, grid::Tuple, keep::Union{Bool
             "`keep_sensitivity_maps = true` to keep them (`false` drops them silently)."
     end
     keep === true || return nothing
-    grid == acq_info.image_size && return smaps
-    return _resample_sensitivity_maps(smaps, length(grid), acq_info.image_size)
+    grid == image_size(acq_info) && return smaps
+    return _resample_sensitivity_maps(smaps, length(grid), image_size(acq_info))
 end
 
 # The sensitivity maps resampled to the reconstruction grid, by the same restriction of their
@@ -376,7 +376,7 @@ end
 # grid, restricted to the reconstruction grid's frequencies, then subsampled.
 function _simulate_on_finer_grid(phantom, acq_info::CartesianAcquisitionInfo, grid::Tuple)
     nspatial = length(grid)
-    recon = acq_info.image_size
+    recon = image_size(acq_info)
     fine = CartesianAcquisitionInfo(acq_info; image_size = grid, subsampling = nothing, kspace_data = nothing)
     K = _simulate_on_grid(phantom, fine)
     centred_k = ntuple(d -> !(d in acq_info.shifted_kspace_dims), nspatial)
@@ -397,7 +397,7 @@ end
 # Non-Cartesian data from a finer phantom: the same physical frequencies, sampled on the phantom
 # grid, where they are a smaller fraction of the grid's bandwidth.
 function _simulate_on_finer_grid(phantom, acq_info::NonCartesianAcquisitionInfo, grid::Tuple)
-    recon = acq_info.image_size
+    recon = image_size(acq_info)
     nspatial = length(grid)
     traj = acq_info.trajectory
     ratio = reshape(collect(eltype(traj), recon ./ grid), nspatial, ntuple(_ -> 1, ndims(traj) - 1)...)
@@ -450,7 +450,7 @@ end
 
 function get_transformed_size(image, acq_info::CartesianAcquisitionInfo)
     if isnothing(acq_info.subsampling)
-        return acq_info.image_size
+        return image_size(acq_info)
     elseif acq_info.subsampling isa AbstractArray
         spatial_dims = acq_info.is3D ? 3 : 2
         spreading_dims = ndims(acq_info.subsampling)

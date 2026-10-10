@@ -4,15 +4,23 @@
 # run; `results/runs/` itself is local working data. There is no merge of raw fragments, only a
 # query (`ResultsStore.latest_per_case`) written out to a stable filename.
 #
+# Snapshot schema 3 adds a `run` record next to the rows: when the rows were measured, on which
+# hardware (CPU model and thread count, GPU), Julia version and BLAS library, gathered from the
+# run files the rows come from. Runs recorded before the harness stored the CPU model take it from
+# `--cpu-model` (`AMD EPYC 7763` for the cluster the committed snapshots come from).
+#
 #   julia --project=benchmark/comparison benchmark/comparison/scripts/export_snapshot.jl
 #   julia --project=benchmark/comparison benchmark/comparison/scripts/export_snapshot.jl --backend=mkl --threads=16
+#   julia --project=benchmark/comparison benchmark/comparison/scripts/export_snapshot.jl --cpu-model="AMD EPYC 7763 64-Core Processor"
 using JSON
 
 include(joinpath(@__DIR__, "..", "..", "utils", "results_store.jl"))
-using .ResultsStore: load_rows, latest_per_case, RESULTS_DIR, SCHEMA_VERSION
+using .ResultsStore: load_rows, latest_per_case, load_run_files, RESULTS_DIR
+
+const SNAPSHOT_SCHEMA_VERSION = 3
 
 const ARG = Dict(
-    m.captures[1] => m.captures[2] for m in (match(r"^--(\w+)=(.*)$", a) for a in ARGS) if m !== nothing
+    m.captures[1] => m.captures[2] for m in (match(r"^--([\w-]+)=(.*)$", a) for a in ARGS) if m !== nothing
 )
 
 rows = load_rows()
@@ -24,6 +32,28 @@ haskey(ARG, "threads") && filter!(r -> r.threads == parse(Int, ARG["threads"]), 
 latest = latest_per_case(rows; prefer_source = "slurm")
 isempty(latest) && (@info "no source=\"slurm\" rows match; nothing exported (rerun on the cluster first)"; exit(0))
 
+# The metadata of every run file, by (timestamp, backend, threads): what a row records of its run.
+const RUNS = Dict((get(d, "ts", ""), get(d, "backend", ""), get(d, "threads", 0)) => d for d in load_run_files(RESULTS_DIR))
+
+values_of(metas, key) = sort(unique(string(m[key]) for m in metas if get(m, key, nothing) !== nothing))
+date_of(ts) = "$(ts[1:4])-$(ts[5:6])-$(ts[7:8])"
+
+function run_record(section_rows)
+    metas = [RUNS[(r.ts, r.backend, r.threads)] for r in section_rows if haskey(RUNS, (r.ts, r.backend, r.threads))]
+    dates = sort(unique(date_of(r.ts) for r in section_rows))
+    cpu = values_of(metas, "cpu_model")
+    isempty(cpu) && haskey(ARG, "cpu-model") && (cpu = [ARG["cpu-model"]])
+    return Dict(
+        "dates" => [first(dates), last(dates)],
+        "cpu_model" => cpu,
+        "cpu_threads" => values_of(metas, "cpu_threads"),
+        "gpu" => values_of(metas, "gpu"),
+        "hostnames" => values_of(metas, "hostname"),
+        "julia_version" => values_of(metas, "julia_version"),
+        "blas_vendor" => unique(basename.(values_of(metas, "blas_vendor"))),
+    )
+end
+
 for backend in sort(unique(r.backend for r in latest))
     for threads in sort(unique(r.threads for r in latest if r.backend == backend))
         section_rows = filter(r -> r.backend == backend && r.threads == threads, latest)
@@ -33,7 +63,8 @@ for backend in sort(unique(r.backend for r in latest))
             JSON.print(
                 io,
                 Dict(
-                    "backend" => backend, "threads" => threads, "schema_version" => SCHEMA_VERSION,
+                    "backend" => backend, "threads" => threads, "schema_version" => SNAPSHOT_SCHEMA_VERSION,
+                    "run" => run_record(section_rows),
                     "benchmarks" => [
                         Dict(
                             "case_id" => r.case_id, "data_source" => r.data_source,

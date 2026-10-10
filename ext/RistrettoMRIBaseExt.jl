@@ -1,7 +1,8 @@
 module RistrettoMRIBaseExt
 
 using Ristretto
-using Ristretto: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo
+using Ristretto: CartesianAcquisitionInfo, NonCartesianAcquisitionInfo, Header
+using LinearAlgebra: dot, norm
 using ArgCheck: @argcheck
 using NamedDims: NamedDimsArray
 using MRIBase: MRIBase, RawAcquisitionData, Limit, kspaceNodes
@@ -27,6 +28,10 @@ from `raw.profiles`.
 
 Derived automatically:
 - **Encoding matrix / image size** from `raw.params["encodedSize"]`.
+- **Header** ([`Header`](@ref Ristretto.Header)): `fov` and `spacing` from `encodedFOV`, `TE`,
+  `TR`, `TI` and `flip_angle` from the sequence parameters, `field_strength` from
+  `H1resonanceFrequency_Hz`, and `orientation`, `offset` and `slice_spacing` from the profiles'
+  `position`, `read_dir`, `phase_dir` and `slice_dir` (LPS, as MRD stores them).
 - **Cartesian vs. non-Cartesian dispatch**, from `raw.params["trajectory"]`: `"cartesian"``
   (case-insensitive) builds a [`CartesianAcquisitionInfo`](@ref); anything else builds a
   [`NonCartesianAcquisitionInfo`](@ref) from `MRIBase.trajectory`/`MRIBase.rawdata`.
@@ -85,6 +90,57 @@ function Ristretto.AcquisitionInfo(raw::RawAcquisitionData; sensitivity_maps = n
         return _cartesian_acquisition_info(raw; sensitivity_maps)
     end
     return _noncartesian_acquisition_info(raw; sensitivity_maps)
+end
+
+# Gyromagnetic ratio of ¹H in MHz/T, to read the field strength off the resonance frequency.
+const _GAMMA_H1_MHZ_PER_T = 42.577478
+
+# The metadata header of an MRD acquisition: the encoded field of view, the sequence parameters,
+# and the geometry from the profiles' `position` (the centre of the slice or slab) and direction
+# cosines, in the patient coordinate system LPS. `img_size` is the reconstruction grid, whose
+# centre voxel (`n ÷ 2 + 1`, the FFT-shifted origin) is where `position` lies.
+function _raw_header(raw::RawAcquisitionData, profiles, img_size)
+    params = raw.params
+    nd = length(img_size)
+    h = Header()
+    fov = get(params, "encodedFOV", nothing)
+    if !isnothing(fov) && all(>(0), fov)
+        h.fov = fov[1:nd]
+        h.spacing = h.fov ./ img_size
+        nd == 2 && length(fov) >= 3 && (h.slice_thickness = fov[3])
+    end
+    for (key, name) in (("TE", :TE), ("TR", :TR), ("TI", :TI), ("flipAngle_deg", :flip_angle))
+        v = get(params, key, nothing)
+        isnothing(v) && continue
+        v isa AbstractVector && length(v) == 1 && (v = only(v))
+        (v isa Real || (v isa AbstractVector && !isempty(v))) && (h[name] = v)
+    end
+    f = get(params, "H1resonanceFrequency_Hz", nothing)
+    isnothing(f) || f <= 0 || (h.field_strength = f / 1.0e6 / _GAMMA_H1_MHZ_PER_T)
+
+    head = first(profiles).head
+    R = Float64[collect(head.read_dir) collect(head.phase_dir) collect(head.slice_dir)]
+    if all(c -> norm(c) > 0.5, eachcol(R))
+        h.orientation = R
+        # The first slice of a multi-slice acquisition (lowest slice index, the first along `:z`)
+        # and the signed distance between neighbouring slices along the slice direction.
+        slices = sort!(unique(Int(p.head.idx.slice) for p in profiles))
+        centres = [collect(Float64.(first(p for p in profiles if Int(p.head.idx.slice) == s).head.position)) for s in slices]
+        if nd == 2 && length(centres) > 1
+            steps = [dot(centres[i + 1] - centres[i], R[:, 3]) for i in 1:(length(centres) - 1)]
+            h.slice_spacing = steps[1]
+            if !all(st -> isapprox(st, steps[1]; rtol = 1.0e-3, atol = 1.0e-3), steps) ||
+                    !all(i -> norm(centres[i + 1] - centres[i] - steps[i] * R[:, 3]) < 1.0e-3, eachindex(steps))
+                @warn "the slices of this acquisition are not equidistant and parallel; the header's slice_spacing describes the first two"
+            end
+        end
+        if !isnothing(h.spacing)
+            sp = nd == 3 ? collect(h.spacing) : [h.spacing..., 0.0]
+            n = nd == 3 ? collect(img_size) : [img_size..., 1]
+            h.offset = centres[1] .- R * ((n .÷ 2) .* sp)
+        end
+    end
+    return h
 end
 
 # Sorted-unique raw ids -> 1-based compact index (preserves ascending order, so a monotonic
@@ -221,10 +277,12 @@ function _cartesian_acquisition_info(raw::RawAcquisitionData; sensitivity_maps =
         subsampling = nothing
     end
 
+    image_size = is3D ? (nkx, nky, nkz) : (nkx, nky)
     return CartesianAcquisitionInfo(
         kspace_data;
         is3D,
-        image_size = is3D ? (nkx, nky, nkz) : (nkx, nky),
+        image_size,
+        header = _raw_header(raw, profiles, image_size),
         sensitivity_maps,
         subsampling,
         # Scanner data images an object centred in the FOV, unlike Ristretto's plain-DFT default of the
@@ -338,6 +396,7 @@ function _noncartesian_acquisition_info(raw::RawAcquisitionData; sensitivity_map
         dcf = dcf_named,
         sensitivity_maps,
         image_size,
+        header = _raw_header(raw, profiles, image_size),
     )
 end
 

@@ -2,10 +2,10 @@
 
 # Tooling for the vendored dependency stack declared in `deps/vendor.toml`.
 #
-#     julia tools/vendor.jl check [pkg...]        compare the manifest with GitHub and git
-#     julia tools/vendor.jl rebuild [pkg...]      rebuild each fork's `integration` branch
-#     julia tools/vendor.jl sync [pkg...]         project `integration` into `deps/`
-#     julia tools/vendor.jl status [--json]       the state of the whole stack
+#     julia deps/vendor.jl check [pkg...]        compare the manifest with GitHub and git
+#     julia deps/vendor.jl rebuild [pkg...]      rebuild each fork's `integration` branch
+#     julia deps/vendor.jl sync [pkg...]         project `integration` into `deps/`
+#     julia deps/vendor.jl status [--json]       the state of the whole stack
 #
 # With no package names, every package in the manifest is processed. Only the standard library is
 # used, so the script runs with a bare `julia` and no project environment. `check` and `status`
@@ -386,11 +386,12 @@ function check(packages; fetch::Bool = true)
         end
         # A branch on the fork that no entry names is work that will never reach `deps/`: either
         # it is finished and belongs in the manifest, or it is dead and belongs deleted. The
-        # fork's own copy of the upstream default branch and the generated `integration` branch
-        # are not stack entries and are expected to be there.
+        # fork's own copy of the upstream default branch, the generated `integration` branch and
+        # the documentation deployed from it (`gh-pages`) are not stack entries and are expected
+        # to be there.
         if remote_branches !== nothing
             declared = Set(b.name for b in pkg.stack)
-            expected = Set(["integration", "master", "main", last(split(pkg.base, '/'))])
+            expected = Set(["integration", "gh-pages", "master", "main", last(split(pkg.base, '/'))])
             extra = sort([b for b in remote_branches if !(b in declared) && !(b in expected)])
             if !isempty(extra)
                 println("  fork branches no manifest entry refers to: ", join(extra, ", "))
@@ -630,7 +631,7 @@ json(d::Vector{<:Pair}) = "{" * join(["$(json(k)):$(json(v))" for (k, v) in d], 
 The state of the whole stack, as the text summary a terminal wants or as the JSON the dashboard
 reads. Regenerate the dashboard's data with
 
-    julia tools/vendor.jl status --json > docs/src/assets/vendor-status.json
+    julia deps/vendor.jl status --json > docs/src/assets/vendor-status.json
 """
 function status(packages; as_json::Bool = false)
     entries = Vector{Pair{String,Any}}[]
@@ -697,7 +698,7 @@ end
 # ---------------------------------------------------------------------------------------------
 
 const USAGE = """
-usage: julia tools/vendor.jl <command> [package...] [options]
+usage: julia deps/vendor.jl <command> [package...] [options]
 
   check [--no-fetch]               compare the manifest with GitHub and the local checkouts
   rebuild [--no-push] [--no-fetch] rebuild each fork's `integration` branch from the manifest

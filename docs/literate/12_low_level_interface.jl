@@ -1,25 +1,15 @@
-# -*- coding: utf-8 -*-
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,src//jl:percent
-#     text_representation:
-#       extension: .jl
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.15.2
-#   kernelspec:
-#     display_name: Julia 1.12.7
-#     language: julia
-#     name: julia-1.12
-# ---
-
-# %% [markdown]
 # # 12 — The low-level interface
 #
 # `reconstruct` is a convenience layer over three packages that can be driven directly:
 # `AbstractOperators.jl` (linear operators), `ProximalOperators.jl` (proximal maps) and
-# `StructuredOptimization.jl` (problem syntax + solvers). This notebook opens the box.
+# `StructuredOptimization.jl` (problem syntax + solvers). This tutorial opens the box.
+#
+# Ristretto bundles these packages, with work not yet released upstream, so load them through it
+# (`using Ristretto.AbstractOperators`), never with `Pkg.add`. Their own documentation, for the
+# bundled versions: [AbstractOperators](https://hakkelt.github.io/AbstractOperators.jl/dev/),
+# [ProximalOperators](https://hakkelt.github.io/ProximalOperators.jl/dev/),
+# [ProximalAlgorithms](https://hakkelt.github.io/ProximalAlgorithms.jl/dev/),
+# [StructuredOptimization](https://hakkelt.github.io/StructuredOptimization.jl/dev/).
 #
 # **Contents**
 # 1. The encoding operator and its parts
@@ -32,7 +22,6 @@
 # 8. Adding a proximal operator of your own
 # 9. Adding an algorithm of your own
 
-# %%
 include("NotebookUtils.jl")
 using .NotebookUtils
 
@@ -54,13 +43,11 @@ using Random
 
 Random.seed!(0);
 
-# %% [markdown]
 # ## 1. The encoding operator and its parts
 #
 # $\mathcal{A} = \mathcal{P}\,\mathcal{F}\,\mathcal{S}$: sensitivities, Fourier transform,
 # sampling. Each factor is available separately, and they compose with `*`.
 
-# %%
 nx, ny, nc = 128, 128, 8
 x_true = create_shepp_logan_phantom(nx, ny, :axial; ti = MRISheppLoganIntensities(), eltype = ComplexF32)
 smaps = coil_sensitivities(nx, ny, nc)
@@ -82,8 +69,8 @@ for (name, op) in ("𝒮" => 𝒮, "ℱ" => ℱ, "𝒫" => 𝒫, "𝒜" => 𝒜)
     println(rpad(name, 3), " : ", size(op, 2), " → ", size(op, 1))
 end
 
-# %%
-# Composed by hand, the product reproduces the encoding operator.
+#-
+## Composed by hand, the product reproduces the encoding operator.
 𝒜_manual = 𝒫 * ℱ * 𝒮
 y = data.kspace_data
 println("‖𝒜ᴴy − (𝒫ℱ𝒮)ᴴy‖ / ‖𝒜ᴴy‖ = ", norm(𝒜' * y - 𝒜_manual' * y) / norm(𝒜' * y))
@@ -91,7 +78,6 @@ println("‖𝒜ᴴy − (𝒫ℱ𝒮)ᴴy‖ / ‖𝒜ᴴy‖ = ", norm(𝒜' *
 x_adj = 𝒜' * y
 jim(x_adj; title = "A'y - direct reconstruction, by hand", size = (400, 350))
 
-# %% [markdown]
 # ## 2. Adjoint and operator-norm checks
 #
 # Three things worth knowing when you build or wrap operators yourself.
@@ -103,7 +89,6 @@ jim(x_adj; title = "A'y - direct reconstruction, by hand", size = (400, 350))
 # factor — as the ratio below shows. Multiply by `nx*ny` for the true Hermitian adjoint. (This is
 # also why `‖𝒜‖ ≈ 1` rather than something of the order of the image size.)
 
-# %%
 u = randn(ComplexF32, nx, ny)
 v = randn(ComplexF32, size(y)...)
 
@@ -113,11 +98,10 @@ println("⟨𝒜u, v⟩   = ", lhs)
 println("⟨u, 𝒜'v⟩  = ", rhs)
 println("ratio      = ", round(real(lhs / rhs), digits = 3), "   (nx·ny = ", nx * ny, ")")
 
-# %% [markdown]
 # Second, a subtler way to break the same identity: density compensation. It does not apply to
-# `𝒜` above (this notebook's acquisition is Cartesian), but it is the sharpest illustration of
+# `𝒜` above (this tutorial's acquisition is Cartesian), but it is the sharpest illustration of
 # "an operator that looks like an adjoint but isn't", so it is worth seeing directly on
-# `NFFTOperators.jl`'s `NFFTOp`, the operator behind every non-Cartesian `𝒜` (notebook 8).
+# `NFFTOperators.jl`'s `NFFTOp`, the operator behind every non-Cartesian `𝒜` (tutorial 8).
 #
 # `NFFTOp`'s `dcf` keyword only ever weights the *adjoint* direction (`op' * y`) — the forward
 # direction (`op * image`) never sees it. Its default is `dcf = nothing` (no compensation), which
@@ -131,7 +115,6 @@ println("ratio      = ", round(real(lhs / rhs), digits = 3), "   (nx·ny = ", nx
 # estimation via power iteration, CG/CGNR, the check above) needs the true adjoint, not an
 # approximate inverse.
 
-# %%
 using Ristretto.NFFTOperators: NFFTOp
 
 traj = Float32.(rand(2, 64, 32) .- 0.5f0)         # a small throwaway radial-ish trajectory
@@ -150,54 +133,48 @@ for (label, 𝒩) in ("no DCF (dcf = nothing)" => 𝒩_true_adjoint, "DCF (dcf =
     )
 end
 
-# ⟨Nu, v⟩ is identical in both rows — the forward direction never uses dcf. Only ⟨u, N'v⟩ moves,
-# and with DCF the ratio is nowhere near 1: the dot-product identity has failed, not just been
-# rescaled.
+## ⟨Nu, v⟩ is identical in both rows — the forward direction never uses dcf. Only ⟨u, N'v⟩ moves,
+## and with DCF the ratio is nowhere near 1: the dot-product identity has failed, not just been
+## rescaled.
 
-# %% [markdown]
 # Third, the operator norm: it sets the step size of every proximal algorithm, so Ristretto asks for a
 # value that is guaranteed not to fall below `‖𝒜‖` before each solve. `estimate_opnorm` pairs a
 # power iteration, which converges to the norm from below, with `opnorm_bound`, a closed-form
 # upper bound, and returns the upper end of that interval once it is within `rel_margin`.
 
-# %%
 L_est = AbstractOperators.estimate_opnorm(𝒜)
 println("‖𝒜‖ (certified upper bound): ", round(L_est, digits = 5))
 
-# `powerit` alone gives the lower end of the same interval: the accurate value, but never safe as
-# a Lipschitz constant, because a truncated run always stops short of the norm.
+## `powerit` alone gives the lower end of the same interval: the accurate value, but never safe as
+## a Lipschitz constant, because a truncated run always stops short of the norm.
 L_lower = AbstractOperators.powerit(𝒜; maxit = 1000, rel_margin = 1.0e-10)
 println("‖𝒜‖ (converged from below):  ", round(L_lower, digits = 5))
 
-# %% [markdown]
 # ## 3. `build_model` — what `reconstruct` builds
 #
 # `build_model` returns the `StructuredOptimization` problem `reconstruct` would solve, so you can
 # inspect it, hand it to a solver yourself, or modify it.
 
-# %%
 terms = build_model(𝒜, y, (L1Wavelet2D(2.0f-3),))
 for t in terms
     println(t)
 end
 
-# %%
-# The variant that also returns the variables is what you need when a regularizer introduces
-# auxiliary variables of its own (`TotalGeneralizedVariation2D` does): the image is then not at a
-# predictable position in the solver's variable tuple.
+#-
+## The variant that also returns the variables is what you need when a regularizer introduces
+## auxiliary variables of its own (`TotalGeneralizedVariation2D` does): the image is then not at a
+## predictable position in the solver's variable tuple.
 terms_tgv, x_var, auxiliaries = Ristretto.build_model_with_variables(
     𝒜, y, (TotalGeneralizedVariation2D(1.0f-3),)
 )
 println("image variable:      ", size(~x_var))
 println("auxiliary variables: ", length(auxiliaries), " → ", map(a -> size(~a), auxiliaries))
 
-# %% [markdown]
 # ## 4. Writing the optimization problem by hand
 #
 # `Variable`, `ls`, `norm` and `@minimize` are the whole syntax. Below is the compressed-sensing
-# problem of notebook 1, written out.
+# problem of tutorial 1, written out.
 
-# %%
 𝒲 = WaveletOp(ComplexF32, wavelet(WT.db4), (nx, ny))
 
 v = Variable(copy(x_adj))                      # warm start from the direct reconstruction
@@ -212,9 +189,9 @@ println("hand-written NRMSE:  ", round(nrmse(~x̂), digits = 4))
 x_api = reconstruct(data, IterativeReconstruction(L1Wavelet2D(λ); maxit = 60))
 println("`reconstruct` NRMSE: ", round(nrmse(x_api), digits = 4))
 
-# The two are the same problem but not the same run: `reconstruct` also scales the data, hands
-# FISTA a Lipschitz-constant hint from ‖𝒜‖ and applies its own relative stopping rule, which is
-# worth a visible amount of accuracy at a fixed iteration count.
+## The two are the same problem but not the same run: `reconstruct` also scales the data, hands
+## FISTA a Lipschitz-constant hint from ‖𝒜‖ and applies its own relative stopping rule, which is
+## worth a visible amount of accuracy at a fixed iteration count.
 
 jim(
     jim(~x̂; title = "hand-written problem"),
@@ -222,15 +199,15 @@ jim(
     layout = (1, 2), size = (800, 350)
 )
 
-# %%
-# Two variables, two priors, summed into one image: `a` is penalized by plain image-domain ℓ1
-# (sparse pixels) and `b` by wavelet-domain ℓ1 (sparse wavelet coefficients). This is the same
-# additive, multi-variable syntax notebook 7's L+S model uses — but not the same model: L+S there
-# is low-rank (nuclear norm of the space × time Casorati matrix) plus sparse, which needs several
-# time frames to have a matrix to be low rank across; a single static image does not. Here both
-# terms are ℓ1, just in different domains, so the point is the *syntax* — `@minimize` accepts any
-# number of `Variable`s and sums their terms — not a claim that this decomposition is meaningful
-# on its own.
+#-
+## Two variables, two priors, summed into one image: `a` is penalized by plain image-domain ℓ1
+## (sparse pixels) and `b` by wavelet-domain ℓ1 (sparse wavelet coefficients). This is the same
+## additive, multi-variable syntax tutorial 7's L+S model uses — but not the same model: L+S there
+## is low-rank (nuclear norm of the space × time Casorati matrix) plus sparse, which needs several
+## time frames to have a matrix to be low rank across; a single static image does not. Here both
+## terms are ℓ1, just in different domains, so the point is the *syntax* — `@minimize` accepts any
+## number of `Variable`s and sums their terms — not a claim that this decomposition is meaningful
+## on its own.
 a = Variable(zeros(ComplexF32, nx, ny))
 b = Variable(copy(x_adj))
 
@@ -254,19 +231,17 @@ jim(
     layout = (1, 3), size = (1100, 330)
 )
 
-# %%
-# `problem` + `solve` is the non-macro form, and lets you inspect what a given solver expects.
+#-
+## `problem` + `solve` is the non-macro form, and lets you inspect what a given solver expects.
 p = problem(ls(𝒜 * v - y), λ * norm(𝒲 * v, 1))
 alg, kwargs, variables = StructuredOptimization.parse_problem(p, FISTA())
 println("keys prepared for FISTA: ", keys(kwargs))
 
-# %% [markdown]
 # ## 5. Proximal operators directly
 #
 # Every regularizer is ultimately a proximal map. They can be evaluated on their own, which is the
 # quickest way to understand what a term does — and to test a new one.
 
-# %%
 z = randn(ComplexF32, 8, 8)
 γ = 0.5
 
@@ -278,23 +253,22 @@ println("soft thresholding by γλ = ", γ * 0.3, ":")
 println("  |z|     ", round.(abs.(z[1:4, 1]), digits = 3))
 println("  |prox|  ", round.(abs.(p_l1[1:4, 1]), digits = 3))
 
-# %%
-# The nuclear norm shrinks singular values instead of entries.
+#-
+## The nuclear norm shrinks singular values instead of entries.
 M = randn(ComplexF32, 16, 6)
 p_nuc = similar(M)
 prox!(p_nuc, NuclearNorm(0.8), M, 1.0)
 println("singular values before: ", round.(svdvals(M)[1:6], digits = 3))
 println("singular values after:  ", round.(svdvals(p_nuc)[1:6], digits = 3))
 
-# %%
-# Ristretto's regularizers expose the same thing through `calculate` (the value) and `get_operator`
-# (the transform), which is what the extension interface is built on.
+#-
+## Ristretto's regularizers expose the same thing through `calculate` (the value) and `get_operator`
+## (the transform), which is what the extension interface is built on.
 reg = L1Wavelet2D(2.0f-3)
 println("value of the term at x_true: ", round(calculate(reg, x_true), digits = 4))
 println("its operator: ", typeof(get_operator(reg, x_true)).name.name)
 println("dimensions it couples: ", get_affected_dims(reg, nothing, (:x, :y, :slice)))
 
-# %% [markdown]
 # ## 6. Adding a regularizer of your own
 #
 # A regularizer is a `struct <: Regularization` plus three methods:
@@ -311,22 +285,21 @@ println("dimensions it couples: ", get_affected_dims(reg, nothing, (:x, :y, :sli
 # Here is a spatially weighted ℓ₁ penalty: sparsity enforced only outside a region of interest,
 # which is a crude way of saying "I know where the object is".
 
-# %%
 struct MaskedL1{T, W} <: Regularization
     λ::T
     weights::W
 end
 
-# The penalty is element-wise, so the operator is the identity and the spatial weights ride along
-# in the proximal function (`NormL1` accepts an array of weights).
+## The penalty is element-wise, so the operator is the identity and the spatial weights ride along
+## in the proximal function (`NormL1` accepts an array of weights).
 Ristretto.get_operator(reg::MaskedL1, x::AbstractArray; threaded::Bool = true) =
     Eye(eltype(x), size(x))
 
-# The `::Nothing` slot is the dimension specification a dimension-parameterized regularizer would
-# use; an element-wise penalty couples nothing, so it returns an empty tuple.
+## The `::Nothing` slot is the dimension specification a dimension-parameterized regularizer would
+## use; an element-wise penalty couples nothing, so it returns an empty tuple.
 Ristretto.get_affected_dims(::MaskedL1, ::Nothing, image_dims) = ()
 
-# ℓ₁ is homogeneous of degree one, so λ scales linearly with the data scaling.
+## ℓ₁ is homogeneous of degree one, so λ scales linearly with the data scaling.
 Ristretto.scale_regularization(reg::MaskedL1, factor::Real) =
     MaskedL1(reg.λ * factor, reg.weights)
 
@@ -336,8 +309,8 @@ function Ristretto.materialize(reg::MaskedL1, x::Variable{T}; threaded::Bool) wh
     return StructuredOptimization.Term(1, NormL1(Γ), op * x, "‖Γ .* x‖₁")
 end
 
-# %%
-# Weight the background 10× more heavily than the object.
+#-
+## Weight the background 10× more heavily than the object.
 radius = [sqrt((i - nx / 2)^2 + (j - ny / 2)^2) for i in 1:nx, j in 1:ny]
 weights = Float32.(ifelse.(radius .< 0.42nx, 0.1, 1.0))
 
@@ -351,19 +324,16 @@ jim(
     layout = (1, 2), size = (800, 350)
 )
 
-# %% [markdown]
 # (Down-weighting the object means *less* regularization where the signal is, so this particular
 # prior is worse than plain `L1Image` on this phantom. The point is the interface: a fifteen-line
 # regularizer drops straight into `reconstruct`, data scaling, algorithm selection and task
 # splitting.)
 
-# %%
-# It works through the whole stack: `calculate` evaluates it, and task splitting still applies
-# across batch dimensions because `get_affected_dims` says it couples nothing.
+## It works through the whole stack: `calculate` evaluates it, and task splitting still applies
+## across batch dimensions because `get_affected_dims` says it couples nothing.
 println("value at x_true: ", round(calculate(MaskedL1(5.0f-3, weights), x_true), digits = 4))
 println("affected dims:   ", get_affected_dims(MaskedL1(5.0f-3, weights), nothing, (:x, :y, :slice)))
 
-# %% [markdown]
 # ## 7. Adding an `AbstractOperators`-compatible operator
 #
 # The encoding operator itself, `𝒜 = 𝒫ℱ𝒮`, is built from `AbstractOperators.AbstractOperator`s —
@@ -379,7 +349,7 @@ println("affected dims:   ", get_affected_dims(MaskedL1(5.0f-3, weights), nothin
 # Optionally, the **property traits** from `properties.jl` — `is_linear`, `is_AcA_diagonal`,
 # `is_AAc_diagonal`, `diag_AcA`, `is_orthogonal`, `is_full_row_rank` and friends — which is how a
 # solver decides whether it can use the operator without applying it: `is_AAc_diagonal` is what
-# lets `HardConsistency` project in closed form (§2.2 of notebook 11), and an orthogonal operator
+# lets `HardConsistency` project in closed form (§2.2 of tutorial 11), and an orthogonal operator
 # skips the operator-norm power iteration entirely (`estimate_opnorm` returns `1` directly).
 #
 # A circular pixel shift is a clean example: it is exactly invertible (shift back), its adjoint
@@ -393,7 +363,6 @@ println("affected dims:   ", get_affected_dims(MaskedL1(5.0f-3, weights), nothin
 # does. Every operator in `AbstractOperators` is written this way, and a custom one has to supply
 # both halves; there is no automatic transpose to fall back on.
 
-# %%
 struct CircShift{T, N} <: LinearOperator
     dim::NTuple{N, Int}
     offset::NTuple{N, Int}
@@ -404,21 +373,21 @@ Base.size(L::CircShift) = (L.dim, L.dim)          # square: same shape in and ou
 AbstractOperators.domain_type(::CircShift{T}) where {T} = T
 AbstractOperators.codomain_type(::CircShift{T}) where {T} = T
 
-# The forward map.
+## The forward map.
 function LinearAlgebra.mul!(y::AbstractArray, L::CircShift, x::AbstractArray)
     y .= circshift(x, L.offset)
     return y
 end
 
-# The adjoint map: shifting is a permutation matrix, so its transpose is its inverse — the shift
-# in the opposite direction. `L.A` reaches the wrapped operator inside the `AdjointOperator`.
+## The adjoint map: shifting is a permutation matrix, so its transpose is its inverse — the shift
+## in the opposite direction. `L.A` reaches the wrapped operator inside the `AdjointOperator`.
 function LinearAlgebra.mul!(y::AbstractArray, L::AbstractOperators.AdjointOperator{<:CircShift}, b::AbstractArray)
     y .= circshift(b, .-(L.A.offset))
     return y
 end
 
-# Properties: exactly orthogonal, so L'L = AAc = I, and the operator norm is 1 without an
-# estimate.
+## Properties: exactly orthogonal, so L'L = AAc = I, and the operator norm is 1 without an
+## estimate.
 AbstractOperators.is_linear(::CircShift) = true
 AbstractOperators.is_orthogonal(::CircShift) = true
 AbstractOperators.is_AcA_diagonal(::CircShift) = true
@@ -426,7 +395,7 @@ AbstractOperators.diag_AcA(::CircShift{T}) where {T} = one(real(T))
 AbstractOperators.is_AAc_diagonal(::CircShift) = true
 AbstractOperators.diag_AAc(::CircShift{T}) where {T} = one(real(T))
 
-# %%
+#-
 𝒞shift = CircShift(ComplexF32, (nx, ny), (nx ÷ 4, -ny ÷ 3))   # a quarter of the FOV, so the shift is visible
 shifted = 𝒞shift * x_true
 back = 𝒞shift' * shifted
@@ -441,19 +410,17 @@ jim(
     layout = (1, 2), size = (800, 350)
 )
 
-# %% [markdown]
 # ## 8. Adding a proximal operator of your own
 #
 # A proximal function needs three things: a callable that returns its value, a `prox!` that
 # writes the proximal point in place and returns the value *there*, and the `is_*` traits a
-# parser consults (`is_proximable`, `is_convex`, and so on — §1 of this notebook reads
+# parser consults (`is_proximable`, `is_convex`, and so on — §1 of this tutorial reads
 # `get_assumptions` off exactly these).
 #
 # To check a from-scratch implementation actually is the right proximal operator rather than
 # just plausible code, re-derive `NormL1` — whose closed form (soft thresholding) is well known
 # — independently, and confirm it agrees with the fork's own `NormL1` bit for bit.
 
-# %%
 struct MyNormL1{T}
     λ::T
 end
@@ -469,7 +436,7 @@ function ProximalCore.prox!(y, f::MyNormL1, x, γ)
     return f(y)
 end
 
-# %%
+#-
 z_test = randn(ComplexF32, 200)
 γ_test = 0.7
 λ_test = 0.4f0
@@ -483,7 +450,6 @@ val_fork = prox!(y_fork, NormL1(λ_test), z_test, γ_test)
 println("prox points agree: ", y_mine ≈ y_fork)
 println("values agree:      ", val_mine ≈ val_fork, "  (", round(val_mine, digits = 4), " vs ", round(val_fork, digits = 4), ")")
 
-# %% [markdown]
 # Dropping `MyNormL1` into a reconstruction needs no further wiring — `materialize` for any
 # regularizer just needs to produce a `StructuredOptimization.Term` built from *some* proximal
 # function, and the parser only ever inspects the `is_*` traits, never the concrete type. Doing
@@ -491,7 +457,6 @@ println("values agree:      ", val_mine ≈ val_fork, "  (", round(val_mine, dig
 # but not an arbitrary callable) is exactly `StructuredOptimization.Term(coeff, f, operator*x)`,
 # the same constructor `MaskedL1`'s `materialize` used in §6.
 
-# %%
 v_custom = Variable(copy(x_adj))
 term_custom = StructuredOptimization.Term(1, MyNormL1(5.0f-3), Eye(ComplexF32, (nx, ny)) * v_custom)
 p_custom = problem(ls(𝒜 * v_custom - y), term_custom)
@@ -504,14 +469,13 @@ x_mynorm = reconstruct(
 println("Ristretto's L1Image NRMSE:    ", round(nrmse(x_mynorm), digits = 4))
 println("hand-written MyNormL1:  ", round(nrmse(~v_custom), digits = 4))
 
-# %% [markdown]
 # ## 9. Adding an algorithm of your own
 #
 # An algorithm is not registered with `Ristretto` at all. It is a plain iterator
 # following `ProximalAlgorithms`' protocol, plus one declaration — `get_assumptions` — that says
 # which model shapes it can solve. Ristretto reads that declaration off whatever type it is handed
-# (`DEFAULT_ALGORITHMS` in notebook 6 §1 is the same mechanism), so an algorithm written in a
-# notebook cell is a legal `algorithm =` argument the moment it exists.
+# (`DEFAULT_ALGORITHMS` in tutorial 6 §1 is the same mechanism), so an algorithm written in a
+# tutorial cell is a legal `algorithm =` argument the moment it exists.
 #
 # The protocol has five parts:
 #
@@ -528,12 +492,11 @@ println("hand-written MyNormL1:  ", round(nrmse(~v_custom), digits = 4))
 # other. Everything below is written from scratch and then checked against the fork's own `ISTA`,
 # which is the only honest way to know a from-scratch implementation is right.
 
-# %%
 using Ristretto.ProximalAlgorithms: IterativeAlgorithm, AssumptionGroup, SimpleTerm, get_assumptions,
     value_and_gradient, lower_bound_smoothness_constant, default_display
 using ProximalCore: is_smooth, is_convex, is_proximable
 
-# 1. The iteration: the problem, plus a step size (or the Lipschitz constant to derive it from).
+## 1. The iteration: the problem, plus a step size (or the Lipschitz constant to derive it from).
 Base.@kwdef struct MyISTAIteration{Tx, Tf, Tg, TLf, Tgamma}
     f::Tf = ProximalCore.Zero()
     g::Tg = ProximalCore.Zero()
@@ -544,7 +507,7 @@ end
 
 Base.IteratorSize(::Type{<:MyISTAIteration}) = Base.IsInfinite()
 
-# 2. The state. `res = x - z` is the fixed-point residual: it is what the stopping rule reads.
+## 2. The state. `res = x - z` is the fixed-point residual: it is what the stopping rule reads.
 mutable struct MyISTAState{R, Tx}
     x::Tx        # current iterate
     y::Tx        # forward (gradient-step) point
@@ -556,8 +519,8 @@ mutable struct MyISTAState{R, Tx}
     g_z::R       # value of g at z
 end
 
-# %%
-# 3a. Setting up: one gradient step, one prox, and a step size if none was supplied.
+#-
+## 3a. Setting up: one gradient step, one prox, and a step size if none was supplied.
 function Base.iterate(iter::MyISTAIteration)
     x = copy(iter.x0)
     R = real(eltype(x))
@@ -570,7 +533,7 @@ function Base.iterate(iter::MyISTAIteration)
     return state, state
 end
 
-# 3b. One step: swap the buffers (the previous z becomes the new x), re-evaluate, prox again.
+## 3b. One step: swap the buffers (the previous z becomes the new x), re-evaluate, prox again.
 function Base.iterate(iter::MyISTAIteration, state::MyISTAState{R}) where {R}
     state.x, state.z = state.z, state.x
     f_x, grad = value_and_gradient(iter.f, state.x)
@@ -582,14 +545,14 @@ function Base.iterate(iter::MyISTAIteration, state::MyISTAState{R}) where {R}
     return state, state
 end
 
-# 4. Stopping, solution and display.
+## 4. Stopping, solution and display.
 ProximalAlgorithms.default_stopping_criterion(tol, ::MyISTAIteration, state::MyISTAState) =
     norm(state.res, Inf) / state.gamma <= tol
 ProximalAlgorithms.default_solution(::MyISTAIteration, state::MyISTAState) = state.z
 ProximalAlgorithms.default_iteration_summary(it, ::MyISTAIteration, state::MyISTAState) =
     ("" => it, "γ" => state.gamma, "f(x)" => state.f_x, "g(z)" => state.g_z)
 
-# The user-facing constructor: `IterativeAlgorithm` wraps the iteration with the loop that runs it.
+## The user-facing constructor: `IterativeAlgorithm` wraps the iteration with the loop that runs it.
 MyISTA(;
     maxit = 10_000,
     tol = 1.0e-8,
@@ -602,9 +565,9 @@ MyISTA(;
     kwargs...,
 ) = IterativeAlgorithm(MyISTAIteration; maxit, stop, solution, verbose, freq, summary, display, kwargs...)
 
-# 5. The declaration Ristretto's solver selection reads: a smooth convex term plus a proximable convex
-#    one. This is exactly what ISTA can solve, and no more — declaring anything wider here would
-#    let Ristretto hand this algorithm a model it cannot minimize.
+## 5. The declaration Ristretto's solver selection reads: a smooth convex term plus a proximable convex
+##    one. This is exactly what ISTA can solve, and no more — declaring anything wider here would
+##    let Ristretto hand this algorithm a model it cannot minimize.
 ProximalAlgorithms.get_assumptions(::Type{<:MyISTAIteration}) = AssumptionGroup(
     SimpleTerm(:f => (is_smooth, is_convex)),
     SimpleTerm(:g => (is_proximable, is_convex))
@@ -613,14 +576,12 @@ ProximalAlgorithms.get_assumptions(::Type{<:MyISTAIteration}) = AssumptionGroup(
 println("MyISTA: ", get_assumptions(MyISTA()))
 println("ISTA:   ", get_assumptions(ISTA()))
 
-# %% [markdown]
 # Both declarations are the same, which is the check that matters before running anything: Ristretto
 # will accept `MyISTA()` for exactly the models it accepts `ISTA()` for.
 #
 # Now the numerical check. Same data, same regularizer, same iteration count, one solver against
 # the other — a from-scratch ISTA that is correct must track the fork's to solver tolerance.
 
-# %%
 x_myista = reconstruct(
     data, IterativeReconstruction(L1Wavelet2D(2.0f-3); algorithm = MyISTA(), maxit = 60, reltol = 0.0)
 )
@@ -636,12 +597,10 @@ side_by_side(
     x_ista, x_myista; titles = ("fork's ISTA", "MyISTA (this cell)"), size = (750, 350)
 )
 
-# %% [markdown]
 # The same protocol is what lets an algorithm the vendored fork already ships, but that
 # `DEFAULT_ALGORITHMS` does not list, be used without any Ristretto-side change — `ZeroFPR`, a
 # quasi-Newton accelerated proximal-gradient method, declares the same model shape:
 
-# %%
 using Ristretto.ProximalAlgorithms: ZeroFPR, ZeroFPRIteration
 
 println("ZeroFPR: ", get_assumptions(ZeroFPR()))
@@ -652,24 +611,20 @@ x_zerofpr = reconstruct(
 println("FISTA   NRMSE: ", round(nrmse(x_api), digits = 4))
 println("ZeroFPR NRMSE: ", round(nrmse(x_zerofpr), digits = 4))
 
-# %% [markdown]
 # Nothing in `Ristretto` had to change in either case: `get_assumptions` is read
 # off the type Ristretto is handed, so any `ProximalAlgorithms`-shaped iteration — the package's own, or
-# one written in a notebook cell — plugs into the same solver selection `DEFAULT_ALGORITHMS` uses,
+# one written in a tutorial cell — plugs into the same solver selection `DEFAULT_ALGORITHMS` uses,
 # with no registration step.
 
-# %% [markdown]
 # ## Further reading
 #
-# What the operators in this notebook stand for physically, from *Questions and Answers in MRI*:
+# What the operators in this tutorial stand for physically, from *Questions and Answers in MRI*:
 #
 # - [What is k-space?](https://mriquestions.com/what-is-k-space.html) — the codomain of $\mathcal{F}$.
 # - [k-space: trajectories](https://mriquestions.com/k-space-trajectories.html) — what the NFFT
 #   operator's trajectory argument describes.
 # - [Parallel imaging](https://mriquestions.com/what-is-pi.html) — what $\mathcal{S}$ models.
 
-# %% [markdown]
 # ## Environment
 
-# %%
 print_versions()

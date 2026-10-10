@@ -1,24 +1,7 @@
-# -*- coding: utf-8 -*-
-# ---
-# jupyter:
-#   jupytext:
-#     formats: ipynb,src//jl:percent
-#     text_representation:
-#       extension: .jl
-#       format_name: percent
-#       format_version: '1.3'
-#       jupytext_version: 1.15.2
-#   kernelspec:
-#     display_name: Julia 1.12.7
-#     language: julia
-#     name: julia-1.12
-# ---
-
-# %% [markdown]
 # # 8 — Non-Cartesian acquisitions
 #
 # Radial and spiral trajectories do not land on a grid, so the Fourier operator becomes an NFFT
-# instead of an FFT. This notebook covers the trajectory generators, the NFFT encoding operator
+# instead of an FFT. This tutorial covers the trajectory generators, the NFFT encoding operator
 # and its density-compensation (DCF) options, gradient-delay correction, and the NFFT
 # accuracy/speed knobs.
 #
@@ -31,7 +14,6 @@
 # 6. Gradient-delay correction
 # 7. Accuracy vs. speed of the gridding
 
-# %%
 include("NotebookUtils.jl")
 using .NotebookUtils
 
@@ -47,7 +29,6 @@ using Printf: @printf
 
 Random.seed!(0);
 
-# %% [markdown]
 # ## 1. Trajectory families
 #
 # `Ristretto` ships generators for the common non-Cartesian sampling patterns.
@@ -76,14 +57,13 @@ Random.seed!(0);
 #   center), the same type-rather-than-symbol choice, with the exponent on the variant that has
 #   one.
 
-# %%
 traj_linear = radial_trajectory(96, 13; ordering = LinearOrdering())
 traj_golden = radial_trajectory(96, 13; ordering = GoldenAngle())
 traj_tiny = radial_trajectory(96, 13; ordering = TinyGoldenAngle(3))
 traj_sos = stack_of_stars_trajectory(96, 13, 6; ordering = GoldenAngle())
 traj_koosh = kooshball_trajectory(64, 89)
-# Fewer arms than a real acquisition would use, so the density difference between the two
-# variants is visible arm by arm rather than smeared into a filled disc.
+## Fewer arms than a real acquisition would use, so the density difference between the two
+## variants is visible arm by arm rather than smeared into a filled disc.
 traj_spiral_a = spiral_trajectory(512, 2; variant = Archimedean())
 traj_spiral_vd = spiral_trajectory(512, 2; variant = VariableDensity(2.0))
 
@@ -97,8 +77,8 @@ function traj_scatter(traj; title = "", kwargs...)
     )
 end
 
-# Colour each kz shell separately: with one colour for the whole cloud the discrete partitions of
-# a stack-of-stars trajectory are impossible to tell from a continuous 3D distribution.
+## Colour each kz shell separately: with one colour for the whole cloud the discrete partitions of
+## a stack-of-stars trajectory are impossible to tell from a continuous 3D distribution.
 function traj_scatter3d(traj; title = "", by_kz = false, kwargs...)
     t = reshape(unname(traj), size(traj, 1), :)   # flatten sample/spoke/partition axes
     p = plot(; xlabel = "kx", ylabel = "ky", zlabel = "kz", title, legend = false, kwargs...)
@@ -122,17 +102,16 @@ plot(
     layout = grid_layout(5), size = (1050, 700)
 )
 
-# %%
-# The two fully 3D families, shown in 3D rather than projected onto kx-ky: stack-of-stars is
-# radial in-plane and Cartesian through-plane (the discrete kz "shells"), while kooshball spokes
-# point quasi-uniformly over the whole sphere.
+#-
+## The two fully 3D families, shown in 3D rather than projected onto kx-ky: stack-of-stars is
+## radial in-plane and Cartesian through-plane (the discrete kz "shells"), while kooshball spokes
+## point quasi-uniformly over the whole sphere.
 plot(
     traj_scatter3d(traj_sos; title = "stack of stars (6 partitions)", by_kz = true),
     traj_scatter3d(traj_koosh; title = "kooshball");
     layout = (1, 2), size = (1000, 480)
 )
 
-# %% [markdown]
 # ### Half spokes, phyllotaxis, FLORET and SPARKLING
 #
 # - `center_out = true` (on `radial_trajectory`, `stack_of_stars_trajectory`,
@@ -150,7 +129,6 @@ plot(
 #   amplitude) and a maximum change of step (slew rate) per sample. The optimization takes some
 #   seconds, more for 3D.
 
-# %%
 traj_half = radial_trajectory(48, 21; center_out = true)
 traj_spark = sparkling_trajectory(512, 12; iterations = 100)
 
@@ -170,10 +148,10 @@ plot(
     layout = (1, 3), size = (1050, 360)
 )
 
-# %%
-# Each interleave of the phyllotaxis, each hub of FLORET and each shot of 3D SPARKLING in its own
-# colour. A 3D line per arm shows the path the gradients trace; the phyllotaxis interleave is
-# drawn through its spoke tips.
+#-
+## Each interleave of the phyllotaxis, each hub of FLORET and each shot of 3D SPARKLING in its own
+## colour. A 3D line per arm shows the path the gradients trace; the phyllotaxis interleave is
+## drawn through its spoke tips.
 traj_phyllo = phyllotaxis_trajectory(32, 377; interleaves = 13)
 traj_floret = floret_trajectory(256, 4)
 traj_spark3d = sparkling_trajectory(256, 16; ndims = 3, iterations = 60)
@@ -205,7 +183,6 @@ plot(
     layout = (1, 3), size = (1200, 420)
 )
 
-# %% [markdown]
 # ## 2. Simulating a non-Cartesian acquisition
 #
 # `AcquisitionInfo(; trajectory, image_size, sensitivity_maps)` is the advertised constructor —
@@ -213,7 +190,6 @@ plot(
 # exactly like Cartesian ones: it builds the encoding operator, applies it to the image, and
 # returns a new acquisition object with the k-space data filled in.
 
-# %%
 nx, ny = 96, 96
 nsamp, nspokes = 128, 96
 
@@ -225,18 +201,17 @@ acq_radial = AcquisitionInfo(; trajectory = traj, image_size = (nx, ny), sensiti
 data_radial = simulate_acquisition(x_true, acq_radial; keep_sensitivity_maps = true)
 
 println("radial k-space: ", size(data_radial.kspace_data))
-# Radial Nyquist needs about (π/2)·N spokes; fewer than that is undersampling.
+## Radial Nyquist needs about (π/2)·N spokes; fewer than that is undersampling.
 println("spokes: ", nspokes, " of the ", ceil(Int, π / 2 * nx), " a fully sampled radial scan would need")
-# Non-Cartesian k-space is stored as a list of samples, not on a grid, so this panel's axes are
-# the sample index along a spoke and the spoke index — not kx and ky. Where each of those samples
-# actually sits in k-space is what the scatter plots in section 1 show.
+## Non-Cartesian k-space is stored as a list of samples, not on a grid, so this panel's axes are
+## the sample index along a spoke and the spoke index — not kx and ky. Where each of those samples
+## actually sits in k-space is what the scatter plots in section 1 show.
 jim(
     log.(abs.(data_radial.kspace_data[:, :, 1]) .+ 1.0f-6);
     title = "log |k-space|, coil 1", xlabel = "sample along spoke", ylabel = "spoke",
     size = (450, 350),
 )
 
-# %% [markdown]
 # ## 3. The NFFT encoding operator — density compensation is opt-in
 #
 # `get_encoding_operator` builds an NFFT-based operator (from `NFFTOperators.jl`) whenever the
@@ -256,18 +231,15 @@ jim(
 # approximate *inverse* instead — what a one-shot gridding reconstruction needs, and what §4 is
 # about.
 
-# %%
 𝒜_nodcf = get_encoding_operator(data_radial)
 x_adjoint_nodcf = 𝒜_nodcf' * data_radial.kspace_data
 println("no DCF: adjoint magnitude range = ", extrema(abs.(x_adjoint_nodcf)))
 jim(abs.(x_adjoint_nodcf[:, :, 1]); title = "plain adjoint, no DCF (coil 1)", size = (380, 350))
 
-# %% [markdown]
 # The plain adjoint is dominated by the heavily oversampled k-space center — the image below is
 # badly blurred. This is expected: without density compensation the adjoint is *not* an estimate
 # of the inverse, it is the exact adjoint of an operator that oversamples low frequencies.
 
-# %% [markdown]
 # ## 4. Density compensation — Pipe–Menon and Voronoi
 #
 # - `PipeMenonDCF()` — iterative, works for any trajectory in 2D or 3D (the default method for
@@ -291,7 +263,6 @@ jim(abs.(x_adjoint_nodcf[:, :, 1]); title = "plain adjoint, no DCF (coil 1)", si
 # The weights are stored on the acquisition (`acq.dcf`) and forwarded to the Fourier operator, so
 # `reconstruct` picks them up automatically.
 
-# %%
 acq_pipe = density_compensation(data_radial; method = PipeMenonDCF(maxit = 20))
 acq_voronoi = density_compensation(data_radial; method = VoronoiDCF())
 
@@ -305,10 +276,10 @@ println(
     round(raw_voronoi.dcf[1, 1] / acq_voronoi.dcf[1, 1], digits = 1), "x"
 )
 
-# A spoke runs from one edge of k-space through the centre to the other, so *both* ends of the
-# horizontal axis are the outer edge and the dip in the middle is DC. Both panels are drawn on the
-# same vertical scale — the corrected one's — so the uncorrected spikes run off the top of the left
-# panel rather than squashing the ramp they are supposed to be compared against.
+## A spoke runs from one edge of k-space through the centre to the other, so *both* ends of the
+## horizontal axis are the outer edge and the dip in the middle is DC. Both panels are drawn on the
+## same vertical scale — the corrected one's — so the uncorrected spikes run off the top of the left
+## panel rather than squashing the ramp they are supposed to be compared against.
 dcf_ylim = (0.0, 1.15 * maximum(acq_voronoi.dcf))
 function dcf_panel(pipe, voronoi, title)
     p = plot(
@@ -324,7 +295,7 @@ plot(
     layout = (1, 2), size = (950, 340)
 )
 
-# %%
+#-
 x_nodcf = reconstruct(data_radial)
 x_pipe = reconstruct(acq_pipe)
 x_voronoi = reconstruct(acq_voronoi)
@@ -342,21 +313,19 @@ println("adjoint, no DCF   ", round(aligned_nrmse(x_nodcf), digits = 4))
 println("adjoint, Pipe     ", round(aligned_nrmse(x_pipe), digits = 4))
 println("adjoint, Voronoi  ", round(aligned_nrmse(x_voronoi), digits = 4))
 
-# The no-DCF adjoint is ~10^5x the scale of the DCF-corrected ones (§3), so every panel gets its
-# own color scale (`clim = :each`): on a shared one the corrected panels would be solid black,
-# and the comparison here is about structure, not units.
+## The no-DCF adjoint is ~10^5x the scale of the DCF-corrected ones (§3), so every panel gets its
+## own color scale (`clim = :each`): on a shared one the corrected panels would be solid black,
+## and the comparison here is about structure, not units.
 side_by_side(
     unname(x_nodcf), unname(x_pipe), unname(x_voronoi);
     titles = ("no DCF", "Pipe-Menon", "Voronoi (clipped)"), clim = :each, size = (1050, 350)
 )
 
-# %% [markdown]
 # The plain (no-DCF) adjoint is badly blurred by the oversampled k-space center, exactly as in
 # §3. Both DCF methods correct for this. With the bounding-box clipping and the edge correction,
 # `VoronoiDCF` gives a result close to `PipeMenonDCF` on this golden-angle trajectory rather than
 # the "edge samples blow up" failure an unclipped Voronoi diagram would show.
 
-# %% [markdown]
 # ### Calibrating sensitivity maps from non-Cartesian samples
 #
 # Every sensitivity estimator reads a calibration window out of a Cartesian grid, which these
@@ -370,31 +339,28 @@ side_by_side(
 # is averaged over that axis before calibrating (`average_dims`); see `10_real_data_dynamic` §10,
 # which does this on a real spiral scan.
 
-# %%
 maps_estimated = estimate_sensitivities(
     acq_pipe; method = ESPIRiT(calib_size = 24, kernel_size = 6)
 ).sensitivity_maps
-# The maps come back in the same flavour as the k-space they were calibrated from: a plain array
-# here, since this notebook's simulated data carries no dimension names, and a `NamedDimsArray`
-# with `(:x, :y, :coil)` when it does.
+## The maps come back in the same flavour as the k-space they were calibrated from: a plain array
+## here, since this tutorial's simulated data carries no dimension names, and a `NamedDimsArray`
+## with `(:x, :y, :coil)` when it does.
 println("estimated maps: ", size(maps_estimated), " ", typeof(maps_estimated))
 
-# Sensitivity maps are defined only up to one common phase per pixel, so the honest comparison is
-# of magnitudes; the estimate is zero where ESPIRiT's eigenvalue test finds no coil signal, which
-# is the black background the simulated maps do not have.
+## Sensitivity maps are defined only up to one common phase per pixel, so the honest comparison is
+## of magnitudes; the estimate is zero where ESPIRiT's eigenvalue test finds no coil signal, which
+## is the black background the simulated maps do not have.
 side_by_side(
     abs.(unname(smaps)[:, :, 1]), abs.(unname(maps_estimated)[:, :, 1]);
     titles = ("|S| coil 1, simulated", "|S| coil 1, estimated"), size = (900, 420)
 )
 
-# %% [markdown]
 # ## 5. Iterative and regularized reconstruction
 #
 # An iterative solve does not need a DCF at all — it inverts the operator instead of
 # approximating the inverse with a weighted adjoint — but a good DCF still makes a useful
 # starting point, and the regularizers behave exactly as in the Cartesian case.
 
-# %%
 x_cg = reconstruct(
     data_radial, IterativeReconstruction(L2Image(1.0f-4); algorithm = CGNR(), maxit = 20)
 )
@@ -407,8 +373,8 @@ println("TV-regularized    ", round(aligned_nrmse(x_tv), digits = 4))
 
 side_by_side(x_pipe, x_cg, x_tv; titles = ("gridded adjoint", "CG-SENSE", "TV compressed sensing"), size = (1050, 350))
 
-# %%
-# Fewer spokes: the regime where the regularizer earns its keep.
+#-
+## Fewer spokes: the regime where the regularizer earns its keep.
 nspokes_us = 32
 traj_us = unname(traj)[:, :, 1:nspokes_us]
 acq_us = AcquisitionInfo(; trajectory = traj_us, image_size = (nx, ny), sensitivity_maps = smaps)
@@ -429,7 +395,6 @@ side_by_side(
     titles = ("$(nspokes_us) spokes, gridded", "$(nspokes_us) spokes, TV"), size = (700, 350)
 )
 
-# %% [markdown]
 # ## 6. Gradient-delay correction
 #
 # Gradient hardware delays and eddy currents shift the actual sampled k-space location along each
@@ -449,7 +414,6 @@ side_by_side(
 # imaging data itself — which is the workflow this section reproduces: a calibration trajectory
 # estimates the delay, and the corrected trajectory is then applied to the imaging acquisition.
 
-# %%
 Nsamples, Nspokes = 64, 48
 angles = range(0, 2π; length = Nspokes + 1)[1:Nspokes]
 r = Float32.(range(-0.45, 0.45; length = Nsamples))
@@ -470,25 +434,25 @@ for s in 1:Nspokes
     traj_gd_wrong[2, :, s] .+= delay_true[2] * sin(angles[s])
 end
 
-# A gradient delay slides each spoke **along its own direction**, which is exactly why plotting the
-# two sample sets on top of each other shows nothing: the shifted samples land on the same line as
-# the true ones, between them, and the two point clouds interleave rather than separate. What the
-# delay actually moves is the *point on the spoke where DC is assumed to be*, and that is what the
-# middle panel shows — one marker per spoke, the true one pinned at the origin for every spoke, the
-# biased one tracing the ellipse whose semi-axes are the two delay components. Left to right: the
-# six first spokes end to end for context; the assumed centre of every spoke; and the displacement
-# itself, spoke by spoke.
+## A gradient delay slides each spoke **along its own direction**, which is exactly why plotting the
+## two sample sets on top of each other shows nothing: the shifted samples land on the same line as
+## the true ones, between them, and the two point clouds interleave rather than separate. What the
+## delay actually moves is the *point on the spoke where DC is assumed to be*, and that is what the
+## middle panel shows — one marker per spoke, the true one pinned at the origin for every spoke, the
+## biased one tracing the ellipse whose semi-axes are the two delay components. Left to right: the
+## six first spokes end to end for context; the assumed centre of every spoke; and the displacement
+## itself, spoke by spoke.
 p_full = plot(; aspect_ratio = 1, xlabel = "kx", ylabel = "ky", title = "six spokes, full extent", legend = :outertopright)
 for sp in 1:6
     scatter!(p_full, traj_gd_true[1, :, sp], traj_gd_true[2, :, sp]; markersize = 3, markerstrokewidth = 0, color = 1, label = sp == 1 ? "true" : "")
-    # `:xcross` is an open marker: it is drawn by its *stroke*, so `markerstrokewidth = 0` would
-    # leave nothing but a hairline. Give it a width and a dark stroke colour of its own.
+    ## `:xcross` is an open marker: it is drawn by its *stroke*, so `markerstrokewidth = 0` would
+    ## leave nothing but a hairline. Give it a width and a dark stroke colour of its own.
     scatter!(p_full, traj_gd_wrong[1, :, sp], traj_gd_wrong[2, :, sp]; markersize = 4, marker = :xcross, color = :crimson, markerstrokecolor = :crimson, markerstrokewidth = 1.6, label = sp == 1 ? "delay-biased" : "")
 end
 plot!(p_full; xlim = (-0.58, 0.58), ylim = (-0.58, 0.58))
 
-# The midpoint of a spoke's samples: the readout is symmetric about DC, so this is where each
-# trajectory places k = 0.
+## The midpoint of a spoke's samples: the readout is symmetric about DC, so this is where each
+## trajectory places k = 0.
 centre(traj, s) = (sum(traj[1, :, s]) / Nsamples, sum(traj[2, :, s]) / Nsamples)
 p_centre = scatter(
     [centre(traj_gd_true, s)[1] for s in 1:Nspokes], [centre(traj_gd_true, s)[2] for s in 1:Nspokes];
@@ -509,11 +473,9 @@ p_shift = plot(
 )
 plot(p_full, p_centre, p_shift; layout = (1, 3), size = (1400, 400))
 
-# %% [markdown]
 # Samples are truly acquired at `traj_gd_true` (the object does not know about the delay); a
 # reconstruction that (wrongly) assumes the nominal, delay-biased trajectory shows the artefact.
 
-# %%
 acq_gd_true = AcquisitionInfo(;
     trajectory = NamedDimsArray{(:coord, :kx, :ky)}(traj_gd_true), image_size = (nxg, nyg)
 )
@@ -525,11 +487,9 @@ acq_gd_naive = AcquisitionInfo(
 )
 x_gd_naive = reconstruct(density_compensation(acq_gd_naive; method = PipeMenonDCF(maxit = 15)));
 
-# %% [markdown]
 # Estimate the delay from a calibration acquisition (idealized point-source signal along the
 # same spoke angles) and correct the nominal trajectory with it.
 
-# %%
 ksp_calib = zeros(ComplexF32, Nsamples, Nspokes)
 for s in 1:Nspokes
     shift_s = delay_true[1] * cos(angles[s]) + delay_true[2] * sin(angles[s])
@@ -561,11 +521,9 @@ println("corrected nrmse           ", round(aligned_nrmse_gd(x_gd_fixed), digits
 
 side_by_side(x_gd_naive, x_gd_fixed; titles = ("uncorrected (delay artefact)", "gradient-delay corrected"), size = (700, 350))
 
-# %% [markdown]
 # `RING()` recovers the full anisotropic tensor `(dx, dy, dxy)` the same way, including a
 # nonzero cross-term.
 
-# %%
 Sxx, Syy, Sxy = 0.02, -0.015, 0.005
 traj_ring_wrong = copy(traj_gd_true)
 ksp_ring = zeros(ComplexF32, Nsamples, Nspokes)
@@ -588,22 +546,21 @@ println("RING estimate        = ", map(v -> round(v, digits = 4), delays_ring))
 @printf("%-6s %10.4f %10.4f %10.4f\n", "true", Sxx, Syy, Sxy)
 @printf("%-6s %10.4f %10.4f %10.4f\n", "RING", delays_ring.dx, delays_ring.dy, delays_ring.dxy)
 
-# What the estimate is worth is the trajectory it produces, not the three numbers themselves:
+## What the estimate is worth is the trajectory it produces, not the three numbers themselves:
 acq_ring_fixed = correct_gradient_delays(acq_ring; method = RING())
 @printf(
     "trajectory error vs. true: %.4f before correction, %.4f after\n",
     norm(traj_ring_wrong - traj_gd_true), norm(unname(acq_ring_fixed.trajectory) - traj_gd_true)
 )
 
-# %%
-# Correction is refused on Cartesian data — there is no trajectory to correct.
+#-
+## Correction is refused on Cartesian data — there is no trajectory to correct.
 try
     correct_gradient_delays(AcquisitionInfo(zeros(ComplexF32, 16, 16); is3D = false))
 catch e
     println(sprint(showerror, e))
 end
 
-# %% [markdown]
 # ## 7. Accuracy vs. speed of the gridding
 #
 # `get_encoding_operator` (and `get_fourier_operator`) forward `m`, `sigma` and `precompute`
@@ -617,7 +574,6 @@ end
 # between the three configurations are the reproducible part rather than the absolute
 # milliseconds.
 
-# %%
 using NFFT
 using BenchmarkTools: @belapsed
 
@@ -643,12 +599,10 @@ for r in results
     println(rpad(r.name, 42), rpad(r.ms, 20), r.rel_err)
 end
 
-# %% [markdown]
 # Both Ristretto's default and the fast operating point stay within a fraction of a percent of NFFT.jl's
 # most accurate default, at a fraction of the cost; the ordering (accurate ≥ Ristretto default ≥ fast)
 # is what to take away.
 
-# %% [markdown]
 # ## References
 #
 # [1] D. C. Peters, J. A. Derbyshire, and E. R. McVeigh, "Centering the projection reconstruction
@@ -675,21 +629,18 @@ end
 # ([doi.org](https://doi.org/10.1002/%28SICI%291522-2594%28199901%2941:1%3C179::AID-MRM25%3E3.0.CO;2-V))
 # — the `PipeMenonDCF` density compensation.
 
-# %% [markdown]
 # ## Further reading
 #
 # From *Questions and Answers in MRI*:
 #
 # - [k-space: trajectories](https://mriquestions.com/k-space-trajectories.html) — the families this
-#   notebook generates, and how the gradients draw them.
+#   tutorial generates, and how the gradients draw them.
 # - [Radial sampling](https://mriquestions.com/radial-sampling.html) — why radial is motion-robust,
 #   and what gridding and density compensation are for.
 # - [Spiral and radial artifacts](https://mriquestions.com/spiralradial-artifacts.html) — the
 #   streaks, blurring and off-resonance swirls these trajectories fail with, including the
 #   gradient-delay artefacts §4 corrects.
 
-# %% [markdown]
 # ## Environment
 
-# %%
 print_versions()

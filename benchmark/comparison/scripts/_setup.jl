@@ -483,7 +483,8 @@ function flush_results!(name::AbstractString)
     isempty(results) && return nothing
     path = record_run(
         name, BACKEND, NUM_THREADS, results;
-        hostname = gethostname(), julia_version = string(VERSION),
+        hostname = gethostname(), cpu_model = Sys.cpu_info()[1].model, cpu_threads = Sys.CPU_THREADS,
+        julia_version = string(VERSION),
         julia_threads = Threads.nthreads(), blas_vendor = BLAS.get_config().loaded_libs[1].libname,
         use_mkl = USE_MKL, bart_binary = BART_BINARY, pinned_cpus = CPU_STR,
         placement = get(ENV, "RISTRETTO_BENCH_PLACEMENT", "isolated"),
